@@ -5,7 +5,9 @@
 > 能语义缓存的语义缓存、能投机预取的就预取；并通过「习惯 → 语义切片库 →
 > 决策 → 反馈」的闭环，让系统在资源与能力上**自进化**。
 >
-> 设计基线：DeepSeek-Reasonix（Go 版）的缓存优先架构（前轮已逐行核实）。
+> 设计基线：DeepSeek-Reasonix（Go 版，`main-v2` 分支，
+> https://github.com/esengine/DeepSeek-Reasonix，MIT）的缓存优先架构（前轮已逐行核实）；
+> 文中所有 file:line 引用均指向 `main-v2` 分支。
 
 ---
 

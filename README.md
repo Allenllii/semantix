@@ -41,3 +41,5 @@ Design phase — architecture spec v2 (post-adversarial-review) is complete. Imp
 ## License
 
 MIT
+
+*Design baseline: [DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) (MIT, Go rewrite, branch `main-v2`). All file:line references in the docs point to that branch.*
