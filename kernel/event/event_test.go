@@ -137,8 +137,9 @@ func TestSyncBusUnsubscribe(t *testing.T) {
 // T8: concurrent Emit — no race, correct total count (run with -race).
 func TestSyncBusConcurrentEmit(t *testing.T) {
 	b := NewSyncBus()
-	var n atomic.Int32
-	b.Subscribe(func(Event) { n.Add(1) })
+	var n1, n2 atomic.Int32
+	b.Subscribe(func(Event) { n1.Add(1) })
+	b.Subscribe(func(Event) { n2.Add(1) })
 	var wg sync.WaitGroup
 	for g := 0; g < 10; g++ {
 		wg.Add(1)
@@ -150,8 +151,8 @@ func TestSyncBusConcurrentEmit(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if n.Load() != 1000 {
-		t.Fatalf("expected 1000 deliveries, got %d", n.Load())
+	if n1.Load() != 1000 || n2.Load() != 1000 {
+		t.Fatalf("expected 1000 deliveries per handler, got %d/%d", n1.Load(), n2.Load())
 	}
 }
 

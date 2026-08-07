@@ -37,12 +37,25 @@ func (b *SyncBus) Emit(e Event) {
 }
 
 // Subscribe appends handler and returns an unsubscribe function. Calling
-// unsubscribe more than once is safe (second call is a no-op).
+// unsubscribe more than once is safe (second call is a no-op). Nil slots left
+// by previous unsubscribes are reused so the handler slice cannot grow without
+// bound across subscribe/unsubscribe cycles.
 func (b *SyncBus) Subscribe(handler func(Event)) (unsubscribe func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.handlers = append(b.handlers, handler)
-	idx := len(b.handlers) - 1
+	idx := -1
+	for i, h := range b.handlers {
+		if h == nil {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		b.handlers = append(b.handlers, handler)
+		idx = len(b.handlers) - 1
+	} else {
+		b.handlers[idx] = handler
+	}
 	var once sync.Once
 	return func() {
 		once.Do(func() {
