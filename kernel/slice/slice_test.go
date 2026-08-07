@@ -1,7 +1,11 @@
 package slice
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -46,6 +50,21 @@ func TestExtractTurnSlices(t *testing.T) {
 	}
 	if results != 1 {
 		t.Fatalf("expected 1 result slice, got %d", results)
+	}
+}
+
+// ToolPattern slices are space-joined so the BM25 splitter can tokenize them.
+func TestExtractToolPatternSpaceJoined(t *testing.T) {
+	transcript := []byte(`{"role":"user","content":"查一下"}` +
+		`{"role":"assistant","content":"","tool_calls":[{"id":"c1","name":"readFile"},{"id":"c2","name":"editFile"}]}`)
+	got, err := NewExtractor().Extract(transcript, SliceMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range got {
+		if s.Type == ToolPattern && string(s.Content) != "readFile editFile" {
+			t.Fatalf("tool pattern content = %q, want space-joined", s.Content)
+		}
 	}
 }
 
@@ -145,5 +164,79 @@ func TestFileStoreUpdateStats(t *testing.T) {
 	}
 	if err := st.UpdateStats("nope", SliceStats{}); err == nil {
 		t.Fatal("expected error for missing slice")
+	}
+}
+
+// Concurrent Put/Get must be race-free and lossless (run with -race).
+func TestFileStoreConcurrent(t *testing.T) {
+	st, err := NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const goroutines = 10
+	const perG = 20
+	var wg sync.WaitGroup
+	for g := 0; g < goroutines; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < perG; i++ {
+				id := fmt.Sprintf("g%d-%d", g, i)
+				if err := st.Put(&Slice{ID: id, Type: Prompt, Scope: Project, Content: []byte(id)}); err != nil {
+					t.Errorf("Put(%s): %v", id, err)
+					return
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	all, err := st.List(Project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != goroutines*perG {
+		t.Fatalf("expected %d slices, got %d", goroutines*perG, len(all))
+	}
+}
+
+// Oversized content is truncated to the cap, not dropped.
+func TestExtractOversizeTruncated(t *testing.T) {
+	long := make([]byte, maxPromptLen+100)
+	for i := range long {
+		long[i] = 'a'
+	}
+	transcript := []byte(`{"role":"user","content":"` + string(long) + `"}`)
+	got, err := NewExtractor().Extract(transcript, SliceMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 slice, got %d", len(got))
+	}
+	if len(got[0].Content) != maxPromptLen {
+		t.Fatalf("expected truncated content of %d bytes, got %d", maxPromptLen, len(got[0].Content))
+	}
+}
+
+// Corrupt lines in the store file are skipped, not fatal.
+func TestFileStoreCorruptLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "slices.jsonl")
+	valid, err := json.Marshal(&Slice{ID: "ok", Type: Prompt, Scope: Project, Content: []byte("x")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := append([]byte("{corrupt\n"), valid...)
+	content = append(content, '\n')
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st, err := NewFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Get("ok")
+	if err != nil || got == nil {
+		t.Fatalf("Get(ok) = %v, %v", got, err)
 	}
 }

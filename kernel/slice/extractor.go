@@ -98,10 +98,10 @@ func promptSlice(turn []transcriptLine, meta SliceMeta) *Slice {
 	for _, l := range turn {
 		if l.Role == "user" {
 			content := strings.TrimSpace(l.Content)
-			if content == "" || len(content) > maxPromptLen {
+			if content == "" {
 				return nil
 			}
-			return newSlice(Prompt, Project, []byte(content), meta)
+			return newSlice(Prompt, Project, truncate([]byte(content), maxPromptLen), meta)
 		}
 	}
 	return nil
@@ -119,7 +119,9 @@ func toolPatternSlice(turn []transcriptLine, meta SliceMeta) *Slice {
 	if len(names) < minToolSeq {
 		return nil
 	}
-	return newSlice(ToolPattern, Project, []byte(strings.Join(names, "\x1f")), meta)
+	// Space-joined (not \x1f): keeps the sequence tokenizable by the BM25
+	// whitespace/CJK splitter (kernel/bm25). Tool-name tokens are plain words.
+	return newSlice(ToolPattern, Project, []byte(strings.Join(names, " ")), meta)
 }
 
 func finalResultSlice(lines []transcriptLine, meta SliceMeta) *Slice {
@@ -127,18 +129,25 @@ func finalResultSlice(lines []transcriptLine, meta SliceMeta) *Slice {
 		l := lines[i]
 		if l.Role == "assistant" && len(l.ToolCalls) == 0 {
 			content := strings.TrimSpace(l.Content)
-			if content == "" || len(content) > maxResultLen {
+			if content == "" {
 				return nil
 			}
-			return newSlice(Result, Project, []byte(content), meta)
+			return newSlice(Result, Project, truncate([]byte(content), maxResultLen), meta)
 		}
 	}
 	return nil
 }
 
+func truncate(b []byte, max int) []byte {
+	if len(b) <= max {
+		return b
+	}
+	return b[:max]
+}
+
 func newSlice(t SliceType, sc Scope, content []byte, meta SliceMeta) *Slice {
 	return &Slice{
-		ID:      sliceID(content),
+		ID:      sliceID(content, t, sc),
 		Type:    t,
 		Scope:   sc,
 		Content: content,
@@ -147,9 +156,13 @@ func newSlice(t SliceType, sc Scope, content []byte, meta SliceMeta) *Slice {
 	}
 }
 
-func sliceID(content []byte) string {
-	h := sha256.Sum256(content)
-	return hex.EncodeToString(h[:8])
+// sliceID is a deterministic content-derived ID. Type and scope are mixed in
+// so identical content of different kinds cannot collide.
+func sliceID(content []byte, t SliceType, sc Scope) string {
+	h := sha256.New()
+	h.Write([]byte{byte(t), byte(sc)})
+	h.Write(content)
+	return hex.EncodeToString(h.Sum(nil)[:8])
 }
 
 func dedup(slices []*Slice) []*Slice {
