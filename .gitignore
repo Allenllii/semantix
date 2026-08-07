@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Go build artifacts
+/bin/
+/dist/
+*.test
+*.out
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Local data (kernel stores, session caches)
+/data/
+*.db
+*.db-journal
