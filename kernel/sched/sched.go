@@ -17,6 +17,7 @@ type RoundInput struct {
 
 // ToolCallInfo is a single call in the round.
 type ToolCallInfo struct {
+	CallID   string         // matches event.ToolDispatchPayload.CallID
 	Name     string
 	ReadOnly bool
 	Args     map[string]any
