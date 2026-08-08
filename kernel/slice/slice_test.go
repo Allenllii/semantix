@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 )
 
 // U4 acceptance: extraction from a synthetic session (2 turns, tool calls)
@@ -215,6 +217,25 @@ func TestExtractOversizeTruncated(t *testing.T) {
 	}
 	if len(got[0].Content) != maxPromptLen {
 		t.Fatalf("expected truncated content of %d bytes, got %d", maxPromptLen, len(got[0].Content))
+	}
+}
+
+// Multi-byte runes crossing the truncation boundary must stay valid UTF-8.
+func TestExtractOversizeTruncatedUTF8(t *testing.T) {
+	long := "中" + strings.Repeat("文", maxPromptLen) // > maxPromptLen bytes
+	transcript := []byte(`{"role":"user","content":"` + long + `"}`)
+	got, err := NewExtractor().Extract(transcript, SliceMeta{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 slice, got %d", len(got))
+	}
+	if !utf8.Valid(got[0].Content) {
+		t.Fatalf("truncated content is invalid UTF-8: %q", got[0].Content)
+	}
+	if len(got[0].Content) > maxPromptLen {
+		t.Fatalf("truncated content exceeds cap: %d > %d", len(got[0].Content), maxPromptLen)
 	}
 }
 
