@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"strings"
+	"unicode/utf8"
 )
 
 // Extractor turns session transcripts into slices.
@@ -49,7 +50,7 @@ func NewExtractor() Extractor { return extractor{} }
 // merged. Slice IDs are content hashes (deterministic, dedup-friendly); a
 // stable UUID strategy can replace this in M1 (see Slice.ID doc).
 func (extractor) Extract(sessionJSONL []byte, meta SliceMeta) ([]*Slice, error) {
-	lines := parseTranscript(sessionJSONL)
+	lines, perr := parseTranscript(sessionJSONL)
 	var out []*Slice
 	var turn []transcriptLine
 	flushTurn := func() {
@@ -73,10 +74,12 @@ func (extractor) Extract(sessionJSONL []byte, meta SliceMeta) ([]*Slice, error) 
 	if s := finalResultSlice(lines, meta); s != nil {
 		out = append(out, s)
 	}
-	return dedup(out), nil
+	// Partial results are still returned; perr reports a truncated scan
+	// (oversized line) so callers can decide whether to retry/scale up.
+	return dedup(out), perr
 }
 
-func parseTranscript(data []byte) []transcriptLine {
+func parseTranscript(data []byte) ([]transcriptLine, error) {
 	var out []transcriptLine
 	sc := bufio.NewScanner(bytes.NewReader(data))
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
@@ -91,7 +94,7 @@ func parseTranscript(data []byte) []transcriptLine {
 		}
 		out = append(out, tl)
 	}
-	return out
+	return out, sc.Err()
 }
 
 func promptSlice(turn []transcriptLine, meta SliceMeta) *Slice {
@@ -142,7 +145,12 @@ func truncate(b []byte, max int) []byte {
 	if len(b) <= max {
 		return b
 	}
-	return b[:max]
+	b = b[:max]
+	// Avoid cutting mid-rune: back off to the last valid UTF-8 boundary.
+	for len(b) > 0 && !utf8.Valid(b) {
+		b = b[:len(b)-1]
+	}
+	return b
 }
 
 func newSlice(t SliceType, sc Scope, content []byte, meta SliceMeta) *Slice {
