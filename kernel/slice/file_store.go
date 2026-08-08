@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"sync"
 )
 
@@ -133,27 +134,31 @@ func (s *fileStore) writeAll(slices []*Slice) error {
 		buf.Write(b)
 		buf.WriteByte('\n')
 	}
-	tmp := s.path + ".tmp"
-	f, err := os.Create(tmp)
+	// Write via a uniquely-named temp file (0600) then atomic rename:
+	// avoids symlink pre-placement attacks and never exposes the store
+	// world-readable (os.Create would use 0666&umask).
+	tmp, err := os.CreateTemp(filepath.Dir(s.path), filepath.Base(s.path)+".tmp-*")
 	if err != nil {
 		return err
 	}
-	if _, err := f.Write(buf.Bytes()); err != nil {
-		f.Close()
-		os.Remove(tmp)
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op after successful rename
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
 		return err
 	}
-	if err := f.Sync(); err != nil { // durability: flush before rename
-		f.Close()
-		os.Remove(tmp)
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		tmp.Close()
 		return err
 	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmp)
+	if err := tmp.Sync(); err != nil { // durability: flush before rename
+		tmp.Close()
 		return err
 	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		os.Remove(tmp)
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, s.path); err != nil {
 		return err
 	}
 	return nil

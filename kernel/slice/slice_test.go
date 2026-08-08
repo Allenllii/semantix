@@ -95,6 +95,24 @@ func TestExtractDedup(t *testing.T) {
 	}
 }
 
+func TestFileStoreKeepsPerm0600(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "slices.jsonl")
+	st, err := NewFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Put(&Slice{ID: "a", Type: Prompt, Scope: Project, Content: []byte("x")}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("store file perm = %o, want 600 (writeAll must not widen to 0644)", perm)
+	}
+}
+
 func TestFileStorePutGetList(t *testing.T) {
 	st, err := NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
 	if err != nil {
