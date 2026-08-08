@@ -4,6 +4,8 @@ Semantix 是架设在 agent harness 与资源之间的**自进化 Agent Kernel �
 
 本文档是安全策略与指南入口；详细的威胁模型、攻击面与对策见 [`docs/Security-安全设计.md`](docs/Security-安全设计.md)（10 章完整设计）。
 
+> Semantix persists and reuses information across agent sessions. Its security boundary therefore includes not only code execution, but also memory isolation, cache validity, project scoping, and speculative work.
+
 ---
 
 ## Supported Versions（支持的版本）
@@ -26,82 +28,77 @@ Semantix 是架设在 agent harness 与资源之间的**自进化 Agent Kernel �
 1. **首选**：GitHub 私密安全通告（Security Advisory）——仓库 **Security → Report a vulnerability**；
 2. **备选**：向维护者发送私信/邮件，标题注明 `[SECURITY]`。
 
+报告时请尽量包含（when possible）：
+
+- affected Semantix version or commit
+- operating system and runtime details
+- affected subsystem (cache, slices, scheduler, prefetch, storage, adapter, etc.)
+- minimal reproduction steps using dummy data
+- expected security impact
+- relevant logs with secrets and personal data removed
+
 ### 响应承诺
 
-| 阶段 | 时限 |
-|---|---|
-| 确认收到 | 48 小时内 |
-| 严重性评估与缓解方案 | 7 天内 |
-| 修复版本发布（或明确无法修复的说明） | 30 天内 |
-
-### 报告应包含
-
-- **影响组件**：kernel / 切片库（SSL）/ 缓存（L1/L2/L3）/ 调度器 / 预取器 / 进化引擎 / 工具执行；
-- **复现步骤**：最小化复现，含环境（OS / harness / 模型后端）；
-- **影响评估**：可读取哪些数据、可执行哪些操作、是否跨会话传播；
-- **建议**（可选）：修复方向。
-
-### 报告后的处理
-
-- 确认漏洞 → 创建私密 advisory → 修复合入 main → 发布安全通告（含致谢）；
-- 若评估为设计缺陷（如信任边界问题），将转入设计文档修订并公开说明。
+- 维护者将尽最大努力评估并在公开披露前协调修复；
+- 请允许合理的调查与发布准备时间后再公开漏洞细节（coordinated disclosure）。
 
 ---
 
-## Security Boundaries（安全边界）
+## Security boundaries（安全边界）
 
-系统按"默认不可信"划分信任边界，所有跨边界文本在进入**注入区**或 **judge 输入**前必须经过**版本化规则引擎**的确定性净化。
+以下为 Semantix 中的安全敏感行为。
 
-```
-可信（kernel 自身逻辑、本地参数存储、经净化的注入内容）
-  │
-  ├─ 不可信：一切外部内容 —— 网页抓取、文件内容、工具 stdout、LLM 输出
-  ├─ 不可信：历史切片原文 —— 可能含旧会话中的注入载荷
-  ├─ 不可信：模型输出 —— 只当数据不当指令
-  └─ 不可信：远程 API 响应 —— 只解析约定格式，其余忽略
-```
+### Project and user isolation
 
-关键边界与对应策略（详见 [`docs/Security-安全设计.md`](docs/Security-安全设计.md) §3–§5）：
+语义切片、可复用结果、嵌入向量、索引与学习到的行为**不得跨用户/项目/工作区/租户泄漏**，除非显式配置允许共享。
 
-| 边界 | 策略 |
-|---|---|
-| 切片库 → 模型注入（L2 注入路径） | 注入前净化：剥离注入特征 + 敏感模式脱敏；净化确定性；跨项目剔除项目路径/密钥（§3.1） |
-| 历史切片 → LLM judge 输入（L3） | judge 只读净化后切片，禁止读原文；单 token 输出（§3.2） |
-| 工具输出 → 模型（执行路径） | 工具结果按数据不按指令处理；危险工具走权限门控（§3.3） |
-| 敏感数据外带 | 文件读取默认 deny + 基线敏感清单；可疑输出记录并阻断（§3.4） |
-| 工具执行（副作用出口） | 权限门控链 `deny > sessionAllow > ask > allow > fallback` → OS 沙箱（fail-closed）→ 写前快照（§5） |
+典型安全问题：
 
-**分级 fail 策略**：缓存层失败 **fail-open**（退化为基础 harness，绝不阻塞主循环）；安全边界失败 **fail-closed**（权限不确定即拒绝、沙箱不可用即不执行）。
+- cross-project slice retrieval
+- cross-user memory leakage
+- project identity confusion
+- namespace collisions that expose unrelated cached data
+
+### Result reuse and invalidation
+
+L3 结果复用必须 **fail closed**：仅当 Semantix 能证明结果对当前请求与项目状态仍然有效时才允许复用。
+
+安全相关失败：
+
+- stale result reuse after dependent files change
+- reuse with mismatched project identity
+- reuse across incompatible configuration or model state where that difference affects correctness
+- cache poisoning that causes attacker-controlled results to be treated as trusted reusable results
+
+### Persistent memory and semantic slices
+
+持久化状态可能包含敏感的项目/用户信息。
+
+安全问题：
+
+- secrets written to persistent indexes without intended handling
+- private file content exposed through logs or diagnostics
+- unauthorized retrieval of stored user preferences or project knowledge
+- unbounded retention of data that the system claims to delete or isolate
+
+### Prefetch（预取）
+
+投机预取必须保持**只读**，除非未来设计引入显式的、可审查的安全机制。
+
+Semantix 不得执行投机性副作用：编辑文件、发送消息、变更远端 API、提交代码、部署、审批工具调用等。
+
+### Integrations and adapters
+
+Agent harness、模型提供方、embedding 提供方、数据库与工具适配器都可能收到 Semantix 管理的数据。当 Semantix 将数据送出预期边界、或绕过显式用户/项目作用域时，即构成漏洞。
+
+### Trusted local inputs
+
+除非其他漏洞允许不可信角色控制它们，由操作者显式提供的本地配置一般视为可信。
+
+当报告能证明以下任一项时即具有安全相关性：boundary bypass、unintended disclosure、unauthorized persistence、unsafe reuse、或超出操作者显式意图的副作用。
 
 ---
 
-## Trusted Local Inputs（可信本地输入）
+## Coordinated disclosure
 
-以下内容**在本地被视为受信存储**，但请注意各自的安全前提：
-
-| 本地输入 | 安全前提 |
-|---|---|
-| 切片库（项目级/用户级） | 本地持久化、全程不出机器；但**历史内容本身不可信**——入库前净化，注入前再次净化（防 prompt injection 跨会话传播） |
-| 缓存（L1/L2/L3） | L3 复用 fail-closed（指纹+可验证+白名单+24h）；提升条目带 source 可批量回收；写操作结果永不进 L3 |
-| 会话数据 / 历史 JSONL | 仅本地；不进 telemetry；可一键清空 |
-| 参数存储（进化引擎） | 带版本 + 完整性校验（HMAC/签名），篡改可检测可回滚 |
-| 本地服务（Ollama / Milvus / 嵌入模型） | 仅绑定回环地址 + 本地认证（unix socket 权限 / loopback token）+ 运行时身份校验；模型/依赖版本锁定 |
-| 本地凭证（API key / git 凭证） | 走系统 keyring；keyring 不可用不回退明文文件；禁止写入切片库/会话/日志；定期轮换 |
-
-> 一句话：**"本地"意味着数据不出机器、访问受控，不代表历史内容安全**——污染检测（用户编辑/回滚、注入命中、否决计数）持续为本地可信输入把关。
-
----
-
-## Security Best Practices（安全最佳实践）
-
-详细设计基线（威胁模型、注入攻击与对策、缓存与切片库安全、代码执行安全、LLM judge 安全、供应链与部署安全、可观测与审计、事故响应、**上线前安全检查清单**）见：
-
-📄 [`docs/Security-安全设计.md`](docs/Security-安全设计.md)
-
-关联文档：[`docs/Agent-Infra-架构设计.md`](docs/Agent-Infra-架构设计.md)（§4.2 注入净化、§4.3 L3 fail-closed、§5 调度与工具、§6 进化、§10 风险与边界）、[`docs/总体架构-流程树.md`](docs/总体架构-流程树.md)。
-
----
-
-## Acknowledgements
-
-漏洞报告者将在安全通告中致谢（默认匿名，可按意愿具名）。
+维护者将尽最大努力评估并协调修复，再公开披露。请允许合理的调查与发布准备时间（best-effort assessment and coordination before public disclosure）。
