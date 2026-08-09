@@ -30,6 +30,13 @@ INPUT_PRICE=0.27     # USD per 1M input tokens (cache miss)
 CACHE_PRICE=0.07     # USD per 1M input tokens (cache hit — stable prefix)
 OUTPUT_PRICE=1.10    # USD per 1M output tokens
 
+# --- parameter validation (no forged numbers; script output feeds M0 reports) ---
+validate_num() { # name value min max
+  awk -v v="$2" -v mn="$3" -v mx="$4" 'BEGIN{ if (v !~ /^[0-9]+(\.[0-9]+)?$/ || v < mn || v > mx) exit 1 }' || {
+    echo "invalid $1: $2 (want [$3,$4])" >&2; exit 2
+  }
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tool-tokens) TOOL_TOKENS="$2"; shift 2 ;;
@@ -41,6 +48,13 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
 done
+
+validate_num --tool-tokens "$TOOL_TOKENS" 1 100000
+validate_num --reuse-ratio "$REUSE_RATIO" 0.01 0.99
+validate_num --tools "$TOOLS" 1 1000
+validate_num --input-price "$INPUT_PRICE" 0 100
+validate_num --cache-price "$CACHE_PRICE" 0 100
+validate_num --output-price "$OUTPUT_PRICE" 0 100
 
 if [[ ! -x "$BIN" ]]; then
   echo "building semantix binary..."
@@ -83,11 +97,11 @@ echo "---"
 echo "== [3/4] cost comparison (no-kernel baseline vs. kernel reuse) =="
 BASELINE_TOKENS=$((TOOLS * TOOL_TOKENS))
 # reuse ratio as integer percent for shell arithmetic
-REUSE_PCT=$(awk "BEGIN{printf \"%d\", $REUSE_RATIO * 100}")
+REUSE_PCT=$(awk -v r="$REUSE_RATIO" 'BEGIN{printf "%d", r * 100}')
 KERNEL_TOKENS=$((BASELINE_TOKENS * (100 - REUSE_PCT) / 100))
-BASELINE_COST=$(awk "BEGIN{printf \"%.6f\", $BASELINE_TOKENS * $OUTPUT_PRICE / 1e6}")
-KERNEL_COST=$(awk "BEGIN{printf \"%.6f\", $INJECTED_TOKENS * $CACHE_PRICE / 1e6 + $KERNEL_TOKENS * $OUTPUT_PRICE / 1e6}")
-SAVINGS=$(awk "BEGIN{printf \"%.1f\", ($BASELINE_COST - $KERNEL_COST) / $BASELINE_COST * 100}")
+BASELINE_COST=$(awk -v t="$BASELINE_TOKENS" -v p="$OUTPUT_PRICE" 'BEGIN{printf "%.6f", t * p / 1e6}')
+KERNEL_COST=$(awk -v i="$INJECTED_TOKENS" -v c="$CACHE_PRICE" -v t="$KERNEL_TOKENS" -v p="$OUTPUT_PRICE" 'BEGIN{printf "%.6f", i * c / 1e6 + t * p / 1e6}')
+SAVINGS=$(awk -v b="$BASELINE_COST" -v k="$KERNEL_COST" 'BEGIN{printf "%.1f", (b - k) / b * 100}')
 
 echo "┌────────────────────┬────────────────┬────────────────┐"
 echo "│ metric             │ no-kernel base │ with kernel    │"
@@ -97,7 +111,7 @@ printf "│ input tokens (inj) │ %14s │ %14d │\n" "0" "$INJECTED_TOKENS"
 printf "│ cost (USD)         │ %14s │ %14s │\n" "$BASELINE_COST" "$KERNEL_COST"
 echo "└────────────────────┴────────────────┴────────────────┘"
 echo "savings: ${SAVINGS}%   (target ≥ 20%)"
-if awk "BEGIN{exit !($SAVINGS >= 20)}"; then
+if awk -v s="$SAVINGS" 'BEGIN{exit !(s >= 20)}'; then
   echo "RESULT: PASS — reuse loop demonstrates ≥20% cost saving"
 else
   echo "RESULT: FAIL — saving below the 20% M0-3 target"
