@@ -246,9 +246,18 @@ func turnSliceID(q string) string {
 	return "v-" + hex.EncodeToString(h[:8])
 }
 
+// tabSafe sanitizes TSV cells: control chars stripped and spreadsheet
+// formula-prefix neutralized (= + - @ at cell start -> prefixed with ').
 func tabSafe(s string) string {
-	r := strings.NewReplacer("\t", " ", "\r", " ", "\n", " ")
-	return r.Replace(s)
+	s = stripESC(s)
+	s = strings.ReplaceAll(s, "\t", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	if strings.HasPrefix(s, "=") || strings.HasPrefix(s, "+") ||
+		strings.HasPrefix(s, "-") || strings.HasPrefix(s, "@") {
+		s = "'" + s
+	}
+	return s
 }
 
 // stringListFlag collects repeated --session flags.

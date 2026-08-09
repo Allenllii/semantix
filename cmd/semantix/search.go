@@ -96,7 +96,7 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 		return encoder.Encode(results)
 	}
 	for i, result := range results {
-		content := strings.Join(strings.Fields(result.Content), " ")
+		content := stripESC(strings.Join(strings.Fields(result.Content), " "))
 		fmt.Fprintf(stdout, "%d. score=%.6f id=%s scope=%s\n   %s\n", i+1, result.Score, result.ID, result.Scope, content)
 	}
 	return nil
