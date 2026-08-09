@@ -101,7 +101,7 @@ func runInject(args []string, stdout, stderr io.Writer, deps dependencies) error
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "%s", inj.Text)
+	fmt.Fprintf(stdout, "%s\n", inj.Text)
 	return nil
 }
 
