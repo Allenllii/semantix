@@ -142,7 +142,9 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 		return 2
 	}
 	if opt.db == "" {
-		opt.db = ".semantix/project.db"
+		// verify must not pollute the extract/search store with v- prefixed
+		// training slices; keep a dedicated replay database.
+		opt.db = ".semantix/verify.db"
 	}
 
 	files, err := collectSessionFiles(opt.sessions)
@@ -245,7 +247,8 @@ func turnSliceID(q string) string {
 }
 
 func tabSafe(s string) string {
-	return strings.ReplaceAll(s, "\t", " ")
+	r := strings.NewReplacer("\t", " ", "\r", " ", "\n", " ")
+	return r.Replace(s)
 }
 
 // stringListFlag collects repeated --session flags.
