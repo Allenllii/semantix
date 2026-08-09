@@ -78,6 +78,9 @@ func Execute(idx slice.Index, args map[string]any) ([]Result, error) {
 	if v, ok := args["limit"].(float64); ok && v > 0 {
 		limit = int(v)
 	}
+	if limit > 50 { // hard cap: keep tool output bounded
+		limit = 50
+	}
 	scope := slice.Project
 	if v, ok := args["scope"].(string); ok {
 		switch v {

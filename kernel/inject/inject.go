@@ -18,9 +18,19 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
+	"strings"
 
 	"semantix/kernel/slice"
 )
+
+// escapeMarker neutralizes block markers inside slice content so a stored
+// slice cannot break out of (or fake) the [semantix-reuse] block — the
+// injection stays a low-authority, structurally-closed region (HIGH fix,
+// security review 2026-08-09).
+func escapeMarker(s string) string {
+	s = strings.ReplaceAll(s, "[/semantix-reuse]", "[\\/semantix-reuse]")
+	return strings.ReplaceAll(s, "[semantix-reuse]", "[\\semantix-reuse]")
+}
 
 // DefaultBudget is the default maximum injection block size in bytes.
 const DefaultBudget = 4096
@@ -91,7 +101,7 @@ func (in *Injector) Build(query string) (*Injection, error) {
 	buf.Reset()
 	buf.WriteString(blockOpen)
 	for _, sl := range kept {
-		fmt.Fprintf(&buf, "--- slice %s ---\n%s\n", sl.ID, sl.Content)
+		fmt.Fprintf(&buf, "--- slice %s ---\n%s\n", sl.ID, escapeMarker(string(sl.Content)))
 	}
 	buf.WriteString(blockClose)
 
