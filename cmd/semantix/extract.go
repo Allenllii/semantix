@@ -58,7 +58,7 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 
 	dbPath := selectDB(scope, *dbOverride, *projectDB, *userDB)
 	if dir := filepath.Dir(dbPath); dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return fmt.Errorf("create database directory: %w", err)
 		}
 	}

@@ -6,7 +6,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
+
+	"semantix/kernel/embed"
+	"semantix/kernel/slice"
 )
 
 type searchResult struct {
@@ -27,6 +31,7 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	projectDB := flags.String("project-db", defaultProjectDB(), "project/session database path")
 	userDB := flags.String("user-db", defaultUserDB(), "user database path")
 	jsonOutput := flags.Bool("json", false, "write JSON results")
+	retriever := flags.String("retriever", "bm25", "retriever: bm25 (default) | vector (hash-embedding) | hybrid (RRF fusion)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -75,9 +80,54 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 		}
 	}
 
-	hits, err := index.Search(query, *limit, scope)
-	if err != nil {
-		return fmt.Errorf("search index: %w", err)
+	switch *retriever {
+	case "bm25", "vector", "hybrid":
+	default:
+		return fmt.Errorf("invalid --retriever %q (want bm25, vector, or hybrid)", *retriever)
+	}
+	var hits []slice.Hit
+	switch *retriever {
+	case "vector", "hybrid":
+		emb := embed.HashEmbedder{}
+		texts := make([]string, len(items))
+		for i, item := range items {
+			texts[i] = string(item.Content)
+		}
+		vecs, err := emb.Embed(texts)
+		if err != nil {
+			return fmt.Errorf("embed slices: %w", err)
+		}
+		vi := embed.NewVectorIndex()
+		for i, item := range items {
+			vi.Insert(item.ID, vecs[i])
+		}
+		qvecs, err := emb.Embed([]string{query})
+		if err != nil {
+			return fmt.Errorf("embed query: %w", err)
+		}
+		vhits := vi.Search(qvecs[0], *limit)
+		if *retriever == "vector" {
+			byID := map[string]*slice.Slice{}
+			for _, item := range items {
+				byID[item.ID] = item
+			}
+			for _, vh := range vhits {
+				if sl := byID[vh.ID]; sl != nil {
+					hits = append(hits, slice.Hit{Slice: sl, Score: float64(vh.Score)})
+				}
+			}
+		} else {
+			bm25hits, err := index.Search(query, 20, scope)
+			if err != nil {
+				return fmt.Errorf("search index: %w", err)
+			}
+			hits = rrfFuse(bm25hits, vhits, items, *limit)
+		}
+	default: // bm25
+		hits, err = index.Search(query, *limit, scope)
+		if err != nil {
+			return fmt.Errorf("search index: %w", err)
+		}
 	}
 	results := make([]searchResult, len(hits))
 	for i, hit := range hits {
@@ -96,8 +146,39 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 		return encoder.Encode(results)
 	}
 	for i, result := range results {
-		content := strings.Join(strings.Fields(result.Content), " ")
+		content := stripESC(strings.Join(strings.Fields(result.Content), " "))
 		fmt.Fprintf(stdout, "%d. score=%.6f id=%s scope=%s\n   %s\n", i+1, result.Score, result.ID, result.Scope, content)
 	}
 	return nil
+}
+
+// rrfFuse merges BM25 and vector rankings via Reciprocal Rank Fusion.
+// Constant 60 follows the standard RRF formulation; higher ranks dominate.
+func rrfFuse(bm25 []slice.Hit, vec []embed.Hit, items []*slice.Slice, k int) []slice.Hit {
+	byID := map[string]*slice.Slice{}
+	for _, it := range items {
+		byID[it.ID] = it
+	}
+	scores := map[string]float64{}
+	for i, h := range bm25 {
+		scores[h.Slice.ID] += 1.0 / (60 + float64(i))
+	}
+	for i, h := range vec {
+		scores[h.ID] += 1.0 / (60 + float64(i))
+	}
+	ids := make([]string, 0, len(scores))
+	for id := range scores {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return scores[ids[i]] > scores[ids[j]] })
+	out := make([]slice.Hit, 0, k)
+	for _, id := range ids {
+		if sl := byID[id]; sl != nil {
+			out = append(out, slice.Hit{Slice: sl, Score: scores[id]})
+			if len(out) >= k {
+				break
+			}
+		}
+	}
+	return out
 }
