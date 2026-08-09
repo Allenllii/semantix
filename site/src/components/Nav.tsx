@@ -44,9 +44,12 @@ export default function Nav() {
       <div className="wrap flex h-16 items-center justify-between">
         {/* Logo */}
         <a href="#" aria-label="Semantix 首页" className="flex items-center gap-2.5">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-accent font-mono text-sm font-semibold text-white">
-            S
-          </span>
+          <img
+            src="/seo/favicon.svg"
+            alt=""
+            className="size-8 text-foreground"
+            aria-hidden="true"
+          />
           <span className="font-mono text-lg font-semibold text-foreground">
             semantix
           </span>
