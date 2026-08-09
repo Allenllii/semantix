@@ -28,6 +28,36 @@ const (
 	User
 )
 
+// String returns the stable wire name of a SliceType.
+func (t SliceType) String() string {
+	switch t {
+	case Prompt:
+		return "prompt"
+	case Context:
+		return "context"
+	case ToolPattern:
+		return "tool_pattern"
+	case Result:
+		return "result"
+	case Memory:
+		return "memory"
+	}
+	return "unknown"
+}
+
+// String returns the stable wire name of a Scope.
+func (s Scope) String() string {
+	switch s {
+	case Session:
+		return "session"
+	case Project:
+		return "project"
+	case User:
+		return "user"
+	}
+	return "unknown"
+}
+
 // SliceStats tracks usage feedback used by the evolution engine.
 type SliceStats struct {
 	Hits        uint64
