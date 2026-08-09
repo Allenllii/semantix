@@ -41,6 +41,8 @@ func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
 		err = runExtract(args[1:], stdout, stderr, deps)
 	case "search":
 		err = runSearch(args[1:], stdout, stderr, deps)
+	case "verify":
+		return runVerify(args[1:], stdout, deps)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return 0
@@ -60,6 +62,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "Usage:")
 	fmt.Fprintln(w, "  semantix extract --input <session.jsonl> [--scope project|user|session]")
 	fmt.Fprintln(w, "  semantix search [flags] <query>")
+	fmt.Fprintln(w, "  semantix verify --session <file|dir> [--holdout 0.3]  (M0-2 replay validation)")
 }
 
 type storeCloser interface {
