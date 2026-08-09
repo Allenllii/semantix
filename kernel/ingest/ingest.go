@@ -14,6 +14,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -169,8 +170,8 @@ func (s *JSONLSource) Next() (*SessionEvents, error) {
 	return se, sc.Err()
 }
 
-// IsEOF reports whether err signals source exhaustion.
-func IsEOF(err error) bool { return err == io.EOF }
+// IsEOF reports whether err signals source exhaustion (errors.Is-compatible).
+func IsEOF(err error) bool { return errors.Is(err, io.EOF) }
 
 // --- Pipeline ---
 
