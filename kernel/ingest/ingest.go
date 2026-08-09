@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -72,8 +73,11 @@ func NewJSONLSource(paths ...string) (*JSONLSource, error) {
 		files = append(files, p)
 	}
 	sort.Slice(files, func(i, j int) bool {
-		a, _ := os.Stat(files[i])
-		b, _ := os.Stat(files[j])
+		a, aerr := os.Stat(files[i])
+		b, berr := os.Stat(files[j])
+		if aerr != nil || berr != nil {
+			return false // stat failures keep relative order; Next() will surface them
+		}
 		return a.ModTime().Before(b.ModTime())
 	})
 	return &JSONLSource{files: files}, nil
@@ -85,7 +89,7 @@ func NewJSONLSource(paths ...string) (*JSONLSource, error) {
 // batch of tool results closes with ToolRoundEnd.
 func (s *JSONLSource) Next() (*SessionEvents, error) {
 	if s.idx >= len(s.files) {
-		return nil, ioEOF
+		return nil, io.EOF
 	}
 	path := s.files[s.idx]
 	s.idx++
@@ -165,11 +169,8 @@ func (s *JSONLSource) Next() (*SessionEvents, error) {
 	return se, sc.Err()
 }
 
-// ioEOF avoids importing io just for the sentinel in this small package.
-var ioEOF = fmt.Errorf("EOF")
-
 // IsEOF reports whether err signals source exhaustion.
-func IsEOF(err error) bool { return err == ioEOF }
+func IsEOF(err error) bool { return err == io.EOF }
 
 // --- Pipeline ---
 
@@ -205,7 +206,8 @@ func (p Pipeline) Run(src Source) (map[string]int, error) {
 		for _, sl := range slices {
 			sl.Scope = p.Scope
 			if err := p.Store.Put(sl); err != nil {
-				return stats, fmt.Errorf("ingest %s: put %s: %w", se.SessionID, sl.ID, err)
+				return stats, fmt.Errorf("ingest %s: put %s: %w (persisted %d of %d slices before failure)",
+					se.SessionID, sl.ID, err, n, len(slices))
 			}
 			if err := p.Index.Insert(sl); err != nil {
 				return stats, fmt.Errorf("ingest %s: index %s: %w", se.SessionID, sl.ID, err)
