@@ -80,6 +80,11 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 		}
 	}
 
+	switch *retriever {
+	case "bm25", "vector", "hybrid":
+	default:
+		return fmt.Errorf("invalid --retriever %q (want bm25, vector, or hybrid)", *retriever)
+	}
 	var hits []slice.Hit
 	switch *retriever {
 	case "vector", "hybrid":

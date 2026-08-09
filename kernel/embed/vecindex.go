@@ -25,11 +25,12 @@ func NewVectorIndex() *VectorIndex {
 	return &VectorIndex{vecs: map[string][]float32{}}
 }
 
-// Insert stores (or replaces) the vector for id.
+// Insert stores (or replaces) the vector for id. The vector is copied so
+// later caller-side mutation cannot race or corrupt the index.
 func (vi *VectorIndex) Insert(id string, vec []float32) {
 	vi.mu.Lock()
 	defer vi.mu.Unlock()
-	vi.vecs[id] = vec
+	vi.vecs[id] = append([]float32(nil), vec...)
 }
 
 // Remove deletes id (idempotent).
