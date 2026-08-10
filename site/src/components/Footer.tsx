@@ -5,6 +5,11 @@ const links = [
   { label: "About", href: "/about", external: false },
   { label: "Docs", href: "/docs", external: false },
   { label: "Terms", href: "/terms", external: false },
+  {
+    label: "Contact",
+    href: `mailto:${siteIdentity.operator.email}`,
+    external: false,
+  },
   { label: "GitHub", href: "https://github.com/Gnosil/semantix", external: true },
   {
     label: "README",
@@ -35,6 +40,15 @@ export default function Footer() {
               {siteIdentity.operator.legalName}
             </Link>
             运营与维护。
+          </p>
+          <p className="mt-2">
+            联系邮箱：
+            <a
+              href={`mailto:${siteIdentity.operator.email}`}
+              className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
+            >
+              {siteIdentity.operator.email}
+            </a>
           </p>
         </div>
         <nav aria-label="页脚导航" className="flex flex-wrap items-center gap-x-6 gap-y-3">
