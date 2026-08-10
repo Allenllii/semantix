@@ -5,6 +5,7 @@ const links = [
   { label: "About", href: "/about", external: false },
   { label: "Docs", href: "/docs", external: false },
   { label: "Terms", href: "/terms", external: false },
+  { label: "Privacy", href: "/privacy", external: false },
   {
     label: "Contact",
     href: `mailto:${siteIdentity.operator.email}`,
