@@ -80,6 +80,9 @@ func Execute(idx slice.Index, args map[string]any) ([]Result, error) {
 	}
 	limit := 5
 	if v, ok := args["limit"].(float64); ok && v > 0 {
+		if v > 50 { // clamp before conversion: float64→int of huge values is implementation-defined
+			v = 50
+		}
 		limit = int(v)
 	}
 	if limit > 50 { // hard cap: keep tool output bounded

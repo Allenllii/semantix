@@ -6,6 +6,8 @@
 // treat the grey zone as "verify before reuse" instead of deciding blindly.
 package zone
 
+import "math"
+
 // Zone is the three-region verdict for a retrieval candidate.
 type Zone int
 
@@ -48,10 +50,11 @@ func Default() Zones {
 	return Zones{TauHigh: 0.8, TauLow: 0.55, AbsHigh: 0.7, AbsLow: 0.45}
 }
 
-// Classify maps (score, top1) to a Zone. Non-positive scores are always Miss
-// (negative cosine or empty result set).
+// Classify maps (score, top1) to a Zone. NaN/Inf/zero/negative inputs are
+// always Miss (failure-safe: never a false reuse).
 func (z Zones) Classify(score, top1 float64) Zone {
-	if top1 <= 0 || score <= 0 {
+	if math.IsNaN(score) || math.IsNaN(top1) || math.IsInf(score, 0) || math.IsInf(top1, 0) ||
+		top1 <= 0 || score <= 0 {
 		return Miss
 	}
 	switch {

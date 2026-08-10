@@ -1,6 +1,13 @@
 package zone
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
+
+func nan() float64      { return math.NaN() }
+func inf() float64      { return math.Inf(1) }
+func infNeg() float64   { return math.Inf(-1) }
 
 func TestClassifyBoundaries(t *testing.T) {
 	z := Default()
@@ -20,6 +27,10 @@ func TestClassifyBoundaries(t *testing.T) {
 		{"bm25 scale miss", 0.8, 3.07, Miss},    // conf ~0.26
 		{"negative score", -0.2, 0.9, Miss},
 		{"zero top1", 0.5, 0, Miss},
+		{"nan score", nan(), 0.9, Miss},          // all NaN comparisons false -> default Miss
+		{"nan top1", 0.5, nan(), Miss},
+		{"positive inf", inf(), 3.0, Miss},       // inf/inf -> NaN -> Miss
+		{"negative inf top1", 0.5, infNeg(), Miss},
 	}
 	for _, c := range cases {
 		if got := z.Classify(c.score, c.top1); got != c.want {
