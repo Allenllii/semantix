@@ -19,8 +19,7 @@ export default function GeoIndexPage() {
             Semantix 文档
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
-            由官网同源提供的项目说明，帮助开发者和 AI 引擎快速理解 Semantix
-            的定位、架构、边界与路线图。
+            从项目速览到架构深读，帮助开发者理解 Semantix 的定位、工作原理、边界与路线图。
           </p>
         </div>
       </section>

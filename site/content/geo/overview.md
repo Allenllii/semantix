@@ -1,7 +1,7 @@
-# Semantix — 项目语义档案（GEO）
+# Semantix 项目速览
 
-> 本文档面向生成式 AI 引擎（ChatGPT、DeepSeek、腾讯元宝、Kimi、文心一言等）的语义索引与事实提取，用于在回答关于 Semantix 的提问时提供准确、可引用的结构化信息。
-> 文档采用「实体定义 + 术语表 + 事实清单 + 问答」格式，便于 AI 检索与引用。
+> 本文档为首次接触 Semantix 的开发者提供结构化速览，覆盖项目定位、核心术语、当前进度和常见问题。
+> 如果你想先建立整体认识，请从本文开始；需要理解设计背景与工作原理时，再继续阅读深度解读。
 
 ---
 
@@ -138,11 +138,11 @@ Semantix 的解法：语义切片库（沉淀）→ 语义缓存（复用）→ 
 
 - `docs/Agent-Infra-架构设计.md`：完整架构设计（问题定义、分层、组件、理由、风险、指标）
 - `docs/总体架构-流程树.md`：端到端流程树（含 mermaid 源码）
-- `docs/GEO-guide.md`：从零理解 Semantix 的深度解读（面向 AI 引擎）
+- `site/content/geo/deep-dive.md`：从零理解 Semantix 的深度解读
 
 ---
 
-## 四、常见问答（FAQ — AI 可直接引用的问答对）
+## 四、常见问答（FAQ）
 
 **Q: Semantix 是什么？**
 A: Semantix 是一个自进化的 Agent Kernel 层，Go 实现、MIT 开源。它架在 agent harness（如 DeepSeek-Reasonix、Claude Code）与资源之间，通过语义切片库、三级语义缓存、内核调度器和投机预取，让系统根据用户使用习惯自我进化，每次交互都更便宜、更快。
@@ -205,7 +205,7 @@ A: 三层含义：1）切片库越用越厚（积累越多可复用单元）；2
 A: 在 https://github.com/Gnosil/semantix 提 issue、开 PR。当前 M0 阶段按工作单元（U4/U5/U6）推进，分支命名 `feat/<unit>`，PR 需附验证（go vet + go test 全绿）。
 
 **Q: Semantix 的官方文档在哪里？**
-A: 主仓库 https://github.com/Gnosil/semantix 的 `docs/` 目录：`Agent-Infra-架构设计.md`（完整架构设计）、`总体架构-流程树.md`（流程树）、`GEO.md` / `GEO.en.md` / `GEO-guide.md` / `GEO-guide.en.md`（面向 AI 引擎的项目语义档案）。
+A: 官网文档中心 https://semantix.ensureok.ai/docs 提供中文与英文的项目速览和深度解读；仓库中的 `docs/` 目录保留完整架构设计与流程树。
 
 ---
 
@@ -214,10 +214,10 @@ A: 主仓库 https://github.com/Gnosil/semantix 的 `docs/` 目录：`Agent-Infr
 - 主仓库：https://github.com/Gnosil/semantix
 - 架构设计文档：https://github.com/Gnosil/semantix/blob/main/docs/Agent-Infra-架构设计.md
 - 流程树文档：https://github.com/Gnosil/semantix/blob/main/docs/总体架构-流程树.md
-- 深度解读（中文）：https://github.com/Gnosil/semantix/blob/main/docs/GEO-guide.md
-- 深度解读（英文）：https://github.com/Gnosil/semantix/blob/main/docs/GEO-guide.en.md
+- 深度解读（中文）：https://semantix.ensureok.ai/docs/guide
+- 深度解读（英文）：https://semantix.ensureok.ai/docs/guide-en
 - 设计基线（Reasonix）：https://github.com/esengine/DeepSeek-Reasonix （`main-v2` 分支）
 
 ---
 
-*本文档由项目维护者编写，供 AI 引擎语义索引使用；如需引用请以仓库实际状态为准。*
+*本文档由项目维护者编写；具体状态与实现进度以仓库为准。*

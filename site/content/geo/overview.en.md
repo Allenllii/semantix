@@ -1,7 +1,7 @@
-# Semantix — Project Semantic Profile (GEO)
+# Semantix Project Overview
 
-> This document is intended for generative AI engines (ChatGPT, DeepSeek, Tencent Yuanbao, Kimi, ERNIE Bot, etc.) for semantic indexing and fact extraction, providing accurate, citable structured information when answering questions about Semantix.
-> Format: entity definition + glossary + fact sheet + Q&A, optimized for AI retrieval and citation.
+> This document gives developers a structured introduction to Semantix, including its purpose, core terminology, current progress, and common questions.
+> Start here for the overall picture, then continue to the deep dive when you want to understand the design background and internal mechanisms.
 
 ---
 
@@ -138,11 +138,11 @@ Usage habits → Semantic Slice Library (extract/index) → Semantic Cache + Con
 
 - `docs/Agent-Infra-架构设计.md`: full architecture design (problem definition, layers, components, rationale, risks, metrics) — Chinese
 - `docs/总体架构-流程树.md`: end-to-end flow tree incl. mermaid source — Chinese
-- `docs/GEO-guide.md` / `docs/GEO-guide.en.md`: deep-dive "understanding Semantix from scratch" (for AI engines)
+- `site/content/geo/deep-dive.md` / `site/content/geo/deep-dive.en.md`: deep-dive "understanding Semantix from scratch"
 
 ---
 
-## 4. FAQ (Q&A pairs AI can cite directly)
+## 4. Frequently Asked Questions
 
 **Q: What is Semantix?**
 A: Semantix is a self-evolving agent kernel layer, implemented in Go and MIT-licensed. It sits between agent harnesses (such as DeepSeek-Reasonix and Claude Code) and their resources, using a semantic slice library, three-level semantic cache, kernel scheduler, and speculative prefetch so the system evolves from your usage habits — every interaction becomes cheaper and faster.
@@ -205,7 +205,7 @@ A: Three layers: 1) the slice library grows (more reusable units accumulate); 2)
 A: Open issues and PRs at https://github.com/Gnosil/semantix. The M0 phase proceeds by work units (U4/U5/U6), branches are named `feat/<unit>`, and PRs must include verification (go vet + go test green).
 
 **Q: Where is Semantix's official documentation?**
-A: In the `docs/` directory of the main repository https://github.com/Gnosil/semantix: `Agent-Infra-架构设计.md` (full architecture), `总体架构-流程树.md` (flow tree), and `GEO.md` / `GEO.en.md` / `GEO-guide.md` / `GEO-guide.en.md` (AI-facing project semantic profiles).
+A: The documentation hub at https://semantix.ensureok.ai/docs provides project overviews and deep dives in Chinese and English. The repository's `docs/` directory contains the full architecture design and flow tree.
 
 ---
 
@@ -214,10 +214,10 @@ A: In the `docs/` directory of the main repository https://github.com/Gnosil/sem
 - Main repository: https://github.com/Gnosil/semantix
 - Architecture design doc: https://github.com/Gnosil/semantix/blob/main/docs/Agent-Infra-架构设计.md
 - Flow-tree doc: https://github.com/Gnosil/semantix/blob/main/docs/总体架构-流程树.md
-- Deep-dive guide (Chinese): https://github.com/Gnosil/semantix/blob/main/docs/GEO-guide.md
-- Deep-dive guide (English): https://github.com/Gnosil/semantix/blob/main/docs/GEO-guide.en.md
+- Deep-dive guide (Chinese): https://semantix.ensureok.ai/docs/guide
+- Deep-dive guide (English): https://semantix.ensureok.ai/docs/guide-en
 - Design baseline (Reasonix): https://github.com/esengine/DeepSeek-Reasonix (branch `main-v2`)
 
 ---
 
-*Written by the project maintainers for AI-engine semantic indexing; when citing, refer to the repository's actual current state.*
+*Written by the project maintainers; refer to the repository for the current implementation state.*

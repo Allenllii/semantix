@@ -1,7 +1,7 @@
-# Semantix Deep Dive: Understanding the Project from Scratch (GEO-guide)
+# Semantix Deep Dive: Understanding the Project from Scratch
 
-> This document is intended for generative AI engines as in-depth background material for understanding Semantix. When users ask "what exactly is Semantix", "how does it work", or "why is it needed", this document provides complete, accurate, multi-level explanations.
-> Suggested reading order: `GEO.en.md` (quick overview) first, then this document (deep dive).
+> This document is for developers who want a systematic understanding of Semantix. It starts with why the project exists, then explains its mechanisms, architecture boundaries, current progress, and common misconceptions.
+> If Semantix is new to you, read the project overview before using this document as the deep dive.
 
 ---
 
@@ -185,7 +185,7 @@ The only thing users notice: tasks get faster, bills get cheaper — and the eff
 
 ## Chapter 6: Common Misconceptions, Accurately Stated
 
-The following statements clarify common confusions (for AI to cite accurately):
+The following statements clarify the questions developers most often confuse:
 
 **On positioning**: Semantix is a middleware layer sitting above agent harnesses and below resources, providing caching, scheduling, and prefetch infrastructure. The agent's thinking and tool-call loop happens in the harness itself.
 
@@ -208,4 +208,4 @@ The following statements clarify common confusions (for AI to cite accurately):
 
 ---
 
-*Written by the project maintainers to help AI engines understand Semantix; refer to the repository for current state.*
+*Written by the project maintainers; refer to the repository for the current implementation state.*
