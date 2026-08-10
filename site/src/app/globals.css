@@ -201,3 +201,79 @@
     animation-direction: reverse;
   }
 }
+
+@layer components {
+  .geo-prose {
+    @apply text-base leading-8 text-foreground;
+  }
+
+  .geo-prose > * + * {
+    @apply mt-5;
+  }
+
+  .geo-prose h1 {
+    @apply mb-10 text-4xl font-semibold leading-tight tracking-tight md:text-5xl;
+  }
+
+  .geo-prose h2 {
+    @apply mt-14 border-b border-border pb-3 text-2xl font-semibold tracking-tight md:text-3xl;
+  }
+
+  .geo-prose h3 {
+    @apply mt-10 text-xl font-semibold tracking-tight;
+  }
+
+  .geo-prose p,
+  .geo-prose li {
+    @apply text-muted-foreground;
+  }
+
+  .geo-prose strong {
+    @apply font-semibold text-foreground;
+  }
+
+  .geo-prose a {
+    @apply text-accent underline decoration-accent/30 underline-offset-4 hover:decoration-accent;
+  }
+
+  .geo-prose ul {
+    @apply list-disc space-y-2 pl-6;
+  }
+
+  .geo-prose ol {
+    @apply list-decimal space-y-2 pl-6;
+  }
+
+  .geo-prose blockquote {
+    @apply border-l-2 border-accent bg-muted/50 px-5 py-3 text-muted-foreground;
+  }
+
+  .geo-prose code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.9em] text-foreground;
+  }
+
+  .geo-prose pre {
+    @apply overflow-x-auto rounded-xl border border-border bg-foreground p-5 text-background;
+  }
+
+  .geo-prose pre code {
+    @apply bg-transparent p-0 text-inherit;
+  }
+
+  .geo-prose table {
+    @apply block w-full overflow-x-auto border-collapse text-sm;
+  }
+
+  .geo-prose th,
+  .geo-prose td {
+    @apply border border-border px-3 py-2 text-left align-top;
+  }
+
+  .geo-prose th {
+    @apply bg-muted font-semibold text-foreground;
+  }
+
+  .geo-prose hr {
+    @apply my-12 border-border;
+  }
+}
