@@ -5,10 +5,16 @@ import test from "node:test";
 const homepageHtml = await readFile(new URL("../out/index.html", import.meta.url), "utf8");
 const crawlerVisibleHtml = homepageHtml.replaceAll("<!-- -->", "");
 
+// Single source for the expected date so a site update touches exactly one literal.
+const expectedLastUpdated = "2026-08-10";
+
 test("static homepage exposes the visible content update date", () => {
   assert.match(
     crawlerVisibleHtml,
-    /<time datetime="2026-08-10"[^>]*>Last updated · 2026-08-10<\/time>/i,
+    new RegExp(
+      `<time datetime="${expectedLastUpdated}"[^>]*>Last updated · ${expectedLastUpdated}</time>`,
+      "i",
+    ),
   );
 });
 
@@ -20,5 +26,5 @@ test("static homepage exposes the same date as WebPage dateModified", () => {
   const webpage = jsonLdObjects.find((value) => value["@type"] === "WebPage");
 
   assert.ok(webpage, "expected homepage WebPage JSON-LD");
-  assert.equal(webpage.dateModified, "2026-08-10");
+  assert.equal(webpage.dateModified, expectedLastUpdated);
 });
