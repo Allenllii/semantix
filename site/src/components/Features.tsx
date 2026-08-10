@@ -20,29 +20,29 @@ const features: Feature[] = [
     num: "03",
     titleEn: "Kernel Scheduler",
     title: "内核调度器",
-    body: "按任务 intent 联合决策：工具并发度、模型 tier、缓存注入、预取预算——从你的行为模式里学出来的调度策略。",
-    code: "decide(intent) → {concurrency, tier, inject, prefetch}",
+    body: "当前仅定义调度输入、RoundPlan 与 Decider 接口；intent 学习、并发规划和 tier 选择尚未实现。",
+    code: "Decider interface: implementation pending",
   },
   {
     num: "04",
     titleEn: "Speculative Prefetch",
     title: "投机预取",
-    body: "把 LLM 流式输出的等待时间填满：预取下一轮的切片组装、embedding 计算。waste/hit 比例自我惩罚，越用越准。",
-    code: "waste/hit > 3:1 → signal-source weight ↓",
+    body: "Prefetcher 当前仅定义只读任务接口；转移预测、预算控制和 waste/hit 测量仍在规划中。",
+    code: "Prefetcher interface: implementation pending",
   },
   {
     num: "05",
     titleEn: "Self-Evolution",
     title: "自进化引擎",
-    body: "每轮回馈命中/污染/延迟/成本/成功率：在线 EWMA 调参（冻结期保护字节缓存）+ 离线重训。系统自己长出自己的最优参数。",
-    code: "online EWMA + freeze-period ≥1h + offline retrain",
+    body: "Signal、Params 与 Engine 接口已经定义；在线 EWMA 调参与离线重训仍未实现或验证。",
+    code: "Engine interface: tuning loop pending",
   },
   {
     num: "06",
     titleEn: "Single Kernel, Many Harnesses",
     title: "零侵入适配",
-    body: "不改造 harness 内核：适配层接入 DeepSeek-Reasonix、Claude Code 等任意 harness，上层能力原样复用。",
-    code: "adapter(harness) → kernel.emit(event)",
+    body: "通用事件与适配契约已经设计；Reasonix、Claude Code 等生产级适配尚未完成兼容验证。",
+    code: "generic contracts: adapters unverified",
   },
 ];
 
@@ -58,14 +58,13 @@ export default function Features() {
             Features 特性
           </p>
           <h2 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">
-            越用越好的能力。
+            核心能力与当前进度。
           </h2>
           <p className="mt-1 text-muted-foreground">
             Autonomy you can actually audit.
           </p>
           <p className="mt-4 max-w-2xl text-muted-foreground">
-            现有 harness 只做会话内的字节级前缀缓存——被动、会话绑定、调度静态。Semantix
-            把整个循环升级为跨会话的、主动的、自进化的闭环：每次交互都让下一次更便宜、更快。
+            当前已实现会话切片、BM25 检索与跨会话注入；调度、预取和自进化闭环仍处于接口或规划阶段。
           </p>
         </Reveal>
 
