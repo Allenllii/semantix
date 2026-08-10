@@ -17,6 +17,13 @@ func TestStripESC(t *testing.T) {
 		{"\x9b31mred\x9b0m", "red"},                   // C1 CSI (single-byte)
 		{"\x9d0;title\x07rest", "rest"},               // C1 OSC + BEL
 		{"plain\x9bl", "plain"},                       // C1 CSI final byte 'l' consumed
+		{"\x90tmux;stuff\x9crest", "rest"},            // C1 DCS passthrough + ST
+		{"\x9e0;pm\x9crest", "rest"},                  // C1 PM + ST
+		{"\x9f0;apc\x9crest", "rest"},                 // C1 APC + ST
+		{"\x98sos\x9crest", "rest"},                   // C1 SOS + ST
+		{"\x1b7keep", "keep"},                         // ESC 7 DECSC: two-char, keep rest
+		{"\x1bPtmux;\x1b\\rest", "rest"},              // ESC-form DCS + ST
+		{"\x1b=keep2", "keep2"},                       // ESC = DECKPAM two-char
 	}
 	for _, c := range cases {
 		if got := stripESC(c.in); got != c.want {
