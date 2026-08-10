@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -274,6 +275,9 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 // is absolutely weak, or the runner-up competes closely — reuse only when
 // the winner is confident AND separated from the runner-up.
 func classifyTop1(z zone.Zones, top1, top2 float64) zone.Zone {
+	if math.IsNaN(top1) || math.IsNaN(top2) || math.IsInf(top1, 0) || math.IsInf(top2, 0) {
+		return zone.Miss // failure-safe: NaN/Inf can never be a clear hit
+	}
 	switch {
 	case top1 <= 0 || top1 < z.AbsLow:
 		return zone.Miss
