@@ -30,7 +30,7 @@ export default function Hero() {
         {/* headline */}
         <Reveal delay={80}>
           <h1 className="mt-6 text-5xl font-bold tracking-tight md:text-6xl lg:text-7xl">
-            A self-evolving agent kernel.
+            A <span className="text-accent">self-evolving</span> agent kernel.
           </h1>
           <p className="mt-4 text-2xl text-muted-foreground md:text-3xl">
             一个自进化的 Agent Kernel。
@@ -39,8 +39,10 @@ export default function Hero() {
 
         {/* subheading */}
         <Reveal delay={160}>
-          <p className="mx-auto mt-6 max-w-xl text-muted-foreground">
-            Semantix 架在 agent harness 与资源之间——能并发的并发、能语义缓存的缓存、能预取的就预取，让每一次交互都让下一次更便宜、更快。
+          <p className="mx-auto mt-6 max-w-2xl text-muted-foreground">
+            Semantix 连接 Agent Harness 与资源层，负责并发调度、语义缓存和智能预取。
+            <br className="hidden md:block" />
+            每次交互都会积累经验，让下一次响应更快、成本更低。
           </p>
         </Reveal>
 
