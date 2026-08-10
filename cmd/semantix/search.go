@@ -19,6 +19,7 @@ type searchResult struct {
 	Scope   string  `json:"scope"`
 	Content string  `json:"content"`
 	Score   float64 `json:"score"`
+	Zone    string  `json:"zone"`
 }
 
 func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error {
@@ -32,6 +33,7 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	userDB := flags.String("user-db", defaultUserDB(), "user database path")
 	jsonOutput := flags.Bool("json", false, "write JSON results")
 	retriever := flags.String("retriever", "bm25", "retriever: bm25 (default) | vector (hash-embedding) | hybrid (RRF fusion)")
+	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -130,6 +132,11 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 		}
 	}
 	results := make([]searchResult, len(hits))
+	top1 := 0.0
+	if len(hits) > 0 {
+		top1 = hits[0].Score
+	}
+	zones := zf.zones()
 	for i, hit := range hits {
 		results[i] = searchResult{
 			ID:      hit.Slice.ID,
@@ -137,6 +144,7 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 			Scope:   scopeName(hit.Slice.Scope),
 			Content: string(hit.Slice.Content),
 			Score:   hit.Score,
+			Zone:    zones.Classify(hit.Score, top1).String(),
 		}
 	}
 
@@ -147,7 +155,7 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	}
 	for i, result := range results {
 		content := stripESC(strings.Join(strings.Fields(result.Content), " "))
-		fmt.Fprintf(stdout, "%d. score=%.6f id=%s scope=%s\n   %s\n", i+1, result.Score, result.ID, result.Scope, content)
+		fmt.Fprintf(stdout, "%d. score=%.6f zone=%s id=%s scope=%s\n   %s\n", i+1, result.Score, result.Zone, result.ID, result.Scope, content)
 	}
 	return nil
 }

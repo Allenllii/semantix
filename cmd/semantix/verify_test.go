@@ -49,8 +49,11 @@ func TestVerifyReplayProducesEvaluationTable(t *testing.T) {
 		}
 		rows++
 		cols := strings.Split(l, "\t")
-		if len(cols) != 5 {
-			t.Fatalf("row %q: want 5 tab columns, got %d", l, len(cols))
+		if len(cols) != 6 {
+			t.Fatalf("row %q: want 6 tab columns (session/turn/score/zone/top1/query), got %d", l, len(cols))
+		}
+		if cols[3] != "hit" && cols[3] != "grey" && cols[3] != "miss" {
+			t.Fatalf("row %q: zone column %q not a valid zone", l, cols[3])
 		}
 	}
 	if rows != 2 {

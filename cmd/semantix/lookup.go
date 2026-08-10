@@ -7,7 +7,6 @@ import (
 	"io"
 
 	"semantix/kernel/inject"
-	"semantix/kernel/zone"
 	"semantix/kernel/lookup"
 	"semantix/kernel/slice"
 )
@@ -24,6 +23,7 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	// Accepted for compatibility with the harness tool contract
 	// (semantix_lookup calls `semantix lookup --json`); output is JSON anyway.
 	_ = flags.Bool("json", false, "output as JSON (default output is already JSON)")
+	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -63,7 +63,7 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	if len(hits) > 0 {
 		top1 = hits[0].Score
 	}
-	zones := zone.Default()
+	zones := zf.zones()
 	out := make([]lookup.Result, 0, len(hits))
 	for _, h := range hits {
 		out = append(out, lookup.Result{
@@ -90,6 +90,7 @@ func runInject(args []string, stdout, stderr io.Writer, deps dependencies) error
 	k := flags.Int("k", 5, "top-k slices to consider")
 	budget := flags.Int("budget", inject.DefaultBudget, "max injection block bytes")
 	dbOverride := flags.String("db", "", "database path override")
+	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -113,7 +114,7 @@ func runInject(args []string, stdout, stderr io.Writer, deps dependencies) error
 		return err
 	}
 
-	z := zone.Default()
+	z := zf.zones()
 	inj, err := (&inject.Injector{Index: idx, Scope: scope, K: *k, Budget: *budget, Zones: &z}).Build(*query)
 	if err != nil {
 		return err

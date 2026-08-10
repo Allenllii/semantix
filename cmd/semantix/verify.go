@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"semantix/kernel/slice"
+	"semantix/kernel/zone"
 )
 
 // verify implements offline replay validation for the M0-2 hypothesis:
@@ -124,6 +125,7 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	fs.Float64Var(&opt.holdout, "holdout", 0.3, "fraction of latest sessions reserved as replay stream (0-1)")
 	var scopeName string
 	fs.StringVar(&scopeName, "scope", "project", "scope: project|user|session")
+	zf := addZoneFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -211,9 +213,12 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	// Replay: for every user turn of later sessions, top-1 hit.
 	fmt.Fprintf(stdout, "# verify: %d sessions, %d trained turns, %d replay sessions\n", len(files), trained, len(replay))
 	fmt.Fprintln(stdout, "# mark each row ✅ (top-1 is a 'previously done similar' turn) or ❌; relevance = marked / total ≥ 0.7")
-	fmt.Fprintln(stdout, "session\tturn\tscore\ttop1_content\tquery")
+	fmt.Fprintln(stdout, "# zone distribution (Issue #7): top-1 grey ratio should stay ≤ 30%")
+	fmt.Fprintln(stdout, "session\tturn\tscore\tzone\ttop1_content\tquery")
 
 	replayed := 0
+	zones := zf.zones()
+	var zoneCount [3]int // [0]=miss [1]=grey [2]=hit
 	for _, path := range replay {
 		turns, err := parseTurns(path)
 		if err != nil {
@@ -229,15 +234,23 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 			replayed++
 			top1 := ""
 			score := 0.0
+			z := zone.Miss
 			if len(hits) > 0 {
 				top1 = string(hits[0].Slice.Content)
 				score = hits[0].Score
+				z = zones.Classify(score, score) // top-1: relative conf = 1
 			}
-			fmt.Fprintf(stdout, "%s\t%d\t%.4f\t%s\t%s\n",
-				tabSafe(t.Session), t.Turn, score, tabSafe(top1), tabSafe(t.Query))
+			zoneCount[int(z)]++
+			fmt.Fprintf(stdout, "%s\t%d\t%.4f\t%s\t%s\t%s\n",
+				tabSafe(t.Session), t.Turn, score, z.String(), tabSafe(top1), tabSafe(t.Query))
 		}
 	}
-	fmt.Fprintf(stdout, "# done: %d replayed turns; mark rows then compute relevance rate\n", replayed)
+	greyRatio := 0.0
+	if replayed > 0 {
+		greyRatio = 100 * float64(zoneCount[int(zone.Grey)]) / float64(replayed)
+	}
+	fmt.Fprintf(stdout, "# done: %d replayed turns; zones hit=%d grey=%d miss=%d grey_ratio=%.1f%% (target ≤30%%); mark rows then compute relevance rate\n",
+		replayed, zoneCount[int(zone.Hit)], zoneCount[int(zone.Grey)], zoneCount[int(zone.Miss)], greyRatio)
 	return 0
 }
 

@@ -1,12 +1,42 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"semantix/kernel/slice"
+	"semantix/kernel/zone"
 )
+
+// zoneFlagSet registers the grey-zone threshold flags (Issue #7) and rebuilds
+// a zone.Zones after flag.Parse. All four default to zone.Default().
+type zoneFlagSet struct {
+	tauHigh *float64
+	tauLow  *float64
+	absHigh *float64
+	absLow  *float64
+}
+
+func addZoneFlags(fs *flag.FlagSet) *zoneFlagSet {
+	d := zone.Default()
+	return &zoneFlagSet{
+		tauHigh: fs.Float64("tau-high", d.TauHigh, "relative confidence for clear hit (score/top1)"),
+		tauLow:  fs.Float64("tau-low", d.TauLow, "relative confidence for grey zone"),
+		absHigh: fs.Float64("abs-high", d.AbsHigh, "absolute score floor for clear hit"),
+		absLow:  fs.Float64("abs-low", d.AbsLow, "absolute score floor for grey zone"),
+	}
+}
+
+func (zf *zoneFlagSet) zones() zone.Zones {
+	return zone.Zones{
+		TauHigh: *zf.tauHigh,
+		TauLow:  *zf.tauLow,
+		AbsHigh: *zf.absHigh,
+		AbsLow:  *zf.absLow,
+	}
+}
 
 func parseScope(value string) (slice.Scope, error) {
 	switch value {
