@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"semantix/kernel/zone"
 )
 
 // helper: write a session JSONL file with the given user turns.
@@ -102,5 +104,27 @@ func TestVerifyToleratesCorruptLines(t *testing.T) {
 	code := runVerify([]string{"--session", dir}, &out, productionDependencies())
 	if code != 0 {
 		t.Fatalf("runVerify = code %d, want 0; out:\n%s", code, out.String())
+	}
+}
+
+func TestClassifyTop1(t *testing.T) {
+	z := zone.Default()
+	cases := []struct {
+		name          string
+		top1, top2    float64
+		want          zone.Zone
+	}{
+		{"no hit", 0, 0, zone.Miss},
+		{"absolute weak", 0.3, 0.1, zone.Miss},              // top1 < AbsLow
+		{"clear winner", 3.0, 0.8, zone.Hit},                // top1 >= AbsHigh, gap >= 0.55*top1
+		{"near tie bm25", 3.0, 2.9, zone.Grey},              // gap 0.1 < 1.65
+		{"near tie cosine", 0.75, 0.72, zone.Grey},          // gap 0.03 < 0.41
+		{"weak but separated", 0.6, 0.2, zone.Grey},         // top1 < AbsHigh -> grey
+		{"strong separated", 0.85, 0.3, zone.Hit},           // gap 0.55 >= 0.4675
+	}
+	for _, c := range cases {
+		if got := classifyTop1(z, c.top1, c.top2); got != c.want {
+			t.Errorf("%s: classifyTop1(%v, %v) = %v, want %v", c.name, c.top1, c.top2, got, c.want)
+		}
 	}
 }

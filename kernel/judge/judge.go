@@ -82,8 +82,13 @@ func (g RuleGate) Check(c Candidate) (Verdict, string) {
 // verdict. grey + judge approval -> Confirm; judge decline -> Reject.
 func (g RuleGate) Chain(ctx context.Context, c Candidate) (Verdict, string, error) {
 	v, reason := g.Check(c)
-	if v != NeedJudge || g.Judge == nil {
+	if v != NeedJudge {
 		return v, reason, nil
+	}
+	if g.Judge == nil {
+		// Keep the Check contract: grey without a judge is a conservative
+		// reject, never an ambiguous NeedJudge.
+		return Reject, "grey zone: no judge wired, conservative reject", nil
 	}
 	ok, err := g.Judge.Confirm(ctx, c)
 	if err != nil {

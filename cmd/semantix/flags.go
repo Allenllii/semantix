@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 
@@ -36,6 +37,28 @@ func (zf *zoneFlagSet) zones() zone.Zones {
 		AbsHigh: *zf.absHigh,
 		AbsLow:  *zf.absLow,
 	}
+}
+
+// validate checks the parsed thresholds: NaN/Inf/out-of-range values would
+// silently distort zone classification (e.g. negative tau -> everything Hit).
+// Call after flag.Parse.
+func (zf *zoneFlagSet) validate() error {
+	if math.IsNaN(*zf.tauHigh) || math.IsInf(*zf.tauHigh, 0) || *zf.tauHigh <= 0 || *zf.tauHigh > 1 {
+		return fmt.Errorf("invalid --tau-high %v (want 0 < v <= 1)", *zf.tauHigh)
+	}
+	if math.IsNaN(*zf.tauLow) || math.IsInf(*zf.tauLow, 0) || *zf.tauLow <= 0 || *zf.tauLow > 1 {
+		return fmt.Errorf("invalid --tau-low %v (want 0 < v <= 1)", *zf.tauLow)
+	}
+	if math.IsNaN(*zf.absHigh) || math.IsInf(*zf.absHigh, 0) || *zf.absHigh < 0 {
+		return fmt.Errorf("invalid --abs-high %v (want v >= 0)", *zf.absHigh)
+	}
+	if math.IsNaN(*zf.absLow) || math.IsInf(*zf.absLow, 0) || *zf.absLow < 0 {
+		return fmt.Errorf("invalid --abs-low %v (want v >= 0)", *zf.absLow)
+	}
+	if *zf.tauHigh <= *zf.tauLow {
+		return fmt.Errorf("--tau-high (%v) must be > --tau-low (%v)", *zf.tauHigh, *zf.tauLow)
+	}
+	return nil
 }
 
 func parseScope(value string) (slice.Scope, error) {

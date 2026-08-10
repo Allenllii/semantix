@@ -37,6 +37,17 @@ type stubJudge struct{ ok bool }
 
 func (s stubJudge) Confirm(context.Context, Candidate) (bool, error) { return s.ok, nil }
 
+func TestChainGreyNoJudgeRejects(t *testing.T) {
+	g := RuleGate{}
+	v, reason, err := g.Chain(context.Background(), cand(zone.Grey))
+	if err != nil || v != Reject {
+		t.Fatalf("chain = %v %q %v, want Reject (conservative, never NeedJudge)", v, reason, err)
+	}
+	if reason != "grey zone: no judge wired, conservative reject" {
+		t.Errorf("reason = %q", reason)
+	}
+}
+
 func TestChainGreyJudgeApproves(t *testing.T) {
 	g := RuleGate{Judge: stubJudge{ok: true}}
 	v, reason, err := g.Chain(context.Background(), cand(zone.Grey))

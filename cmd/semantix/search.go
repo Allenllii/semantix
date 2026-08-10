@@ -37,6 +37,9 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	if err := zf.validate(); err != nil {
+		return err
+	}
 	if *limit <= 0 {
 		return errors.New("--limit must be greater than zero")
 	}

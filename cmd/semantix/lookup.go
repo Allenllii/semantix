@@ -27,6 +27,9 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+	if err := zf.validate(); err != nil {
+		return err
+	}
 	if *limit > 50 { // match kernel lookup.Execute hard cap
 		*limit = 50
 	}
@@ -92,6 +95,9 @@ func runInject(args []string, stdout, stderr io.Writer, deps dependencies) error
 	dbOverride := flags.String("db", "", "database path override")
 	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if err := zf.validate(); err != nil {
 		return err
 	}
 	if *query == "" && flags.NArg() > 0 {

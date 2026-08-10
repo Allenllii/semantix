@@ -74,10 +74,15 @@ func collectSessionFiles(paths []string) ([]string, error) {
 		files = append(files, p)
 	}
 	// Time order: a coding agent names session files with timestamps, but
-	// mtime is the reliable proxy for "earlier vs later".
+	// mtime is the reliable proxy for "earlier vs later". Stat failures
+	// (file removed between walk and sort) surface as errors instead of a
+	// nil-pointer panic.
 	sort.Slice(files, func(i, j int) bool {
-		a, _ := os.Stat(files[i])
-		b, _ := os.Stat(files[j])
+		a, aerr := os.Stat(files[i])
+		b, berr := os.Stat(files[j])
+		if aerr != nil || berr != nil {
+			return false // keep relative order; the replay loop reports the error
+		}
 		return a.ModTime().Before(b.ModTime())
 	})
 	return files, nil
@@ -127,6 +132,10 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	fs.StringVar(&scopeName, "scope", "project", "scope: project|user|session")
 	zf := addZoneFlags(fs)
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if err := zf.validate(); err != nil {
+		fmt.Fprintf(stdout, "verify: %v\n", err)
 		return 2
 	}
 	if len(opt.sessions) == 0 || fs.NArg() > 0 {
@@ -226,7 +235,7 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 			return 1
 		}
 		for _, t := range turns {
-			hits, err := idx.Search(t.Query, 1, opt.scope)
+			hits, err := idx.Search(t.Query, 2, opt.scope) // k=2: grey needs the runner-up
 			if err != nil {
 				fmt.Fprintf(stdout, "verify: search: %v\n", err)
 				return 1
@@ -238,7 +247,11 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 			if len(hits) > 0 {
 				top1 = string(hits[0].Slice.Content)
 				score = hits[0].Score
-				z = zones.Classify(score, score) // top-1: relative conf = 1
+				top2 := 0.0
+				if len(hits) > 1 {
+					top2 = hits[1].Score
+				}
+				z = classifyTop1(zones, score, top2)
 			}
 			zoneCount[int(z)]++
 			fmt.Fprintf(stdout, "%s\t%d\t%.4f\t%s\t%s\t%s\n",
@@ -252,6 +265,23 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	fmt.Fprintf(stdout, "# done: %d replayed turns; zones hit=%d grey=%d miss=%d grey_ratio=%.1f%% (target ≤30%%); mark rows then compute relevance rate\n",
 		replayed, zoneCount[int(zone.Hit)], zoneCount[int(zone.Grey)], zoneCount[int(zone.Miss)], greyRatio)
 	return 0
+}
+
+// classifyTop1 maps the top-1/top-2 scores to a zone for the replay table.
+// Unlike plain Classify (relative conf of the top-1 is trivially 1, which
+// would make the grey zone unreachable under BM25's unbounded scores), the
+// grey zone here is the "ambiguous winner" region (Krites §3.1): the top-1
+// is absolutely weak, or the runner-up competes closely — reuse only when
+// the winner is confident AND separated from the runner-up.
+func classifyTop1(z zone.Zones, top1, top2 float64) zone.Zone {
+	switch {
+	case top1 <= 0 || top1 < z.AbsLow:
+		return zone.Miss
+	case top1 >= z.AbsHigh && top1-top2 >= z.TauLow*top1:
+		return zone.Hit
+	default:
+		return zone.Grey
+	}
 }
 
 func turnSliceID(q string) string {
