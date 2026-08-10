@@ -22,6 +22,7 @@ import (
 	"unicode"
 
 	"semantix/kernel/slice"
+	"semantix/kernel/zone"
 )
 
 // escapeMarker neutralizes block markers inside slice content so a stored
@@ -79,6 +80,10 @@ type Injector struct {
 	Budget int
 	// MinScore drops slices below this BM25 score (0 disables).
 	MinScore float64
+	// Zones, when non-nil, applies the grey-zone classifier: only clearly
+	// reusable slices (zone.Hit) enter the block; grey/miss candidates are
+	// skipped (Krites §3.1 — the grey zone must be verified, not injected).
+	Zones *zone.Zones
 }
 
 // Injection is the assembled, deterministic reuse block.
@@ -110,6 +115,10 @@ func (in *Injector) Build(query string) (*Injection, error) {
 	if err != nil {
 		return nil, fmt.Errorf("inject: search: %w", err)
 	}
+	top1 := 0.0
+	if len(hits) > 0 {
+		top1 = hits[0].Score
+	}
 
 	var kept []*slice.Slice
 	var dropped int
@@ -117,6 +126,10 @@ func (in *Injector) Build(query string) (*Injection, error) {
 	buf.WriteString(blockOpen)
 	for _, h := range hits {
 		if in.MinScore > 0 && h.Score < in.MinScore {
+			continue
+		}
+		if in.Zones != nil && in.Zones.Classify(h.Score, top1) != zone.Hit {
+			dropped++
 			continue
 		}
 		if buf.Len()+len(h.Slice.Content)+len(blockClose)+64 > budget && len(kept) > 0 {

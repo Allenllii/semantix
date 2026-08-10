@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"semantix/kernel/inject"
+	"semantix/kernel/zone"
 	"semantix/kernel/lookup"
 	"semantix/kernel/slice"
 )
@@ -20,6 +21,9 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	scopeValue := flags.String("scope", "project", "slice scope: session, project, or user")
 	limit := flags.Int("limit", 5, "maximum number of slices")
 	dbOverride := flags.String("db", "", "database path override")
+	// Accepted for compatibility with the harness tool contract
+	// (semantix_lookup calls `semantix lookup --json`); output is JSON anyway.
+	_ = flags.Bool("json", false, "output as JSON (default output is already JSON)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -49,6 +53,11 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	if err != nil {
 		return err
 	}
+	top1 := 0.0
+	if len(hits) > 0 {
+		top1 = hits[0].Score
+	}
+	zones := zone.Default()
 	out := make([]lookup.Result, 0, len(hits))
 	for _, h := range hits {
 		out = append(out, lookup.Result{
@@ -56,6 +65,7 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 			Type:    h.Slice.Type.String(),
 			Scope:   h.Slice.Scope.String(),
 			Score:   h.Score,
+			Zone:    zones.Classify(h.Score, top1).String(),
 			Content: string(h.Slice.Content),
 		})
 	}
@@ -97,7 +107,8 @@ func runInject(args []string, stdout, stderr io.Writer, deps dependencies) error
 		return err
 	}
 
-	inj, err := (&inject.Injector{Index: idx, Scope: scope, K: *k, Budget: *budget}).Build(*query)
+	z := zone.Default()
+	inj, err := (&inject.Injector{Index: idx, Scope: scope, K: *k, Budget: *budget, Zones: &z}).Build(*query)
 	if err != nil {
 		return err
 	}

@@ -12,6 +12,7 @@ import (
 	"semantix/kernel/ingest"
 	"semantix/kernel/lookup"
 	"semantix/kernel/slice"
+	"semantix/kernel/zone"
 )
 
 // seedStore indexes the given slices into a fresh bm25 index.
@@ -105,6 +106,66 @@ func TestLookupExecute(t *testing.T) {
 
 	if _, err := lookup.Execute(idx, map[string]any{}); err == nil {
 		t.Fatal("lookup without query must error")
+	}
+}
+
+// TestLookupExecuteReportsZones: the grey-zone classifier (Issue #7, Krites
+// arXiv:2602.13165) must tag results; strongly matching results are "hit",
+// unrelated ones "miss".
+func TestLookupExecuteReportsZones(t *testing.T) {
+	idx := bm25.New()
+	store, _ := slice.NewFileStore(filepath.Join(t.TempDir(), "db.jsonl"))
+	seed(t, idx, store, "修复 go 测试失败", "部署到服务器")
+
+	out, err := lookup.Execute(idx, map[string]any{"query": "测试失败", "limit": float64(5)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) == 0 {
+		t.Fatal("no results")
+	}
+	if out[0].Zone != "hit" {
+		t.Errorf("top result zone = %q, want hit (score=%v)", out[0].Zone, out[0].Score)
+	}
+	// The unrelated "部署到服务器" slice must not be a clear hit.
+	for _, r := range out[1:] {
+		if r.Zone == "hit" {
+			t.Errorf("unrelated slice %s classified hit (score=%v)", r.ID, r.Score)
+		}
+	}
+}
+
+// TestInjectorZoneFilterDropsGrey: with Zones enabled the injection block
+// contains only clearly reusable slices; weak/grey candidates are skipped.
+func TestInjectorZoneFilterDropsGrey(t *testing.T) {
+	idx := bm25.New()
+	store, _ := slice.NewFileStore(filepath.Join(t.TempDir(), "db.jsonl"))
+	seed(t, idx, store, "修复 go 测试失败", "配置 CI 流水线")
+
+	z := zone.Default()
+	in := &Injector{Index: idx, Scope: slice.Project, K: 5, Zones: &z}
+	inj, err := in.Build("修复测试失败")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inj.Slices) == 0 {
+		t.Fatal("expected the clearly-relevant slice to be injected")
+	}
+	if !strings.Contains(inj.Text, "修复 go 测试失败") {
+		t.Fatalf("injection lost the relevant slice:\n%s", inj.Text)
+	}
+	if strings.Contains(inj.Text, "配置 CI 流水线") {
+		t.Fatalf("grey/unrelated slice leaked into the block:\n%s", inj.Text)
+	}
+
+	// Without Zones (legacy behavior) the unrelated slice may still appear.
+	legacy := &Injector{Index: idx, Scope: slice.Project, K: 5}
+	injLegacy, err := legacy.Build("修复测试失败")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(injLegacy.Slices) == 0 {
+		t.Fatal("legacy injector should still find slices")
 	}
 }
 

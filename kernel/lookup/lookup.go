@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"semantix/kernel/slice"
+	"semantix/kernel/zone"
 )
 
 // ToolName is the stable tool name a harness registers.
@@ -58,13 +59,16 @@ func Schema() ArgSchema {
 	}
 }
 
-// Result is one returned slice, safe to serialize as tool output.
+// Result is one returned slice, safe to serialize as tool output. Zone is
+// the grey-zone verdict (Krites arXiv:2602.13165): hit = clearly reusable,
+// grey = verify before reuse, miss = do not reuse.
 type Result struct {
-	ID      string `json:"id"`
-	Type    string `json:"type"`
-	Scope   string `json:"scope"`
+	ID      string  `json:"id"`
+	Type    string  `json:"type"`
+	Scope   string  `json:"scope"`
 	Score   float64 `json:"score"`
-	Content string `json:"content"`
+	Zone    string  `json:"zone"`
+	Content string  `json:"content"`
 }
 
 // Execute runs the lookup against idx. args uses the JSON schema names;
@@ -96,6 +100,11 @@ func Execute(idx slice.Index, args map[string]any) ([]Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", ToolName, err)
 	}
+	top1 := 0.0
+	if len(hits) > 0 {
+		top1 = hits[0].Score
+	}
+	zones := zone.Default()
 	out := make([]Result, 0, len(hits))
 	for _, h := range hits {
 		out = append(out, Result{
@@ -103,6 +112,7 @@ func Execute(idx slice.Index, args map[string]any) ([]Result, error) {
 			Type:    h.Slice.Type.String(),
 			Scope:   h.Slice.Scope.String(),
 			Score:   h.Score,
+			Zone:    zones.Classify(h.Score, top1).String(),
 			Content: string(h.Slice.Content),
 		})
 	}
