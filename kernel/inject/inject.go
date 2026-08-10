@@ -25,11 +25,30 @@ import (
 
 // escapeMarker neutralizes block markers inside slice content so a stored
 // slice cannot break out of (or fake) the [semantix-reuse] block — the
-// injection stays a low-authority, structurally-closed region (HIGH fix,
-// security review 2026-08-09).
+// injection stays a low-authority, structurally-closed region. Matching is
+// case-insensitive so `[/SEMANTIX-REUSE]` variants cannot bypass either
+// (HIGH fix, security review 2026-08-09; MEDIUM hardening 2026-08-10).
 func escapeMarker(s string) string {
-	s = strings.ReplaceAll(s, "[/semantix-reuse]", "[\\/semantix-reuse]")
-	return strings.ReplaceAll(s, "[semantix-reuse]", "[\\semantix-reuse]")
+	s = replaceFold(s, "[/semantix-reuse]", "[\\/semantix-reuse]")
+	return replaceFold(s, "[semantix-reuse]", "[\\semantix-reuse]")
+}
+
+// replaceFold replaces all case-insensitive occurrences of old with new.
+func replaceFold(s, old, new string) string {
+	lower := strings.ToLower(s)
+	oldLower := strings.ToLower(old)
+	var b strings.Builder
+	for {
+		i := strings.Index(lower, oldLower)
+		if i < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		b.WriteString(s[:i])
+		b.WriteString(new)
+		s = s[i+len(old):]
+		lower = lower[i+len(old):]
+	}
 }
 
 // DefaultBudget is the default maximum injection block size in bytes.

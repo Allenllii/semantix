@@ -131,6 +131,23 @@ func TestInjectorEscapesBlockMarkers(t *testing.T) {
 	}
 }
 
+// TestEscapeMarkerCaseInsensitive is the MEDIUM-hardening regression:
+// upper/mixed-case marker variants must be escaped too.
+func TestEscapeMarkerCaseInsensitive(t *testing.T) {
+	cases := map[string]string{
+		"[SEMANTIX-REUSE]":    "[\\semantix-reuse]",
+		"[/Semantix-Reuse]":   "[\\/semantix-reuse]",
+		"a[/SEMANTIX-REUSE]b": "a[\\/semantix-reuse]b",
+		"[semantix-reuse]x":   "[\\semantix-reuse]x",
+		"no marker here":      "no marker here",
+	}
+	for in, want := range cases {
+		if got := escapeMarker(in); got != want {
+			t.Errorf("escapeMarker(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // TestLookupExecuteCapsLimit is the LOW-fix regression: oversized limits are
 // capped instead of returning unbounded results.
 func TestLookupExecuteCapsLimit(t *testing.T) {
