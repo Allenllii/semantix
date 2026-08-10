@@ -24,6 +24,9 @@ func TestStripESC(t *testing.T) {
 		{"\x1b7keep", "keep"},                         // ESC 7 DECSC: two-char, keep rest
 		{"\x1bPtmux;\x1b\\rest", "rest"},              // ESC-form DCS + ST
 		{"\x1b=keep2", "keep2"},                       // ESC = DECKPAM two-char
+		{"亐修复", "亐修复"},                             // U+4E90 (UTF-8 E4 BA 90): C1-valued continuation byte must survive
+		{"修复\x90测试", "修复测试"},                     // C1 0x90 as own rune stripped, CJK around it intact
+		{"\u0090tmux;\u009crest", "rest"},             // C1 DCS via rune form
 	}
 	for _, c := range cases {
 		if got := stripESC(c.in); got != c.want {
