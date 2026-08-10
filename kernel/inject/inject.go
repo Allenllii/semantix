@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"semantix/kernel/slice"
 )
@@ -34,21 +35,34 @@ func escapeMarker(s string) string {
 }
 
 // replaceFold replaces all case-insensitive occurrences of old with new.
+// Rune-level folding: unicode.ToLower maps one rune to one rune, so byte
+// offsets never drift (a byte-level ToLower of the whole string would
+// misalign for fold-special runes like İ/ẞ and could corrupt output).
 func replaceFold(s, old, new string) string {
-	lower := strings.ToLower(s)
-	oldLower := strings.ToLower(old)
+	rs := []rune(s)
+	ro := []rune(strings.ToLower(old))
 	var b strings.Builder
-	for {
-		i := strings.Index(lower, oldLower)
-		if i < 0 {
-			b.WriteString(s)
-			return b.String()
+	i := 0
+	for i <= len(rs)-len(ro) {
+		match := true
+		for j := range ro {
+			if unicode.ToLower(rs[i+j]) != ro[j] {
+				match = false
+				break
+			}
 		}
-		b.WriteString(s[:i])
-		b.WriteString(new)
-		s = s[i+len(old):]
-		lower = lower[i+len(old):]
+		if match {
+			b.WriteString(new)
+			i += len(ro)
+		} else {
+			b.WriteRune(rs[i])
+			i++
+		}
 	}
+	for ; i < len(rs); i++ {
+		b.WriteRune(rs[i])
+	}
+	return b.String()
 }
 
 // DefaultBudget is the default maximum injection block size in bytes.

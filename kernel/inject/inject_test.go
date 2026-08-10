@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"semantix/kernel/bm25"
 	"semantix/kernel/ingest"
@@ -145,6 +146,19 @@ func TestEscapeMarkerCaseInsensitive(t *testing.T) {
 		if got := escapeMarker(in); got != want {
 			t.Errorf("escapeMarker(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestEscapeMarkerUnicodeFoldSafe is the LOW-fix regression: fold-special
+// runes (İ) before a marker must not shift offsets or corrupt output.
+func TestEscapeMarkerUnicodeFoldSafe(t *testing.T) {
+	in := "İSTANBUL[/SEMANTIX-REUSE]尾"
+	want := "İSTANBUL[\\/semantix-reuse]尾"
+	if got := escapeMarker(in); got != want {
+		t.Errorf("escapeMarker(%q) = %q, want %q", in, got, want)
+	}
+	if !utf8.ValidString(escapeMarker("İx[/SEMANTIX-REUSE]y")) {
+		t.Fatal("escapeMarker output is not valid UTF-8")
 	}
 }
 
