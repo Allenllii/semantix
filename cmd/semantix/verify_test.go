@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,6 +117,10 @@ func TestClassifyTop1(t *testing.T) {
 	}{
 		{"no hit", 0, 0, zone.Miss},
 		{"absolute weak", 0.3, 0.1, zone.Miss},              // top1 < AbsLow
+		{"nan top1", math.NaN(), 0, zone.Miss},              // failure-safe
+		{"nan top2", 0.5, math.NaN(), zone.Miss},
+		{"inf top1", math.Inf(1), 0, zone.Miss},
+		{"inf top2", 0.5, math.Inf(1), zone.Miss},
 		{"clear winner", 3.0, 0.8, zone.Hit},                // top1 >= AbsHigh, gap >= 0.55*top1
 		{"near tie bm25", 3.0, 2.9, zone.Grey},              // gap 0.1 < 1.65
 		{"near tie cosine", 0.75, 0.72, zone.Grey},          // gap 0.03 < 0.41
