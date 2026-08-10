@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { organizationJsonLd, siteIdentity } from "@/lib/site-identity";
 import "./globals.css";
 
 const inter = Inter({
@@ -15,9 +16,11 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Semantix — a self-evolving agent kernel",
+  metadataBase: new URL(siteIdentity.productUrl),
+  title: "Semantix - a self-evolving agent kernel",
   description:
-    "A self-evolving agent kernel that sits between any agent harness and its resources — semantic caching, speculative prefetch, and scheduling that learn from your usage habits.",
+    "A self-evolving agent kernel that sits between any agent harness and its resources, with semantic caching, speculative prefetch, and adaptive scheduling.",
+  alternates: { canonical: "/" },
   icons: [{ rel: "icon", url: "/seo/favicon.svg", type: "image/svg+xml" }],
 };
 
@@ -31,7 +34,15 @@ export default function RootLayout({
       lang="zh-CN"
       className={`${inter.variable} ${jetbrains.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(organizationJsonLd).replace(/</g, "\\u003c"),
+          }}
+        />
+        {children}
+      </body>
     </html>
   );
 }
