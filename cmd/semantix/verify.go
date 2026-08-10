@@ -234,7 +234,7 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 				score = hits[0].Score
 			}
 			fmt.Fprintf(stdout, "%s\t%d\t%.4f\t%s\t%s\n",
-				t.Session, t.Turn, score, tabSafe(top1), tabSafe(t.Query))
+				tabSafe(t.Session), t.Turn, score, tabSafe(top1), tabSafe(t.Query))
 		}
 	}
 	fmt.Fprintf(stdout, "# done: %d replayed turns; mark rows then compute relevance rate\n", replayed)
