@@ -1,12 +1,17 @@
+import Link from "next/link";
+
 const links = [
-  { label: "GitHub", href: "https://github.com/Gnosil/semantix" },
+  { label: "Docs", href: "/docs", external: false },
+  { label: "GitHub", href: "https://github.com/Gnosil/semantix", external: true },
   {
     label: "README",
     href: "https://github.com/Gnosil/semantix/blob/main/README.md",
+    external: true,
   },
   {
-    label: "Docs",
+    label: "GitHub Docs",
     href: "https://github.com/Gnosil/semantix/tree/main/docs",
+    external: true,
   },
 ] as const;
 
@@ -19,15 +24,15 @@ export default function Footer() {
         </p>
         <nav className="flex items-center gap-6">
           {links.map((link) => (
-            <a
+            <Link
               key={link.label}
               href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
+              target={link.external ? "_blank" : undefined}
+              rel={link.external ? "noopener noreferrer" : undefined}
               className="text-sm text-muted-foreground transition-colors hover:text-accent"
             >
               {link.label}
-            </a>
+            </Link>
           ))}
         </nav>
       </div>
