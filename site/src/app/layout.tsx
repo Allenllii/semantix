@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { organizationJsonLd, siteIdentity } from "@/lib/site-identity";
 import "./globals.css";
 
 const inter = Inter({
@@ -15,21 +16,12 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Semantix — a self-evolving agent kernel",
+  metadataBase: new URL(siteIdentity.productUrl),
+  title: "Semantix - a self-evolving agent kernel",
   description:
-    "A self-evolving agent kernel that sits between any agent harness and its resources — semantic caching, speculative prefetch, and scheduling that learn from your usage habits.",
+    "A self-evolving agent kernel that sits between any agent harness and its resources, with semantic caching, speculative prefetch, and adaptive scheduling.",
+  alternates: { canonical: "/" },
   icons: [{ rel: "icon", url: "/seo/favicon.svg", type: "image/svg+xml" }],
-};
-
-// Organization JSON-LD（GEO Week 1：#4 No Organization schema found）
-// sameAs 仅列已核实真实存在的链接；其余账号待补充（见 issue，不编造）
-const organizationSchema = {
-  "@context": "https://schema.org",
-  "@type": "Organization",
-  name: "Semantix",
-  url: "https://semantix.ensureok.ai",
-  logo: "https://semantix.ensureok.ai/seo/favicon.svg",
-  sameAs: ["https://github.com/Gnosil/semantix"],
 };
 
 export default function RootLayout({
@@ -42,14 +34,15 @@ export default function RootLayout({
       lang="zh-CN"
       className={`${inter.variable} ${jetbrains.variable} h-full antialiased`}
     >
-      <head>
+      <body className="min-h-full flex flex-col">
         <script
           type="application/ld+json"
-          // 静态常量序列化，无用户输入
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(organizationJsonLd).replace(/</g, "\\u003c"),
+          }}
         />
-      </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+        {children}
+      </body>
     </html>
   );
 }

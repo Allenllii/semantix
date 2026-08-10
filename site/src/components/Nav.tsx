@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import type { NavLink } from "@/types/content";
 
 const links: NavLink[] = [
-  { label: "特性", labelEn: "Features", href: "#features" },
-  { label: "组件", labelEn: "Components", href: "#components" },
-  { label: "路线图", labelEn: "Roadmap", href: "#roadmap" },
-  { label: "社区", labelEn: "Community", href: "#community" },
-  { label: "安装", labelEn: "Install", href: "#start" },
+  { label: "特性", labelEn: "Features", href: "/#features" },
+  { label: "组件", labelEn: "Components", href: "/#components" },
+  { label: "路线图", labelEn: "Roadmap", href: "/#roadmap" },
+  { label: "文档", labelEn: "Docs", href: "/docs" },
+  { label: "社区", labelEn: "Community", href: "/#community" },
+  { label: "安装", labelEn: "Install", href: "/#start" },
 ];
 
 export default function Nav() {
@@ -43,7 +45,7 @@ export default function Nav() {
     >
       <div className="wrap flex h-16 items-center justify-between">
         {/* Logo */}
-        <a href="#" aria-label="Semantix 首页" className="flex items-center gap-2.5">
+        <Link href="/" aria-label="Semantix 首页" className="flex items-center gap-2.5">
           <img
             src="/seo/favicon.svg"
             alt=""
@@ -53,18 +55,18 @@ export default function Nav() {
           <span className="font-mono text-lg font-semibold text-foreground">
             semantix
           </span>
-        </a>
+        </Link>
 
         {/* 桌面端中间导航链接（移动端隐藏） */}
-        <nav className="hidden items-center gap-7 md:flex">
+        <nav className="hidden items-center gap-4 md:flex lg:gap-6">
           {links.map((link) => (
-            <a
+            <Link
               key={link.href}
               href={link.href}
-              className="text-sm text-muted-foreground transition-colors hover:text-accent"
+              className="shrink-0 whitespace-nowrap text-xs text-muted-foreground transition-colors hover:text-accent lg:text-sm"
             >
               <span className="font-semibold">{link.labelEn}</span> {link.label}
-            </a>
+            </Link>
           ))}
         </nav>
 
@@ -78,12 +80,12 @@ export default function Nav() {
           >
             GitHub <span aria-hidden="true">↗</span>
           </a>
-          <a
-            href="#start"
+          <Link
+            href="/#start"
             className="rounded-md bg-accent px-3 py-1.5 text-sm text-white transition-opacity hover:opacity-90"
           >
             <span className="font-semibold">Install</span> 安装
-          </a>
+          </Link>
 
           {/* 汉堡按钮（移动端） */}
           <button
@@ -120,20 +122,20 @@ export default function Nav() {
       {/* 移动端全屏菜单面板 */}
       <div
         className={cn(
-          "fixed inset-x-0 top-16 bottom-0 z-40 overflow-y-auto bg-white/95 backdrop-blur transition-opacity duration-200 md:hidden",
+          "absolute inset-x-0 top-16 z-40 h-[calc(100vh-4rem)] overflow-y-auto bg-white/95 backdrop-blur transition-opacity duration-200 md:hidden",
           open ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       >
         <nav className="wrap flex flex-col gap-2 py-6">
           {links.map((link) => (
-            <a
+            <Link
               key={link.href}
               href={link.href}
               onClick={() => setOpen(false)}
               className="rounded-lg px-3 py-4 text-lg font-medium text-foreground transition-colors hover:bg-muted"
             >
               <span className="font-semibold">{link.labelEn}</span> {link.label}
-            </a>
+            </Link>
           ))}
           <a
             href="https://github.com/Gnosil/semantix"
