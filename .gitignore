@@ -1,0 +1,21 @@
+# macOS
+.DS_Store
+
+# Go build artifacts
+/bin/
+/dist/
+*.test
+*.out
+
+# Editor
+.idea/
+.vscode/
+*.swp
+
+# Local data (kernel stores, session caches)
+/data/
+.semantix/
+site/.wrangler/
+*.db
+*.db-journal
+/semantix
