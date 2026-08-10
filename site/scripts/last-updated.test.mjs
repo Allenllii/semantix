@@ -28,3 +28,21 @@ test("static homepage exposes the same date as WebPage dateModified", () => {
   assert.ok(webpage, "expected homepage WebPage JSON-LD");
   assert.equal(webpage.dateModified, expectedLastUpdated);
 });
+
+test("static docs pages expose each document's last-updated date", async () => {
+  const docSlugs = ["profile", "profile-en", "guide", "guide-en"];
+
+  for (const slug of docSlugs) {
+    const docHtml = await readFile(new URL(`../out/docs/${slug}/index.html`, import.meta.url), "utf8");
+    const crawlerVisibleDocHtml = docHtml.replaceAll("<!-- -->", "");
+
+    assert.match(
+      crawlerVisibleDocHtml,
+      new RegExp(
+        `<time dateTime="${expectedLastUpdated}"[^>]*>Last updated · ${expectedLastUpdated}</time>`,
+        "i",
+      ),
+      `docs/${slug} should expose the visible last-updated date`,
+    );
+  }
+});
