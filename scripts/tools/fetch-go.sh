@@ -23,7 +23,15 @@ fetch() {
     return 1
   fi
   mkdir -p "$(dirname "$dst")"
-  printf '%s' "$enc" | base64 -d > "$dst"
+  # atomic write: decode to a temp file, then rename — a truncated/bad file
+  # is never left behind where the resume check ([[ -s $dst ]]) would trust it.
+  if printf '%s' "$enc" | base64 -d > "$dst.tmp" 2>/dev/null; then
+    mv "$dst.tmp" "$dst"
+  else
+    rm -f "$dst.tmp"
+    echo "FAIL $p" >> "$OUT/errors.log"
+    return 1
+  fi
 }
 
 # worker mode: script --fetch <path>
