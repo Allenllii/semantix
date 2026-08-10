@@ -27,6 +27,8 @@ func TestStripESC(t *testing.T) {
 		{"亐修复", "亐修复"},                             // U+4E90 (UTF-8 E4 BA 90): C1-valued continuation byte must survive
 		{"修复\x90测试", "修复测试"},                     // C1 0x90 as own rune stripped, CJK around it intact
 		{"\u0090tmux;\u009crest", "rest"},             // C1 DCS via rune form
+		{"\x1b耀keep", "耀keep"},                       // ESC before multi-byte lead: strip ESC only, character survives
+		{"\x1b7keep", "keep"},                         // ASCII two-char sequence still consumed
 	}
 	for _, c := range cases {
 		if got := stripESC(c.in); got != c.want {

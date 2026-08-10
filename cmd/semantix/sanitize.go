@@ -88,8 +88,15 @@ func consumeESCBody(s string) (string, bool) {
 		return consumeToST(s[2:])
 	case '\\': // ST alone
 		return s[2:], true
-	default: // two-character sequence (ESC 7 DECSC, ESC = ...)
-		return s[2:], true
+	default:
+		if s[1] < 0x80 {
+			// two-character sequence (ESC 7 DECSC, ESC = DECKPAM, ...)
+			return s[2:], true
+		}
+		// ESC directly before a multi-byte UTF-8 character: the second byte
+		// is a lead byte, not a sequence — strip only ESC so the character
+		// (and its C1-valued continuation bytes) survives intact.
+		return "", false
 	}
 }
 
