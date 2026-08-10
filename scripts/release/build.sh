@@ -18,10 +18,10 @@ GO="${GO:-/tmp/go/go/bin/go}"
 
 # VERSION flows into -ldflags and output filenames: whitelist it so a
 # malformed value cannot inject linker flags or escape dist/.
-case "$VERSION" in
-  v[0-9]*.[0-9]*.[0-9]*) ;;                      # v1.2.3, v1.2.3-beta.1, ...
-  *) echo "invalid version: $VERSION (want vX.Y.Z[...])" >&2; exit 2 ;;
-esac
+if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+  echo "invalid version: $VERSION (want vX.Y.Z[...])" >&2
+  exit 2
+fi
 case "$VERSION" in
   *[!A-Za-z0-9._-]*) echo "invalid version: $VERSION (allowed: [A-Za-z0-9._-])" >&2; exit 2 ;;
 esac
