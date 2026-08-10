@@ -32,7 +32,7 @@ OUTPUT_PRICE=1.10    # USD per 1M output tokens
 
 # --- parameter validation (no forged numbers; script output feeds M0 reports) ---
 validate_num() { # name value min max
-  awk -v v="$2" -v mn="$3" -v mx="$4" 'BEGIN{ if (v !~ /^[0-9]+(\.[0-9]+)?$/ || v < mn || v > mx) exit 1 }' || {
+  awk -v v="$2" -v mn="$3" -v mx="$4" 'BEGIN{ if (v !~ /^[0-9]+(\.[0-9]+)?$/ || v+0 < mn || v+0 > mx) exit 1 }' || {
     echo "invalid $1: $2 (want [$3,$4])" >&2; exit 2
   }
 }
