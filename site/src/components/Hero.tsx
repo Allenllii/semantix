@@ -40,9 +40,9 @@ export default function Hero() {
         {/* subheading */}
         <Reveal delay={160}>
           <p className="mx-auto mt-6 max-w-2xl text-muted-foreground">
-            Semantix 连接 Agent Harness 与资源层，负责并发调度、语义缓存和智能预取。
+            Semantix 连接 Agent Harness 与资源层，探索跨会话语义复用。
             <br className="hidden md:block" />
-            每次交互都会积累经验，让下一次响应更快、成本更低。
+            当前版本已实现会话切片、BM25 检索与跨会话注入；调度、预取和自进化闭环仍在开发中。
           </p>
         </Reveal>
 
@@ -90,7 +90,7 @@ export default function Hero() {
               <span className="h-3 w-3 rounded-full bg-[#FBBF24]" />
               <span className="h-3 w-3 rounded-full bg-[#4ADE80]" />
               <span className="ml-2 font-mono text-xs text-slate-400">
-                ~/semantix — extract &amp; search
+                ~/semantix - example output (not a benchmark)
               </span>
             </div>
             <div className="px-5 py-4 font-mono text-sm leading-relaxed text-slate-300">
@@ -125,7 +125,7 @@ export default function Hero() {
               </div>
               <div>&nbsp;</div>
               <div className="text-slate-500">
-                命中 3 slices · 0.4ms · 下次会话注入前缀，直接命中字节缓存
+                示例数据 · 实际结果取决于会话内容、数据规模与运行环境
               </div>
               <div>
                 <span className="blink inline-block h-4 w-2 bg-emerald-400 align-middle">

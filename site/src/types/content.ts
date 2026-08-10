@@ -10,8 +10,11 @@ export interface Feature {
   num: string;
   title: string;
   titleEn: string;
+  status: "已实现" | "部分实现" | "规划中" | "设计目标";
   body: string;
   code: string;
+  evidence: string;
+  evidenceLabel: string;
 }
 
 export interface Surface {
