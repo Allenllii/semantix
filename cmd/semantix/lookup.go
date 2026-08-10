@@ -19,13 +19,16 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	flags.SetOutput(stderr)
 	query := flags.String("query", "", "task description to match against stored slices")
 	scopeValue := flags.String("scope", "project", "slice scope: session, project, or user")
-	limit := flags.Int("limit", 5, "maximum number of slices")
+	limit := flags.Int("limit", 5, "maximum number of slices (capped at 50)")
 	dbOverride := flags.String("db", "", "database path override")
 	// Accepted for compatibility with the harness tool contract
 	// (semantix_lookup calls `semantix lookup --json`); output is JSON anyway.
 	_ = flags.Bool("json", false, "output as JSON (default output is already JSON)")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	if *limit > 50 { // match kernel lookup.Execute hard cap
+		*limit = 50
 	}
 	if *query == "" && flags.NArg() > 0 {
 		*query = flags.Arg(0)

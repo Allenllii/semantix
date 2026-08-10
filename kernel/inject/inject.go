@@ -91,7 +91,7 @@ type Injection struct {
 	Slices  []*slice.Slice // canonical (ID-sorted) order
 	Text    string         // marker-wrapped block to place in the compose step
 	Bytes   int
-	Dropped int // slices dropped by budget (whole-slice truncation)
+	Dropped int // slices dropped by zone filter or budget (whole-slice truncation)
 }
 
 const (
