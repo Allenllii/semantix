@@ -26,6 +26,7 @@ export const organizationJsonLd = {
   url: siteIdentity.operator.url,
   logo: siteIdentity.operator.logoUrl,
   email: `mailto:${siteIdentity.operator.email}`,
+  sameAs: [siteIdentity.repositoryUrl],
   contactPoint: {
     "@type": "ContactPoint",
     email: siteIdentity.operator.email,
