@@ -30,6 +30,9 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	if *limit > 50 { // match kernel lookup.Execute hard cap
 		*limit = 50
 	}
+	if *limit <= 0 { // kernel Execute treats <=0 as default
+		*limit = 5
+	}
 	if *query == "" && flags.NArg() > 0 {
 		*query = flags.Arg(0)
 	}
