@@ -1,0 +1,17 @@
+# judge authenticity audit sample (Issue #8 acceptance ①)
+# columns: query \t cached_answer \t oracle(approve|reject)
+# 14 pairs across task types: fix-bug / refactor / test / deploy / ci / db
+修复 go 测试失败	先跑 go vet 再 go test	approve
+go vet 报错怎么处理	运行 go vet ./... 修复未使用变量	approve
+配置 CI 流水线	创建 .github/workflows/ci.yml 三步构建	approve
+部署到服务器	scp dist/ 到生产机并重启 systemd 服务	approve
+数据库迁移失败	先备份再执行 migrate down 回滚	approve
+重构核心模块	拆分为接口与实现两个文件	reject
+修复前端样式	在 App.css 添加 flex 布局	reject
+优化图片加载	使用 next/image 的 lazy 加载	reject
+写单元测试	为 utils.go 添加 table-driven 测试	approve
+缓存策略怎么配	把 TTL 设为 24h 保守值	approve
+如何回滚发布	git revert 上一个合并提交	approve
+日志乱码处理	设置 LANG=C.UTF-8 环境变量	approve
+添加新依赖	go get 后用 go mod tidy 收尾	approve
+优化查询性能	在热点表加联合索引	reject
