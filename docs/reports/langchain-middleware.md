@@ -55,24 +55,31 @@ def with_memory_middleware(prompt, user_input):
 ## ② 会话提取（写记忆）——LangChain 示例
 
 ```python
-import json, subprocess, datetime
+import json, os, re, subprocess, datetime
 
 def session_to_jsonl(session_id: str, messages: list) -> str:
     """LangChain 消息列表 → semantix 会话 JSONL（每行一个 JSON 对象）。"""
+    # session_id 消毒：只允许安全字符（防路径穿越）
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", session_id):
+        raise ValueError(f"unsafe session_id: {session_id!r}")
     lines = []
     for m in messages:
         if m.type == "human":
-            lines.append({"role": "user", "content": m.content})
+            lines.append({"role": "user", "content": str(m.content)})
         elif m.type == "ai":
-            lines.append({"role": "assistant", "content": m.content or "",
+            lines.append({"role": "assistant", "content": str(m.content or ""),
                           "tool_calls": getattr(m, "tool_calls", None) or []})
         elif m.type == "tool":
             lines.append({"role": "tool", "tool_call_id": m.tool_call_id,
                           "name": m.name, "content": str(m.content)})
-    path = f"~/.semantix/sessions/{session_id}.jsonl"
+    # ~ 需显式展开；目录需先创建（0600，与记忆库权限一致）
+    sessions_dir = os.path.join(os.path.expanduser("~/.semantix"), "sessions")
+    os.makedirs(sessions_dir, mode=0o700, exist_ok=True)
+    path = os.path.join(sessions_dir, session_id + ".jsonl")
     with open(path, "w") as f:
         for line in lines:
             f.write(json.dumps(line, ensure_ascii=False) + "\n")
+    os.chmod(path, 0o600)
     return path
 
 def persist_session(session_id: str, messages: list, project: str):
@@ -81,7 +88,7 @@ def persist_session(session_id: str, messages: list, project: str):
     subprocess.run(
         ["semantix", "extract", "--input", path, "--scope", "user",
          "--project", project], capture_output=True, timeout=10)
-    # 可选指纹：--fingerprint go.mod,templates/案卷.md（文件一变记忆失效）
+    # 可选指纹：--fingerprint go.mod,docs/template.md（文件一变记忆失效）
 ```
 
 挂接方式：
