@@ -44,7 +44,10 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
             <span aria-hidden="true">/</span>
             <span>{document.depth}</span>
           </div>
-          <span className="font-mono text-xs text-muted-foreground">{document.language}</span>
+          <div className="flex flex-wrap items-center gap-3 font-mono text-xs text-muted-foreground">
+            <span>{document.language}</span>
+            <time dateTime={document.lastUpdated}>Last updated · {document.lastUpdated}</time>
+          </div>
         </div>
 
         <article className="geo-prose max-w-3xl">
