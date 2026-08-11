@@ -127,6 +127,33 @@ export default function Install() {
             >
               Gnosil
             </a>
+            {"、"}
+            <a
+              href="https://github.com/radianceded"
+              target="_blank"
+              rel="noopener"
+              className="text-accent hover:underline"
+            >
+              radianceded
+            </a>
+            {"、"}
+            <a
+              href="https://github.com/Allenli1233"
+              target="_blank"
+              rel="noopener"
+              className="text-accent hover:underline"
+            >
+              Allenli1233
+            </a>
+            {"、"}
+            <a
+              href="https://github.com/jh10724-dotcom"
+              target="_blank"
+              rel="noopener"
+              className="text-accent hover:underline"
+            >
+              jh10724-dotcom
+            </a>
             {" · "}© 2026 MIT License · 技术作者：Gnosil
           </p>
         </Reveal>

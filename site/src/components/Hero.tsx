@@ -24,7 +24,7 @@ export default function Hero() {
         {/* eyebrow */}
         <Reveal>
           <span className="inline-block rounded-full border border-accent/30 bg-[oklch(0.943_0.05_165)] px-4 py-1.5 font-mono text-xs text-accent">
-            Open source · MIT · Go
+            Open source · FSL-1.1-MIT · Go
           </span>
         </Reveal>
 
@@ -61,7 +61,7 @@ export default function Hero() {
             <div className="relative">
               <h3 className="font-semibold">GitHub 仓库</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                开源 · MIT · 设计文档与路线图都在这里
+                代码、测试、设计文档与路线图公开可查
               </p>
               <a
                 href="https://github.com/Gnosil/semantix"

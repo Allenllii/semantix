@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { geoDocuments } from "@/lib/geo-docs";
 
 export const metadata: Metadata = {
   title: "文档 | Semantix",
@@ -9,49 +7,28 @@ export const metadata: Metadata = {
 
 export default function GeoIndexPage() {
   return (
-    <main className="min-h-screen bg-background pt-16">
-      <section className="border-b border-border bg-muted/40 py-20 md:py-28">
-        <div className="wrap">
-          <p className="mb-4 font-mono text-sm font-semibold uppercase tracking-[0.18em] text-accent">
-            Documentation · Project knowledge
-          </p>
-          <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-foreground md:text-6xl">
-            Semantix 文档
-          </h1>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
-            从项目速览到架构深读，帮助开发者理解 Semantix 的定位、工作原理、边界与路线图。
-          </p>
-        </div>
-      </section>
+    <div className="px-6 py-10 md:px-10 md:py-14 lg:px-14">
+      <div className="mx-auto max-w-4xl">
+        <p className="font-mono text-xs font-semibold text-accent">SEMANTIX 文档</p>
+        <h1 className="mt-5 text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
+          从项目定位到核心机制。
+        </h1>
+        <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
+          文档已集中到左侧目录。建议先阅读项目速览，再根据语言和深度进入对应文档。
+        </p>
 
-      <section className="wrap py-14 md:py-20">
-        <div className="grid gap-4 md:grid-cols-2">
-          {geoDocuments.map((document) => (
-            <Link
-              key={document.slug}
-              href={`/docs/${document.slug}`}
-              className="group rounded-2xl border border-border bg-card p-6 transition-colors hover:border-accent md:p-8"
-            >
-              <div className="mb-8 flex items-center justify-between gap-4">
-                <span className="rounded-full bg-muted px-3 py-1 font-mono text-xs text-muted-foreground">
-                  {document.language}
-                </span>
-                <span className="font-mono text-xs text-accent">{document.depth}</span>
-              </div>
-              <h2 className="text-2xl font-semibold tracking-tight text-foreground">
-                {document.title}
-              </h2>
-              <p className="mt-3 leading-7 text-muted-foreground">{document.description}</p>
-              <p className="mt-4 font-mono text-xs text-muted-foreground">
-                Last updated · <time dateTime={document.lastUpdated}>{document.lastUpdated}</time>
-              </p>
-              <span className="mt-8 inline-flex text-sm font-semibold text-foreground transition-colors group-hover:text-accent">
-                阅读文档 <span aria-hidden="true">→</span>
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
-    </main>
+        <section className="mt-12 max-w-2xl border-t border-border pt-8">
+          <h2 className="text-xl font-semibold">阅读方式</h2>
+          <div className="mt-5 space-y-5 text-sm leading-7 text-muted-foreground">
+            <p>
+              桌面端从左侧目录选择文档，目录会保持在视口内并标记当前页面。正文在右侧独立阅读。
+            </p>
+            <p>
+              手机端点击正文上方的“文档目录”展开全部入口。中文与英文版本按速览和深入两组排列。
+            </p>
+          </div>
+        </section>
+      </div>
+    </div>
   );
 }
