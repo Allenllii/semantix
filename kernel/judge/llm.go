@@ -122,7 +122,9 @@ func (j *LLMJudge) do(ctx context.Context, path string, body any) ([]byte, error
 		return nil, fmt.Errorf("judge: read: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("judge: %s: HTTP %d: %s", j.cfg.BaseURL+path, resp.StatusCode, truncate(string(out), 200))
+		// Status only — never echo the response body: a user-configured
+		// endpoint/proxy could reflect the Authorization header into it.
+		return nil, fmt.Errorf("judge: %s: HTTP %d (use https endpoints)", j.cfg.BaseURL+path, resp.StatusCode)
 	}
 	return out, nil
 }
@@ -184,11 +186,4 @@ func (j *LLMJudge) callAnthropic(ctx context.Context, prompt string) (string, er
 		}
 	}
 	return "", fmt.Errorf("judge: anthropic response: no text block")
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }
