@@ -1,5 +1,6 @@
 import type { Feature } from "@/types/content";
 import Reveal from "@/components/Reveal";
+import CopyCode from "@/components/CopyCode";
 
 const features: Feature[] = [
   {
@@ -96,9 +97,7 @@ export default function Features() {
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                   {f.body}
                 </p>
-                <pre className="mt-4 overflow-x-auto rounded-md border border-border/60 bg-[oklch(0.976_0.005_165)] p-3 font-mono text-xs text-[oklch(0.45_0.02_260)]">
-                  <code>{f.code}</code>
-                </pre>
+                <CopyCode className="mt-4" code={f.code} />
                 <a
                   href={f.evidence}
                   target="_blank"
