@@ -36,22 +36,21 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
   const content = await readGeoDocument(document);
 
   return (
-    <main className="min-h-screen bg-background pt-16">
-      <div className="wrap py-10 md:py-16">
-        <div className="mb-10 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-6">
-          <Link href="/docs" className="text-sm font-semibold text-muted-foreground hover:text-accent">
-            ← 返回文档
-          </Link>
-          <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-muted-foreground">
-            <span className="rounded-full bg-muted px-3 py-1">{document.language}</span>
-            <span className="rounded-full bg-muted px-3 py-1">{document.depth}</span>
-            <time dateTime={document.lastUpdated} className="rounded-full bg-muted px-3 py-1">
-              Last updated · {document.lastUpdated}
-            </time>
+    <div className="px-6 py-10 md:px-10 md:py-14 lg:px-14">
+      <div className="mx-auto max-w-4xl">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Link href="/docs" className="font-medium hover:text-accent">文档</Link>
+            <span aria-hidden="true">/</span>
+            <span>{document.depth}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 font-mono text-xs text-muted-foreground">
+            <span>{document.language}</span>
+            <time dateTime={document.lastUpdated}>Last updated · {document.lastUpdated}</time>
           </div>
         </div>
 
-        <article className="geo-prose mx-auto max-w-3xl">
+        <article className="geo-prose max-w-3xl">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
@@ -62,6 +61,6 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
           </ReactMarkdown>
         </article>
       </div>
-    </main>
+    </div>
   );
 }
