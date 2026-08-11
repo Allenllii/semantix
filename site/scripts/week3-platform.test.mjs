@@ -88,16 +88,16 @@ test("docs FAQ page visible content matches FAQPage JSON-LD", () => {
   }
 });
 
-test("docs exports ship TechnicalArticle JSON-LD with correct dates", async () => {
+test("docs exports ship TechArticle JSON-LD with correct dates", async () => {
   for (const slug of docSlugs) {
     const docHtml = await readFile(new URL(`../out/docs/${slug}/index.html`, import.meta.url), "utf8");
     const docJsonLd = [...docHtml.matchAll(
       /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g,
     )].map((match) => JSON.parse(match[1]));
 
-    const article = docJsonLd.find((value) => value["@type"] === "TechnicalArticle");
-    assert.ok(article, `docs/${slug} should ship TechnicalArticle JSON-LD`);
-    assert.equal(article.dateModified, "2026-08-10", `docs/${slug} dateModified`);
+    const article = docJsonLd.find((value) => value["@type"] === "TechArticle");
+    assert.ok(article, `docs/${slug} should ship TechArticle JSON-LD`);
+    assert.equal(article.dateModified, "2026-08-11", `docs/${slug} dateModified`);
     assert.equal(article.mainEntityOfPage, `https://semantix.ensureok.ai/docs/${slug}`);
   }
 });

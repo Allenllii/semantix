@@ -1,7 +1,8 @@
 ---
 title: "Open-Source Semantic Memory for Coding Agents: A Practical Comparison Guide"
+description: "A capability-focused framework for comparing persistent semantic-memory options for coding agents."
 updated: 2026-08-10
-group: blog
+group: "Evaluation Guides"
 order: 4
 ---
 

@@ -132,12 +132,12 @@ export default function Components() {
               >
                 查看维护主体
               </Link>
-              <a
-                href={`mailto:${siteIdentity.operator.email}`}
+              <Link
+                href="/contact"
                 className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
               >
                 反馈技术内容
-              </a>
+              </Link>
             </div>
           </aside>
         </Reveal>

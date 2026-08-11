@@ -85,6 +85,7 @@ export default function Hero() {
                 className="mt-3"
                 code="go install semantix/cmd/semantix"
                 prompt
+                singleLine
               />
             </div>
           </div>

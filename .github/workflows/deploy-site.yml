@@ -5,7 +5,7 @@ name: Deploy site to Cloudflare Pages
 on:
   push:
     branches: [main]
-    paths: ["site/**"]
+    paths: ["site/**", "blog/**"]
   workflow_dispatch: {}
 
 jobs:

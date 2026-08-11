@@ -144,12 +144,12 @@ export default function Community() {
                 <Link href="/about" className="font-medium underline decoration-border underline-offset-4 hover:text-accent hover:decoration-accent">
                   查看维护主体
                 </Link>
-                <a
-                  href={`mailto:${siteIdentity.operator.email}`}
+                <Link
+                  href="/contact"
                   className="font-medium underline decoration-border underline-offset-4 hover:text-accent hover:decoration-accent"
                 >
                   联系官网维护者
-                </a>
+                </Link>
               </div>
             </div>
 
