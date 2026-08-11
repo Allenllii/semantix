@@ -1,6 +1,7 @@
 package evolve
 
 import (
+	"math"
 	"testing"
 )
 
@@ -172,6 +173,50 @@ func TestFreezeBlocksAutoAdjust(t *testing.T) {
 	}
 	if e.Adjustments() == 0 {
 		t.Fatal("adjustments must happen after the freeze window")
+	}
+}
+
+func TestRecordSignalRejectsNaN(t *testing.T) {
+	e := New(Config{})
+	if err := e.RecordSignal(Signal{Name: "cache_hit", Value: math.NaN(), Epoch: 1}); err == nil {
+		t.Fatal("NaN signal must be rejected")
+	}
+	if e.hitEWMA != 0 {
+		t.Fatalf("hitEWMA must stay 0 after NaN rejection, got %v", e.hitEWMA)
+	}
+}
+
+func TestApplyRejectsNaN(t *testing.T) {
+	e := New(Config{FreezeEpochs: 0})
+	if err := e.Apply(Params{TauL2: math.NaN(), InjectCap: 0.3, FreezeEpochs: 0}); err == nil {
+		t.Fatal("NaN param must be rejected")
+	}
+	if got := e.Params().TauL2; got != DefaultTauL2 {
+		t.Fatalf("TauL2 must stay default after NaN rejection, got %v", got)
+	}
+}
+
+func TestConcurrentSignals(t *testing.T) {
+	e := New(Config{})
+	done := make(chan struct{})
+	for i := 0; i < 8; i++ {
+		go func(g int) {
+			defer func() { done <- struct{}{} }()
+			for n := 0; n < 200; n++ {
+				name := "cache_hit"
+				if g%2 == 0 {
+					name = "inject_pollution"
+				}
+				_ = e.RecordSignal(Signal{Name: name, Value: 1, Epoch: uint64(g*200 + n + 1)})
+			}
+		}(i)
+	}
+	for i := 0; i < 8; i++ {
+		<-done
+	}
+	// No deadlock, no panic; state remains sane.
+	if e.Adjustments() == 0 && e.sampleCount == 0 {
+		t.Fatal("concurrent signals must be recorded")
 	}
 }
 

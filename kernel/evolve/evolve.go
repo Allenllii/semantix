@@ -2,6 +2,7 @@ package evolve
 
 import (
 	"errors"
+	"math"
 	"sync"
 )
 
@@ -92,13 +93,13 @@ func New(cfg Config) *ewmaEngine {
 			FreezeEpochs: DefaultFreezeEpoch,
 		},
 	}
-	if e.alpha == 0 {
+	if e.alpha <= 0 {
 		e.alpha = DefaultAlpha
 	}
-	if e.minTau == 0 {
+	if e.minTau <= 0 {
 		e.minTau = DefaultMinTau
 	}
-	if e.maxTau == 0 {
+	if e.maxTau <= 0 {
 		e.maxTau = DefaultMaxTau
 	}
 	if e.minSamples == 0 {
@@ -137,6 +138,11 @@ func (e *ewmaEngine) RecordSignal(s Signal) error {
 		e.epoch = s.Epoch
 	}
 	e.sampleCount++
+	// Reject NaN outright: comparisons are false for NaN, so clamping would
+	// be bypassed and the EWMA would silently poison itself.
+	if math.IsNaN(s.Value) {
+		return errors.New("evolve: NaN signal value rejected")
+	}
 	// Clamp signal value to [0,1] so a corrupt source cannot skew the EWMA.
 	v := s.Value
 	if v < 0 {
@@ -175,7 +181,11 @@ func (e *ewmaEngine) Apply(p Params) error {
 	if e.epoch < e.freezeUntil && p.FreezeEpochs != 0 {
 		return errors.New("evolve: params frozen until epoch " + itoa(e.freezeUntil))
 	}
-	// Sanity-clamp applied values.
+	// Sanity-clamp applied values (NaN rejected: it would poison params and
+	// make the != comparison always-true, freezing the engine forever).
+	if math.IsNaN(p.TauL2) || math.IsNaN(p.InjectCap) || math.IsNaN(p.PrefetchConf) {
+		return errors.New("evolve: NaN param rejected")
+	}
 	if p.TauL2 < e.minTau {
 		p.TauL2 = e.minTau
 	}
