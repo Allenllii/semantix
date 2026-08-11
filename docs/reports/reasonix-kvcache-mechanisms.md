@@ -41,7 +41,7 @@ Reasonix 的缓存优化**不是魔法，是一套"前缀字节稳定"工程纪�
 ### ⑥ CI 守卫（把命中率当产品行为）
 - cachehit_e2e 测试：mock 前缀缓存（按字节共同前缀推导），期望率爬过 90%（`cachehit_e2e_test.go:196` 注释 + :222-225 日志观测）；窗口过小 stuck guard 后尾部命中率 ≥85% 为真实断言（`:268`）
 - CompareShape 归因：对比上/本轮 system+tools+内容，输出 miss 原因（`cache_shape.go:74-99`）
-- 缓存敏感路径强制 Cache-impact/Cache-guard 标注纪律（`CONTRIBUTING.md:99-119`；发布阈值脚本未见实体，阈值以测试内常量 REASONIX_CACHE_GUARD_THRESHOLD 默认 90 为准，`cachehit_e2e_test.go:379`）
+- 缓存敏感路径强制 Cache-impact/Cache-guard 标注纪律（`CONTRIBUTING.md:99-119`）；fork 侧有 `scripts/cache-guard.sh` 发布阈值脚本，阈值以测试内常量 REASONIX_CACHE_GUARD_THRESHOLD 默认 90 为准（`cachehit_e2e_test.go:379`）；semantix 侧暂无实体
 
 ## 命中率数字口径（重要——防止对外说过头）
 
