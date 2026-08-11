@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Reveal from "@/components/Reveal";
+import CopyCode from "@/components/CopyCode";
 
 const steps = [
   {
@@ -65,9 +66,7 @@ export default function Install() {
                   </span>
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">{step.desc}</p>
-                <pre className="mt-4 overflow-x-auto rounded-md bg-[oklch(0.21_0.006_260)] p-3 font-mono text-xs text-slate-300">
-                  {step.code}
-                </pre>
+                <CopyCode className="mt-4" code={step.code} tone="dark" />
                 <div className="mt-auto pt-4 text-sm">
                   {step.external ? (
                     <a
