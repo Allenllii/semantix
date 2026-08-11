@@ -66,7 +66,7 @@ export default function Install() {
                   </span>
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">{step.desc}</p>
-                <CopyCode className="mt-4" code={step.code} tone="dark" />
+                <CopyCode className="mt-4" code={step.code} prompt />
                 <div className="mt-auto pt-4 text-sm">
                   {step.external ? (
                     <a
