@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -56,6 +58,11 @@ func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
 		return 2
 	}
 	if err != nil {
+		// `--help` is a successful request, not a failure: the Go flag
+		// package reports ErrHelp after printing usage for any subcommand.
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		fmt.Fprintf(stderr, "semantix %s: %v\n", args[0], err)
 		return 1
 	}
