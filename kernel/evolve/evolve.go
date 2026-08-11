@@ -93,22 +93,22 @@ func New(cfg Config) *ewmaEngine {
 			FreezeEpochs: DefaultFreezeEpoch,
 		},
 	}
-	if e.alpha <= 0 {
+	if e.alpha <= 0 || math.IsNaN(e.alpha) || math.IsInf(e.alpha, 0) {
 		e.alpha = DefaultAlpha
 	}
-	if e.minTau <= 0 {
+	if e.minTau <= 0 || math.IsNaN(e.minTau) || math.IsInf(e.minTau, 0) {
 		e.minTau = DefaultMinTau
 	}
-	if e.maxTau <= 0 {
+	if e.maxTau <= 0 || math.IsNaN(e.maxTau) || math.IsInf(e.maxTau, 0) {
 		e.maxTau = DefaultMaxTau
 	}
 	if e.minSamples == 0 {
 		e.minSamples = MinSamples
 	}
-	if cfg.TauL2 > 0 {
+	if cfg.TauL2 > 0 && finite(cfg.TauL2) {
 		e.params.TauL2 = cfg.TauL2
 	}
-	if cfg.InjectCap > 0 {
+	if cfg.InjectCap > 0 && finite(cfg.InjectCap) {
 		e.params.InjectCap = cfg.InjectCap
 	}
 	if cfg.FreezeEpochs > 0 {
@@ -131,6 +131,11 @@ func (e *ewmaEngine) RecordSignal(s Signal) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	// Reject NaN/Inf before any state change: comparisons are false for NaN,
+	// so clamping would be bypassed and the EWMA would silently poison itself.
+	if math.IsNaN(s.Value) || math.IsInf(s.Value, 0) {
+		return errors.New("evolve: non-finite signal value rejected")
+	}
 	if s.Epoch < e.epoch {
 		return errors.New("evolve: out-of-order signal epoch")
 	}
@@ -138,11 +143,6 @@ func (e *ewmaEngine) RecordSignal(s Signal) error {
 		e.epoch = s.Epoch
 	}
 	e.sampleCount++
-	// Reject NaN outright: comparisons are false for NaN, so clamping would
-	// be bypassed and the EWMA would silently poison itself.
-	if math.IsNaN(s.Value) {
-		return errors.New("evolve: NaN signal value rejected")
-	}
 	// Clamp signal value to [0,1] so a corrupt source cannot skew the EWMA.
 	v := s.Value
 	if v < 0 {
@@ -178,13 +178,13 @@ func (e *ewmaEngine) Params() Params {
 func (e *ewmaEngine) Apply(p Params) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	// NaN/Inf rejected before the freeze check: a frozen engine must not
+	// mask the real reason with a confusing "frozen" error.
+	if !finite(p.TauL2) || !finite(p.InjectCap) || !finite(p.PrefetchConf) {
+		return errors.New("evolve: non-finite param rejected")
+	}
 	if e.epoch < e.freezeUntil && p.FreezeEpochs != 0 {
 		return errors.New("evolve: params frozen until epoch " + itoa(e.freezeUntil))
-	}
-	// Sanity-clamp applied values (NaN rejected: it would poison params and
-	// make the != comparison always-true, freezing the engine forever).
-	if math.IsNaN(p.TauL2) || math.IsNaN(p.InjectCap) || math.IsNaN(p.PrefetchConf) {
-		return errors.New("evolve: NaN param rejected")
 	}
 	if p.TauL2 < e.minTau {
 		p.TauL2 = e.minTau
@@ -248,6 +248,12 @@ func (e *ewmaEngine) Epoch() uint64 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.epoch
+}
+
+// finite reports whether x is neither NaN nor ±Inf (helper for config and
+// Apply validation).
+func finite(x float64) bool {
+	return !math.IsNaN(x) && !math.IsInf(x, 0)
 }
 
 // itoa is a tiny integer formatter avoiding strconv for a hot error path.

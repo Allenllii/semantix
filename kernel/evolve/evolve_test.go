@@ -220,6 +220,44 @@ func TestConcurrentSignals(t *testing.T) {
 	}
 }
 
+func TestConfigRejectsNonFinite(t *testing.T) {
+	// NaN/±Inf config values must fall back to defaults (never poison the engine).
+	e := New(Config{Alpha: math.NaN(), MinTau: math.Inf(1), MaxTau: math.Inf(-1), TauL2: math.NaN(), InjectCap: math.Inf(1)})
+	if e.alpha != DefaultAlpha {
+		t.Fatalf("alpha = %v, want default %v", e.alpha, DefaultAlpha)
+	}
+	if e.minTau != DefaultMinTau || e.maxTau != DefaultMaxTau {
+		t.Fatalf("tau bounds must fall back to defaults, got [%v,%v]", e.minTau, e.maxTau)
+	}
+	p := e.Params()
+	if p.TauL2 != DefaultTauL2 || p.InjectCap != DefaultInjectCap {
+		t.Fatalf("params must fall back to defaults, got TauL2=%v InjectCap=%v", p.TauL2, p.InjectCap)
+	}
+}
+
+func TestRecordSignalRejectsInf(t *testing.T) {
+	e := New(Config{})
+	if err := e.RecordSignal(Signal{Name: "cache_hit", Value: math.Inf(1), Epoch: 1}); err == nil {
+		t.Fatal("Inf signal must be rejected")
+	}
+	if err := e.RecordSignal(Signal{Name: "cache_hit", Value: math.Inf(-1), Epoch: 2}); err == nil {
+		t.Fatal("-Inf signal must be rejected")
+	}
+	if e.sampleCount != 0 {
+		t.Fatalf("rejected signals must not consume state, sampleCount=%d", e.sampleCount)
+	}
+	if e.Epoch() != 0 {
+		t.Fatalf("rejected signals must not advance epoch, got %d", e.Epoch())
+	}
+}
+
+func TestApplyRejectsInf(t *testing.T) {
+	e := New(Config{})
+	if err := e.Apply(Params{TauL2: math.Inf(1), InjectCap: 0.3, FreezeEpochs: 0}); err == nil {
+		t.Fatal("Inf param must be rejected")
+	}
+}
+
 func TestParamsSnapshotIsCopy(t *testing.T) {
 	e := New(Config{})
 	p1 := e.Params()
