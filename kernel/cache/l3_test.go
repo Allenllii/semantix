@@ -252,6 +252,43 @@ func TestDecideL3RejectsSymlinkedDep(t *testing.T) {
 	}
 }
 
+func TestDecideL3RejectsSymlinkInDepsOnly(t *testing.T) {
+	// Deps-only entry (no Mtimes, legacy data): the uniform Deps guard must
+	// still reject a symlinked dependency (MEDIUM fix, sa_20260811_123652).
+	root := t.TempDir()
+	dep := "dep.txt"
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, dep)); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	deps, err := fingerprint.Capture(root, []string{dep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx := bm25.New()
+	idx.Insert(&slice.Slice{
+		ID:      "l3-symlink-nomtime",
+		Type:    slice.Result,
+		Scope:   slice.Project,
+		Content: []byte("符号链接依赖（无 mtime 快照）的结果"),
+		Meta: slice.SliceMeta{
+			SourceSession: "s6",
+			Deps:          deps, // no Mtimes: legacy entry
+		},
+	})
+	d := &L3Decider{Index: idx, Root: root}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "符号链接依赖", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != nil {
+		t.Fatal("symlinked dep in Deps-only entry must be rejected")
+	}
+}
+
 func TestDecideL2FiltersGrey(t *testing.T) {
 	root, idx, dep, _ := buildTestLib(t)
 	if err := os.WriteFile(filepath.Join(root, dep), []byte("module demo\nv3\n"), 0o644); err != nil {

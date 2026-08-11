@@ -94,15 +94,20 @@ func (d *L3Decider) verified(ctx context.Context, s *slice.Slice) bool {
 		// to mark dependency-free results reusable by omission.
 		return s.Meta.L3Safe
 	}
-	// Key-set consistency: Mtimes must not exist without Deps (an
-	// inconsistent library entry is rejected rather than half-verified).
-	if len(s.Meta.Mtimes) > 0 && len(s.Meta.Mtimes) != len(s.Meta.Deps) {
-		return false
+	// Every Mtimes key must exist in Deps: a half-covered entry is rejected
+	// rather than partially verified (a key present in one map but not the
+	// other would otherwise skip the Lstat guard or the mtime check).
+	for p := range s.Meta.Mtimes {
+		if _, ok := s.Meta.Deps[p]; !ok {
+			return false
+		}
 	}
-	// Stage 1: mtime fast-fail (cheap stat, no content read). Symlinked
-	// deps are rejected outright: verification must never follow links
-	// outside the dependency root.
-	for p, want := range s.Meta.Mtimes {
+	// Uniform guard over ALL Deps keys (not just Mtimes-covered ones):
+	//  1. IsLocal — never touch anything outside the dependency root
+	//  2. Lstat — symlinked deps are rejected outright, verification must
+	//     not follow links outside the root (MEDIUM fix, sa_20260811_123652)
+	//  3. mtime fast-fail when a snapshot exists for this key
+	for p := range s.Meta.Deps {
 		if !filepath.IsLocal(p) {
 			return false
 		}
@@ -110,7 +115,7 @@ func (d *L3Decider) verified(ctx context.Context, s *slice.Slice) bool {
 		if err != nil || fi.Mode()&os.ModeSymlink != 0 {
 			return false
 		}
-		if fi.ModTime().Unix() != want {
+		if want, ok := s.Meta.Mtimes[p]; ok && fi.ModTime().Unix() != want {
 			return false
 		}
 	}
