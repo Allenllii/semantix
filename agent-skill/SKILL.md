@@ -81,7 +81,7 @@ bash <(curl -sL https://raw.githubusercontent.com/Gnosil/semantix/main/agent-ski
 
 # 2. 冒烟验证
 semantix help          # 应输出命令列表
-semantix version       # 应输出 v0.2.0+
+semantix search --help # 应输出 search 用法（v0.2.0+）
 ```
 
 安装脚本做：下载 release 二进制 → sha256 校验 → 放到 `~/.local/bin` →

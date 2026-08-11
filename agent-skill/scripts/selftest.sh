@@ -22,9 +22,10 @@ EOF
 "$SEMANTIX" extract --input "$TMP/sA.jsonl" --scope user --project selftest --db "$TMP/mem.db" >/dev/null \
   || fail "extract failed"
 
-# --- lookup must hit the preference slice (zone=hit or grey; never empty for this query) ---
+# --- lookup must find the preference slice (hit or grey; grey still proves the
+# retrieval loop works — zone semantics, Issue #7) ---
 LOOKUP="$("$SEMANTIX" lookup --query "办案偏好" --scope user --db "$TMP/mem.db" --json 2>/dev/null || true)"
-echo "$LOOKUP" | grep -q '"zone": "hit"' || fail "lookup did not return a hit zone: $LOOKUP"
+echo "$LOOKUP" | grep -Eq '"zone": "(hit|grey)"' || fail "lookup returned no hit/grey zone: $LOOKUP"
 
 # --- inject must return a non-empty [semantix-reuse] block ---
 INJECT="$("$SEMANTIX" inject --query "处理案件" --scope user --db "$TMP/mem.db" 2>/dev/null || true)"

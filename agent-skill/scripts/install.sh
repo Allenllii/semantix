@@ -52,8 +52,12 @@ mkdir -p "$BIN_DIR" "$DATA_DIR"
 CURL="curl -fSL --http1.1 --retry 5 --retry-all-errors --retry-delay 2"
 $CURL -o "$TMP/$EXE" "$BASE/$EXE"
 $CURL -o "$TMP/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt"
-# 2. verify checksum
-(cd "$TMP" && grep "$EXE" SHA256SUMS.txt | shasum -a 256 -c -)
+# 2. verify checksum (shasum on macOS; sha256sum on most Linux)
+if command -v shasum >/dev/null 2>&1; then
+  (cd "$TMP" && grep "$EXE" SHA256SUMS.txt | shasum -a 256 -c -)
+else
+  (cd "$TMP" && grep "$EXE" SHA256SUMS.txt | sha256sum -c -)
+fi
 # 3. install
 chmod +x "$TMP/$EXE"
 mv "$TMP/$EXE" "$BIN_DIR/semantix"
