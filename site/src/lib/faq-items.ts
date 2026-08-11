@@ -1,5 +1,3 @@
-import Reveal from "@/components/Reveal";
-
 export const faqItems = [
   {
     question: "Semantix 是什么？",
@@ -26,38 +24,4 @@ export const faqItems = [
     answer:
       "在 github.com/Gnosil/semantix 提 issue 或开 PR。当前 M0 阶段按工作单元推进，PR 需附 go vet 与 go test 全绿的验证结果。",
   },
-];
-
-export default function Faq() {
-  return (
-    <section id="faq" className="relative overflow-hidden py-24">
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 hidden lg:block">
-        <div className="absolute -left-48 bottom-16 h-[360px] w-[360px] rounded-full bg-[oklch(0.608_0.14_165/0.06)] blur-3xl" />
-      </div>
-      <div className="relative wrap">
-        <Reveal>
-          <p className="font-mono text-sm font-medium text-accent">FAQ 常见问题</p>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">
-            常见问题。
-          </h2>
-          <p className="mt-1 text-muted-foreground">
-            Five questions answered in facts.
-          </p>
-        </Reveal>
-
-        <div className="mt-12 max-w-3xl space-y-4">
-          {faqItems.map((item, i) => (
-            <Reveal key={item.question} delay={i * 60}>
-              <div className="rounded-lg border border-border bg-white p-6">
-                <h3 className="font-semibold">{item.question}</h3>
-                <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                  {item.answer}
-                </p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
+] as const;
