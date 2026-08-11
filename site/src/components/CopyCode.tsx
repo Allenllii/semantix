@@ -7,6 +7,7 @@ type CopyCodeProps = {
   code: string;
   className?: string;
   prompt?: boolean;
+  singleLine?: boolean;
   tone?: "light" | "dark";
 };
 
@@ -33,6 +34,7 @@ export default function CopyCode({
   code,
   className = "",
   prompt = false,
+  singleLine = false,
   tone = "light",
 }: CopyCodeProps) {
   const [state, setState] = useState<CopyState>("idle");
@@ -74,12 +76,22 @@ export default function CopyCode({
   const label = state === "copied" ? "已复制" : state === "failed" ? "重试" : "复制";
 
   return (
-    <div className={`relative ${className}`}>
+    <div
+      className={`flex min-w-0 overflow-hidden rounded-md border ${
+        isDark
+          ? "border-white/10 bg-[oklch(0.21_0.006_260)]"
+          : "border-border/60 bg-[oklch(0.976_0.005_165)]"
+      } ${className}`}
+    >
       <pre
-        className={`overflow-x-auto rounded-md p-3 pr-24 font-mono text-xs ${
+        className={`min-w-0 flex-1 p-3 font-mono leading-5 ${
+          singleLine
+            ? "whitespace-pre-wrap break-words text-[11px] sm:whitespace-nowrap"
+            : "whitespace-pre-wrap break-words text-xs"
+        } ${
           isDark
-            ? "border border-white/10 bg-[oklch(0.21_0.006_260)] text-slate-300"
-            : "border border-border/60 bg-[oklch(0.976_0.005_165)] text-[oklch(0.45_0.02_260)]"
+            ? "text-slate-300"
+            : "text-[oklch(0.45_0.02_260)]"
         }`}
       >
         <code>{prompt ? `$ ${code}` : code}</code>
@@ -88,18 +100,21 @@ export default function CopyCode({
         type="button"
         onClick={handleCopy}
         aria-label={`${label}代码`}
-        className={`absolute right-2.5 top-1/2 inline-flex h-8 -translate-y-1/2 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 ${
+        title={label}
+        className={`flex w-11 shrink-0 items-center justify-center border-l transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent active:translate-y-px ${
           isDark
-            ? "border-white/15 bg-[oklch(0.27_0.008_260)] text-slate-300 hover:border-emerald-400/60 hover:text-emerald-300"
-            : "border-border/80 bg-white text-muted-foreground hover:border-accent/60 hover:text-accent"
+            ? "border-white/10 bg-[oklch(0.25_0.008_260)] text-slate-300 hover:bg-[oklch(0.29_0.01_260)] hover:text-emerald-300"
+            : "border-border/60 bg-white text-accent hover:bg-accent/5"
         }`}
       >
         {state === "copied" ? (
-          <Check aria-hidden="true" className="size-3.5" />
+          <Check aria-hidden="true" className="size-4" strokeWidth={1.8} />
         ) : (
-          <Copy aria-hidden="true" className="size-3.5" />
+          <Copy aria-hidden="true" className="size-4" strokeWidth={1.8} />
         )}
-        <span aria-live="polite">{label}</span>
+        <span className="sr-only" aria-live="polite">
+          {label}
+        </span>
       </button>
     </div>
   );
