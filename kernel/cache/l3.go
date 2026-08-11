@@ -89,15 +89,28 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 // verified runs the two-stage dependency check; false is fail-closed.
 func (d *L3Decider) verified(ctx context.Context, s *slice.Slice) bool {
 	if len(s.Meta.Deps) == 0 {
-		return true // nothing captured → nothing to go stale
+		// No captured dependencies: reusable only under explicit opt-in
+		// (extract --l3-safe). A shared/injected library must not be able
+		// to mark dependency-free results reusable by omission.
+		return s.Meta.L3Safe
 	}
-	// Stage 1: mtime fast-fail (cheap stat, no content read).
+	// Key-set consistency: Mtimes must not exist without Deps (an
+	// inconsistent library entry is rejected rather than half-verified).
+	if len(s.Meta.Mtimes) > 0 && len(s.Meta.Mtimes) != len(s.Meta.Deps) {
+		return false
+	}
+	// Stage 1: mtime fast-fail (cheap stat, no content read). Symlinked
+	// deps are rejected outright: verification must never follow links
+	// outside the dependency root.
 	for p, want := range s.Meta.Mtimes {
 		if !filepath.IsLocal(p) {
 			return false
 		}
-		st, err := os.Stat(filepath.Join(d.Root, p))
-		if err != nil || st.ModTime().Unix() != want {
+		fi, err := os.Lstat(filepath.Join(d.Root, p))
+		if err != nil || fi.Mode()&os.ModeSymlink != 0 {
+			return false
+		}
+		if fi.ModTime().Unix() != want {
 			return false
 		}
 	}

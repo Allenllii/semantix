@@ -26,6 +26,7 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	taskType := flags.String("task-type", "", "task type metadata")
 	language := flags.String("language", "", "language metadata")
 	fingerprintPaths := flags.String("fingerprint", "", "comma-separated relative paths to fingerprint (sha256) into each slice's Deps")
+	l3Safe := flags.Bool("l3-safe", false, "mark dependency-free Result slices as explicitly L3-reusable (opt-in; ignored when --fingerprint is set)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -82,6 +83,10 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 			mtimes[p] = st.ModTime().Unix()
 		}
 		meta.Mtimes = mtimes
+	} else if *l3Safe {
+		// Dependency-free explicit opt-in (U16): without captured Deps the
+		// L3 gate requires this flag before reusing a Result slice.
+		meta.L3Safe = true
 	}
 	items, err := extractor.Extract(data, meta)
 	if err != nil {

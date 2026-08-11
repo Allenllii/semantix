@@ -126,22 +126,36 @@ func TestDecideL3SkipsNonResultSlices(t *testing.T) {
 	}
 }
 
-func TestDecideL3NoDepsIsEligible(t *testing.T) {
+func TestDecideL3NoDepsRequiresOptIn(t *testing.T) {
 	idx := bm25.New()
+	// Without Deps AND without L3Safe: must NOT be reusable (MEDIUM fix —
+	// a shared/injected library cannot mark results reusable by omission).
 	idx.Insert(&slice.Slice{
-		ID:      "l3-nodeps",
+		ID:      "l3-nodeps-unsafe",
 		Type:    slice.Result,
 		Scope:   slice.Project,
 		Content: []byte("无依赖结果：格式化代码用 gofmt -w ."),
-		Meta:    slice.SliceMeta{SourceSession: "s2"}, // no Deps
+		Meta:    slice.SliceMeta{SourceSession: "s2"},
+	})
+	// With explicit opt-in: reusable.
+	idx.Insert(&slice.Slice{
+		ID:      "l3-nodeps-safe",
+		Type:    slice.Result,
+		Scope:   slice.Project,
+		Content: []byte("无依赖结果：格式化代码用 gofmt -w ."),
+		Meta:    slice.SliceMeta{SourceSession: "s2", L3Safe: true},
 	})
 	d := &L3Decider{Index: idx, Root: t.TempDir()}
-	res, err := d.DecideL3(context.Background(), Query{UserInput: "格式化代码", Scope: slice.Project})
+	q := Query{UserInput: "格式化代码", Scope: slice.Project}
+	res, err := d.DecideL3(context.Background(), q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res == nil || res.SliceID != "l3-nodeps" {
-		t.Fatalf("slice without deps must be reusable, got %+v", res)
+	if res == nil {
+		t.Fatal("the opt-in slice must be reusable")
+	}
+	if res.SliceID != "l3-nodeps-safe" {
+		t.Fatalf("got %s, want the opt-in slice (unsafe one must be skipped)", res.SliceID)
 	}
 }
 
@@ -172,6 +186,69 @@ func TestDecideL3MtimeChangeWithSameContentRejects(t *testing.T) {
 	}
 	if res != nil {
 		t.Fatal("mtime change must reject (fast-fail semantics), got reuse")
+	}
+}
+
+func TestDecideL3RejectsInconsistentKeys(t *testing.T) {
+	// Mtimes present but Deps empty: inconsistent entry → reject (LOW fix).
+	idx := bm25.New()
+	idx.Insert(&slice.Slice{
+		ID:      "l3-inconsistent",
+		Type:    slice.Result,
+		Scope:   slice.Project,
+		Content: []byte("不一致元数据的结果"),
+		Meta: slice.SliceMeta{
+			SourceSession: "s4",
+			Mtimes:        map[string]int64{"dep.txt": 123},
+		},
+	})
+	d := &L3Decider{Index: idx, Root: t.TempDir()}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "不一致元数据", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != nil {
+		t.Fatal("inconsistent Mtimes/Deps entry must be rejected")
+	}
+}
+
+func TestDecideL3RejectsSymlinkedDep(t *testing.T) {
+	root := t.TempDir()
+	dep := "dep.txt"
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, dep)); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	deps, err := fingerprint.Capture(root, []string{dep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := os.Stat(filepath.Join(root, dep))
+	if err != nil {
+		t.Fatal(err)
+	}
+	idx := bm25.New()
+	idx.Insert(&slice.Slice{
+		ID:      "l3-symlink",
+		Type:    slice.Result,
+		Scope:   slice.Project,
+		Content: []byte("符号链接依赖的结果"),
+		Meta: slice.SliceMeta{
+			SourceSession: "s5",
+			Deps:          deps,
+			Mtimes:        map[string]int64{dep: st.ModTime().Unix()},
+		},
+	})
+	d := &L3Decider{Index: idx, Root: root}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "符号链接依赖", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != nil {
+		t.Fatal("symlinked dep must be rejected (Lstat guard)")
 	}
 }
 

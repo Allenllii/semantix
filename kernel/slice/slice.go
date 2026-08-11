@@ -81,6 +81,12 @@ type SliceMeta struct {
 	// Mtimes captures file modification times at slice time (path -> unix
 	// seconds, U16): cheap fast-fail check before the sha256 re-read.
 	Mtimes map[string]int64 `json:"mtimes,omitempty"`
+	// L3Safe marks a dependency-free Result slice as explicitly reusable at
+	// the L3 gate (opt-in via extract --l3-safe; U16 MEDIUM fix). Slices
+	// with captured Deps are inherently safe — this flag is only consulted
+	// when Deps is empty, so a shared/injected library cannot silently
+	// mark results reusable.
+	L3Safe bool `json:"l3_safe,omitempty"`
 }
 
 // Slice is the core semantic slice value.
