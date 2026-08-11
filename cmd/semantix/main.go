@@ -49,6 +49,8 @@ func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
 		return runEval(args[1:], stdout)
 	case "eval-judge":
 		return runEvalJudge(args[1:], stdout)
+	case "usage":
+		return runUsage(args[1:], stdout)
 	case "lookup":
 		err = runLookup(args[1:], stdout, stderr, deps)
 	case "inject":
