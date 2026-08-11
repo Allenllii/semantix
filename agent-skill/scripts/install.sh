@@ -30,6 +30,12 @@ case "$VERSION" in
   v[0-9]*.[0-9]*.[0-9]*) ;;
   *) echo "invalid version: $VERSION (want vX.Y.Z)" >&2; exit 2 ;;
 esac
+# Anchor the version (bash 3.2-safe [[ =~ ]]): reject empty segments and
+# trailing junk that would only 404 at download time.
+if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "invalid version: $VERSION (want vX.Y.Z, no suffix)" >&2
+  exit 2
+fi
 
 BIN_DIR="${SEMANTIX_BIN_DIR:-$HOME/.local/bin}"
 DATA_DIR="${SEMANTIX_DATA_DIR:-$HOME/.semantix}"

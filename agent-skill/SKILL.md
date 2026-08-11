@@ -62,6 +62,7 @@ semantix inject --query "<当前任务描述>" --scope user
 
 ```bash
 export SEMANTIX_JUDGE_API_KEY="sk-..."   # 你的模型 key（OpenAI 或 Anthropic 协议）
+# ↑ 示例占位符，勿直接使用；填入你自己的真实 key（只走环境变量，绝不入库/入参/入日志）
 semantix verify --session <会话目录> --scope user \
   --judge-protocol openai --judge-base-url https://api.openai.com/v1 --judge-model gpt-4o-mini
 # → 命中率评估 + 灰色地带占比 + waste 统计
