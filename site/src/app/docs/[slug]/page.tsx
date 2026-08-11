@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { geoDocuments, getGeoDocument, readGeoDocument } from "@/lib/geo-docs";
+import { siteIdentity } from "@/lib/site-identity";
 
 type GeoPageProps = {
   params: Promise<{ slug: string }>;
@@ -35,8 +36,27 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
 
   const content = await readGeoDocument(document);
 
+  const articleJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "TechnicalArticle",
+    "@id": `${siteIdentity.productUrl}/docs/${document.slug}#article`,
+    headline: document.title,
+    description: document.description,
+    dateModified: document.lastUpdated,
+    inLanguage: document.language === "English" ? "en" : "zh-CN",
+    mainEntityOfPage: `${siteIdentity.productUrl}/docs/${document.slug}`,
+    author: { "@id": `${siteIdentity.operator.url}#organization` },
+    publisher: { "@id": `${siteIdentity.operator.url}#organization` },
+  };
+
   return (
     <div className="px-6 py-10 md:px-10 md:py-14 lg:px-14">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(articleJsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
       <div className="mx-auto max-w-4xl">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
