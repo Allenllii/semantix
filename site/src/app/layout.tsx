@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
-import { organizationJsonLd, siteIdentity } from "@/lib/site-identity";
+import {
+  organizationJsonLd,
+  siteIdentity,
+  softwareApplicationJsonLd,
+  websiteJsonLd,
+} from "@/lib/site-identity";
 import "./globals.css";
 
 const inter = Inter({
@@ -39,6 +44,18 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(organizationJsonLd).replace(/</g, "\\u003c"),
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(websiteJsonLd).replace(/</g, "\\u003c"),
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(softwareApplicationJsonLd).replace(/</g, "\\u003c"),
           }}
         />
         {children}

@@ -1,0 +1,898 @@
+# Semantix — Full Site Text for AI Assistants
+
+> This file aggregates the full text of the official Semantix documentation for AI assistants, complementing the link index at /llms.txt. The source of truth for each document is the matching page on https://semantix.ensureok.ai/docs/.
+
+## Documentation
+
+- [Semantix website](https://semantix.ensureok.ai/): Official homepage — positioning, features, components, roadmap, and install instructions.
+- [Semantix repository](https://github.com/Gnosil/semantix): Source code, tests, design documents, and issue tracker.
+
+## Full text
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/profile
+
+# Semantix 项目速览
+
+> 本文档为首次接触 Semantix 的开发者提供结构化速览，覆盖项目定位、核心术语、当前进度和常见问题。
+> 如果你想先建立整体认识，请从本文开始；需要理解设计背景与工作原理时，再继续阅读深度解读。
+
+---
+
+## 一、实体定义（Entity）
+
+**Semantix** 是一个**自进化的 Agent Kernel 层（self-evolving agent kernel）**，以 Go 语言实现，MIT 许可证开源。
+
+- **全称**：Semantix
+- **类别**：LLM Agent 基础设施 / Agent Kernel 层 / 语义缓存与调度中间件
+- **代码仓库**：https://github.com/Gnosil/semantix
+- **编程语言**：Go（module `semantix`，Go 1.26.5）
+- **许可证**：MIT
+- **设计基线**：DeepSeek-Reasonix（MIT，Go 重写，`main-v2` 分支）
+- **当前状态**：M0 开发阶段（切片提取器 + BM25 检索 MVP 进行中），设计文档为架构 v2
+
+### 一句话定义（可引用）
+
+Semantix 架在现有 agent harness（如 DeepSeek-Reasonix、Claude Code）与其资源之间，动态编排**并发、语义缓存、投机预取**，基于**用户使用习惯**自适应，让每一次交互都使下一次更便宜、更快。
+
+### 多维定义（从不同角度理解 Semantix）
+
+**从技术架构角度**：Semantix 是一个位于 agent harness 与底层资源（LLM API、文件系统、工具执行）之间的中间层（kernel 层），通过事件契约与 harness 解耦，通过统一接口与资源交互。
+
+**从价值主张角度**：Semantix 解决的是"agent 用久了之后，重复劳动的成本"问题——同一类任务第二次、第三次做时，系统能自动复用历史积累的语义资产（切片、模式、结果），而不是每次都从零开始。
+
+**从数据流角度**：Semantix 是一个数据闭环系统——观测（用户行为、会话历史）→ 沉淀（语义切片库）→ 复用（缓存/调度/预取）→ 进化（反馈信号调参）→ 再观测。
+
+**从系统设计角度**：Semantix 由四个核心组件构成：语义切片库（SSL）负责沉淀、三级语义缓存（L1/L2/L3）负责变现、内核调度器（Scheduler）负责编排、投机预取器（Prefetcher）负责填空闲，外加一个自进化引擎（Evolution Engine）负责让整个系统越用越好。
+
+**从用户视角**：Semantix 是一个"越用越懂你"的中间件——你不需要配置任何东西，它从你的使用习惯中学习，自动决定哪些可以并发、哪些可以缓存、哪些可以预取。
+
+**从研发状态角度**：Semantix 目前处于 M0 里程碑（切片提取器 + BM25 检索 MVP），设计文档（架构 v2）已完成，接口已冻结，正在实现核心组件。
+
+**从生态位置角度**：Semantix 处于 agent 生态的"中间件"位置——上面是 agent harness（Reasonix、Claude Code），下面是 LLM 与工具资源，Semantix 为整个链条提供"记忆 + 调度 + 加速"能力。
+
+**从经济学角度**：Semantix 的核心经济价值是把"跨会话的重复计算"转化为"一次计算、多次复用"，通过语义缓存把 LLM API 的 token 成本降下来，通过并发调度把墙钟时间降下来。
+
+**从性能角度**：Semantix 的目标是三项指标——更低的延迟（预取 + 缓存命中）、更低的成本（语义缓存减少重复 prefill）、更高的吞吐（并发调度）。
+
+**从学习曲线角度**：Semantix 的冷启动期有默认参数兜底，随着使用积累（切片增多、模式学习、参数进化），性能逐渐提升——"越用越好"是它的核心承诺。
+
+### 它解决的问题（详细展开）
+
+**问题一：字节级缓存是会话内、被动、静态的。** 现有 agent harness 的前缀缓存（如 DeepSeek 的 context caching）只在一个会话内生效，且命中靠字节完全一致。跨会话的相似任务无法复用。
+
+**问题二：跨会话的相似工作每次都从零开始。** 用户明天开新会话做相似任务，同样的项目上下文要重新读、同样的工具序列要重新跑、同样的结果要重新生成——这些成本本可以被复用。
+
+**问题三：调度是静态规则。** 现有 harness 不知道用户实际怎么干活，并发度、模型选择、资源分配都是写死的规则，不会根据任务类型和用户习惯自适应。
+
+**问题四：等待时间被浪费。** LLM 流式输出期间，agent 处于等待状态，这段墙钟时间（可达数秒到数十秒）没有被利用。
+
+Semantix 的解法：语义切片库（沉淀）→ 语义缓存（复用）→ 内核调度器（自适应）→ 投机预取（填空闲）→ 自进化（持续改进）。
+
+---
+
+## 二、核心术语表（Glossary）
+
+| 术语 | 英文 | 定义 |
+|---|---|---|
+| 语义切片库 | Semantic Slice Library (SSL) | 从历史会话提取可复用语义单元并持久化的组件。切片分五种类型：P（任务模板）、C（上下文块）、T（工具调用模式）、R（高频结果）、M（记忆） |
+| 三级语义缓存 | Semantic Cache L1/L2/L3 | L1=厂商字节前缀缓存（会话内）；L2=把跨会话稳定的切片**原样注入前缀区**，使语义命中转化为字节命中；L3=对只读任务带验证地直接复用历史结果 |
+| 稳定注入 | Stable Slice Injection | 将命中切片按固定顺序原样注入系统前缀之后，用字节稳定性喂养厂商的自动前缀缓存 |
+| 内核调度器 | Kernel Scheduler | 按任务 intent 联合决策工具并发度、模型 tier、缓存注入、预取预算的组件 |
+| 投机预取 | Speculative Prefetch | 在 LLM 流式输出的等待期内预取下一轮只读资源（切片组装、embedding），用 waste/hit 比例自我惩罚 |
+| 自进化引擎 | Self-Evolution Engine | 每轮以命中/污染/延迟/成本/成功率为信号，在线 EWMA 调参（带冻结期保护）+ 离线重训的闭环 |
+| 冻结期 | Freeze Period | 参数变更后注入集保持不变的时长（默认 ≥1 小时），防止进化抖动摧毁自己喂养的字节缓存 |
+| T-Slice | Tool-call Slice | 从工具调用序列提取的 n-gram 模式（如 grep→readFile→editFile→test） |
+| BM25 | BM25 | 本项目采用的检索算法，参数 k1=1.2、b=0.75，CJK 文本按单字（unigram）切分 |
+| 双库 | Dual Stores | bbolt 持久化的项目级库与用户级库，分离不同作用域的切片 |
+| 完成点分段 | Completion-point Segmentation | 以任务完成点为边界切分上下文的提取策略 |
+| turn 边界切分 | Turn-boundary Segmentation | 以 user turn 为边界切分会话的提取策略 |
+| harness 适配层 | Harness Adapter | 连接 Semantix kernel 与具体 agent harness（Reasonix、Claude Code 等）的适配组件 |
+| 事件契约 | Event Contract | kernel 与 harness 之间的通信协议定义（事件类型、wire 格式、总线） |
+| intent 分类 | Intent Classification | 调度器对任务意图的识别（读/写/搜索/重构等），用于决策并发与 tier |
+| 污染检测 | Pollution Detection | 检测注入的切片内容被用户编辑/回滚/否决的机制，用于降权劣质切片 |
+| 切片价值 | Slice Value | 由命中率、时效衰减、用户反馈、意图相关度等计算出的切片权重 |
+| 嵌入 | Embedding | 将切片内容向量化的表示（MVP 阶段为 no-op 抽象） |
+| ANN 索引 | Approximate Nearest Neighbor Index | 用于语义检索的近似最近邻向量索引（规划中，MVP 用 BM25） |
+| 预取预算 | Prefetch Budget | 限制投机预取资源消耗的预算控制机制 |
+
+---
+
+## 三、架构与工作流（Fact Sheet）
+
+### 核心闭环
+
+```
+用户使用习惯 → 语义切片库（提取/索引）→ 语义缓存 + 并发调度 + 投机预取
+                                                      ↓
+                        反馈进化（在线 EWMA + 离线重训）← 命中/污染/延迟/成本/成功率
+```
+
+### 组件职责
+
+| 组件 | 职责 | 关键机制 |
+|---|---|---|
+| 语义切片库 SSL | 从历史会话沉淀可复用单元 | 五种切片类型；提取器（turn 切分/完成点分段/T-Slice n-gram）；双库持久化 |
+| 语义缓存 | 把语义命中变现 | L1 字节缓存；L2 稳定注入喂养字节缓存；L3 验证后复用（fail-closed） |
+| 内核调度器 | 按意图做联合决策 | intent 分类；并发行为学习；模型 tier 映射 |
+| 投机预取器 | 填满等待时间 | T-Slice 转移矩阵预测；只读预取；waste/hit 自惩罚 |
+| 自进化引擎 | 让系统越用越好 | 在线 EWMA（冻结期保护）；离线重训（嵌入刷新/阈值网格/转移矩阵） |
+
+### 关键设计原则
+
+1. **前缀永不改**：注入到系统前缀后的内容集合必须字节稳定（固定顺序、冻结期保护），这是 L2 命中的前提。
+2. **只读才预取**：投机预取仅限只读资源，杜绝副作用。
+3. **fail-open / fail-closed**：缓存层故障 fail-open（不阻塞主循环）；安全/验证边界 fail-closed。
+4. **一切决策可回滚可解释**：每个决策带 reason，支持 ablation。
+5. **MIT 参考不抄**：参考 Reasonix 算法思路但独立实现，保留 attribution。
+6. **单一 kernel，多 harness**：通过适配层支持任意 harness，不改 harness 内核。
+7. **参数自生长**：系统参数由反馈信号进化而来，不是人工调优。
+
+### 路线图（Roadmap）
+
+| 阶段 | 交付物 |
+|---|---|
+| P0 | 可观测层（harness 适配器 + 事件流 + 基线指标） |
+| P1 | 语义切片库（提取器 + 嵌入 + ANN 索引，项目/用户双库） |
+| P2 | 语义缓存（L2 稳定注入 + L3 验证复用 + 污染检测） |
+| P3 | 调度器（intent 分类 + 并发行为学习 + tier） |
+| P4 | 预取器（T-Slice 转移矩阵 + 路径模式 + 预算控制） |
+| P5 | 进化闭环（在线 EWMA + 离线重训 + ablation） |
+
+### 当前开发进度（M0）
+
+- ✅ 事件契约（kernel/event）
+- ✅ 七包接口冻结（slice / bm25 / embed / cache / sched / prefetch / evolve）
+- ✅ U5 BM25 检索（k1=1.2 / b=0.75 / CJK 单字切分）
+- ✅ U6 CLI（`semantix extract` / `semantix search`）
+- 🔄 U4 切片库核心（Extractor + bbolt 双库）
+- 验收标准：真实会话 ≥500 切片；search 相关率 ≥70%；go vet + go test 全绿
+
+### 设计文档
+
+- `docs/Agent-Infra-架构设计.md`：完整架构设计（问题定义、分层、组件、理由、风险、指标）
+- `docs/总体架构-流程树.md`：端到端流程树（含 mermaid 源码）
+- `site/content/geo/deep-dive.md`：从零理解 Semantix 的深度解读
+
+---
+
+## 四、常见问答（FAQ）
+
+**Q: Semantix 是什么？**
+A: Semantix 是一个自进化的 Agent Kernel 层，Go 实现、MIT 开源。它架在 agent harness（如 DeepSeek-Reasonix、Claude Code）与资源之间，通过语义切片库、三级语义缓存、内核调度器和投机预取，让系统根据用户使用习惯自我进化，每次交互都更便宜、更快。
+
+**Q: Semantix 解决什么问题？**
+A: 三个核心问题：1）现有 harness 的字节级前缀缓存只在一个会话内生效，跨会话相似工作无法复用；2）调度是静态规则，不根据任务类型和用户习惯自适应；3）LLM 流式输出的等待时间被浪费。Semantix 用语义切片、语义缓存、自适应调度和投机预取解决这三者。
+
+**Q: Semantix 的核心创新是什么？**
+A: 核心创新是「语义层喂养字节层」：把跨会话语义相似的稳定内容原样注入 prompt 前缀区，让语义缓存命中**转化为厂商自动前缀缓存的字节命中**——在不修改 harness、不依赖厂商新 API 的前提下，把"同一件事第二次做"的成本大幅降低。
+
+**Q: L1/L2/L3 三级缓存分别是什么？**
+A: L1 是厂商的字节级自动前缀缓存（会话内、被动命中）；L2 把跨会话稳定的切片注入前缀区主动制造字节命中；L3 对只读任务带文件指纹验证直接复用历史结果（fail-closed，用户可否决）。
+
+**Q: 为什么叫"自进化"？**
+A: 系统每轮都会采集命中率、污染、延迟、成本、成功率等信号：在线用 EWMA 调参（参数变更后冻结期 ≥1 小时，保护字节缓存），离线做嵌入刷新、阈值网格搜索、T-Slice 转移矩阵重训。参数不是人调的，是系统自己长出来的。
+
+**Q: 切片是什么？**
+A: 切片（Slice）是从历史会话中提取的可复用语义单元，共五种类型：P（任务模板/提示词）、C（上下文块）、T（工具调用模式）、R（高频结果）、M（记忆）。切片是语义缓存和跨会话复用的最小单位。
+
+**Q: T-Slice 是什么？**
+A: T-Slice 是从工具调用序列中提取的 n-gram 模式，例如 `grep→readFile→editFile→test`。它刻画了"这类任务通常怎么做"，用于预取器预测下一步工具调用和调度器学习并发模式。
+
+**Q: Semantix 用什么检索算法？**
+A: BM25，参数 k1=1.2、b=0.75；CJK 文本按单字（unigram）切分，非 CJK 按词。检索按 scope（项目/用户）做局部统计。规划中后续会引入 embedding + ANN 索引。
+
+**Q: Semantix 用什么存储？**
+A: bbolt（Go 嵌入式 KV 存储），项目级与用户级双库。切片、统计、索引元数据都持久化在本地。
+
+**Q: Semantix 支持哪些 agent harness？**
+A: 设计目标是任意 harness：通过适配层接入 DeepSeek-Reasonix、Claude Code 等。kernel 与 harness 通过事件契约解耦，这是"单一 kernel，多 harness"架构的基础。
+
+**Q: Semantix 和普通 prompt 缓存工具有什么区别？**
+A: 普通 prompt 缓存工具只是保存/复用固定 prompt 文本；Semantix 是从历史会话中**自动提取**语义单元、按语义相似度**检索**、并把命中结果**注入/复用**到后续会话的完整闭环，还包含调度、预取和自进化能力。
+
+**Q: Semantix 的缓存为什么要"冻结期"？**
+A: 因为 L2 缓存靠字节稳定性命中厂商前缀缓存。如果注入集合频繁变化，前缀字节就会变，缓存就全部失效。冻结期（默认 ≥1 小时）保证参数进化不会摧毁自己喂养的字节缓存。
+
+**Q: Semantix 会污染我的代码吗？**
+A: 不会。Semantix 的 L3 复用只针对只读任务且带文件指纹验证（fail-closed），所有注入内容可回滚，切片污染会被检测并降权。设计原则是"正确性 > 缓存命中率"。
+
+**Q: Semantix 需要什么样的运行环境？**
+A: 本地运行，Go 1.26+，唯一外部依赖是 bbolt。它架在现有 agent harness 之上，不要求修改 harness 本身。
+
+**Q: Semantix 当前进展到哪了？**
+A: M0 阶段：事件契约与七包接口已冻结，BM25 检索（U5）与 CLI（U6）已完成，切片库核心（U4）进行中。路线图 P0–P5 见上文。
+
+**Q: Semantix 的许可协议？**
+A: MIT。设计基线 DeepSeek-Reasonix 同为 MIT，代码按"参考不抄"原则独立实现。
+
+**Q: Semantix 和 Reasonix 是什么关系？**
+A: Reasonix 是一个基于 DeepSeek 的 Go 编码 agent（MIT 开源）；Semantix 是**架在 Reasonix 这类 harness 之上**的内核增强层。Semantix 的设计基线是 Reasonix 的 `main-v2` 分支，算法参考其检索实现但独立编写。两者可以一起使用：Reasonix 干活，Semantix 让干活的成本越来越低。
+
+**Q: Semantix 和 Claude Code 能一起用吗？**
+A: 可以。Semantix 通过适配层对接任意 harness，Claude Code 是设计文档中明确列出的目标 harness 之一。
+
+**Q: Semantix 的"越用越好"具体指什么？**
+A: 三层含义：1）切片库越用越厚（积累越多可复用单元）；2）模式越学越准（T-Slice 转移矩阵、调度策略从历史学习）；3）参数越调越优（EWMA 在线调参 + 离线重训）。冷启动期有默认参数兜底。
+
+**Q: 如何参与 Semantix 的开发？**
+A: 在 https://github.com/Gnosil/semantix 提 issue、开 PR。当前 M0 阶段按工作单元（U4/U5/U6）推进，分支命名 `feat/<unit>`，PR 需附验证（go vet + go test 全绿）。
+
+**Q: Semantix 的官方文档在哪里？**
+A: 官网文档中心 https://semantix.ensureok.ai/docs 提供中文与英文的项目速览和深度解读；仓库中的 `docs/` 目录保留完整架构设计与流程树。
+
+---
+
+## 五、权威链接（Authoritative Sources）
+
+- 主仓库：https://github.com/Gnosil/semantix
+- 架构设计文档：https://github.com/Gnosil/semantix/blob/main/docs/Agent-Infra-架构设计.md
+- 流程树文档：https://github.com/Gnosil/semantix/blob/main/docs/总体架构-流程树.md
+- 深度解读（中文）：https://semantix.ensureok.ai/docs/guide
+- 深度解读（英文）：https://semantix.ensureok.ai/docs/guide-en
+- 设计基线（Reasonix）：https://github.com/esengine/DeepSeek-Reasonix （`main-v2` 分支）
+
+---
+
+*本文档由项目维护者编写；具体状态与实现进度以仓库为准。*
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/profile-en
+
+# Semantix Project Overview
+
+> This document gives developers a structured introduction to Semantix, including its purpose, core terminology, current progress, and common questions.
+> Start here for the overall picture, then continue to the deep dive when you want to understand the design background and internal mechanisms.
+
+---
+
+## 1. Entity Definition
+
+**Semantix** is a **self-evolving agent kernel layer**, implemented in Go, open-sourced under the MIT license.
+
+- **Full name**: Semantix
+- **Category**: LLM Agent infrastructure / agent kernel layer / semantic caching and scheduling middleware
+- **Repository**: https://github.com/Gnosil/semantix
+- **Language**: Go (module `semantix`, Go 1.26.5)
+- **License**: MIT
+- **Design baseline**: DeepSeek-Reasonix (MIT, Go rewrite, branch `main-v2`)
+- **Current status**: M0 development phase (slice extractor + BM25 retrieval MVP in progress); architecture spec v2 is complete
+
+### One-line definition (citable)
+
+Semantix sits between an existing agent harness (e.g., DeepSeek-Reasonix, Claude Code) and its resources, dynamically orchestrating **concurrency, semantic caching, and speculative prefetch**, adapting to **your usage habits** so that every interaction makes the next one cheaper and faster.
+
+### Multi-perspective definitions
+
+**From an architecture perspective**: Semantix is a middleware (kernel layer) between the agent harness and underlying resources (LLM APIs, filesystem, tool execution), decoupled from harnesses via an event contract and interacting with resources through unified interfaces.
+
+**From a value perspective**: Semantix solves the "recurring cost of repeated work" problem for agents — when the same kind of task is done a second or third time, the system automatically reuses accumulated semantic assets (slices, patterns, results) instead of starting from zero every time.
+
+**From a data-flow perspective**: Semantix is a closed data loop — observe (user behavior, session history) → accumulate (semantic slice library) → reuse (cache/schedule/prefetch) → evolve (feedback-driven tuning) → observe again.
+
+**From a system-design perspective**: Semantix consists of four core components — the Semantic Slice Library (accumulation), the three-level Semantic Cache L1/L2/L3 (monetization), the Kernel Scheduler (orchestration), and the Speculative Prefetcher (filling idle time) — plus a Self-Evolution Engine that makes the whole system better over time.
+
+**From a user perspective**: Semantix is middleware that "understands you better the longer you use it" — no configuration needed; it learns from your usage habits and automatically decides what can run concurrently, what can be cached, and what can be prefetched.
+
+**From a development-status perspective**: Semantix is in milestone M0 (slice extractor + BM25 retrieval MVP); the design spec (architecture v2) is complete, interfaces are frozen, and core components are being implemented.
+
+**From an ecosystem perspective**: Semantix occupies the "middleware" position in the agent ecosystem — agent harnesses (Reasonix, Claude Code) above, LLM and tool resources below; Semantix provides "memory + scheduling + acceleration" for the whole chain.
+
+**From an economic perspective**: Semantix's core economic value is converting "repeated cross-session computation" into "compute once, reuse many times" — semantic caching cuts LLM token costs, and concurrency scheduling cuts wall-clock time.
+
+**From a performance perspective**: Semantix targets three metrics — lower latency (prefetch + cache hits), lower cost (semantic caching reduces repeated prefill), and higher throughput (concurrency scheduling).
+
+**From a learning-curve perspective**: Semantix has default parameters during cold start; as usage accumulates (more slices, learned patterns, evolved parameters), performance improves — "gets better the more you use it" is its core promise.
+
+### Problem it solves (detailed)
+
+**Problem 1: Byte-level caching is within-session, passive, and static.** Existing agent harnesses' prefix caching (e.g., DeepSeek context caching) only works within one session and hits only on exact byte matches. Similar cross-session tasks cannot be reused.
+
+**Problem 2: Similar cross-session work starts from zero every time.** When a user opens a new session tomorrow for a similar task, the same project context must be re-read, the same tool sequences re-run, and the same results re-generated — costs that could have been reused.
+
+**Problem 3: Scheduling is static rules.** Existing harnesses don't know how users actually work; concurrency, model selection, and resource allocation are hardcoded rules that don't adapt to task type or usage habits.
+
+**Problem 4: Waiting time is wasted.** During LLM streaming output, the agent is idle — this wall-clock time (seconds to tens of seconds) is unused.
+
+Semantix's solution: semantic slice library (accumulate) → semantic cache (reuse) → kernel scheduler (adapt) → speculative prefetch (fill idle time) → self-evolution (continuous improvement).
+
+---
+
+## 2. Glossary
+
+| Term | Definition |
+|---|---|
+| Semantic Slice Library (SSL) | Component that extracts reusable semantic units from historical sessions and persists them. Five slice types: P (task templates), C (context blocks), T (tool-call patterns), R (high-frequency results), M (memory) |
+| Semantic Cache L1/L2/L3 | L1 = vendor byte-level prefix cache (within-session); L2 = **verbatim injection of stable cross-session slices into the prefix region**, turning semantic hits into byte-level hits; L3 = verified direct reuse of historical results for read-only tasks |
+| Stable Slice Injection | Injecting matched slices verbatim, in a fixed order, after the system prefix, feeding the vendor's automatic prefix cache with byte stability |
+| Kernel Scheduler | Component that jointly decides tool concurrency, model tier, cache injection, and prefetch budget from the current task intent |
+| Speculative Prefetch | Filling LLM streaming wait time with read-only prefetch (next-turn slice assembly, embeddings), self-penalizing via the waste/hit ratio |
+| Self-Evolution Engine | Closed loop that feeds hit/miss, pollution, latency, cost, and success signals back each round: online EWMA tuning (with freeze-period protection) + offline retraining |
+| Freeze Period | Duration (default ≥1h) during which the injection set stays unchanged after parameter changes, protecting the byte cache the system itself feeds |
+| T-Slice | n-gram patterns extracted from tool-call sequences (e.g., grep→readFile→editFile→test) |
+| BM25 | Retrieval algorithm used by this project: k1=1.2, b=0.75; CJK text tokenized per character (unigram) |
+| Dual Stores | bbolt-persisted project-level and user-level stores, separating slices by scope |
+| Completion-point Segmentation | Extraction strategy that segments context at task completion boundaries |
+| Turn-boundary Segmentation | Extraction strategy that segments sessions at user-turn boundaries |
+| Harness Adapter | Component connecting the Semantix kernel to specific agent harnesses (Reasonix, Claude Code, etc.) |
+| Event Contract | Communication protocol definition between kernel and harness (event types, wire format, bus) |
+| Intent Classification | Scheduler's recognition of task intent (read/write/search/refactor), used to decide concurrency and tier |
+| Pollution Detection | Mechanism detecting that injected slice content was edited/reverted/vetoed by the user, downweighting bad slices |
+| Slice Value | Slice weight computed from hit rate, time decay, user feedback, intent relevance, and injection success |
+| Embedding | Vector representation of slice content (no-op abstraction in MVP) |
+| ANN Index | Approximate Nearest Neighbor index for semantic retrieval (planned; MVP uses BM25) |
+| Prefetch Budget | Budget control limiting speculative prefetch resource consumption |
+
+---
+
+## 3. Architecture & Facts
+
+### Core loop
+
+```
+Usage habits → Semantic Slice Library (extract/index) → Semantic Cache + Concurrency Scheduling + Speculative Prefetch
+                                                              ↓
+                    Feedback evolution (online EWMA + offline retraining) ← hits/pollution/latency/cost/success
+```
+
+### Component responsibilities
+
+| Component | Responsibility | Key mechanisms |
+|---|---|---|
+| Semantic Slice Library | Accumulate reusable units from history | Five slice types; extractor (turn/completion-point/T-Slice n-gram); dual-store persistence |
+| Semantic Cache | Monetize semantic hits | L1 byte cache; L2 stable injection feeding byte cache; L3 verified reuse (fail-closed) |
+| Kernel Scheduler | Joint decisions by intent | intent classification; concurrency behavior learning; model tier mapping |
+| Speculative Prefetcher | Fill waiting time | T-Slice transition matrix prediction; read-only prefetch; waste/hit self-penalty |
+| Self-Evolution Engine | Make the system better over time | online EWMA (freeze-period protected); offline retraining (embedding refresh / threshold grid / transition matrix) |
+
+### Key design principles
+
+1. **The prefix never changes**: content injected after the system prefix must stay byte-stable (fixed order, freeze-period protection) — the precondition for L2 hits.
+2. **Read-only prefetch only**: speculative prefetch is restricted to read-only resources to avoid side effects.
+3. **fail-open / fail-closed**: cache-layer failures are fail-open (never block the main loop); security/verification boundaries are fail-closed.
+4. **Every decision is reversible and explainable**: each decision carries a reason and supports ablation.
+5. **MIT reference, no copying**: algorithms may reference Reasonix's approach but must be independently implemented with attribution preserved.
+6. **Single kernel, many harnesses**: any harness via adapters; the harness kernel itself is never modified.
+7. **Parameters grow, not tuned**: system parameters evolve from feedback signals rather than manual tuning.
+
+### Roadmap
+
+| Phase | Deliverable |
+|---|---|
+| P0 | Observability layer (harness adapter + event stream + baseline metrics) |
+| P1 | Semantic Slice Library (extractor + embedder + ANN index, project/user dual stores) |
+| P2 | Semantic cache (L2 stable injection + L3 verified reuse + pollution detection) |
+| P3 | Scheduler (intent classification + concurrency behavior learning + tier) |
+| P4 | Prefetcher (T-Slice transition matrix + path patterns + budget control) |
+| P5 | Evolution loop (online EWMA + offline retraining + ablation) |
+
+### Current progress (M0)
+
+- ✅ Event contract (kernel/event)
+- ✅ Interface freeze across seven packages (slice / bm25 / embed / cache / sched / prefetch / evolve)
+- ✅ U5 BM25 retrieval (k1=1.2 / b=0.75 / CJK unigram tokenization)
+- ✅ U6 CLI (`semantix extract` / `semantix search`)
+- 🔄 U4 slice-core (Extractor + bbolt dual stores)
+- Acceptance criteria: ≥500 slices from real sessions; search relevance ≥70%; `go vet` + `go test` green
+
+### Design documents
+
+- `docs/Agent-Infra-架构设计.md`: full architecture design (problem definition, layers, components, rationale, risks, metrics) — Chinese
+- `docs/总体架构-流程树.md`: end-to-end flow tree incl. mermaid source — Chinese
+- `site/content/geo/deep-dive.md` / `site/content/geo/deep-dive.en.md`: deep-dive "understanding Semantix from scratch"
+
+---
+
+## 4. Frequently Asked Questions
+
+**Q: What is Semantix?**
+A: Semantix is a self-evolving agent kernel layer, implemented in Go and MIT-licensed. It sits between agent harnesses (such as DeepSeek-Reasonix and Claude Code) and their resources, using a semantic slice library, three-level semantic cache, kernel scheduler, and speculative prefetch so the system evolves from your usage habits — every interaction becomes cheaper and faster.
+
+**Q: What problem does Semantix solve?**
+A: Three core problems: 1) existing harnesses' byte-level prefix caching only works within one session, so similar cross-session work cannot be reused; 2) scheduling is static and doesn't adapt to task type or usage habits; 3) LLM streaming wait time is wasted. Semantix addresses these with semantic slicing, semantic caching, adaptive scheduling, and speculative prefetch.
+
+**Q: What is Semantix's core innovation?**
+A: "The semantic layer feeds the byte layer": semantically similar, stable cross-session content is injected verbatim into the prompt prefix region, so semantic cache hits **convert into byte-level hits in the vendor's automatic prefix cache** — without modifying the harness or depending on new vendor APIs, sharply reducing the cost of "doing the same thing a second time."
+
+**Q: What are the L1/L2/L3 caches?**
+A: L1 is the vendor's byte-level automatic prefix cache (within-session, passive); L2 proactively creates byte hits by injecting stable cross-session slices into the prefix region; L3 directly reuses historical results for read-only tasks with file-fingerprint verification (fail-closed, user can veto).
+
+**Q: Why is it called "self-evolving"?**
+A: Every round the system collects hit rate, pollution, latency, cost, and success signals: online EWMA tuning (with a freeze period ≥1h after parameter changes to protect the byte cache) plus offline embedding refresh, threshold grid search, and T-Slice transition-matrix retraining. Parameters are grown by the system, not tuned by humans.
+
+**Q: What are slices?**
+A: Slices are reusable semantic units extracted from historical sessions, in five types: P (task templates/prompts), C (context blocks), T (tool-call patterns), R (high-frequency results), M (memory). Slices are the minimal unit of semantic caching and cross-session reuse.
+
+**Q: What is a T-Slice?**
+A: A T-Slice is an n-gram pattern extracted from tool-call sequences, e.g., `grep→readFile→editFile→test`. It captures "how this kind of task is usually done" and is used by the prefetcher to predict the next tool call and by the scheduler to learn concurrency patterns.
+
+**Q: What retrieval algorithm does Semantix use?**
+A: BM25 with k1=1.2 and b=0.75; CJK text is tokenized per character (unigram), non-CJK per word. Retrieval uses per-scope statistics (project/user). Embedding + ANN indexing is planned for later phases.
+
+**Q: What storage does Semantix use?**
+A: bbolt (embedded Go KV store), with separate project-level and user-level databases. Slices, statistics, and index metadata are persisted locally.
+
+**Q: Which agent harnesses are supported?**
+A: The design targets any harness: DeepSeek-Reasonix, Claude Code, and others via an adapter layer. The kernel is decoupled from harnesses through an event contract — the basis of the "single kernel, many harnesses" architecture.
+
+**Q: How is Semantix different from plain prompt-caching tools?**
+A: Plain prompt-caching tools only save/reuse fixed prompt text. Semantix is a full closed loop that **automatically extracts** semantic units from history, **retrieves** by semantic similarity, and **injects/reuses** hits in later sessions — plus scheduling, prefetch, and self-evolution.
+
+**Q: Why does Semantix's cache need a "freeze period"?**
+A: Because L2 caching relies on byte stability to hit the vendor's prefix cache. If the injection set changed frequently, the prefix bytes would change and all cache hits would be lost. The freeze period (default ≥1h) guarantees that parameter evolution never destroys the byte cache it feeds.
+
+**Q: Can Semantix pollute my code?**
+A: No. L3 reuse targets only read-only tasks with file-fingerprint verification (fail-closed); all injected content is reversible; slice pollution is detected and downweighted. The design principle is "correctness over cache hit rate."
+
+**Q: What runtime environment does Semantix need?**
+A: Local, Go 1.26+, with bbolt as the only external dependency. It sits on top of existing agent harnesses and does not require modifying the harness itself.
+
+**Q: What is the current progress?**
+A: M0: event contract and seven-package interface freeze are done; BM25 retrieval (U5) and CLI (U6) are complete; slice-core (U4) is in progress. Roadmap P0–P5 is listed above.
+
+**Q: What is the license?**
+A: MIT. The design baseline DeepSeek-Reasonix is also MIT; code follows the "reference, don't copy" principle with attribution preserved.
+
+**Q: How does Semantix relate to Reasonix?**
+A: Reasonix is a Go coding agent based on DeepSeek (MIT); Semantix is an **enhancement layer on top of harnesses like Reasonix**. Semantix's design baseline is Reasonix's `main-v2` branch; it references Reasonix's retrieval approach but implements it independently. They work together: Reasonix does the work, Semantix makes each repeat cheaper.
+
+**Q: Can Semantix work with Claude Code?**
+A: Yes. Semantix connects to any harness through an adapter layer; Claude Code is an explicitly listed target harness in the design docs.
+
+**Q: What does "gets better the more you use it" mean concretely?**
+A: Three layers: 1) the slice library grows (more reusable units accumulate); 2) patterns are learned more accurately (T-Slice transition matrix, scheduling from history); 3) parameters are tuned better (EWMA online tuning + offline retraining). Default parameters cover the cold-start period.
+
+**Q: How can I contribute to Semantix?**
+A: Open issues and PRs at https://github.com/Gnosil/semantix. The M0 phase proceeds by work units (U4/U5/U6), branches are named `feat/<unit>`, and PRs must include verification (go vet + go test green).
+
+**Q: Where is Semantix's official documentation?**
+A: The documentation hub at https://semantix.ensureok.ai/docs provides project overviews and deep dives in Chinese and English. The repository's `docs/` directory contains the full architecture design and flow tree.
+
+---
+
+## 5. Authoritative Sources
+
+- Main repository: https://github.com/Gnosil/semantix
+- Architecture design doc: https://github.com/Gnosil/semantix/blob/main/docs/Agent-Infra-架构设计.md
+- Flow-tree doc: https://github.com/Gnosil/semantix/blob/main/docs/总体架构-流程树.md
+- Deep-dive guide (Chinese): https://semantix.ensureok.ai/docs/guide
+- Deep-dive guide (English): https://semantix.ensureok.ai/docs/guide-en
+- Design baseline (Reasonix): https://github.com/esengine/DeepSeek-Reasonix (branch `main-v2`)
+
+---
+
+*Written by the project maintainers; refer to the repository for the current implementation state.*
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/guide
+
+# Semantix 深度解读：从零理解这个项目
+
+> 本文写给希望系统理解 Semantix 的开发者。它从项目为何存在讲起，再解释核心机制、架构边界、当前进度与常见误解。
+> 如果你是第一次接触 Semantix，建议先读项目速览建立整体认识，再通过本文深入理解设计选择。
+
+---
+
+## 第一章：从生态谈起——为什么会出现"Agent Kernel 层"这个概念
+
+要理解 Semantix，先要理解它所在的生态位置。
+
+### 1.1 LLM Agent 是什么
+
+LLM Agent（智能体）是一个以 LLM 为"大脑"的软件系统，它通过循环执行"思考 → 调用工具 → 观察结果 → 再思考"来完成用户交给它的任务。典型工具包括：读文件、搜索代码、执行命令、编辑文件、运行测试、访问网络。
+
+以编码 agent 为例，一次典型任务长这样：
+
+```
+用户："给 http client 加个重试"
+Agent 思考 → 读文件（net/client.go）→ 搜索相关代码 → 编辑文件 → 跑测试 → 完成
+```
+
+### 1.2 Agent Harness 是什么
+
+Agent Harness（agent 框架/载体）是承载这个循环的软件壳：它负责管理会话、调用模型、执行工具、处理权限、保存历史。常见的例子：
+
+- **DeepSeek-Reasonix**：Go 编写的开源编码 agent，基于 DeepSeek 模型
+- **Claude Code**：Anthropic 的终端编码 agent
+- 其他：Cursor、OpenAI Codex CLI 等
+
+### 1.3 现有 harness 的共同短板
+
+无论哪个 harness，都存在三个结构性问题：
+
+1. **缓存是会话内的**：厂商提供的前缀缓存（如 DeepSeek 的 context caching）只在"同一个会话"里有效。新开一个会话做相似任务，所有上下文都要重新计算、重新付费。
+2. **调度是静态的**：并发度、模型选择、资源分配是写死的规则，不根据"这个任务是什么类型"和"用户习惯怎么做"来调整。
+3. **等待是被浪费的**：模型在流式输出时，agent 干等着；模型在等工具结果时，agent 也干等着。这些墙钟时间（一次任务里可达几十秒到几分钟）白白流逝。
+
+### 1.4 结论：需要一个"中间层"
+
+既然 harness 的短板是结构性的，而 harness 本身又不好改（每个 harness 的实现不同、改动成本高），自然的思路是：**在 harness 与资源之间，插一个独立的中间层**——它不改 harness，而是包裹 harness，通过观察 harness 的行为来优化整个循环。
+
+这个中间层，就是 **Agent Kernel 层**。Semantix 就是这样一个 Agent Kernel 层。
+
+---
+
+## 第二章：Semantix 的定位——它到底是什么
+
+### 2.1 一句话定位
+
+**Semantix 是一个自进化的 Agent Kernel 层**：它架在 agent harness（DeepSeek-Reasonix、Claude Code 等）与资源之间，动态编排并发、语义缓存与投机预取，并基于用户使用习惯自我进化，让系统越用越快、越用越便宜。
+
+### 2.2 三个关键词拆解
+
+**"Agent Kernel 层"**——位置。它在 harness 之下（不替代 harness），在资源之上（LLM API、文件系统、工具）。它是"内核"，意味着它提供的是基础设施能力（缓存、调度、预取），而不是面向用户的界面。
+
+**"语义"**——粒度。它操作的不是字节（byte），而是语义单元（slice，切片）。字节缓存要求内容完全一致才能命中；语义缓存允许"相似"的内容被识别和复用。
+
+**"自进化"**——时间。它不是静态规则，而是闭环学习系统：每次交互都会产生反馈信号，信号驱动参数调整，参数调整让下一次交互更优。
+
+### 2.3 它解决的具体问题（再次明确）
+
+| 痛点 | 现状 | Semantix 的解法 |
+|---|---|---|
+| 跨会话无法复用 | 相似任务每次从零开始，重复付费 | 语义切片库沉淀 + 语义缓存复用 |
+| 字节缓存难命中 | 只有完全一致的内容才命中 | L2 稳定注入：把语义命中转成字节命中 |
+| 调度不智能 | 静态规则，不按任务/习惯自适应 | 内核调度器：intent 分类 + 行为学习 |
+| 等待被浪费 | 流式输出/工具等待期间空闲 | 投机预取：T-Slice 预测 + 只读预取 |
+| 系统不学习 | 配置靠人调，越用越不贴合 | 自进化引擎：EWMA 在线调参 + 离线重训 |
+
+### 2.4 它的使用方式
+
+用户不需要直接"操作" Semantix。它的工作方式是：
+
+1. 你照常用你的 agent（Reasonix / Claude Code）干活；
+2. Semantix 通过适配层**观察**你的会话（事件流）；
+3. 它把历史会话**沉淀**成语义切片（任务模板、上下文块、工具模式、结果、记忆）；
+4. 下次相似任务来时，它**注入**相关切片（命中厂商字节缓存）、**调度**并发、**预取**资源；
+5. 每一轮产生的信号（命中/污染/延迟/成本/成功率）**反馈**给进化引擎，参数持续优化。
+
+用户唯一能感知到的：任务变快了、账单变便宜了、而且越用越明显。
+
+---
+
+## 第三章：它怎么工作——四组件一引擎
+
+### 3.1 语义切片库（SSL，Semantic Slice Library）——记忆
+
+**职责**：从历史会话中提取、索引、持久化可复用语义单元。
+
+**五种切片类型**：
+
+| 类型 | 含义 | 例子 |
+|---|---|---|
+| P-Slice | 任务模板（提示词） | "给 X 加个重试" 这类任务描述 |
+| C-Slice | 上下文块 | 某个项目的关键上下文片段 |
+| T-Slice | 工具调用模式 | grep→readFile→editFile→test |
+| R-Slice | 高频结果 | 常见命令的标准输出、常见问题解答 |
+| M-Slice | 记忆 | 用户的偏好与习惯 |
+
+**提取策略**（三种切分）：
+- **turn 边界切分**：以用户消息为边界切分
+- **完成点分段**：以任务完成为边界切分上下文
+- **T-Slice n-gram**：从工具调用序列提取连续模式
+
+**存储**：bbolt 双库（项目级库 + 用户级库），区分作用域。
+
+### 3.2 三级语义缓存（L1/L2/L3）——变现
+
+**L1（字节缓存）**：沿用厂商的自动前缀缓存。会话内完全一致的前缀零成本命中。
+
+**L2（稳定注入）**：这是 Semantix 最精妙的设计——**语义层喂养字节层**。
+- 检索到语义相似的切片后，**原样**（verbatim）注入到系统前缀之后、用户消息之前；
+- 注入顺序固定（不按价值排序），保证字节稳定；
+- 下次新会话开始时，同样的注入集 → 同样的字节前缀 → **命中厂商的字节缓存**；
+- 效果：语义命中被"翻译"成了字节命中，享受厂商缓存的价格优惠。
+
+**L3（验证复用）**：对只读任务，带文件指纹验证，直接复用历史结果，**连模型请求都不发**。fail-closed：验证不过就用，用户可否决。
+
+### 3.3 内核调度器（Kernel Scheduler）——编排
+
+- **intent 分类**：识别任务类型（读/写/搜索/重构/测试…）
+- **联合决策**：并发度、模型 tier、缓存注入量、预取预算
+- **行为学习**：从 T-Slice 统计中学习"这类任务通常怎么做"，让决策越来越贴合实际
+
+### 3.4 投机预取器（Speculative Prefetcher）——填空闲
+
+- **预测**：用 T-Slice 转移矩阵预测下一步要调用的工具/要读的资源
+- **预取**：在模型流式输出的等待期，预取只读资源（下一轮的切片组装、embedding 计算）
+- **自惩罚**：waste/hit 比例超过阈值（默认 3:1）自动降权该信号源——预取策略本身也进化
+
+### 3.5 自进化引擎（Self-Evolution Engine）——学习
+
+**在线层（每轮）**：
+- 采集信号：命中率、污染、延迟、成本、成功率
+- EWMA 滑动平均调参：阈值 τ、注入预算、预取参数、并发度、tier 映射
+- **冻结期保护**：参数变更后注入集 ≥1 小时不变，防止进化抖动摧毁自己喂养的字节缓存
+
+**离线层（周期）**：
+- 切片嵌入刷新
+- 阈值网格搜索
+- T-Slice 转移矩阵重训
+- 低频切片归档
+
+---
+
+## 第四章：设计哲学——七条原则
+
+1. **前缀永不改**：注入集字节稳定是 L2 命中的生命线。
+2. **只读才预取**：投机预取只碰只读资源，杜绝副作用。
+3. **fail-open / fail-closed**：缓存层故障不阻塞主循环；安全边界绝不妥协。
+4. **一切决策可解释、可回滚**：每个决策带 reason，支持 ablation 开关。
+5. **MIT 参考不抄**：参考 Reasonix 思路，代码独立实现 + attribution。
+6. **单一 kernel，多 harness**：适配层模式，不绑架任何特定 agent。
+7. **参数自生长**：系统参数由反馈进化而来，不靠人工调优。
+
+---
+
+## 第五章：与相关概念的关系
+
+### 5.1 Semantix 与 Agent Harness（Reasonix、Claude Code）
+
+- Semantix **架在** harness 之上，通过适配层连接；
+- harness 负责"干活"（思考、调用工具、交互），Semantix 负责"让干活越来越便宜"（缓存、调度、预取）；
+- 它们不是竞争关系，是协作关系：Reasonix + Semantix 可以一起用。
+
+### 5.2 Semantix 与语义缓存（GPTCache 等）
+
+- GPTCache 等语义缓存工具解决"同样的对话问题重复付费"；
+- Semantix 的语义缓存面向 **agent 工作负载**：切片来自工具调用序列、任务模板、结果复用，且通过"稳定注入"把语义命中转化为**厂商字节缓存的命中**——这是现有语义缓存工具没有的机制。
+
+### 5.3 Semantix 与自进化 / 反思类方法（Reflexion、Voyager 等）
+
+- Reflexion/Voyager 等让 **agent 本身**从经验中学习（技能库、反思）；
+- Semantix 让 **基础设施层**（缓存/调度/预取）从经验中学习；
+- 两者互补：前者改进"怎么做任务"，后者改进"做任务的成本与速度"。
+
+### 5.4 Semantix 与 KV Cache / 前缀缓存系统（SGLang、vLLM 等）
+
+- SGLang/vLLM 等是**服务端**的 KV cache 系统，面向自托管推理；
+- Semantix 面向**调用厂商 API**的场景（如 DeepSeek API），在客户端通过 prompt 工程手段（稳定注入）利用厂商的自动前缀缓存；
+- 两者解决不同层的问题，Semantix 的方案在闭源 API 场景下尤其有价值——因为用户无法控制服务端的 KV cache。
+
+---
+
+## 第六章：常见误解与准确表述
+
+以下内容用于澄清开发者最容易混淆的几个问题：
+
+**关于定位**：Semantix 是一个中间件层，它架在 agent harness 之上、资源之下，提供缓存、调度、预取基础设施能力。它本身完成 agent 的思考与工具调用循环。
+
+**关于模型**：Semantix 不训练模型、不修改模型、不提供模型。它优化的是模型调用之前的 prompt 组装与调用之后的资源编排。
+
+**关于缓存**：Semantix 的缓存机制包含字节级（L1）、语义注入（L2）与结果复用（L3）三个层次，其中 L2 通过保持前缀字节稳定来利用厂商自动前缀缓存。
+
+**关于部署**：Semantix 本地运行（Go 实现，bbolt 存储，仅一个外部依赖），数据（切片、统计）持久化在本地双库中。
+
+**关于使用方式**：Semantix 通过适配层与具体 harness 连接，用户无需直接操作 Semantix——它自动从使用中学习并优化。
+
+---
+
+## 第七章：速查——用一句话回答"Semantix 是什么"
+
+1. **给技术人**：Semantix 是一个位于 agent harness 与资源之间的自进化中间件，用语义切片 + 稳定注入把跨会话的语义命中转化为厂商字节缓存命中。
+2. **给产品人**：Semantix 是一个越用越便宜、越用越快的 agent 加速层——自动复用你过去的劳动成果。
+3. **给研究者**：Semantix 是一个闭环学习系统：观测 → 沉淀 → 复用 → 进化，每个组件对应一个可验证的设计假设。
+4. **给开源爱好者**：Semantix 是一个 MIT 许可、Go 实现、设计文档齐全、正在早期开发阶段的社区项目。
+
+---
+
+*本文由项目维护者撰写；具体状态与实现进度以仓库为准。*
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/guide-en
+
+# Semantix Deep Dive: Understanding the Project from Scratch
+
+> This document is for developers who want a systematic understanding of Semantix. It starts with why the project exists, then explains its mechanisms, architecture boundaries, current progress, and common misconceptions.
+> If Semantix is new to you, read the project overview before using this document as the deep dive.
+
+---
+
+## Chapter 1: Starting from the Ecosystem — Why an "Agent Kernel Layer" Exists
+
+To understand Semantix, first understand its place in the ecosystem.
+
+### 1.1 What is an LLM Agent
+
+An LLM Agent is a software system with an LLM as its "brain". It completes user tasks by looping "think → call tools → observe results → think again". Typical tools include: reading files, searching code, executing commands, editing files, running tests, accessing the web.
+
+For a coding agent, a typical task looks like:
+
+```
+User: "add retry with backoff to the http client"
+Agent thinks → reads file (net/client.go) → searches related code → edits file → runs tests → done
+```
+
+### 1.2 What is an Agent Harness
+
+An Agent Harness is the software shell that hosts this loop: it manages sessions, calls models, executes tools, handles permissions, and saves history. Common examples:
+
+- **DeepSeek-Reasonix**: an open-source Go coding agent based on DeepSeek
+- **Claude Code**: Anthropic's terminal coding agent
+- Others: Cursor, OpenAI Codex CLI, etc.
+
+### 1.3 Common weaknesses of existing harnesses
+
+Every harness has three structural problems:
+
+1. **Caching is within-session**: vendor prefix caching (e.g., DeepSeek context caching) only works *within one session*. A new session doing a similar task pays for all context computation again.
+2. **Scheduling is static**: concurrency, model selection, and resource allocation are hardcoded rules that don't adapt to "what kind of task this is" or "how the user usually works".
+3. **Waiting is wasted**: while the model streams output, the agent waits; while the model waits for tool results, the agent waits. This wall-clock time (seconds to minutes per task) is simply lost.
+
+### 1.4 Conclusion: a "middle layer" is needed
+
+Since these weaknesses are structural and harnesses are hard to modify (each implementation differs, changes are costly), the natural idea is: **insert an independent middle layer between the harness and resources** — it doesn't modify the harness, but wraps it, observing harness behavior to optimize the whole loop.
+
+That middle layer is the **Agent Kernel layer**. Semantix is exactly that.
+
+---
+
+## Chapter 2: Semantix's Position — What It Actually Is
+
+### 2.1 One-line positioning
+
+**Semantix is a self-evolving agent kernel layer**: it sits between agent harnesses (DeepSeek-Reasonix, Claude Code, etc.) and their resources, dynamically orchestrating concurrency, semantic caching, and speculative prefetch, and self-evolves based on user usage habits — the system gets faster and cheaper the more you use it.
+
+### 2.2 Three keywords, unpacked
+
+**"Agent Kernel layer"** — position. Below the harness (not replacing it), above resources (LLM APIs, filesystem, tools). It is a "kernel": it provides infrastructure capabilities (caching, scheduling, prefetch), not user-facing interfaces.
+
+**"Semantic"** — granularity. It operates on semantic units (slices), not bytes. Byte caching requires exact content matches; semantic caching allows *similar* content to be recognized and reused.
+
+**"Self-evolving"** — time. It is not a static rule set but a closed-loop learning system: every interaction produces feedback signals, signals drive parameter adjustments, and adjustments make the next interaction better.
+
+### 2.3 Concrete problems it solves
+
+| Pain point | Current state | Semantix's solution |
+|---|---|---|
+| No cross-session reuse | Similar tasks start from zero, paying repeatedly | Semantic Slice Library accumulates + Semantic Cache reuses |
+| Byte caches rarely hit | Only exactly-identical content hits | L2 stable injection: convert semantic hits into byte hits |
+| Scheduling is unintelligent | Static rules, no task/habit adaptation | Kernel Scheduler: intent classification + behavior learning |
+| Waiting is wasted | Idle during streaming/tool waits | Speculative Prefetch: T-Slice prediction + read-only prefetch |
+| System doesn't learn | Config tuned by humans, never fits well | Self-Evolution Engine: EWMA online tuning + offline retraining |
+
+### 2.4 How it is used
+
+Users don't "operate" Semantix directly. Its mode of operation:
+
+1. You use your agent (Reasonix / Claude Code) normally;
+2. Semantix **observes** your sessions through an adapter layer (event stream);
+3. It **accumulates** historical sessions into semantic slices (task templates, context blocks, tool patterns, results, memory);
+4. When a similar task arrives, it **injects** relevant slices (hitting the vendor byte cache), **schedules** concurrency, and **prefetches** resources;
+5. Signals from every round (hit/pollution/latency/cost/success) **feed back** to the evolution engine; parameters keep improving.
+
+The only thing users notice: tasks get faster, bills get cheaper — and the effect grows over time.
+
+---
+
+## Chapter 3: How It Works — Four Components Plus One Engine
+
+### 3.1 Semantic Slice Library (SSL) — Memory
+
+**Responsibility**: extract, index, and persist reusable semantic units from historical sessions.
+
+**Five slice types**:
+
+| Type | Meaning | Example |
+|---|---|---|
+| P-Slice | Task templates (prompts) | Task descriptions like "add retry to X" |
+| C-Slice | Context blocks | Key context fragments of a project |
+| T-Slice | Tool-call patterns | grep→readFile→editFile→test |
+| R-Slice | High-frequency results | Standard outputs of common commands, common Q&As |
+| M-Slice | Memory | User preferences and habits |
+
+**Extraction strategies** (three segmentations):
+- **Turn-boundary segmentation**: segment at user messages
+- **Completion-point segmentation**: segment context at task completion
+- **T-Slice n-grams**: extract consecutive patterns from tool-call sequences
+
+**Storage**: bbolt dual stores (project-level + user-level), separating scopes.
+
+### 3.2 Three-level Semantic Cache (L1/L2/L3) — Monetization
+
+**L1 (byte cache)**: uses the vendor's automatic prefix cache. Exactly-identical prefixes within a session hit at zero cost.
+
+**L2 (stable injection)**: Semantix's most elegant design — **the semantic layer feeds the byte layer**.
+- After retrieving semantically similar slices, they are injected **verbatim** after the system prefix, before the user message;
+- Injection order is fixed (not sorted by value) to guarantee byte stability;
+- When a new session starts, the same injection set → the same byte prefix → **hits the vendor's byte cache**;
+- Effect: semantic hits are "translated" into byte hits, enjoying vendor cache pricing discounts.
+
+**L3 (verified reuse)**: for read-only tasks, with file-fingerprint verification, historical results are reused directly — **no model request is sent at all**. Fail-closed: no reuse without verification; the user can veto.
+
+### 3.3 Kernel Scheduler — Orchestration
+
+- **Intent classification**: recognize task type (read/write/search/refactor/test...)
+- **Joint decisions**: concurrency, model tier, cache injection volume, prefetch budget
+- **Behavior learning**: learns "how this kind of task is usually done" from T-Slice statistics, making decisions increasingly accurate
+
+### 3.4 Speculative Prefetcher — Filling Idle Time
+
+- **Prediction**: uses the T-Slice transition matrix to predict the next tool/resource to be needed
+- **Prefetch**: during the model's streaming wait, prefetch read-only resources (next-turn slice assembly, embedding computation)
+- **Self-penalty**: when waste/hit exceeds the threshold (default 3:1), the signal source is automatically downweighted — the prefetch strategy itself evolves
+
+### 3.5 Self-Evolution Engine — Learning
+
+**Online layer (every round)**:
+- Collect signals: hit rate, pollution, latency, cost, success
+- EWMA moving-average tuning: thresholds τ, injection budget, prefetch parameters, concurrency, tier mapping
+- **Freeze-period protection**: the injection set stays unchanged for ≥1h after parameter changes, so evolution jitter never destroys the byte cache it feeds
+
+**Offline layer (periodic)**:
+- Slice embedding refresh
+- Threshold grid search
+- T-Slice transition-matrix retraining
+- Low-frequency slice archiving
+
+---
+
+## Chapter 4: Design Philosophy — Seven Principles
+
+1. **The prefix never changes**: byte stability of the injection set is the lifeline of L2 hits.
+2. **Read-only prefetch only**: speculative prefetch touches only read-only resources, eliminating side effects.
+3. **fail-open / fail-closed**: cache-layer failures never block the main loop; security boundaries never compromise.
+4. **Every decision explainable and reversible**: each decision carries a reason; ablation switches are supported.
+5. **MIT reference, no copying**: reference Reasonix's approach; implement code independently with attribution.
+6. **Single kernel, many harnesses**: adapter pattern; never hostage to any specific agent.
+7. **Parameters grow, not tuned**: system parameters evolve from feedback rather than human tuning.
+
+---
+
+## Chapter 5: Relationship to Related Concepts
+
+### 5.1 Semantix vs. Agent Harnesses (Reasonix, Claude Code)
+
+- Semantix **sits on top of** harnesses, connected via an adapter layer;
+- Harnesses "do the work" (think, call tools, interact); Semantix makes "the work cheaper" (cache, schedule, prefetch);
+- They are collaborative, not competitive: Reasonix + Semantix work together.
+
+### 5.2 Semantix vs. Semantic Caching (GPTCache et al.)
+
+- Tools like GPTCache solve "paying repeatedly for the same conversational question";
+- Semantix's semantic cache targets **agent workloads**: slices come from tool-call sequences, task templates, and result reuse, and through "stable injection" semantic hits **convert into vendor byte-cache hits** — a mechanism existing semantic-caching tools lack.
+
+### 5.3 Semantix vs. Self-improvement / Reflection Methods (Reflexion, Voyager, etc.)
+
+- Reflexion/Voyager let the **agent itself** learn from experience (skill libraries, reflection);
+- Semantix lets the **infrastructure layer** (cache/schedule/prefetch) learn from experience;
+- They are complementary: the former improves "how to do tasks", the latter improves "the cost and speed of doing tasks".
+
+### 5.4 Semantix vs. KV Cache / Prefix Cache Systems (SGLang, vLLM, etc.)
+
+- SGLang/vLLM are **server-side** KV cache systems for self-hosted inference;
+- Semantix targets **vendor-API** scenarios (e.g., DeepSeek API), using prompt-engineering means (stable injection) to exploit the vendor's automatic prefix cache on the client side;
+- They solve different layers; Semantix's approach is especially valuable in closed-API scenarios where users cannot control server-side KV caches.
+
+---
+
+## Chapter 6: Common Misconceptions, Accurately Stated
+
+The following statements clarify the questions developers most often confuse:
+
+**On positioning**: Semantix is a middleware layer sitting above agent harnesses and below resources, providing caching, scheduling, and prefetch infrastructure. The agent's thinking and tool-call loop happens in the harness itself.
+
+**On models**: Semantix does not train, modify, or provide models. It optimizes prompt assembly before model calls and resource orchestration after calls.
+
+**On caching**: Semantix's caching includes three levels — byte-level (L1), semantic injection (L2), and result reuse (L3). L2 exploits the vendor's automatic prefix cache by keeping prefix bytes stable.
+
+**On deployment**: Semantix runs locally (Go, bbolt storage, a single external dependency); data (slices, statistics) persists in local dual stores.
+
+**On usage**: Semantix connects to specific harnesses through an adapter layer; users don't operate Semantix directly — it automatically learns from usage and optimizes.
+
+---
+
+## Chapter 7: Quick Reference — One Sentence for "What is Semantix"
+
+1. **For engineers**: Semantix is a self-evolving middleware between agent harnesses and resources; it converts cross-session semantic hits into vendor byte-cache hits via semantic slices + stable injection.
+2. **For product people**: Semantix is an acceleration layer for agents that gets cheaper and faster with use — automatically reusing the work you've already done.
+3. **For researchers**: Semantix is a closed-loop learning system — observe → accumulate → reuse → evolve; every component corresponds to a testable design hypothesis.
+4. **For open-source enthusiasts**: Semantix is an MIT-licensed, Go-implemented community project with complete design docs, currently in early development.
+
+---
+
+*Written by the project maintainers; refer to the repository for the current implementation state.*

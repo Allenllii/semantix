@@ -78,6 +78,23 @@ function DocumentLinks({
         </div>
       ))}
 
+      <div>
+        <p className="mb-2 px-3 text-xs font-semibold text-foreground">帮助与参考</p>
+        <Link
+          href="/docs/faq"
+          aria-current={pathname === "/docs/faq" ? "page" : undefined}
+          className={cn(
+            "block rounded-md px-3 py-2.5 text-sm transition-colors",
+            pathname === "/docs/faq"
+              ? "bg-accent/10 font-semibold text-accent"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground",
+          )}
+        >
+          常见问题
+          <span className="mt-0.5 block text-xs font-normal opacity-75">定位、缓存与参与方式</span>
+        </Link>
+      </div>
+
       <div className="border-t border-border pt-5">
         <a
           href="https://github.com/Gnosil/semantix"

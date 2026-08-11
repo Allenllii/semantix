@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { BLOG_GROUPS, listBlogPosts } from "@/lib/blog";
+
+export const metadata: Metadata = {
+  title: "Semantix Documentation | Semantix",
+  description: "Practical guides to reusable semantic slices, cross-session caching, agent tool execution, and framework-neutral memory infrastructure.",
+  alternates: { canonical: "/blog" },
+};
 
 export default function BlogIndexPage() {
   const posts = listBlogPosts();

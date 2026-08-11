@@ -1,5 +1,6 @@
 import Reveal from "@/components/Reveal";
 import ParticleCanvas from "@/components/ParticleCanvas";
+import CopyCode from "@/components/CopyCode";
 import { siteIdentity } from "@/lib/site-identity";
 
 export default function Hero() {
@@ -80,9 +81,11 @@ export default function Hero() {
               <p className="mt-1 text-sm text-muted-foreground">
                 extract / search 切片提取与 BM25 检索
               </p>
-              <pre className="mt-3 overflow-x-auto rounded-md border border-border/60 bg-[oklch(0.976_0.005_165)] p-3 font-mono text-xs text-[oklch(0.45_0.02_260)]">
-                <code>$ go install semantix/cmd/semantix</code>
-              </pre>
+              <CopyCode
+                className="mt-3"
+                code="go install semantix/cmd/semantix"
+                prompt
+              />
             </div>
           </div>
           </div>

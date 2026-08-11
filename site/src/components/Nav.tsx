@@ -9,7 +9,8 @@ const links: NavLink[] = [
   { label: "特性", labelEn: "Features", href: "/#features" },
   { label: "组件", labelEn: "Components", href: "/#components" },
   { label: "路线图", labelEn: "Roadmap", href: "/#roadmap" },
-  { label: "文档", labelEn: "Docs", href: "/blog" },
+  { label: "文档", labelEn: "Docs", href: "/docs" },
+  { label: "博客", labelEn: "Blog", href: "/blog" },
   { label: "社区", labelEn: "Community", href: "/#community" },
   { label: "安装", labelEn: "Install", href: "/#start" },
 ];
@@ -58,12 +59,12 @@ export default function Nav() {
         </Link>
 
         {/* 桌面端中间导航链接（移动端隐藏） */}
-        <nav className="hidden items-center gap-4 md:flex lg:gap-6">
+        <nav className="hidden items-center gap-4 xl:flex 2xl:gap-6">
           {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="shrink-0 whitespace-nowrap text-xs text-muted-foreground transition-colors hover:text-accent lg:text-sm"
+              className="shrink-0 whitespace-nowrap text-xs text-muted-foreground transition-colors hover:text-accent 2xl:text-sm"
             >
               <span className="font-semibold">{link.labelEn}</span> {link.label}
             </Link>
@@ -93,7 +94,7 @@ export default function Nav() {
             aria-label={open ? "关闭菜单" : "打开菜单"}
             aria-expanded={open}
             onClick={() => setOpen((v) => !v)}
-            className="flex size-9 items-center justify-center rounded-md border border-border text-foreground md:hidden"
+            className="flex size-9 items-center justify-center rounded-md border border-border text-foreground xl:hidden"
           >
             <span className="flex flex-col gap-[5px]">
               <span
@@ -122,7 +123,7 @@ export default function Nav() {
       {/* 移动端全屏菜单面板 */}
       <div
         className={cn(
-          "absolute inset-x-0 top-16 z-40 h-[calc(100vh-4rem)] overflow-y-auto bg-white/95 backdrop-blur transition-opacity duration-200 md:hidden",
+          "absolute inset-x-0 top-16 z-40 h-[calc(100vh-4rem)] overflow-y-auto bg-white/95 backdrop-blur transition-opacity duration-200 xl:hidden",
           open ? "opacity-100" : "pointer-events-none opacity-0",
         )}
       >
