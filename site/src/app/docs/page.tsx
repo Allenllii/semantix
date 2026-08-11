@@ -42,6 +42,9 @@ export default function GeoIndexPage() {
                 {document.title}
               </h2>
               <p className="mt-3 leading-7 text-muted-foreground">{document.description}</p>
+              <p className="mt-4 font-mono text-xs text-muted-foreground">
+                Last updated · <time dateTime={document.lastUpdated}>{document.lastUpdated}</time>
+              </p>
               <span className="mt-8 inline-flex text-sm font-semibold text-foreground transition-colors group-hover:text-accent">
                 阅读文档 <span aria-hidden="true">→</span>
               </span>

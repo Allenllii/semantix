@@ -1,5 +1,7 @@
 package slice
 
+import "semantix/kernel/fingerprint"
+
 // SliceType classifies a semantic slice (see architecture spec §3.1).
 type SliceType int
 
@@ -73,6 +75,9 @@ type SliceMeta struct {
 	TaskType      string
 	Language      string
 	ProjectSlug   string
+	// Deps captures the dependency fingerprint at slice time (path -> sha256,
+	// Issue #8): reuse is gated on these files not having changed.
+	Deps fingerprint.Deps `json:"deps,omitempty"`
 }
 
 // Slice is the core semantic slice value.

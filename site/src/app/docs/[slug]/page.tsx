@@ -42,9 +42,12 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
           <Link href="/docs" className="text-sm font-semibold text-muted-foreground hover:text-accent">
             ← 返回文档
           </Link>
-          <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-muted-foreground">
             <span className="rounded-full bg-muted px-3 py-1">{document.language}</span>
             <span className="rounded-full bg-muted px-3 py-1">{document.depth}</span>
+            <time dateTime={document.lastUpdated} className="rounded-full bg-muted px-3 py-1">
+              Last updated · {document.lastUpdated}
+            </time>
           </div>
         </div>
 

@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"semantix/kernel/fingerprint"
 	"semantix/kernel/slice"
 )
 
@@ -23,6 +25,7 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	project := flags.String("project", "", "project slug")
 	taskType := flags.String("task-type", "", "task type metadata")
 	language := flags.String("language", "", "language metadata")
+	fingerprintPaths := flags.String("fingerprint", "", "comma-separated relative paths to fingerprint (sha256) into each slice's Deps")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -46,12 +49,30 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	if extractor == nil {
 		return errors.New("slice extractor is unavailable; merge the U4 implementation first")
 	}
-	items, err := extractor.Extract(data, slice.SliceMeta{
+	meta := slice.SliceMeta{
 		SourceSession: *session,
 		TaskType:      *taskType,
 		Language:      *language,
 		ProjectSlug:   *project,
-	})
+	}
+	if *fingerprintPaths != "" {
+		var paths []string
+		for _, p := range strings.Split(*fingerprintPaths, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				paths = append(paths, p)
+			}
+		}
+		wd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("getwd: %w", err)
+		}
+		depsMap, err := fingerprint.Capture(wd, paths)
+		if err != nil {
+			return fmt.Errorf("capture fingerprints: %w", err)
+		}
+		meta.Deps = depsMap
+	}
+	items, err := extractor.Extract(data, meta)
 	if err != nil {
 		return fmt.Errorf("extract slices: %w", err)
 	}

@@ -32,13 +32,29 @@
 ## 当前实现边界（诚实声明）
 
 - `kernel/judge` 已落地：RuleGate 三段路由 + Judge 接口 + NoopJudge（无模型时 grey 保守 Reject）。
-- **依赖指纹**（mtime/SHA）尚未接入切片元数据——规则层当前只用 zone 信号；指纹闸是下阶段（切片 Meta 扩展 `DepFingerprints`）的工作。
-- LLM judge 实现（调用 provider 的 Confirm 逻辑 + 上述 rubric prompt）待模型后端接入（H2 后）。
+- **依赖指纹已接入**（`kernel/fingerprint`）：`extract --fingerprint <paths>` 采集 sha256 存入 `SliceMeta.Deps`；`RuleGate.Chain` 对带 Deps 的候选先跑指纹闸（变化 → 硬 Reject，零 LLM 成本）。
+- **waste++ 观测已接入**：`judge.Stats`（Confirmed/RulesReject/Fingerprint/JudgeReject/JudgeApproved），`verify --judge-*` 输出统计行。
+- **LLM judge 已实现**（`kernel/judge/llm.go`，双协议）：用户自选 `openai`（chat completions）或 `anthropic`（Messages API），`--judge-base-url` + `--judge-model` 指向自己的端点/模型，API key 从环境变量 `SEMANTIX_JUDGE_API_KEY` 读取（绝不入库/入参）。
+
+## 模型 judge 配置（用户操作）
+
+```bash
+# OpenAI 协议（OpenAI 兼容端点均可：OpenAI/DeepSeek/Kimi/...）
+export SEMANTIX_JUDGE_API_KEY="sk-..."
+semantix verify --session <dir> --judge-protocol openai \
+  --judge-base-url https://api.openai.com/v1 --judge-model gpt-4o-mini
+
+# Anthropic 协议
+export SEMANTIX_JUDGE_API_KEY="sk-ant-..."
+semantix verify --session <dir> --judge-protocol anthropic \
+  --judge-base-url https://api.anthropic.com/v1 --judge-model claude-sonnet-4-5
+```
 
 ## 验收（Issue #8 checklist）
 
 - [x] 两级接口（RuleGate + Judge）落地，失败保守 Reject
 - [x] 无 judge 时灰色地带保守处理，可观测（reason 输出）
-- [ ] 指纹闸接入切片 Meta（依赖文件 mtime/SHA）
-- [ ] LLM judge 实现 + rubric prompt 入库
-- [ ] 验证收益统计（waste++ 观测）
+- [x] 指纹闸接入切片 Meta（`SliceMeta.Deps`，`extract --fingerprint`）
+- [x] LLM judge 实现（OpenAI/Anthropic 双协议 + env key）+ rubric prompt 入库
+- [x] 验证收益统计（`judge.Stats` waste++ 观测）
+- [ ] 端到端：真实会话 verify + judge 全链路跑通（等真实数据）
