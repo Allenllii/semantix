@@ -55,7 +55,7 @@ def with_memory_middleware(prompt, user_input):
 ## ② 会话提取（写记忆）——LangChain 示例
 
 ```python
-import json, os, re, subprocess, datetime
+import json, os, re, subprocess
 
 def session_to_jsonl(session_id: str, messages: list) -> str:
     """LangChain 消息列表 → semantix 会话 JSONL（每行一个 JSON 对象）。"""
@@ -71,7 +71,7 @@ def session_to_jsonl(session_id: str, messages: list) -> str:
                           "tool_calls": getattr(m, "tool_calls", None) or []})
         elif m.type == "tool":
             lines.append({"role": "tool", "tool_call_id": m.tool_call_id,
-                          "name": m.name, "content": str(m.content)})
+                          "name": m.name, "content": str(m.content or "")})
     # ~ 需显式展开；目录需先创建（0600，与记忆库权限一致）
     sessions_dir = os.path.join(os.path.expanduser("~/.semantix"), "sessions")
     os.makedirs(sessions_dir, mode=0o700, exist_ok=True)
