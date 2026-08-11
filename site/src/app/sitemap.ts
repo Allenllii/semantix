@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { listBlogPosts } from "@/lib/blog";
 import { siteIdentity } from "@/lib/site-identity";
 
 const BASE = siteIdentity.productUrl;
@@ -12,6 +13,13 @@ export const dynamic = "force-static";
 // lastModified 使用站点统一身份配置（site-identity.ts），不随每次构建变化。
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date(siteIdentity.lastUpdated);
+  const blogPosts: MetadataRoute.Sitemap = listBlogPosts().map((post) => ({
+    url: `${BASE}/blog/${post.slug}`,
+    lastModified: new Date(post.updated),
+    changeFrequency: "monthly",
+    priority: 0.7,
+  }));
+
   return [
     { url: `${BASE}/`, lastModified, changeFrequency: "weekly", priority: 1 },
     {
@@ -22,6 +30,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: `${BASE}/docs`,
+      lastModified,
+      changeFrequency: "weekly",
+      priority: 0.9,
+    },
+    {
+      url: `${BASE}/blog`,
       lastModified,
       changeFrequency: "weekly",
       priority: 0.9,
@@ -38,5 +52,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "yearly",
       priority: 0.3,
     },
+    ...blogPosts,
   ];
 }
