@@ -1,6 +1,6 @@
 # Reasonix 单会话 KV Cache 机制研究（2026-08-11）
 
-来源：DeepSeek-Reasonix main-v2 快照（本机 `/Users/song/.reasonix/global-workspace/DeepSeek-Reasonix`）源码级调查，全部结论带 file:line 证据。
+来源：DeepSeek-Reasonix main-v2 快照（fork 仓库 Gnosil/DeepSeek-Reasonix 本地镜像）源码级调查，全部结论带 file:line 证据。
 
 ## 一句话结论
 
@@ -39,9 +39,9 @@ Reasonix 的缓存优化**不是魔法，是一套"前缀字节稳定"工程纪�
 - vendor-aware 缓存 TTL：DeepSeek 24h / DashScope 5m / Anthropic 5m（`internal/config/cache_policy.go:21-45`）
 
 ### ⑥ CI 守卫（把命中率当产品行为）
-- cachehit_e2e 测试：mock 前缀缓存（按字节共同前缀推导），断言率爬过 90%（`cachehit_e2e_test.go:196`）
+- cachehit_e2e 测试：mock 前缀缓存（按字节共同前缀推导），期望率爬过 90%（`cachehit_e2e_test.go:196` 注释 + :222-225 日志观测）；窗口过小 stuck guard 后尾部命中率 ≥85% 为真实断言（`:268`）
 - CompareShape 归因：对比上/本轮 system+tools+内容，输出 miss 原因（`cache_shape.go:74-99`）
-- 缓存敏感路径强制 Cache-impact/Cache-guard 标注；发布级守卫阈值默认 90%（`CONTRIBUTING.md:99-119`）
+- 缓存敏感路径强制 Cache-impact/Cache-guard 标注纪律（`CONTRIBUTING.md:99-119`；发布阈值脚本未见实体，阈值以测试内常量 REASONIX_CACHE_GUARD_THRESHOLD 默认 90 为准，`cachehit_e2e_test.go:379`）
 
 ## 命中率数字口径（重要——防止对外说过头）
 
@@ -50,7 +50,7 @@ Reasonix 的缓存优化**不是魔法，是一套"前缀字节稳定"工程纪�
 | **90%+** | docs/index.html:7 | 官方营销：长会话稳态；输入成本降至 ~1/5 |
 | **~90%** | docs/SPEC.md:884-885 | 27 个 delegate 子运行实测均价（~90% 命中下 ¥0.017/子） |
 | **71%** | benchmarks/README.md:195 | e2e 49 次独立冷会话实测（含首请求必 miss） |
-| **≥90%** | cachehit_e2e_test.go:196 | mock 前缀缓存测试断言 |
+| **≥90%** | cachehit_e2e_test.go:196 | mock 缓存期望（注释+日志，非硬断言）；真实断言 ≥85%（:268） |
 | **≥85%** | cachehit_e2e_test.go:268 | 窗口过小时 stuck guard 保护后下限 |
 | **99%+** | **全仓库无出处**（仅 CSS/SVG 色值与延迟分位数） | 不可引用 |
 
