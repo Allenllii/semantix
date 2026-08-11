@@ -9,6 +9,7 @@ package judge
 import (
 	"context"
 
+	"semantix/kernel/fingerprint"
 	"semantix/kernel/slice"
 	"semantix/kernel/zone"
 )
@@ -33,6 +34,10 @@ type Candidate struct {
 	Scope   slice.Scope
 	Type    slice.SliceType
 	Zone    zone.Zone
+	// Deps carries the slice's dependency fingerprints (Issue #8 stage ①);
+	// RootDir is where they are verified against the live filesystem.
+	Deps    fingerprint.Deps
+	RootDir string
 }
 
 // Judge is the async LLM final-confirmation stage: J(q, s, a) — given the
@@ -51,6 +56,26 @@ type NoopJudge struct{}
 // Confirm implements Judge for NoopJudge.
 func (NoopJudge) Confirm(context.Context, Candidate) (bool, error) { return false, nil }
 
+// Stats accumulates verification observability (waste++ tracking, Issue #8):
+// every rejection is a wasted reuse opportunity to be monitored.
+type Stats struct {
+	Confirmed    int // clear hits + judge-approved
+	RulesReject  int // miss / grey-without-judge
+	Fingerprint  int // dependency fingerprint changed (stage ① gate)
+	JudgeReject  int // judge declined
+	JudgeApproved int
+	NeedJudge    int // routed to judge
+}
+
+func (s *Stats) add(o Stats) {
+	s.Confirmed += o.Confirmed
+	s.RulesReject += o.RulesReject
+	s.Fingerprint += o.Fingerprint
+	s.JudgeReject += o.JudgeReject
+	s.JudgeApproved += o.JudgeApproved
+	s.NeedJudge += o.NeedJudge
+}
+
 // RuleGate is the deterministic zero-cost first stage. With the current
 // metadata (no dependency fingerprints yet), it routes by zone:
 //   - hit  -> Confirm (clearly reusable, no judge cost)
@@ -60,6 +85,8 @@ type RuleGate struct {
 	// Judge, when non-nil, receives grey-zone candidates for final
 	// confirmation. nil means grey is treated as Reject.
 	Judge Judge
+	// Stats, when non-nil, accumulates observability counters.
+	Stats *Stats
 }
 
 // Check applies the rule gate to one candidate and returns the verdict plus
@@ -67,20 +94,36 @@ type RuleGate struct {
 func (g RuleGate) Check(c Candidate) (Verdict, string) {
 	switch c.Zone {
 	case zone.Hit:
+		g.count(Stats{Confirmed: 1})
 		return Confirm, "clear hit: reuse without judge"
 	case zone.Miss:
+		g.count(Stats{RulesReject: 1})
 		return Reject, "clear miss"
 	default: // grey
 		if g.Judge != nil {
+			g.count(Stats{NeedJudge: 1})
 			return NeedJudge, "grey zone: async judge required"
 		}
+		g.count(Stats{RulesReject: 1})
 		return Reject, "grey zone: no judge wired, conservative reject"
 	}
 }
 
-// Chain runs rules then (for grey candidates) the judge, returning the final
-// verdict. grey + judge approval -> Confirm; judge decline -> Reject.
+// Chain runs the fingerprint gate, then rules, then (for grey candidates)
+// the judge, returning the final verdict. A changed dependency fingerprint
+// is a hard reject before any rules/judge cost (Issue #8 stage ①).
 func (g RuleGate) Chain(ctx context.Context, c Candidate) (Verdict, string, error) {
+	if len(c.Deps) > 0 {
+		changed, err := fingerprint.Verify(c.RootDir, c.Deps)
+		if err != nil {
+			g.count(Stats{Fingerprint: 1})
+			return Reject, "fingerprint gate error: conservative reject", nil
+		}
+		if len(changed) > 0 {
+			g.count(Stats{Fingerprint: 1})
+			return Reject, "fingerprint changed: " + changed[0], nil
+		}
+	}
 	v, reason := g.Check(c)
 	if v != NeedJudge {
 		return v, reason, nil
@@ -88,14 +131,24 @@ func (g RuleGate) Chain(ctx context.Context, c Candidate) (Verdict, string, erro
 	if g.Judge == nil {
 		// Keep the Check contract: grey without a judge is a conservative
 		// reject, never an ambiguous NeedJudge.
+		g.count(Stats{RulesReject: 1})
 		return Reject, "grey zone: no judge wired, conservative reject", nil
 	}
 	ok, err := g.Judge.Confirm(ctx, c)
 	if err != nil {
+		g.count(Stats{RulesReject: 1})
 		return Reject, "judge error: conservative reject", err
 	}
 	if ok {
+		g.count(Stats{Confirmed: 1, JudgeApproved: 1})
 		return Confirm, "judge approved", nil
 	}
+	g.count(Stats{JudgeReject: 1})
 	return Reject, "judge declined", nil
+}
+
+func (g RuleGate) count(s Stats) {
+	if g.Stats != nil {
+		g.Stats.add(s)
+	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"sort"
 	"strings"
 
+	"semantix/kernel/judge"
 	"semantix/kernel/slice"
 	"semantix/kernel/zone"
 )
@@ -132,6 +134,9 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	var scopeName string
 	fs.StringVar(&scopeName, "scope", "project", "scope: project|user|session")
 	zf := addZoneFlags(fs)
+	judgeProtocol := fs.String("judge-protocol", "", "LLM judge protocol: openai|anthropic (empty = rules only)")
+	judgeBaseURL := fs.String("judge-base-url", "", "LLM judge endpoint base URL (e.g. https://api.openai.com/v1)")
+	judgeModel := fs.String("judge-model", "", "LLM judge model name")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -226,6 +231,23 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	fmt.Fprintln(stdout, "# zone distribution (Issue #7): top-1 grey ratio should stay ≤ 30%")
 	fmt.Fprintln(stdout, "session\tturn\tscore\tzone\ttop1_content\tquery")
 
+	// LLM judge (Issue #8 stage ②): user picks the protocol and endpoint;
+	// the API key comes from SEMANTIX_JUDGE_API_KEY, never from flags.
+	var jg judge.Judge
+	if *judgeProtocol != "" {
+		apiKey := os.Getenv("SEMANTIX_JUDGE_API_KEY")
+		lj, err := judge.NewLLMJudge(judge.LLMConfig{
+			Protocol: *judgeProtocol, BaseURL: *judgeBaseURL, Model: *judgeModel, APIKey: apiKey,
+		})
+		if err != nil {
+			fmt.Fprintf(stdout, "verify: judge: %v\n", err)
+			return 2
+		}
+		jg = lj
+	}
+	var jstats judge.Stats
+	gate := judge.RuleGate{Judge: jg, Stats: &jstats}
+
 	replayed := 0
 	zones := zf.zones()
 	var zoneCount [3]int // [0]=miss [1]=grey [2]=hit
@@ -253,6 +275,18 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 					top2 = hits[1].Score
 				}
 				z = classifyTop1(zones, score, top2)
+				if z == zone.Grey && jg != nil {
+					// Grey zone reaches the async LLM judge (off the critical path
+					// in production; here inline). Verdict only affects stats.
+					v, _, cerr := gate.Chain(context.Background(), judge.Candidate{
+						Query: t.Query, SliceID: hits[0].Slice.ID, Content: top1,
+						Scope: opt.scope, Type: hits[0].Slice.Type, Zone: z,
+					})
+					if cerr != nil {
+						fmt.Fprintf(stdout, "verify: judge: %v\n", cerr)
+					}
+					_ = v
+				}
 			}
 			zoneCount[int(z)]++
 			fmt.Fprintf(stdout, "%s\t%d\t%.4f\t%s\t%s\t%s\n",
@@ -265,6 +299,11 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	}
 	fmt.Fprintf(stdout, "# done: %d replayed turns; zones hit=%d grey=%d miss=%d grey_ratio=%.1f%% (target ≤30%%); mark rows then compute relevance rate\n",
 		replayed, zoneCount[int(zone.Hit)], zoneCount[int(zone.Grey)], zoneCount[int(zone.Miss)], greyRatio)
+	if *judgeProtocol != "" {
+		fmt.Fprintf(stdout, "# judge: confirmed=%d rules_reject=%d fingerprint=%d judge_reject=%d judge_approved=%d waste=%d\n",
+			jstats.Confirmed, jstats.RulesReject, jstats.Fingerprint, jstats.JudgeReject, jstats.JudgeApproved,
+			jstats.JudgeReject+jstats.Fingerprint+jstats.RulesReject)
+	}
 	return 0
 }
 
