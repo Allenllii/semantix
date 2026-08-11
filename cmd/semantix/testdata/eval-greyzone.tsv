@@ -1,0 +1,25 @@
+# Oracle evaluation set for Issue #7 (single-threshold vs three-region).
+# Columns: equivalence class<TAB>query. The first --train-frac rows are
+# indexed as training slices; the rest are replayed. A top-1 hit is
+# "relevant" iff it shares the query's equivalence class.
+#
+# Classes:
+#   fix-test  - fixing failing tests (paraphrases)
+#   deploy    - deploying to a server (paraphrases)
+#   ci        - configuring CI (paraphrases)
+#   db        - database work (paraphrases)
+fix-test	修复 go 测试失败
+fix-test	fix the failing go test
+deploy	部署到服务器
+ci	配置 CI 流水线
+db	给表加一个索引
+fix-test	测试挂了怎么修
+deploy	发布到生产环境
+ci	设置 GitHub Actions 工作流
+db	数据库查询太慢加索引
+fix-test	handle failing tests in golang
+deploy	把服务部署上线
+ci	CI 构建失败了排查一下
+db	数据库索引优化
+fix-test	修一下测试报错
+deploy	部署新版本到服务器

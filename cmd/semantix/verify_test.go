@@ -108,6 +108,54 @@ func TestVerifyToleratesCorruptLines(t *testing.T) {
 	}
 }
 
+func TestVerifyGreyRatioAlarm(t *testing.T) {
+	dir := t.TempDir()
+	writeSession(t, dir, "s1.jsonl", []string{"修复 go 测试失败", "配置 CI"})
+	writeSession(t, dir, "s2.jsonl", []string{"修复 go 测试失败", "配置 CI"})
+
+	// --abs-high 100 makes every scored top-1 land in the grey zone, so the
+	// grey-ratio alarm (Issue #7 acceptance) must fire. Non-strict: exit 0
+	// with a WARN line; strict: exit 3.
+	cases := []struct {
+		name   string
+		strict bool
+		want   int
+	}{
+		{"non-strict warn", false, 0},
+		{"strict alarm", true, 3},
+	}
+	for _, c := range cases {
+		var out bytes.Buffer
+		args := []string{"--session", dir, "--db", filepath.Join(t.TempDir(), "v.db"), "--holdout", "0.5", "--abs-high", "100", "--grey-target", "10"}
+		if c.strict {
+			args = append(args, "--strict")
+		}
+		if code := runVerify(args, &out, productionDependencies()); code != c.want {
+			t.Errorf("%s: code = %d, want %d; out:\n%s", c.name, code, c.want, out.String())
+		}
+		if !strings.Contains(out.String(), "WARN: grey_ratio") {
+			t.Errorf("%s: missing WARN line:\n%s", c.name, out.String())
+		}
+	}
+}
+
+func TestVerifyGreyRatioAlarmSilentUnderTarget(t *testing.T) {
+	dir := t.TempDir()
+	// Exact-repeat replay turns produce clear hits (gap to runner-up large),
+	// so grey_ratio stays 0% and no alarm fires even with --strict.
+	writeSession(t, dir, "s1.jsonl", []string{"修复 go 测试失败"})
+	writeSession(t, dir, "s2.jsonl", []string{"修复 go 测试失败"})
+
+	var out bytes.Buffer
+	args := []string{"--session", dir, "--db", filepath.Join(t.TempDir(), "v.db"), "--holdout", "0.5", "--strict", "--grey-target", "10"}
+	if code := runVerify(args, &out, productionDependencies()); code != 0 {
+		t.Fatalf("code = %d, want 0; out:\n%s", code, out.String())
+	}
+	if strings.Contains(out.String(), "WARN") {
+		t.Fatalf("unexpected WARN under target:\n%s", out.String())
+	}
+}
+
 func TestClassifyTop1(t *testing.T) {
 	z := zone.Default()
 	cases := []struct {

@@ -43,6 +43,8 @@ func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
 		err = runSearch(args[1:], stdout, stderr, deps)
 	case "verify":
 		return runVerify(args[1:], stdout, deps)
+	case "eval":
+		return runEval(args[1:], stdout)
 	case "lookup":
 		err = runLookup(args[1:], stdout, stderr, deps)
 	case "inject":
@@ -67,6 +69,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  semantix extract --input <session.jsonl> [--scope project|user|session]")
 	fmt.Fprintln(w, "  semantix search [flags] <query>")
 	fmt.Fprintln(w, "  semantix verify --session <file|dir> [--holdout 0.3]  (M0-2 replay validation)")
+	fmt.Fprintln(w, "  semantix eval --set <oracle.tsv> [--tau-*]            (Issue #7 single-vs-three comparison)")
 	fmt.Fprintln(w, "  semantix lookup --query <q> [--limit N] [--db ...]     (semantix_lookup tool)")
 	fmt.Fprintln(w, "  semantix inject --query <q> [--budget N] [--db ...]    (L2 injection block)")
 }
