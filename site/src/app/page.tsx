@@ -5,6 +5,7 @@ import Components from "@/components/Components";
 import Roadmap from "@/components/Roadmap";
 import Community from "@/components/Community";
 import Install from "@/components/Install";
+import Faq, { faqItems } from "@/components/Faq";
 import Footer from "@/components/Footer";
 import { siteIdentity } from "@/lib/site-identity";
 
@@ -17,6 +18,20 @@ const webpageJsonLd = {
   dateModified: siteIdentity.lastUpdated,
 };
 
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "@id": `${siteIdentity.productUrl}/#faq`,
+  mainEntity: faqItems.map((item) => ({
+    "@type": "Question",
+    name: item.question,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: item.answer,
+    },
+  })),
+};
+
 export default function Home() {
   return (
     <>
@@ -24,6 +39,12 @@ export default function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(webpageJsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(faqJsonLd).replace(/</g, "\\u003c"),
         }}
       />
       <Nav />
@@ -34,6 +55,7 @@ export default function Home() {
         <Roadmap />
         <Community />
         <Install />
+        <Faq />
       </main>
       <Footer />
     </>

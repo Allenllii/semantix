@@ -133,6 +133,8 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	fs.Float64Var(&opt.holdout, "holdout", 0.3, "fraction of latest sessions reserved as replay stream (0-1)")
 	var scopeName string
 	fs.StringVar(&scopeName, "scope", "project", "scope: project|user|session")
+	greyTarget := fs.Float64("grey-target", 30.0, "grey-zone traffic ratio alarm threshold in percent (0 disables the alarm)")
+	strict := fs.Bool("strict", false, "return exit code 3 when the grey-zone ratio exceeds --grey-target")
 	zf := addZoneFlags(fs)
 	judgeProtocol := fs.String("judge-protocol", "", "LLM judge protocol: openai|anthropic (empty = rules only)")
 	judgeBaseURL := fs.String("judge-base-url", "", "LLM judge endpoint base URL (e.g. https://api.openai.com/v1)")
@@ -297,12 +299,23 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	if replayed > 0 {
 		greyRatio = 100 * float64(zoneCount[int(zone.Grey)]) / float64(replayed)
 	}
-	fmt.Fprintf(stdout, "# done: %d replayed turns; zones hit=%d grey=%d miss=%d grey_ratio=%.1f%% (target ≤30%%); mark rows then compute relevance rate\n",
-		replayed, zoneCount[int(zone.Hit)], zoneCount[int(zone.Grey)], zoneCount[int(zone.Miss)], greyRatio)
+	fmt.Fprintf(stdout, "# done: %d replayed turns; zones hit=%d grey=%d miss=%d grey_ratio=%.1f%% (target %.1f%%)\n",
+		replayed, zoneCount[int(zone.Hit)], zoneCount[int(zone.Grey)], zoneCount[int(zone.Miss)], greyRatio, *greyTarget)
 	if *judgeProtocol != "" {
 		fmt.Fprintf(stdout, "# judge: confirmed=%d rules_reject=%d fingerprint=%d judge_reject=%d judge_approved=%d waste=%d\n",
 			jstats.Confirmed, jstats.RulesReject, jstats.Fingerprint, jstats.JudgeReject, jstats.JudgeApproved,
 			jstats.JudgeReject+jstats.Fingerprint+jstats.RulesReject)
+	}
+	if *greyTarget > 0 && greyRatio > *greyTarget {
+		// Issue #7 acceptance: the grey-zone share is an observability
+		// metric with a hard alarm — the threshold can be tuned but a
+		// runaway grey zone must be visible to the caller (CI can gate on
+		// --strict, which surfaces as exit code 3).
+		fmt.Fprintf(stdout, "# WARN: grey_ratio=%.1f%% exceeds target %.1f%% (Issue #7 alarm; retune --tau-* or accept the grey zone)\n",
+			greyRatio, *greyTarget)
+		if *strict {
+			return 3
+		}
 	}
 	return 0
 }
