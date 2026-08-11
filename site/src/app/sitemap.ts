@@ -19,6 +19,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return [
     { url: `${BASE}/`, lastModified, changeFrequency: "weekly", priority: 1 },
     { url: `${BASE}/about`, lastModified, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${BASE}/contact`, lastModified, changeFrequency: "monthly", priority: 0.7 },
     { url: `${BASE}/docs`, lastModified, changeFrequency: "weekly", priority: 0.9 },
     ...geoDocuments.map((document) => ({
       url: `${BASE}/docs/${document.slug}`,

@@ -3,7 +3,7 @@ export const siteIdentity = {
   productUrl: "https://semantix.ensureok.ai",
   repositoryUrl: "https://github.com/Gnosil/semantix",
   licenseName: "FSL-1.1-MIT",
-  lastUpdated: "2026-08-10",
+  lastUpdated: "2026-08-11",
   operator: {
     legalName: "确石人工智能科技（上海）有限公司",
     brandName: "确石智能",
@@ -25,11 +25,12 @@ export const organizationJsonLd = {
   ],
   url: siteIdentity.operator.url,
   logo: siteIdentity.operator.logoUrl,
-  email: `mailto:${siteIdentity.operator.email}`,
+  email: siteIdentity.operator.email,
   sameAs: [siteIdentity.repositoryUrl, siteIdentity.operator.url],
   contactPoint: {
     "@type": "ContactPoint",
     email: siteIdentity.operator.email,
+    url: `${siteIdentity.productUrl}/contact`,
     contactType: "project inquiries",
     availableLanguage: ["zh-CN", "en"],
   },

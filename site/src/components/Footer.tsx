@@ -9,7 +9,7 @@ const links = [
   { label: "Privacy", href: "/privacy", external: false },
   {
     label: "Contact",
-    href: `mailto:${siteIdentity.operator.email}`,
+    href: "/contact",
     external: false,
   },
   { label: "GitHub", href: "https://github.com/Gnosil/semantix", external: true },
@@ -44,13 +44,13 @@ export default function Footer() {
             运营与维护。
           </p>
           <p className="mt-2">
-            联系邮箱：
-            <a
-              href={`mailto:${siteIdentity.operator.email}`}
+            联系渠道：
+            <Link
+              href="/contact"
               className="font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
             >
-              {siteIdentity.operator.email}
-            </a>
+              联系页面
+            </Link>
           </p>
         </div>
         <nav aria-label="页脚导航" className="flex flex-wrap items-center gap-x-6 gap-y-3">

@@ -77,13 +77,13 @@ export default function AboutPage() {
                   </a>
                 </div>
                 <div>
-                  <p className="font-mono text-xs text-muted-foreground">联系邮箱</p>
-                  <a
-                    href={`mailto:${siteIdentity.operator.email}`}
+                  <p className="font-mono text-xs text-muted-foreground">联系方式</p>
+                  <Link
+                    href="/contact"
                     className="mt-2 inline-block break-all font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-accent hover:decoration-accent"
                   >
-                    {siteIdentity.operator.email}
-                  </a>
+                    站内联系页面
+                  </Link>
                 </div>
                 <div>
                   <p className="font-mono text-xs text-muted-foreground">代码仓库</p>

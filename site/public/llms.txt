@@ -8,6 +8,7 @@
 
 - [Semantix website](https://semantix.ensureok.ai/): Official homepage — positioning, features, components, roadmap, and install instructions.
 - [About Semantix](https://semantix.ensureok.ai/about): Operator identity, official contact channels, and legal entity behind the project.
+- [Contact Semantix](https://semantix.ensureok.ai/contact): Official project and website contact channel.
 - [Semantix repository](https://github.com/Gnosil/semantix): Source code, tests, design documents, and issue tracker.
 
 ## Documentation

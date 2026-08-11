@@ -40,6 +40,7 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
   const postMeta = getBlogPost((await params).slug);
   if (!postMeta) notFound();
   const post = readBlogPost(postMeta);
+  const sourceUrl = `${siteIdentity.repositoryUrl}/blob/main/blog/${post.fileName}`;
   const articleJsonLd = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
@@ -52,6 +53,7 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
     mainEntityOfPage: `${siteIdentity.productUrl}/blog/${post.slug}`,
     author: { "@id": `${siteIdentity.operator.url}#organization` },
     publisher: { "@id": `${siteIdentity.operator.url}#organization` },
+    citation: sourceUrl,
   };
 
   return (
@@ -67,10 +69,37 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
             <p className="mt-5 font-mono text-xs text-accent">{post.group}</p>
             <h1 className="mt-3 text-4xl font-semibold leading-tight tracking-tight md:text-5xl">{post.title}</h1>
             <p className="mt-5 text-lg leading-8 text-muted-foreground">{post.description}</p>
-            <time dateTime={post.updated} className="mt-5 block font-mono text-xs text-muted-foreground">
-              Updated {post.updated}<span className="sr-only">Last updated</span>
-            </time>
+            <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-xs text-muted-foreground">
+              <Link href="/about" className="hover:text-accent">By Semantix maintainers</Link>
+              <span aria-hidden="true">·</span>
+              <time dateTime={post.updated}>
+                Updated {post.updated}<span className="sr-only">Last updated</span>
+              </time>
+            </div>
           </div>
+
+          <aside className="mb-9 border-l-2 border-accent bg-muted/40 px-5 py-4 text-sm leading-6 text-muted-foreground">
+            <p>
+              Evidence and limitations: this article is an evaluation guide, not an independent
+              production benchmark. Verify implementation claims against the current main branch.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+              <a
+                href={sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-foreground underline decoration-border underline-offset-4 hover:text-accent"
+              >
+                Source and revision history ↗
+              </a>
+              <Link
+                href="/#components"
+                className="font-medium text-foreground underline decoration-border underline-offset-4 hover:text-accent"
+              >
+                Current implementation boundaries
+              </Link>
+            </div>
+          </aside>
 
           <article className="blog-prose">
             <ReactMarkdown

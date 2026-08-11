@@ -19,7 +19,7 @@ export const geoDocuments: readonly GeoDocument[] = [
     description: "面向开发者的中文项目定位、术语与进度概览。",
     language: "中文",
     depth: "速览",
-    lastUpdated: "2026-08-10",
+    lastUpdated: "2026-08-11",
   },
   {
     slug: "profile-en",
@@ -28,7 +28,7 @@ export const geoDocuments: readonly GeoDocument[] = [
     description: "A concise English overview of the project's purpose, terminology, and progress.",
     language: "English",
     depth: "速览",
-    lastUpdated: "2026-08-10",
+    lastUpdated: "2026-08-11",
   },
   {
     slug: "guide",
@@ -37,7 +37,7 @@ export const geoDocuments: readonly GeoDocument[] = [
     description: "从第一性原理出发的中文深度解读。",
     language: "中文",
     depth: "深入",
-    lastUpdated: "2026-08-10",
+    lastUpdated: "2026-08-11",
   },
   {
     slug: "guide-en",
@@ -46,7 +46,7 @@ export const geoDocuments: readonly GeoDocument[] = [
     description: "An English deep dive from first principles.",
     language: "English",
     depth: "深入",
-    lastUpdated: "2026-08-10",
+    lastUpdated: "2026-08-11",
   },
 ];
 
