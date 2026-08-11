@@ -71,6 +71,17 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 			return fmt.Errorf("capture fingerprints: %w", err)
 		}
 		meta.Deps = depsMap
+		// Record mtimes alongside the sha256 digests (U16): the L3 gate uses
+		// mtimes as its cheap fast-fail check before re-reading content.
+		mtimes := make(map[string]int64, len(paths))
+		for _, p := range paths {
+			st, err := os.Stat(filepath.Join(wd, p))
+			if err != nil {
+				return fmt.Errorf("stat %s: %w", p, err)
+			}
+			mtimes[p] = st.ModTime().Unix()
+		}
+		meta.Mtimes = mtimes
 	}
 	items, err := extractor.Extract(data, meta)
 	if err != nil {

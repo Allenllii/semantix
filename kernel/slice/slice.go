@@ -78,6 +78,9 @@ type SliceMeta struct {
 	// Deps captures the dependency fingerprint at slice time (path -> sha256,
 	// Issue #8): reuse is gated on these files not having changed.
 	Deps fingerprint.Deps `json:"deps,omitempty"`
+	// Mtimes captures file modification times at slice time (path -> unix
+	// seconds, U16): cheap fast-fail check before the sha256 re-read.
+	Mtimes map[string]int64 `json:"mtimes,omitempty"`
 }
 
 // Slice is the core semantic slice value.
