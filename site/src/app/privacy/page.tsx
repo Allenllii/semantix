@@ -47,7 +47,7 @@ const sections = [
     title: "6. 政策更新与联系方式",
     body: [
       "运营主体可能适时更新本隐私政策，更新后的政策将在本页面发布并更新生效日期。",
-      `如对本隐私政策或网站的数据处理有任何疑问，可通过 ${siteIdentity.operator.email} 联系运营主体，或在项目仓库 ${siteIdentity.repositoryUrl} 提交 Issue。`,
+      `如对本隐私政策或网站的数据处理有任何疑问，可通过站内联系页面联系运营主体，或在项目仓库 ${siteIdentity.repositoryUrl} 提交 Issue。`,
     ],
   },
 ] as const;

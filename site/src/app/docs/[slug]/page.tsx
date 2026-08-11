@@ -35,18 +35,21 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
   if (!document) notFound();
 
   const content = await readGeoDocument(document);
+  const sourceUrl = `${siteIdentity.repositoryUrl}/blob/main/site/content/geo/${document.fileName}`;
+  const isEnglish = document.language === "English";
 
   const articleJsonLd = {
     "@context": "https://schema.org",
-    "@type": "TechnicalArticle",
+    "@type": "TechArticle",
     "@id": `${siteIdentity.productUrl}/docs/${document.slug}#article`,
     headline: document.title,
     description: document.description,
     dateModified: document.lastUpdated,
-    inLanguage: document.language === "English" ? "en" : "zh-CN",
+    inLanguage: isEnglish ? "en" : "zh-CN",
     mainEntityOfPage: `${siteIdentity.productUrl}/docs/${document.slug}`,
     author: { "@id": `${siteIdentity.operator.url}#organization` },
     publisher: { "@id": `${siteIdentity.operator.url}#organization` },
+    citation: sourceUrl,
   };
 
   return (
@@ -65,10 +68,29 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
             <span>{document.depth}</span>
           </div>
           <div className="flex flex-wrap items-center gap-3 font-mono text-xs text-muted-foreground">
+            <Link href="/about" className="hover:text-accent">
+              {isEnglish ? "By Semantix maintainers" : "Semantix 维护团队撰写"}
+            </Link>
             <span>{document.language}</span>
             <time dateTime={document.lastUpdated}>Last updated · {document.lastUpdated}</time>
           </div>
         </div>
+
+        <aside className="mb-8 max-w-3xl border-l-2 border-accent bg-muted/40 px-5 py-4 text-sm leading-6 text-muted-foreground">
+          <p>
+            {isEnglish
+              ? "Evidence and limitations: implementation claims should be checked against the current main branch. This document explains the design; it is not an independent production benchmark."
+              : "证据与限制：实现状态应以 main 分支的代码与测试为准。本文用于解释设计，不代表独立生产环境基准。"}
+          </p>
+          <a
+            href={sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-block font-medium text-foreground underline decoration-border underline-offset-4 hover:text-accent"
+          >
+            {isEnglish ? "View source and revision history ↗" : "查看原文与修订记录 ↗"}
+          </a>
+        </aside>
 
         <article className="geo-prose max-w-3xl">
           <ReactMarkdown

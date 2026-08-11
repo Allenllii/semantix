@@ -48,7 +48,7 @@ const sections = [
     title: "6. 条款更新与联系方式",
     body: [
       "运营主体可能适时更新本服务条款，更新后的条款将在本页面发布并更新生效日期。重大变更将以网站公告方式提示。",
-      `如对本服务条款或网站内容有疑问，可通过 ${siteIdentity.operator.email} 联系运营主体，或在项目仓库 ${siteIdentity.repositoryUrl} 提交 Issue。`,
+      `如对本服务条款或网站内容有疑问，可通过站内联系页面联系运营主体，或在项目仓库 ${siteIdentity.repositoryUrl} 提交 Issue。`,
     ],
   },
 ] as const;
