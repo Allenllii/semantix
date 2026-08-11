@@ -107,11 +107,16 @@ func consumeToFinal(s string) (string, bool) {
 	return "", false
 }
 
-// consumeToST consumes up to and including the OSC/DCS terminator (BEL or ST).
+// consumeToST consumes up to and including the OSC/DCS terminator
+// (BEL, ST 0x9C, or the two-byte ESC \ form).
 func consumeToST(s string) (string, bool) {
 	for i := 0; i < len(s); i++ {
-		if s[i] == 0x07 || s[i] == 0x9c {
+		c := s[i]
+		if c == 0x07 || c == 0x9c {
 			return s[i+1:], true
+		}
+		if c == 0x1b && i+1 < len(s) && s[i+1] == '\\' {
+			return s[i+2:], true
 		}
 	}
 	return "", false

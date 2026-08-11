@@ -76,6 +76,11 @@ Reply with exactly one word: yes (reuse acceptable) or no (do not reuse).`,
 
 // Confirm implements Judge.
 func (j *LLMJudge) Confirm(ctx context.Context, c Candidate) (bool, error) {
+	// Issue #8 acceptance ④: the judge reads a sanitized copy of the cached
+	// answer — never raw history. A cached slice may carry prompt-injection
+	// payloads (OSC52 clipboard writes, forged instructions); stripping them
+	// deterministically before the prompt keeps the judge trustworthy.
+	c.Content = Sanitize(c.Content)
 	text, err := j.call(ctx, rubricPrompt(c))
 	if err != nil {
 		return false, err

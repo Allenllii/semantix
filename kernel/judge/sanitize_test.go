@@ -51,6 +51,16 @@ func TestSanitizeInjectionNeutralized(t *testing.T) {
 	}
 }
 
+func TestSanitizeDCSWithESCTerminator(t *testing.T) {
+	// DCS ... ESC \ (two-byte ST form) — regression: the kernel scanner
+	// originally missed this terminator (found when cmd delegate tests ran).
+	in := "\x1bPtmux;\x1b\\rest"
+	out := Sanitize(in)
+	if out != "rest" {
+		t.Fatalf("DCS with ESC-\\ terminator must be stripped, got %q", out)
+	}
+}
+
 func TestSanitizeDeterministic(t *testing.T) {
 	in := "\u001b]52;c;x\u0007复杂\u001b[0m内容"
 	if Sanitize(in) != Sanitize(in) {
