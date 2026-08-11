@@ -8,6 +8,64 @@ description: "Install and use the semantix memory kernel as a middleware in your
 > 给你的智能体装上**用户级记忆**：记住用户偏好、业务流程、总结办案/工作经验，
 > 跨会话自动复用。你的 agent 不需要改造内核——装一个二进制 + 两个工具即可。
 
+## 执行模式（agent 自助接入，逐条执行）
+
+> 本 skill 设计为**由客户的 agent 直接执行**完成接入。按顺序执行以下步骤；
+> 每步有通过标准；失败进入「故障处理」。全部通过 = 接入完成。
+
+### STEP 0 — 环境检查
+
+```bash
+uname -s && uname -m            # 通过标准：darwin 或 linux；amd64 或 arm64
+command -v curl || echo "need curl"
+```
+
+### STEP 1 — 安装
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/Gnosil/semantix/main/agent-skill/scripts/install.sh)
+```
+通过标准：输出 `== installed:` 且无报错。
+（离线/内网客户：手动下载 release 包，跳过下载步骤后继续。）
+
+### STEP 2 — 配置
+
+```bash
+semantix lookup --help >/dev/null && echo ok   # 通过标准：输出 ok
+mkdir -p ~/.semantix/sessions
+```
+默认零配置可用；按需复制 `agent-skill/config/semantix.example.toml` 调整。
+
+### STEP 3 — 选择集成方式（决策树）
+
+| 你的 agent 底座 | 走哪条路径 |
+|---|---|
+| **Reasonix fork**（Gnosil/DeepSeek-Reasonix） | 内置集成已就绪：`[semantix] enabled=true` + semantix_lookup 工具（零步骤） |
+| **LangChain** | `docs/reports/langchain-middleware.md` 双挂点示例（消息改写 + 会话提取） |
+| **Claude Code / 工具注册类** | 本 skill `tools/semantix-lookup.md` 的 schema 注册 `semantix_lookup`（+可选 `semantix_inject`） |
+| **任意自定义 agent** | 会话旁路三方式（`hooks/session-bypass.md`）：导出 / 事件旁路 / 直接调用 |
+
+### STEP 4 — 闭环自测（必须通过）
+
+```bash
+bash <(curl -sL https://raw.githubusercontent.com/Gnosil/semantix/main/agent-skill/scripts/selftest.sh)
+```
+通过标准：输出 `SELFTEST PASS`。自测内容：
+提取 demo 会话 → lookup 命中（zone=hit）→ inject 返回注入块 → 记忆闭环成立。
+
+### STEP 5 — 接入完成
+
+- 会话结束：`extract --input <会话> --scope user --project <业务域>`（沉淀）
+- 新任务：`inject --query <任务> --scope user`（注入）或 `lookup`（检索）
+- 定期：`verify --session <目录> --scope user`（质量评估）
+
+## 回滚（接入失败时）
+
+```bash
+rm -f ~/.local/bin/semantix ~/.semantix/user.db   # 卸载二进制 + 记忆库（保留 sessions/）
+```
+集成代码改动按各底座回滚方式撤销。
+
 ## 适用场景
 
 - 记住用户偏好（写作风格、办案习惯、代码规范……）
