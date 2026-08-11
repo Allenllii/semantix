@@ -4,8 +4,9 @@ import test from "node:test";
 
 const llmsTxt = await readFile(new URL("../public/llms.txt", import.meta.url), "utf8");
 const llmsFullTxt = await readFile(new URL("../public/llms-full.txt", import.meta.url), "utf8");
-const robotsTxt = await readFile(new URL("../public/robots.txt", import.meta.url), "utf8");
+const robotsTxt = (await readFile(new URL("../public/robots.txt", import.meta.url), "utf8")).replaceAll("\r\n", "\n");
 const homepageHtml = await readFile(new URL("../out/index.html", import.meta.url), "utf8");
+const faqHtml = await readFile(new URL("../out/docs/faq/index.html", import.meta.url), "utf8");
 const sitemapXml = await readFile(new URL("../out/sitemap.xml", import.meta.url), "utf8");
 
 const jsonLdObjects = [...homepageHtml.matchAll(
@@ -66,20 +67,23 @@ test("homepage export ships WebSite and SoftwareApplication JSON-LD", () => {
   assert.equal(softwareApplication.codeRepository, "https://github.com/Gnosil/semantix");
 });
 
-test("homepage visible FAQ matches FAQPage JSON-LD", () => {
-  const faq = jsonLdObjects.find((value) => value["@type"] === "FAQPage");
+test("docs FAQ page visible content matches FAQPage JSON-LD", () => {
+  const faqJsonLdObjects = [...faqHtml.matchAll(
+    /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g,
+  )].map((match) => JSON.parse(match[1]));
+  const faq = faqJsonLdObjects.find((value) => value["@type"] === "FAQPage");
   assert.ok(faq, "expected FAQPage JSON-LD");
   assert.equal(faq.mainEntity.length, 5);
 
-  const visibleHtml = homepageHtml.replaceAll("<!-- -->", "");
+  const visibleHtml = faqHtml.replaceAll("<!-- -->", "");
   for (const question of faq.mainEntity) {
     assert.ok(
       visibleHtml.includes(question.name),
-      `visible homepage should contain the FAQ question "${question.name}"`,
+      `visible docs FAQ should contain the question "${question.name}"`,
     );
     assert.ok(
       visibleHtml.includes(question.acceptedAnswer.text),
-      `visible homepage should contain the FAQ answer for "${question.name}"`,
+      `visible docs FAQ should contain the answer for "${question.name}"`,
     );
   }
 });
@@ -105,4 +109,8 @@ test("sitemap lists all static docs pages", () => {
       `sitemap should contain /docs/${slug}`,
     );
   }
+  assert.ok(
+    sitemapXml.includes("<loc>https://semantix.ensureok.ai/docs/faq</loc>"),
+    "sitemap should contain /docs/faq",
+  );
 });

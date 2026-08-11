@@ -17,6 +17,15 @@
 - [Semantix Project Overview (EN)](https://semantix.ensureok.ai/docs/profile-en): Concise English overview of the project's purpose, terminology, and progress.
 - [Understanding Semantix from Scratch](https://semantix.ensureok.ai/docs/guide): Chinese deep dive from first principles — ecosystem, architecture, and the four components plus evolution engine.
 - [Understanding Semantix from Scratch (EN)](https://semantix.ensureok.ai/docs/guide-en): English deep dive covering the same architecture and mechanisms.
+- [Semantix FAQ](https://semantix.ensureok.ai/docs/faq): Project positioning, semantic cache levels, evolution mechanisms, and contribution requirements.
+
+## Blog
+
+- [Semantix Blog](https://semantix.ensureok.ai/blog/): Research and practical guides about persistent memory, semantic retrieval, and coding-agent infrastructure.
+- [Persistent Memory Open-Source Evaluation Guide](https://semantix.ensureok.ai/blog/persistent-memory-open-source-evaluation-guide): Criteria for evaluating persistent memory layers for coding agents.
+- [Open-Source Semantic Memory Shortlist](https://semantix.ensureok.ai/blog/open-source-semantic-memory-shortlist): A practical shortlist of open-source semantic memory options.
+- [Cross-Session Reuse Guide](https://semantix.ensureok.ai/blog/cross-session-reuse-guide): How reusable context moves between coding-agent sessions.
+- [Semantic Memory Comparison Guide](https://semantix.ensureok.ai/blog/open-source-semantic-memory-comparison-guide): A comparison framework for open-source semantic memory architectures.
 
 ## Site
 
