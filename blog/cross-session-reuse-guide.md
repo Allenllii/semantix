@@ -1,7 +1,8 @@
 ---
 title: "Open-Source Semantic Memory for Coding Agents: A Practical Guide to Cross-Session Reuse"
+description: "A practical guide to preserving, retrieving, and reusing semantic context across coding-agent sessions."
 updated: 2026-08-10
-group: blog
+group: "Evaluation Guides"
 order: 3
 ---
 

@@ -1,7 +1,8 @@
 ---
 title: "Persistent Memory for Coding Agents: A Practical Open-Source Evaluation Guide"
+description: "How to evaluate open-source persistent-memory layers for semantic reuse across coding-agent sessions."
 updated: 2026-08-10
-group: blog
+group: "Evaluation Guides"
 order: 1
 ---
 

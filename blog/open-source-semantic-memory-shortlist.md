@@ -1,7 +1,8 @@
 ---
 title: "Open-Source Semantic Memory for Coding Agents: A Practical Shortlist"
+description: "A practical shortlist and evaluation checklist for open-source coding-agent memory systems."
 updated: 2026-08-10
-group: blog
+group: "Evaluation Guides"
 order: 2
 ---
 
