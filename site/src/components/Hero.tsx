@@ -1,5 +1,6 @@
 import Reveal from "@/components/Reveal";
 import ParticleCanvas from "@/components/ParticleCanvas";
+import { siteIdentity } from "@/lib/site-identity";
 
 export default function Hero() {
   return (
@@ -35,6 +36,12 @@ export default function Hero() {
           <p className="mt-4 text-2xl text-muted-foreground md:text-3xl">
             一个自进化的 Agent Kernel。
           </p>
+          <time
+            dateTime={siteIdentity.lastUpdated}
+            className="mt-3 block font-mono text-xs text-muted-foreground"
+          >
+            Last updated · {siteIdentity.lastUpdated}
+          </time>
         </Reveal>
 
         {/* subheading */}

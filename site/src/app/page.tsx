@@ -6,10 +6,26 @@ import Roadmap from "@/components/Roadmap";
 import Community from "@/components/Community";
 import Install from "@/components/Install";
 import Footer from "@/components/Footer";
+import { siteIdentity } from "@/lib/site-identity";
+
+const webpageJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "@id": `${siteIdentity.productUrl}/#webpage`,
+  url: `${siteIdentity.productUrl}/`,
+  name: `${siteIdentity.productName} - a self-evolving agent kernel`,
+  dateModified: siteIdentity.lastUpdated,
+};
 
 export default function Home() {
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(webpageJsonLd).replace(/</g, "\\u003c"),
+        }}
+      />
       <Nav />
       <main>
         <Hero />
