@@ -36,4 +36,4 @@
 
 ## 测试汇总
 
-`go vet` 干净；`go test -race` 全绿：kernel/judge 18 用例（含 sanitize 7）、kernel/promote 5、cmd/semantix 16+（含 eval-judge 4）——全仓 12 包 race 全绿。
+`go vet` 干净；`go test -race` 全绿：kernel/judge 19 用例（含 sanitize 8）、kernel/promote 5、cmd/semantix 24（含 eval-judge 4）——全仓 13 包 race 全绿。
