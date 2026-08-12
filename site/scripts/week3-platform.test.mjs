@@ -97,7 +97,10 @@ test("docs exports ship TechArticle JSON-LD with correct dates", async () => {
 
     const article = docJsonLd.find((value) => value["@type"] === "TechArticle");
     assert.ok(article, `docs/${slug} should ship TechArticle JSON-LD`);
-    assert.equal(article.dateModified, "2026-08-11", `docs/${slug} dateModified`);
+    assert.equal(article.datePublished, "2026-08-10", `docs/${slug} datePublished`);
+    assert.equal(article.dateModified, "2026-08-12", `docs/${slug} dateModified`);
+    assert.equal(article.author["@type"], "Person", `docs/${slug} author type`);
+    assert.match(article.author.url, /^https:\/\/github\.com\//, `docs/${slug} author profile`);
     assert.equal(article.mainEntityOfPage, `https://semantix.ensureok.ai/docs/${slug}`);
   }
 });

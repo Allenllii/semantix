@@ -18,11 +18,6 @@ const links = [
     href: "https://github.com/Gnosil/semantix/blob/main/README.md",
     external: true,
   },
-  {
-    label: "GitHub Docs",
-    href: "https://github.com/Gnosil/semantix/tree/main/docs",
-    external: true,
-  },
 ] as const;
 
 export default function Footer() {
