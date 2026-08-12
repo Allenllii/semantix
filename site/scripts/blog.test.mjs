@@ -22,7 +22,7 @@ test("blog articles export with BlogPosting metadata", async () => {
   for (const slug of blogSlugs) {
     const html = await readFile(new URL(`../out/blog/${slug}/index.html`, import.meta.url), "utf8");
     assert.ok(html.includes('"@type":"BlogPosting"'), `${slug} should expose BlogPosting JSON-LD`);
-    assert.ok(html.includes('Updated <!-- -->2026-08-10'), `${slug} should expose its update date`);
+    assert.ok(html.includes('Updated <!-- -->2026-08-12'), `${slug} should expose its update date`);
   }
 });
 
