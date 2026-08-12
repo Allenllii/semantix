@@ -5,12 +5,13 @@ type ProtectedEmailProps = {
 };
 
 export default function ProtectedEmail({ className }: ProtectedEmailProps) {
+  const [localPart, domain] = siteIdentity.operator.email.split("@");
+
   return (
-    <span
-      className={className}
-      dangerouslySetInnerHTML={{
-        __html: `<!--email_off-->${siteIdentity.operator.email}<!--/email_off-->`,
-      }}
-    />
+    <span className={className} aria-label={siteIdentity.operator.email}>
+      <span>{localPart}</span>
+      <span aria-hidden="true">@</span>
+      <span>{domain}</span>
+    </span>
   );
 }

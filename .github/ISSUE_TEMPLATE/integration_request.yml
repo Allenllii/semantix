@@ -1,0 +1,89 @@
+name: Integration request
+description: Propose or request support for an agent, harness, or session format
+title: "[Integration]: "
+labels:
+  - integration
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form to propose a Semantix integration with an agent, harness, or session format. Remove credentials, private source code, personal data, and sensitive paths from all examples.
+
+  - type: input
+    id: target
+    attributes:
+      label: Integration target
+      description: Name the agent, harness, protocol, or session format.
+      placeholder: "Reasonix, Codex, Claude Code, or a custom harness"
+    validations:
+      required: true
+
+  - type: input
+    id: target_version
+    attributes:
+      label: Target version or reference
+      description: Provide a release, commit, documentation page, or repository URL.
+      placeholder: "v1.2.3 or https://github.com/example/project"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: integration_type
+    attributes:
+      label: Integration type
+      options:
+        - Session import or extraction
+        - Lookup tool
+        - Context injection
+        - Event stream or hook
+        - Native middleware or SDK
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: Describe the workflow and the value this integration should provide.
+    validations:
+      required: true
+
+  - type: textarea
+    id: data_contract
+    attributes:
+      label: Available data and events
+      description: Describe the session schema, events, hooks, tool calls, or APIs available to Semantix.
+      placeholder: Include a minimal sanitized example or link to authoritative documentation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: lifecycle
+    attributes:
+      label: Expected integration lifecycle
+      description: Explain when extraction, retrieval, injection, invalidation, or cleanup should occur.
+
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and privacy considerations
+      description: Identify trust boundaries, sensitive fields, scopes, retention requirements, and expected failure behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Suggested acceptance criteria
+      description: Define a minimal reproducible workflow that would demonstrate a successful integration.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues and integrations for duplicates.
+          required: true
+        - label: I removed credentials, private code, personal data, and sensitive paths.
+          required: true

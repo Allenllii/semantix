@@ -7,8 +7,9 @@ const outRoot = path.resolve(import.meta.dirname, "../out");
 
 test("static export contains the Blog index and twenty article pages", async () => {
   const indexHtml = await readFile(path.join(outRoot, "blog", "index.html"), "utf8");
-  assert.match(indexHtml, /Semantix Documentation/i);
-  assert.match(indexHtml, /Search articles/i);
+  assert.match(indexHtml, /SEMANTIX BLOG/);
+  assert.match(indexHtml, /全部文章/);
+  assert.doesNotMatch(indexHtml, /Search articles/i);
 
   const entries = await readdir(path.join(outRoot, "blog"), { withFileTypes: true });
   const articleDirectories = entries.filter(
@@ -18,7 +19,8 @@ test("static export contains the Blog index and twenty article pages", async () 
 
   for (const entry of articleDirectories) {
     const html = await readFile(path.join(outRoot, "blog", entry.name, "index.html"), "utf8");
-    assert.match(html, /On this page/i, `${entry.name} should render a table of contents`);
-    assert.match(html, /Last updated/i, `${entry.name} should render update metadata`);
+    assert.match(html, /返回 Blog/i, `${entry.name} should render the original back link`);
+    assert.match(html, /Updated/i, `${entry.name} should render update metadata`);
+    assert.doesNotMatch(html, /On this page/i, `${entry.name} should not render the documentation TOC`);
   }
 });

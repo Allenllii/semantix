@@ -6,6 +6,7 @@ import Roadmap from "@/components/Roadmap";
 import Community from "@/components/Community";
 import Install from "@/components/Install";
 import Footer from "@/components/Footer";
+import BrandIntroOverlay from "@/components/BrandIntroOverlay";
 import { siteIdentity } from "@/lib/site-identity";
 
 const webpageJsonLd = {
@@ -13,7 +14,7 @@ const webpageJsonLd = {
   "@type": "WebPage",
   "@id": `${siteIdentity.productUrl}/#webpage`,
   url: `${siteIdentity.productUrl}/`,
-  name: `${siteIdentity.productName} - a self-evolving agent kernel`,
+  name: `${siteIdentity.productName} - a verifiable memory kernel for agents`,
   dateModified: siteIdentity.lastUpdated,
 };
 
@@ -28,6 +29,7 @@ export default function Home() {
       />
       <Nav />
       <main>
+        <BrandIntroOverlay />
         <Hero />
         <Features />
         <Components />

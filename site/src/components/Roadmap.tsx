@@ -58,13 +58,13 @@ export default function Roadmap() {
             Roadmap 路线图
           </p>
           <h2 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">
-            从可观测到自进化。
+            从可观测到可验证的反馈闭环。
           </h2>
           <p className="mt-1 text-muted-foreground">
             Five phases to a closed loop.
           </p>
           <p className="mt-4 max-w-2xl text-muted-foreground">
-            每一步都建立在前一步之上：先能看见，再能复用，然后能调度、能预取，最后整个循环自己进化。
+            每一步都建立在前一步之上：先能看见，再能复用，然后验证调度、预取和参数反馈。路线图表示计划，不代表所有阶段已经投入生产。
           </p>
         </Reveal>
 

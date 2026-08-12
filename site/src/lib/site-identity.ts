@@ -3,7 +3,7 @@ export const siteIdentity = {
   productUrl: "https://semantix.ensureok.ai",
   repositoryUrl: "https://github.com/Gnosil/semantix",
   licenseName: "FSL-1.1-MIT",
-  lastUpdated: "2026-08-11",
+  lastUpdated: "2026-08-12",
   operator: {
     legalName: "确石人工智能科技（上海）有限公司",
     brandName: "确石智能",
@@ -53,7 +53,7 @@ export const softwareApplicationJsonLd = {
   name: siteIdentity.productName,
   url: `${siteIdentity.productUrl}/`,
   description:
-    "A self-evolving agent kernel that sits between any agent harness and its resources, with semantic caching, speculative prefetch, and adaptive scheduling.",
+    "An open-source Go memory kernel with semantic slice extraction, BM25 retrieval, stable injection, and experimental scheduling and adaptation interfaces.",
   applicationCategory: "DeveloperApplication",
   operatingSystem: "Linux, macOS, Windows",
   license: "https://github.com/Gnosil/semantix/blob/main/LICENSE",

@@ -27,9 +27,10 @@ test("visible contact links use a stable first-party page", () => {
 test("contact export keeps the official email crawler-readable", () => {
   assert.match(
     contactHtml,
-    /<!--email_off-->junhaihuang@aiqueshi\.com<!--\/email_off-->/,
-    "contact email should opt out of Cloudflare obfuscation",
+    /aria-label="junhaihuang@aiqueshi\.com"/,
+    "contact email should remain available to assistive technology",
   );
+  assert.doesNotMatch(contactHtml, />junhaihuang@aiqueshi\.com</, "email should be split to prevent edge rewriting");
   assert.doesNotMatch(contactHtml, /href="mailto:/, "contact page should not expose a rewritable mailto link");
   assert.match(sitemapXml, /<loc>https:\/\/semantix\.ensureok\.ai\/contact<\/loc>/);
 
@@ -44,10 +45,32 @@ test("contact export keeps the official email crawler-readable", () => {
 test("technical content exposes authorship, evidence, and limitations", async () => {
   const docsHtml = await readExport("docs/guide/index.html");
   const blogHtml = await readExport("blog/open-source-semantic-memory-comparison-guide/index.html");
+  const visibleDocsHtml = docsHtml.replaceAll("<!-- -->", "");
+  const visibleBlogHtml = blogHtml.replaceAll("<!-- -->", "");
 
-  assert.match(docsHtml, /Semantix 维护团队撰写/);
-  assert.match(docsHtml, /证据与限制/);
-  assert.match(blogHtml, /By Semantix maintainers/);
-  assert.match(blogHtml, /Evidence and limitations/);
-  assert.match(blogHtml, /Source and revision history/);
+  assert.match(visibleDocsHtml, /作者 · (Gnosil|radianceded|jh10724-dotcom|Allenli1233)/);
+  assert.match(visibleDocsHtml, /证据与限制/);
+  assert.match(visibleBlogHtml, /By (Gnosil|radianceded|jh10724-dotcom|Allenli1233)/);
+  assert.match(visibleBlogHtml, /Evidence and limitations/);
+  assert.match(visibleBlogHtml, /View source and revision history/);
+});
+
+test("maintainer identity graph uses verifiable Person profiles", () => {
+  const jsonLdObjects = [...homepageHtml.matchAll(
+    /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g,
+  )].map((match) => JSON.parse(match[1]));
+  const maintainerGraph = jsonLdObjects.find((value) => Array.isArray(value["@graph"]));
+
+  assert.equal(maintainerGraph["@graph"].length, 4);
+  for (const person of maintainerGraph["@graph"]) {
+    assert.equal(person["@type"], "Person");
+    assert.deepEqual(person.sameAs, [person.url]);
+    assert.match(person.url, /^https:\/\/github\.com\//);
+  }
+});
+
+test("first-party navigation does not present GitHub as the canonical docs host", () => {
+  assert.doesNotMatch(homepageHtml, />GitHub Docs</);
+  assert.match(homepageHtml, /href="\/docs\/?"/);
+  assert.match(homepageHtml, /href="\/blog\/?"/);
 });
