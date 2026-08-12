@@ -1,8 +1,29 @@
 # Semantix
 
-> Semantix is a self-evolving agent kernel that sits between any agent harness and its resources — semantic caching, speculative prefetch, and adaptive scheduling that learn from your usage habits. Open source, implemented in Go.
+> Semantix is a self-evolving agent kernel that sits between any agent harness and its resources — extracting reusable semantic slices from past sessions, retrieving them with BM25, and injecting stable reuse blocks into later sessions. Open source (FSL-1.1-MIT), implemented in Go.
 >
-> Semantix 是一个自进化的 Agent Kernel 层：架设在 agent harness 与资源之间，提供语义切片库、三级语义缓存、内核调度与投机预取。MIT 开源，Go 实现。
+> Semantix 是一个自进化的 Agent Kernel 层：架设在 agent harness 与资源之间，从历史会话提取可复用的语义切片，用 BM25 检索，并向后续会话注入稳定的复用块。开源（FSL-1.1-MIT），Go 实现。
+
+## Capabilities（能力清单）
+
+能力按交付状态分层；路线图能力不视为已交付功能。
+
+### Implemented（已实现）
+
+- **Semantic slice extraction（语义切片提取）** — turns session JSONL into typed P/T/R slices with persistent stores. Source: [`kernel/slice`](https://github.com/Gnosil/semantix/tree/main/kernel/slice)（含测试）.
+- **BM25 retrieval（BM25 检索）** — k1=1.2 / b=0.75, CJK-aware tokenization, `bm25` / `vector` / `hybrid` retrievers. Source: [`kernel/bm25`](https://github.com/Gnosil/semantix/tree/main/kernel/bm25)（含测试）.
+- **CLI** — `semantix extract` / `search` / `lookup` / `inject` / `verify` / `usage` / `eval`；`verify` 提供离线回放命中率验证。快速开始：https://semantix.ensureok.ai/docs/guide（`docs/QUICKSTART.md`）.
+- **Stable slice injection（基础跨会话注入）** — canonical-order injection of matched slices for provider prefix-cache stability. Source: [`kernel/inject`](https://github.com/Gnosil/semantix/tree/main/kernel/inject)（含测试）.
+
+### Partial / experimental（部分实现 / 实验性）
+
+- **L3 verified result reuse（L3 验证与复用）** — dependency and fingerprint verification pipeline in [`kernel/judge`](https://github.com/Gnosil/semantix/tree/main/kernel/judge)（含测试）；端到端基准结果尚未发布，不作为已达成性能声明.
+
+### Roadmap（规划中）
+
+- **Kernel scheduler（内核调度器）** — interface frozen, MVP stub. [`kernel/sched`](https://github.com/Gnosil/semantix/tree/main/kernel/sched).
+- **Speculative prefetch（投机预取）** — interface frozen, MVP stub. [`kernel/prefetch`](https://github.com/Gnosil/semantix/tree/main/kernel/prefetch).
+- **Evolution loop（自进化闭环）** — parameter-tuning component implemented（[`kernel/evolve`](https://github.com/Gnosil/semantix/tree/main/kernel/evolve)，含测试）；闭环集成待完成.
 
 ## Project
 
@@ -32,3 +53,18 @@
 
 - [Terms of Service](https://semantix.ensureok.ai/terms): Terms governing use of the Semantix website and project.
 - [Privacy Policy](https://semantix.ensureok.ai/privacy): How the site handles visitor data.
+
+## Operator（运营主体）
+
+- Legal operator: 确石人工智能科技（上海）有限公司（Queshi Intelligence）— https://www.ensureok.ai/
+- Public contact: junhaihuang@aiqueshi.com（via https://semantix.ensureok.ai/contact）
+
+## License（许可证）
+
+- Current license: **FSL-1.1-MIT**（Functional Source License, Version 1.1, MIT Future License）.
+- Each release converts to the **MIT License** two years after its release date, per the terms of FSL-1.1-MIT.
+- Full license text: https://github.com/Gnosil/semantix/blob/main/LICENSE
+
+## Last updated
+
+- 2026-08-12
