@@ -25,14 +25,28 @@ export default function Nav() {
     const onScroll = () => {
       setScrolled(window.scrollY > 8);
       const intro = document.getElementById("brand-intro");
-      const revealAt = intro ? intro.offsetTop + intro.offsetHeight - 64 : 0;
-      setVisible(Boolean(intro && window.scrollY >= revealAt));
+      setVisible(!intro || window.scrollY > 8);
     };
+
+    const onScrollIntent = (event: WheelEvent) => {
+      if (event.deltaY > 0 && document.getElementById("brand-intro")) {
+        setVisible(true);
+      }
+    };
+
+    const onTouchMove = () => {
+      if (document.getElementById("brand-intro")) setVisible(true);
+    };
+
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("wheel", onScrollIntent, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
     window.addEventListener("resize", onScroll);
     return () => {
       window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("wheel", onScrollIntent);
+      window.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("resize", onScroll);
     };
   }, []);
@@ -49,7 +63,7 @@ export default function Nav() {
     <header
       className={cn(
         "fixed top-0 z-50 w-full border-b transition-all duration-300",
-        !visible && "hidden",
+        visible ? "translate-y-0 opacity-100" : "pointer-events-none -translate-y-full opacity-0",
         scrolled || open
           ? "border-border bg-white/85 backdrop-blur"
           : "border-transparent bg-transparent",
