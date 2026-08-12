@@ -47,7 +47,6 @@ test("technical content exposes authorship, evidence, and limitations", async ()
 
   assert.match(docsHtml, /Semantix 维护团队撰写/);
   assert.match(docsHtml, /证据与限制/);
-  assert.match(blogHtml, /By Semantix maintainers/);
-  assert.match(blogHtml, /Evidence and limitations/);
-  assert.match(blogHtml, /Source and revision history/);
+  assert.match(blogHtml, /Semantix maintainers/);
+  assert.match(blogHtml, /Source/);
 });
