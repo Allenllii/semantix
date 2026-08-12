@@ -37,7 +37,7 @@ const capabilities: Capability[] = [
     num: "03",
     titleEn: "Kernel Scheduler",
     title: "内核调度器",
-    body: "按任务 intent 联合决策：工具并发度、模型 tier、缓存注入、预取预算——从你的行为模式里学出来的调度策略。",
+    body: "仓库定义了按任务 intent 决策并发度、模型 tier、缓存注入和预取预算的接口。它是可扩展的调度边界，不代表生产控制闭环已经完成。",
     code: "decide(intent) → {concurrency, tier, inject, prefetch}",
     art: "/ensureok/semantix-inference-transparent.png",
     artAlt: "古典人物从迷宫中理出清晰路径，象征调度器优化推理路线",
@@ -46,16 +46,16 @@ const capabilities: Capability[] = [
     num: "04",
     titleEn: "Speculative Prefetch",
     title: "投机预取",
-    body: "把 LLM 流式输出的等待时间填满：预取下一轮的切片组装、embedding 计算。waste/hit 比例自我惩罚，越用越准。",
+    body: "预取接口为下一轮切片组装与 embedding 计算预留扩展点。waste/hit 信号是设计约束；主动预取与线上收益尚未形成公开生产证据。",
     code: "waste/hit > 3:1 → signal-source weight ↓",
     art: "/ensureok/semantix-inference-transparent.png",
     artAlt: "古典人物从迷宫中理出清晰路径，象征提前预测和准备下一步",
   },
   {
     num: "05",
-    titleEn: "Self-Evolution",
-    title: "自进化引擎",
-    body: "每轮回馈命中/污染/延迟/成本/成功率：在线 EWMA 调参（冻结期保护字节缓存）+ 离线重训。系统自己长出自己的最优参数。",
+    titleEn: "Experimental Adaptation",
+    title: "实验性参数反馈",
+    body: "仓库实现了 EWMA、冻结窗口与参数状态持久化，用于验证反馈调参路径。真实会话闭环、离线重训和普遍收益仍需要独立评估。",
     code: "online EWMA + freeze-period ≥1h + offline retrain",
     art: "/ensureok/semantix-evolution-transparent.png",
     artAlt: "多臂古典人物重塑另一具雕像，象征反馈驱动的持续进化",
@@ -223,15 +223,15 @@ export default function Features() {
             Features 特性
           </p>
           <h2 className="font-brand-display mt-7 max-w-xl text-[clamp(2.7rem,5.8vw,6.5rem)] font-black leading-[0.98] tracking-[-0.055em]">
-            越用越好的
+            可以检查的
             <br />
-            <span className="text-[#168b6d]">能力。</span>
+            <span className="text-[#168b6d]">实现。</span>
           </h2>
           <p className="mt-7 text-lg text-[#101313]/55">
-            Autonomy you can actually audit.
+            Shipped behavior, interfaces, and experimental boundaries.
           </p>
           <p className="mt-7 max-w-md text-sm leading-7 text-[#101313]/55">
-            现有 harness 只做会话内的字节级前缀缓存——被动、会话绑定、调度静态。Semantix 把整个循环升级为跨会话的、主动的、自进化的闭环：每次交互都让下一次更便宜、更快。
+            Semantix 当前已提供切片提取、BM25 与混合检索、稳定注入等路径。调度、预取和参数反馈处于接口或实验阶段；是否降低生产成本，需要用真实会话单独测量。
           </p>
         </div>
 

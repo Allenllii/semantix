@@ -41,6 +41,25 @@ Run go vet, go test, a fixture-to-injection smoke test, scope-negative tests, an
 
 This recipe proves portability of the integration contract, not equal behavior in every harness. Prompt construction, event timing, permissions, and cancellation semantics remain harness-specific work.
 
+## A run from the integration boundary
+
+On 2026-08-12 I executed the packages behind capture, retrieval, and rollback from main `e93668e` with Go 1.26.5 on Windows/amd64:
+
+```bash
+go test -count=1 ./kernel/event ./kernel/bm25 ./kernel/inject ./kernel/usage
+```
+
+Observed result:
+
+```text
+ok  semantix/kernel/event
+ok  semantix/kernel/bm25
+ok  semantix/kernel/inject
+ok  semantix/kernel/usage
+```
+
+The output shows that these repository contracts are exercised together at package level. It does not show a deployed agent saving tokens or completing more tasks. My deployment checklist would record the harness version, fixture checksum, retrieved slice IDs, task outcome, latency, and rollback result. Without that record, “framework-neutral” describes the boundary shape only.
+
 ## Sources and limitations
 
 - [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) ? commands and supported release paths.

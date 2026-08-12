@@ -14,7 +14,7 @@ const webpageJsonLd = {
   "@type": "WebPage",
   "@id": `${siteIdentity.productUrl}/#webpage`,
   url: `${siteIdentity.productUrl}/`,
-  name: `${siteIdentity.productName} - a self-evolving agent kernel`,
+  name: `${siteIdentity.productName} - a verifiable memory kernel for agents`,
   dateModified: siteIdentity.lastUpdated,
 };
 

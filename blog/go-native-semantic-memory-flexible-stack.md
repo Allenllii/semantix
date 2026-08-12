@@ -41,6 +41,25 @@ A CLI boundary is framework-neutral and easy to replace. It also adds process st
 
 The repository builds and tests these paths and publishes six v0.2.0 platform artifacts in its quickstart. Compatibility with every Go agent framework is not demonstrated. The accurate claim is that integration is framework-agnostic at the file/CLI boundary.
 
+## Reproduced package evidence
+
+For this article I tested the smallest stack implied by the integration boundary on 2026-08-12, main `e93668e`, Go 1.26.5, Windows/amd64:
+
+```bash
+go test -count=1 ./kernel/event ./kernel/ingest ./kernel/bm25 ./kernel/inject
+```
+
+Observed result:
+
+```text
+ok  semantix/kernel/event
+ok  semantix/kernel/ingest
+ok  semantix/kernel/bm25
+ok  semantix/kernel/inject
+```
+
+I consider this evidence for a local Go pipeline, not for universal framework compatibility. The test does not launch LangChain, ADK, Eino, or a production harness. A convincing portability result would implement two independent adapters and publish the event mappings, error behavior, latency, and rollback procedure for both.
+
 ## Sources and limitations
 
 - [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) ? commands and supported release paths.

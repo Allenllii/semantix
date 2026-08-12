@@ -43,6 +43,24 @@ If retrieval fails, continue without the cache. If injected content degrades tas
 
 Track retrieval relevance, repeated tool calls avoided, completion tokens, task success, and user rejection. A lower token count paired with a worse fix is not a win. The project?s synthetic cost report is a useful calculation template; replace every assumed value with observations from your own workload.
 
+## Baseline evidence before claiming savings
+
+I reproduced the cache and retrieval packages on 2026-08-12 from main `e93668e`, Go 1.26.5, Windows/amd64:
+
+```bash
+go test -count=1 ./kernel/cache ./kernel/bm25 ./kernel/inject
+```
+
+Observed result:
+
+```text
+ok  semantix/kernel/cache
+ok  semantix/kernel/bm25
+ok  semantix/kernel/inject
+```
+
+This proves only that the implemented cache, ranker, and injection behavior satisfy repository tests. It contains no production token bill, wall-clock comparison, or independent task-success score. I would publish a savings claim only with paired runs on the same repository tasks, including cache-off baselines, failures, rejected suggestions, token counts, and confidence intervals. Until that dataset exists, the defensible benefit is deterministic reuse infrastructure, not guaranteed lower cost.
+
 ## Sources and limitations
 
 - [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) ? commands and supported release paths.

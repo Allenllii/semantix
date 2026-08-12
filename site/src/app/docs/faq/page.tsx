@@ -4,7 +4,7 @@ import { siteIdentity } from "@/lib/site-identity";
 
 export const metadata: Metadata = {
   title: "常见问题 | Semantix 文档",
-  description: "关于 Semantix 定位、语义缓存、自进化机制和项目参与方式的常见问题。",
+  description: "关于 Semantix 定位、语义缓存、实验性参数反馈和项目参与方式的常见问题。",
   alternates: { canonical: "/docs/faq" },
 };
 

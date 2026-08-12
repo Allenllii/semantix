@@ -34,6 +34,23 @@ The implementation is framework-neutral at the kernel and CLI boundary. The phra
 
 For a real adoption review, I would require a second adapter built by someone who did not design the kernel. That exercise would reveal whether the JSONL contract is genuinely sufficient or whether hidden Reasonix assumptions still live in event ordering, tool-call naming, cancellation, or prompt placement. Until that independent adapter exists, ?framework-agnostic? is a supported architectural property, not a broad interoperability result.
 
+## Review evidence and an adverse result
+
+I ran a broad package check on 2026-08-12 from main `e93668e` using Go 1.26.5 on Windows/amd64:
+
+```bash
+go test -count=1 ./kernel/...
+```
+
+Most kernel packages passed, including BM25, cache, embed, event, evolve, ingest, inject, judge, promote, usage, and zone. The run was not all green:
+
+```text
+FAIL semantix/kernel/slice
+TestFileStoreKeepsPerm0600: store file perm = 666, want 600
+```
+
+That failure is relevant to framework independence because platform behavior is part of the contract. My conclusion remains narrower than the headline: the code is framework-neutral at its Go and file boundaries, while portability still requires OS-specific storage semantics and adapter-level tests. A second independently built adapter would be stronger evidence than another architecture claim.
+
 ## Sources and limitations
 
 - [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) ? commands and supported release paths.
