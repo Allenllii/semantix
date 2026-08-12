@@ -17,14 +17,24 @@ const links: NavLink[] = [
 
 export default function Nav() {
   const [scrolled, setScrolled] = useState(false);
+  const [visible, setVisible] = useState(false);
   const [open, setOpen] = useState(false);
 
   // 滚动状态：>8px 后白底 + 边框（对齐原站 header 行为）
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
+    const onScroll = () => {
+      setScrolled(window.scrollY > 8);
+      const intro = document.getElementById("brand-intro");
+      const revealAt = intro ? intro.offsetTop + intro.offsetHeight - 64 : 0;
+      setVisible(Boolean(intro && window.scrollY >= revealAt));
+    };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
   }, []);
 
   // 菜单打开时锁定 body 滚动
@@ -39,6 +49,7 @@ export default function Nav() {
     <header
       className={cn(
         "fixed top-0 z-50 w-full border-b transition-all duration-300",
+        !visible && "hidden",
         scrolled || open
           ? "border-border bg-white/85 backdrop-blur"
           : "border-transparent bg-transparent",
