@@ -1,0 +1,100 @@
+name: Bug report
+description: Report a reproducible problem in Semantix
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please remove secrets, private source code, personal data, and absolute local paths from all examples and logs.
+
+  - type: input
+    id: version
+    attributes:
+      label: Semantix version
+      description: Run `semantix version` or provide the release/tag/commit used.
+      placeholder: "v0.2.0 or commit SHA"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - GitHub Release binary
+        - Agent Skill installer
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the operating system, architecture, and relevant agent or harness.
+      placeholder: "macOS 15, arm64, Reasonix"
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or integration
+      description: Show the command or integration path that triggered the problem.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest reliable sequence that reproduces the issue.
+      placeholder: |
+        1. Prepare ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or output
+      description: Do not include API keys, credentials, private code, personal data, or absolute local paths.
+      render: text
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Include related issues, screenshots, sample sessions, or other useful context.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: I removed secrets, private code, personal data, and sensitive paths.
+          required: true
+        - label: I can reproduce this problem using the information above.
+          required: true
