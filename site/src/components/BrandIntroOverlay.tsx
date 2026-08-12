@@ -74,9 +74,9 @@ export default function BrandIntroOverlay() {
           </div>
 
           <div className="font-brand-display absolute right-6 top-7 max-w-[15rem] text-right text-xs font-bold leading-relaxed sm:right-12 sm:top-12 md:max-w-xs">
-            让每个 Agent 拥有持续进化的
+            把历史交互整理成可检索的
             <br className="hidden md:block" />
-            记忆与推理内核
+            执行经验
           </div>
 
           <div className="absolute bottom-8 left-6 font-mono text-[9px] tracking-[0.34em] sm:bottom-12 sm:left-12 sm:text-[10px]">
@@ -105,18 +105,17 @@ export default function BrandIntroOverlay() {
           }}
         >
           <h1 className="font-brand-serif text-balance text-5xl font-normal leading-[0.88] tracking-[0.015em] md:text-6xl lg:whitespace-nowrap lg:text-[4.9rem]">
-            A <span className="text-[#00a878]">self-evolving</span> agent kernel.
+            A <span className="text-[#00a878]">verifiable</span> agent memory kernel.
           </h1>
           <p className="font-brand-display mx-auto mt-7 max-w-4xl text-[2rem] font-black leading-[0.98] tracking-[-0.055em] md:text-[2.75rem]">
-            <span className="block md:inline">让每次推理</span>
-            <span className="block md:inline">变成下一次绘画的</span>
-            <span className="block text-[#168b6d]">记忆</span>
+            <span className="block md:inline">把历史交互整理成</span>
+            <span className="block text-[#168b6d]">可检索的执行经验</span>
           </p>
 
           <p className="mx-auto mt-8 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
-            Semantix 连接 Agent Harness 与资源层，负责并发调度、语义缓存和智能预取。
+            Semantix 连接 Agent Harness 与资源层，提供切片提取、BM25 检索和稳定注入路径。
             <br className="hidden md:block" />
-            每次交互都会积累经验，让下一次响应更快、成本更低。
+            当前公开证据来自仓库测试与合成演示；生产环境中的成本和性能收益仍待验证。
           </p>
           <time
             dateTime={siteIdentity.lastUpdated}

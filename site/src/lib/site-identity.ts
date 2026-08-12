@@ -53,7 +53,7 @@ export const softwareApplicationJsonLd = {
   name: siteIdentity.productName,
   url: `${siteIdentity.productUrl}/`,
   description:
-    "A self-evolving agent kernel that sits between any agent harness and its resources, with semantic caching, speculative prefetch, and adaptive scheduling.",
+    "An open-source Go memory kernel with semantic slice extraction, BM25 retrieval, stable injection, and experimental scheduling and adaptation interfaces.",
   applicationCategory: "DeveloperApplication",
   operatingSystem: "Linux, macOS, Windows",
   license: "https://github.com/Gnosil/semantix/blob/main/LICENSE",

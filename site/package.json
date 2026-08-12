@@ -2,7 +2,7 @@
   "name": "semantix-site",
   "version": "0.1.0",
   "private": true,
-  "description": "Semantix official landing page — a self-evolving agent kernel.",
+  "description": "Semantix official site — a verifiable memory kernel for agents.",
   "license": "MIT",
   "repository": {
     "type": "git",

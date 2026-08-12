@@ -73,11 +73,13 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
 
         <aside className="mb-8 max-w-3xl border-l-2 border-accent bg-muted/40 px-5 py-4 text-sm leading-6 text-muted-foreground">
           <p>
-            Evidence and limitations: implementation claims should be verified against the current release and repository tests. Architectural direction is identified separately from shipped behavior.
+            Evidence and limitations: commands, observable outputs, and known failure boundaries are kept in the article. Repository tests are first-party engineering evidence, not an independent production benchmark.
           </p>
-          <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-medium text-foreground underline decoration-border underline-offset-4 hover:text-accent">
-            View source and revision history ↗
-          </a>
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+            <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline decoration-border underline-offset-4 hover:text-accent">View source and revision history ↗</a>
+            <a href={author.contributionsUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline decoration-border underline-offset-4 hover:text-accent">Author contribution history ↗</a>
+          </div>
+          <p className="mt-3 text-xs">{author.description}</p>
         </aside>
 
         <article className="geo-prose max-w-3xl">

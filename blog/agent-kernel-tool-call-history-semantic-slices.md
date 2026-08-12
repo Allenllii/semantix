@@ -35,6 +35,24 @@ Different later queries want different evidence. ?How did we diagnose this?? sho
 
 The extractor does not prove that every turn boundary is the correct semantic boundary. The M0 gate explicitly leaves real-session relevance unresolved and proposes changing from turn-level to subtask-level extraction if relevance is below 70%. The current split is a testable baseline, not a final ontology.
 
+## Observable extractor evidence
+
+I ran the extractor-facing packages rather than relying on the architecture diagram. The check used main `e93668e`, Go 1.26.5, and Windows/amd64 on 2026-08-12:
+
+```bash
+go test -count=1 ./kernel/event ./kernel/ingest ./kernel/fingerprint
+```
+
+Observed result:
+
+```text
+ok  semantix/kernel/event
+ok  semantix/kernel/ingest
+ok  semantix/kernel/fingerprint
+```
+
+This supports parsing, slice extraction, and deterministic identity under repository fixtures. It does not prove that Prompt, ToolPattern, and Result are the best ontology for a real team. I would reject the design if labeled production traces show that tool sequences cross turn boundaries often enough to make the extracted pattern misleading. The M0 relevance gate remains the honest next test.
+
 ## Sources and limitations
 
 - [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) ? commands and supported release paths.

@@ -39,6 +39,24 @@ Check its type, scope, content, and deterministic ID. A useful ToolPattern shoul
 
 Success is not ?the CLI printed something.? The expected slice must rank in the labeled top results, an unrelated scope must stay absent, repeated output must be stable, and a malformed line must not erase valid events. Those properties are covered by repository tests; your own corpus still needs separate labels.
 
+## Evidence captured on Windows
+
+I treat this workshop as successful only when the extraction and retrieval packages pass independently. On 2026-08-12 I ran the following from main at `e93668e` with Go 1.26.5 on Windows/amd64:
+
+```bash
+go test -count=1 ./kernel/ingest ./kernel/bm25 ./kernel/inject
+```
+
+The observed package-level result was:
+
+```text
+ok  semantix/kernel/ingest
+ok  semantix/kernel/bm25
+ok  semantix/kernel/inject
+```
+
+That output supports a narrow claim: the repository fixtures exercise ingestion, BM25 ranking, and marked-block injection on this environment. It does not report relevance on a real conversation corpus. My next acceptance step would be ten held-out queries labeled by a person who did not write the extractor; until then, this is a reproducible workshop, not evidence that every agent trace becomes useful memory.
+
 ## Sources and limitations
 
 - [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) ? commands and supported release paths.

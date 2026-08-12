@@ -22,6 +22,9 @@ export default function BlogPage() {
           <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
             关于跨会话复用、检索架构和开源 Agent memory 的研究与实践。
           </p>
+          <p className="mt-5 max-w-3xl border-l-2 border-accent pl-4 text-sm leading-6 text-muted-foreground">
+            编辑说明：目录中的日期来自仓库版本记录，作者链接指向可核验的 GitHub 贡献历史。文章中的测试结果是仓库内的一手工程证据，不等同于独立生产评测。
+          </p>
         </div>
       </header>
 
