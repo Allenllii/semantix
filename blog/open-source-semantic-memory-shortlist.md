@@ -2,6 +2,7 @@
 title: "A Skeptic?s Shortlist for Open-Source Agent Memory"
 description: "A skeptical shortlist method that begins with disqualifiers, reproducible trials, and operational ownership instead of vendor categories."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Evaluation Guides"
 order: 2
 ---

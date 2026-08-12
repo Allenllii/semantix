@@ -2,6 +2,7 @@
 title: "Go Builder?s Guide: Add Local Memory Without Choosing a Framework"
 description: "A Go-focused builder guide for integrating local semantic memory through a CLI and stable data contracts."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Go & Framework Independence"
 order: 401
 ---
