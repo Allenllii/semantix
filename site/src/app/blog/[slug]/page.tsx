@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getBlogPost, listBlogPosts, readBlogPost } from "@/lib/blog";
 import { siteIdentity } from "@/lib/site-identity";
+import { getContentAuthor, personJsonLd } from "@/lib/content-authors";
 
 type BlogPageProps = { params: Promise<{ slug: string }> };
 
@@ -29,6 +30,7 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
   const postMeta = getBlogPost((await params).slug);
   if (!postMeta) notFound();
   const post = readBlogPost(postMeta);
+  const author = getContentAuthor(`blog/${post.slug}`);
   const sourceUrl = `${siteIdentity.repositoryUrl}/blob/main/blog/${post.fileName}`;
   const articleJsonLd = {
     "@context": "https://schema.org",
@@ -40,7 +42,7 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
     datePublished: post.updated,
     inLanguage: "en",
     mainEntityOfPage: `${siteIdentity.productUrl}/blog/${post.slug}`,
-    author: { "@id": `${siteIdentity.operator.url}#organization` },
+    author: personJsonLd(author),
     publisher: { "@id": `${siteIdentity.operator.url}#organization` },
     citation: sourceUrl,
   };
@@ -57,7 +59,9 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
             ← 返回 Blog
           </Link>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-xs text-muted-foreground">
-            <Link href="/about" className="hover:text-accent">Semantix maintainers</Link>
+            <a href={author.url} target="_blank" rel="author noopener noreferrer" className="hover:text-accent">
+              By {author.name}
+            </a>
             <span aria-hidden="true">·</span>
             <time dateTime={post.updated}>Updated {post.updated}</time>
             <span aria-hidden="true">·</span>
@@ -66,6 +70,15 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
             </a>
           </div>
         </div>
+
+        <aside className="mb-8 max-w-3xl border-l-2 border-accent bg-muted/40 px-5 py-4 text-sm leading-6 text-muted-foreground">
+          <p>
+            Evidence and limitations: implementation claims should be verified against the current release and repository tests. Architectural direction is identified separately from shipped behavior.
+          </p>
+          <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-medium text-foreground underline decoration-border underline-offset-4 hover:text-accent">
+            View source and revision history ↗
+          </a>
+        </aside>
 
         <article className="geo-prose max-w-3xl">
           <ReactMarkdown

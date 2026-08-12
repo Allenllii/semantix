@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { geoDocuments, getGeoDocument, readGeoDocument } from "@/lib/geo-docs";
 import { siteIdentity } from "@/lib/site-identity";
+import { getContentAuthor, personJsonLd } from "@/lib/content-authors";
 
 type GeoPageProps = {
   params: Promise<{ slug: string }>;
@@ -37,6 +38,7 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
   const content = await readGeoDocument(document);
   const sourceUrl = `${siteIdentity.repositoryUrl}/blob/main/site/content/geo/${document.fileName}`;
   const isEnglish = document.language === "English";
+  const author = getContentAuthor(`docs/${document.slug}`);
 
   const articleJsonLd = {
     "@context": "https://schema.org",
@@ -44,10 +46,11 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
     "@id": `${siteIdentity.productUrl}/docs/${document.slug}#article`,
     headline: document.title,
     description: document.description,
+    datePublished: document.published,
     dateModified: document.lastUpdated,
     inLanguage: isEnglish ? "en" : "zh-CN",
     mainEntityOfPage: `${siteIdentity.productUrl}/docs/${document.slug}`,
-    author: { "@id": `${siteIdentity.operator.url}#organization` },
+    author: personJsonLd(author),
     publisher: { "@id": `${siteIdentity.operator.url}#organization` },
     citation: sourceUrl,
   };
@@ -68,10 +71,11 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
             <span>{document.depth}</span>
           </div>
           <div className="flex flex-wrap items-center gap-3 font-mono text-xs text-muted-foreground">
-            <Link href="/about" className="hover:text-accent">
-              {isEnglish ? "By Semantix maintainers" : "Semantix 维护团队撰写"}
-            </Link>
+            <a href={author.url} target="_blank" rel="author noopener noreferrer" className="hover:text-accent">
+              {isEnglish ? `By ${author.name}` : `作者 · ${author.name}`}
+            </a>
             <span>{document.language}</span>
+            <time dateTime={document.published}>Published · {document.published}</time>
             <time dateTime={document.lastUpdated}>Last updated · {document.lastUpdated}</time>
           </div>
         </div>
