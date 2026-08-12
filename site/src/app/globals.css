@@ -132,6 +132,64 @@
   }
 }
 
+/* EnsureOK uses Noto Sans SC 900 for its oversized Chinese display copy. */
+.font-brand-display {
+  font-family: var(--font-noto-sans-sc), "PingFang SC", "Microsoft YaHei",
+    sans-serif;
+  font-synthesis: none;
+}
+
+/* Shared display face for the wordmark and English hero line. */
+.font-brand-serif {
+  font-family: "Bodoni 72", Didot, "Bodoni MT", "Times New Roman", serif;
+  font-synthesis: none;
+  text-box-edge: cap alphabetic;
+  text-box-trim: trim-both;
+}
+
+/* Editorial Chinese serif used by the capability index. */
+.font-feature-serif {
+  font-family: "Songti SC", STSong, "Noto Serif CJK SC", SimSun,
+    "Times New Roman", serif;
+  font-synthesis: none;
+}
+
+.semantix-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@keyframes semantix-detail-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.semantix-detail-in {
+  animation: semantix-detail-in 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .semantix-detail-in {
+    animation: none;
+  }
+}
+
+.brand-intro-wordmark {
+  font-size: clamp(4.25rem, 19vw, 24rem);
+  font-weight: 400;
+  line-height: 0.78;
+  letter-spacing: -0.075em;
+  text-wrap: nowrap;
+}
+
 /* ---- site-wide patterns (extracted from reasonix.io) ---- */
 @layer utilities {
   .wrap {

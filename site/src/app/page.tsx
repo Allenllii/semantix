@@ -6,6 +6,7 @@ import Roadmap from "@/components/Roadmap";
 import Community from "@/components/Community";
 import Install from "@/components/Install";
 import Footer from "@/components/Footer";
+import BrandIntroOverlay from "@/components/BrandIntroOverlay";
 import { siteIdentity } from "@/lib/site-identity";
 
 const webpageJsonLd = {
@@ -28,6 +29,7 @@ export default function Home() {
       />
       <Nav />
       <main>
+        <BrandIntroOverlay />
         <Hero />
         <Features />
         <Components />
