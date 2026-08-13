@@ -49,9 +49,9 @@ test("technical content exposes authorship, evidence, and limitations", async ()
   const visibleDocsHtml = docsHtml.replaceAll("<!-- -->", "");
   const visibleBlogHtml = blogHtml.replaceAll("<!-- -->", "");
 
-  assert.match(visibleDocsHtml, /作者 · (Gnosil|radianceded|jh10724-dotcom|Allenli1233)/);
+  assert.match(visibleDocsHtml, /作者 · (Gnosil|radianceded|jh10724-dotcom|Allenllii)/);
   assert.match(visibleDocsHtml, /证据与限制/);
-  assert.match(visibleBlogHtml, /Maintainer attribution · (Gnosil|radianceded|jh10724-dotcom|Allenli1233)/);
+  assert.match(visibleBlogHtml, /Maintainer attribution · (Gnosil|radianceded|jh10724-dotcom|Allenllii)/);
   assert.match(visibleBlogHtml, /Evidence and limitations/);
   assert.match(visibleBlogHtml, /View source and revision history/);
   assert.match(auditedBlogHtml, /View evidence run/);
