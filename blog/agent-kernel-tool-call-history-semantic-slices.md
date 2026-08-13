@@ -2,6 +2,7 @@
 title: "From Noisy Tool Traces to Three Reusable Slice Types"
 description: "An annotated teardown of how prompt, tool-pattern, and result slices are derived from agent session JSONL."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Semantic Slices"
 order: 101
 ---

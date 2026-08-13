@@ -2,6 +2,7 @@
 title: "Architecture Review: Comparing Agent Memory by Failure Mode"
 description: "An architecture-review rubric that compares memory systems by scope leaks, stale reuse, observability, and recovery behavior."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Evaluation Guides"
 order: 4
 ---

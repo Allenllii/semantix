@@ -2,6 +2,7 @@
 title: "Runbook: Stop Paying for Repeated Repository Discovery"
 description: "An operational runbook for detecting repeated discovery, capturing evidence, and enabling semantic reuse safely."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Semantic Cache"
 order: 203
 ---

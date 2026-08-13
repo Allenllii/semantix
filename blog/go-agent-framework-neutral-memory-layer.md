@@ -2,6 +2,7 @@
 title: "Integration Recipe: A Memory Sidecar for Any Go Agent Harness"
 description: "A concrete integration recipe covering capture, extraction, retrieval, injection, and rollback."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Go & Framework Independence"
 order: 402
 ---
