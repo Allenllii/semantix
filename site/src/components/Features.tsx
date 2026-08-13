@@ -190,7 +190,7 @@ export default function Features() {
                     <CopyCode
                       className="mt-7 max-w-2xl rounded-none"
                       code={selected.code}
-                      tone="gray"
+                      tone="dark"
                     />
                   </div>
 
@@ -223,12 +223,12 @@ export default function Features() {
             Features 特性
           </p>
           <h2 className="font-brand-display mt-7 max-w-xl text-[clamp(2.7rem,5.8vw,6.5rem)] font-black leading-[0.98] tracking-[-0.055em]">
-            可以检查的
+            展示实现，
             <br />
-            <span className="text-[#168b6d]">实现。</span>
+            <span className="text-[#168b6d]">也展示边界。</span>
           </h2>
           <p className="mt-7 text-lg text-[#101313]/55">
-            Shipped behavior, interfaces, and experimental boundaries.
+            Shipped capabilities, traceable evidence, and explicit limits.
           </p>
           <p className="mt-7 max-w-md text-sm leading-7 text-[#101313]/55">
             Semantix 当前已提供切片提取、BM25 与混合检索、稳定注入等路径。调度、预取和参数反馈处于接口或实验阶段；是否降低生产成本，需要用真实会话单独测量。
