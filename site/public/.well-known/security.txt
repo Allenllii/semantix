@@ -2,5 +2,7 @@
 # Report vulnerabilities privately via GitHub Security Advisory (preferred) — do NOT open public issues for security findings.
 
 Contact: https://github.com/Gnosil/semantix/security/advisories/new
-Expires: 2027-08-10T00:00:00.000Z
+Contact: mailto:junhaihuang@aiqueshi.com
+Expires: 2027-08-12T00:00:00Z
+Preferred-Languages: zh, en
 Canonical: https://semantix.ensureok.ai/.well-known/security.txt
