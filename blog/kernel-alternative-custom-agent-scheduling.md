@@ -54,6 +54,14 @@ ok  semantix/kernel/evolve
 
 My reading is deliberately conservative. The adaptation package has executable tests; scheduler and prefetch compile, but their packages do not yet contain tests. That is not evidence of a production scheduling loop. Before calling this a kernel alternative, I would add decision-table tests, cancellation tests, a disabled-kernel baseline, and a trace showing which decision changed a real tool run.
 
+## What changed my recommendation
+
+Before running those packages, I treated scheduling, prefetch, and evolution as one maturity claim because they sit next to one another in the architecture. The output forced a narrower conclusion. Two packages compile without package tests, while `evolve` has executable coverage. A green build therefore says less than the diagram suggests.
+
+If I were integrating Semantix into a harness today, I would enable extraction, retrieval, and marked-block injection first. I would leave scheduler-driven concurrency and speculative prefetch behind an explicit feature flag. The acceptance condition for enabling them would not be “the package builds.” I would require a trace that records the scheduling decision, the no-scheduler baseline, cancellation behavior, latency, and the downstream task result.
+
+There is also an adverse case worth preserving: a speculative fetch can finish successfully and still be the wrong work. If its result consumes context or delays the tool that the user actually needs, a technically successful prefetch is a product failure. That is why usefulness, rejection rate, and cancellation cost belong beside execution time in the evaluation.
+
 ## Sources and limitations
 
 - [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) — commands and supported release paths.
