@@ -30,6 +30,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${BASE}/docs/faq`, lastModified, changeFrequency: "monthly", priority: 0.7 },
     { url: `${BASE}/benchmarks`, lastModified, changeFrequency: "monthly", priority: 0.8 },
     { url: `${BASE}/evidence/methodology`, lastModified, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${BASE}/evidence/semantix-2026-08-12-windows.json`, lastModified, changeFrequency: "monthly", priority: 0.4 },
     { url: `${BASE}/blog`, lastModified, changeFrequency: "weekly", priority: 0.9 },
     ...blogPosts,
     ...["gnosil", "radianceded", "jh10724-dotcom", "allenli1233"].map((name) => ({

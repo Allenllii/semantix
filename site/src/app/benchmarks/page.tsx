@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { defaultEvidenceArtifact, defaultEvidenceRun, evidenceLevelLabel } from "@/lib/evidence";
 import { siteIdentity } from "@/lib/site-identity";
+import { contentAuthors } from "@/lib/content-authors";
 
 export const metadata: Metadata = {
   title: "Benchmarks and evidence | Semantix",
@@ -20,6 +21,7 @@ const capabilities = [
 
 export default function BenchmarksPage() {
   const run = defaultEvidenceRun;
+  const editor = contentAuthors.find((author) => author.name === "radianceded")!;
   const commitUrl = `${siteIdentity.repositoryUrl}/commit/${run.commit}`;
 
   return (
@@ -33,7 +35,18 @@ export default function BenchmarksPage() {
         <p className="mt-5 border-l-2 border-accent pl-4 text-sm leading-6 text-muted-foreground">
           Current evidence level: <span className="font-medium text-foreground">{evidenceLevelLabel(run.level)}</span>. This is first-party engineering evidence, not an independent production benchmark.
         </p>
+        <p className="mt-5 text-sm text-muted-foreground">
+          Run record and page review by <Link href={editor.profileUrl} className="font-medium text-foreground underline underline-offset-4">{editor.name}</Link>. Last reviewed <time dateTime="2026-08-13">2026-08-13</time>.
+        </p>
       </header>
+
+      <section className="mt-12 max-w-3xl" aria-labelledby="why-this-run">
+        <h2 id="why-this-run" className="text-2xl font-semibold tracking-tight">Why this run is public</h2>
+        <div className="mt-5 space-y-4 text-sm leading-7 text-muted-foreground">
+          <p>We published the run after the website audit found that architecture claims were easier to find than raw outcomes. The aim is narrower than a performance benchmark: a reader should be able to see the command, environment, passing packages, and adverse result without trusting a product summary.</p>
+          <p>The Windows permission failures are kept in the record because removing them would overstate portability. They do not invalidate BM25 or extraction tests, but they do show that Unix mode-bit assertions need a platform-specific interpretation.</p>
+        </div>
+      </section>
 
       <section className="mt-12" aria-labelledby="capability-status">
         <h2 id="capability-status" className="text-2xl font-semibold tracking-tight">Capability status</h2>
@@ -107,6 +120,10 @@ export default function BenchmarksPage() {
         <ul className="mt-5 space-y-3 text-sm leading-7 text-muted-foreground">
           {run.limitations.map((limitation) => <li key={limitation}>· {limitation}</li>)}
         </ul>
+        <h3 className="mt-8 text-lg font-semibold text-foreground">Next evaluation</h3>
+        <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          The next useful run is a frozen set of real, consented sessions with relevance labels written before threshold tuning. It should publish per-query decisions, rejected slices, downstream task outcomes, and a no-memory baseline. Until that exists, this page supports implementation claims only.
+        </p>
         <Link href="/docs/faq" className="mt-6 inline-block text-sm font-medium text-accent underline underline-offset-4">Read the FAQ on current project status →</Link>
       </section>
     </main>

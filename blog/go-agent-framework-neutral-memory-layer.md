@@ -61,6 +61,16 @@ ok  semantix/kernel/usage
 
 The output shows that these repository contracts are exercised together at package level. It does not show a deployed agent saving tokens or completing more tasks. My deployment checklist would record the harness version, fixture checksum, retrieved slice IDs, task outcome, latency, and rollback result. Without that record, “framework-neutral” describes the boundary shape only.
 
+## The integration mistake I would avoid
+
+The tempting implementation is to capture every event and inject every high-scoring slice. I would not start there. Tool streams contain partial arguments, duplicate status messages, secrets, and results that are valid only for one checkout. More memory can make the next prompt longer while making its answer worse.
+
+For a first adapter, I would capture only the user request and completed tool result, then log the event ID before extraction. On retrieval, I would record the query, selected slice IDs, scores, and the exact marked block inserted into the prompt. A rejected slice should remain visible in the evaluation record instead of silently disappearing after a threshold change.
+
+The failure path is part of the contract. If the database is locked, retrieval exceeds its deadline, or the marked block cannot be removed cleanly, the harness should proceed without memory and report that fallback. This makes the sidecar optional in operation, not merely optional in an architecture diagram.
+
+My next comparison would replay a frozen session set twice: once with the marked block and once without it. The decision metric would combine task completion, incorrect reuse, prompt-token change, latency, and rollback success. Until such a comparison is published, the package tests support an integration-boundary claim, not a claim of production benefit.
+
 ## Sources and limitations
 
 - [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) — commands and supported release paths.
