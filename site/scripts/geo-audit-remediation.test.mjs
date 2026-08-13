@@ -49,9 +49,9 @@ test("technical content exposes authorship, evidence, and limitations", async ()
   const visibleDocsHtml = docsHtml.replaceAll("<!-- -->", "");
   const visibleBlogHtml = blogHtml.replaceAll("<!-- -->", "");
 
-  assert.match(visibleDocsHtml, /作者 · (Gnosil|radianceded|jh10724-dotcom|Allenli1233)/);
+  assert.match(visibleDocsHtml, /作者 · (Gnosil|radianceded|jh10724-dotcom|Allenllii)/);
   assert.match(visibleDocsHtml, /证据与限制/);
-  assert.match(visibleBlogHtml, /Maintainer attribution · (Gnosil|radianceded|jh10724-dotcom|Allenli1233)/);
+  assert.match(visibleBlogHtml, /Maintainer attribution · (Gnosil|radianceded|jh10724-dotcom|Allenllii)/);
   assert.match(visibleBlogHtml, /Evidence and limitations/);
   assert.match(visibleBlogHtml, /View source and revision history/);
   assert.match(auditedBlogHtml, /View evidence run/);
@@ -84,13 +84,20 @@ test("docs and FAQ point readers to evidence instead of leaving claims unbounded
 });
 
 test("author profiles and evidence data are discoverable", async () => {
-  const authorHtml = await readExport("authors/radianceded/index.html");
+  const authorSlugs = ["gnosil", "radianceded", "jh10724-dotcom", "allenli1233"];
+  const authorPages = await Promise.all(
+    authorSlugs.map((slug) => readExport(`authors/${slug}/index.html`)),
+  );
   const sitemap = await readExport("sitemap.xml");
   const evidence = await readExport("evidence/semantix-2026-08-12-windows.json");
-  assert.match(authorHtml, /ProfilePage/);
-  assert.match(authorHtml, /Semantix contribution history/);
+  for (const authorHtml of authorPages) {
+    assert.match(authorHtml, /ProfilePage/);
+    assert.match(authorHtml, /Semantix contribution history/);
+  }
   assert.match(sitemap, /<loc>https:\/\/semantix\.ensureok\.ai\/benchmarks<\/loc>/);
-  assert.match(sitemap, /<loc>https:\/\/semantix\.ensureok\.ai\/authors\/radianceded<\/loc>/);
+  for (const slug of authorSlugs) {
+    assert.match(sitemap, new RegExp(`<loc>https://semantix\\.ensureok\\.ai/authors/${slug}</loc>`));
+  }
   assert.match(evidence, /"productionBenchmark": false/);
 });
 

@@ -137,12 +137,12 @@ export default function Install() {
             </a>
             {"、"}
             <a
-              href="https://github.com/Allenli1233"
+              href="https://github.com/Allenllii"
               target="_blank"
               rel="noopener"
               className="text-accent hover:underline"
             >
-              Allenli1233
+              Allenllii
             </a>
             {"、"}
             <a
@@ -153,7 +153,7 @@ export default function Install() {
             >
               jh10724-dotcom
             </a>
-            {" · "}© 2026 FSL-1.1-MIT · 技术作者：Gnosil
+            {" · "}© 2026 MIT License · 技术作者：Gnosil
           </p>
         </Reveal>
       </div>

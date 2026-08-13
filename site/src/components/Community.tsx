@@ -7,7 +7,7 @@ const contributors = [
   "Gnosil",
   "radianceded",
   "jh10724-dotcom",
-  "Allenli1233",
+  "Allenllii",
   "lr",
 ];
 
