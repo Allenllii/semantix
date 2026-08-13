@@ -53,7 +53,7 @@ export default function BrandIntroOverlay() {
       ref={storyRef}
       id="brand-intro"
       aria-label="Semantix introduction"
-      className="relative h-[165svh] bg-white"
+      className="relative h-[140svh] bg-white"
     >
       <div className="sticky top-0 h-[100svh] min-h-[560px] overflow-hidden bg-[#080d0c]">
         <div
@@ -74,9 +74,9 @@ export default function BrandIntroOverlay() {
           </div>
 
           <div className="font-brand-display absolute right-6 top-7 max-w-[15rem] text-right text-xs font-bold leading-relaxed sm:right-12 sm:top-12 md:max-w-xs">
-            把历史交互整理成可检索的
+            把每一次对话，
             <br className="hidden md:block" />
-            执行经验
+            沉淀为可检索的记忆
           </div>
 
           <div className="absolute bottom-8 left-6 font-mono text-[9px] tracking-[0.34em] sm:bottom-12 sm:left-12 sm:text-[10px]">
@@ -108,8 +108,8 @@ export default function BrandIntroOverlay() {
             A <span className="text-[#00a878]">verifiable</span> agent memory kernel.
           </h1>
           <p className="font-brand-display mx-auto mt-7 max-w-4xl text-[2rem] font-black leading-[0.98] tracking-[-0.055em] md:text-[2.75rem]">
-            <span className="block md:inline">把历史交互整理成</span>
-            <span className="block text-[#168b6d]">可检索的执行经验</span>
+            <span className="block md:inline">把每一次对话，</span>
+            <span className="block text-[#168b6d]">沉淀为可检索的记忆</span>
           </p>
 
           <p className="mx-auto mt-8 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
