@@ -29,7 +29,7 @@ Articles are grouped using frontmatter into:
 4. Scheduling & Harness
 5. Go & Framework Independence
 
-Each document contains `title`, `description`, `updated`, `group`, and `order` metadata. Slugs are stable English filenames.
+Each document contains `title`, `description`, `published`, `updated`, `group`, and `order` metadata. `published` is the original publication date and must be no later than `updated`. Slugs are stable English filenames.
 
 ## Interface
 

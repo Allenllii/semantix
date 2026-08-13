@@ -28,7 +28,7 @@ function parseFrontmatter(source: string, fileName: string) {
     );
   }
 
-  const required = ["title", "description", "updated", "group", "order"];
+  const required = ["title", "description", "updated", "published", "group", "order"];
   for (const key of required) {
     if (!values.get(key)) throw new Error(`Missing ${key} in blog/${fileName}`);
   }
@@ -43,6 +43,7 @@ function parseFrontmatter(source: string, fileName: string) {
     title: values.get("title")!,
     description: values.get("description")!,
     updated: values.get("updated")!,
+    published: values.get("published")!,
     group,
     order,
     content: source.slice(match[0].length),
@@ -79,6 +80,7 @@ export function listBlogPosts(): BlogPostMeta[] {
         fileName: entry.name,
         title: meta.title,
         description: meta.description,
+        published: meta.published,
         updated: meta.updated,
         group: meta.group,
         order: meta.order,

@@ -28,7 +28,7 @@ const expectedEditorialAngles = [
   "Threat Model",
   "Decision Record",
   "Control-Loop Walkthrough",
-  "Builder?s Guide",
+  "Builder's Guide",
   "Integration Recipe",
   "Code Review",
 ];
@@ -57,11 +57,12 @@ test("blog corpus contains twenty standalone, valid Markdown articles", async ()
   for (const file of files) {
     const source = await readFile(path.join(blogRoot, file), "utf8");
     const meta = parseFrontmatter(source);
-    for (const key of ["title", "description", "updated", "group", "order"]) {
+    for (const key of ["title", "description", "updated", "published", "group", "order"]) {
       assert.ok(meta[key], `${file} is missing ${key}`);
     }
     assert.ok(allowedGroups.has(meta.group), `${file} has invalid group ${meta.group}`);
     assert.match(meta.updated, /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(meta.published, /^\d{4}-\d{2}-\d{2}$/);
     assert.equal((source.match(/^# /gm) ?? []).length, 1, `${file} must contain one H1`);
     assert.ok((source.match(/^## /gm) ?? []).length >= 1, `${file} must contain an H2`);
     const slug = file.replace(/\.md$/, "");
@@ -100,4 +101,54 @@ test("the corpus uses multiple explicit editorial voices", async () => {
   );
 
   assert.ok(representedAngles.length >= 12, `expected >= 12 editorial angles, got ${representedAngles.length}`);
+});
+
+test("blog Markdown contains no known mojibake markers", async () => {
+  const files = (await readdir(blogRoot)).filter((file) => file.endsWith(".md"));
+  for (const file of files) {
+    const source = await readFile(path.join(blogRoot, file), "utf8");
+    assert.doesNotMatch(source, /�|Builder\?s|Today\?s|Semantix\?s|repository\?s|provider\?s|project\?s/, `${file} contains a likely encoding marker`);
+  }
+});
+
+test("audited technical articles include inline results and human judgment", async () => {
+  const auditedSlugs = [
+    "turning-tool-calls-searchable-semantic-slices",
+    "semantic-kernel-smarter-tool-execution",
+    "kernel-alternative-custom-agent-scheduling",
+    "go-native-semantic-memory-flexible-stack",
+    "agent-kernel-tool-call-history-semantic-slices",
+    "go-agent-framework-neutral-memory-layer",
+    "go-native-framework-agnostic-memory-kernel",
+    "semantic-cache-kernel-coding-agents",
+  ];
+
+  for (const slug of auditedSlugs) {
+    const source = await readFile(path.join(blogRoot, `${slug}.md`), "utf8");
+    const prose = source.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, "");
+    const wordCount = (prose.match(/\b[A-Za-z][A-Za-z?'-]*\b/g) ?? []).length;
+    assert.ok(wordCount >= 400, `${slug} should contain enough context to interpret its evidence`);
+    assert.match(source, /^```text$/m, `${slug} should show observed output, not commands alone`);
+    assert.match(source, /\bI\b|\bMy\b/, `${slug} should include a clearly attributed engineering judgment`);
+    assert.match(source, /not |does not |failed|FAIL/, `${slug} should state an adverse result or claim boundary`);
+  }
+});
+
+test("each audited article links readers to the public evidence boundary", async () => {
+  const auditedSlugs = [
+    "turning-tool-calls-searchable-semantic-slices",
+    "semantic-kernel-smarter-tool-execution",
+    "kernel-alternative-custom-agent-scheduling",
+    "go-native-semantic-memory-flexible-stack",
+    "agent-kernel-tool-call-history-semantic-slices",
+    "go-agent-framework-neutral-memory-layer",
+    "go-native-framework-agnostic-memory-kernel",
+    "semantic-cache-kernel-coding-agents",
+  ];
+
+  for (const slug of auditedSlugs) {
+    const source = await readFile(path.join(blogRoot, `${slug}.md`), "utf8");
+    assert.match(source, /Sources and limitations/);
+    assert.match(source, /github\.com\/Gnosil\/semantix/);
+  }
 });

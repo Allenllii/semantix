@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { getBlogPost, listBlogPosts, readBlogPost } from "@/lib/blog";
 import { siteIdentity } from "@/lib/site-identity";
 import { getContentAuthor, personJsonLd } from "@/lib/content-authors";
+import { defaultEvidenceArtifact, evidenceLevelLabel, getBlogEvidence } from "@/lib/evidence";
 
 type BlogPageProps = { params: Promise<{ slug: string }> };
 
@@ -31,6 +32,7 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
   if (!postMeta) notFound();
   const post = readBlogPost(postMeta);
   const author = getContentAuthor(`blog/${post.slug}`);
+  const evidence = getBlogEvidence(post.slug);
   const sourceUrl = `${siteIdentity.repositoryUrl}/blob/main/blog/${post.fileName}`;
   const articleJsonLd = {
     "@context": "https://schema.org",
@@ -59,11 +61,11 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
             ← 返回 Blog
           </Link>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-xs text-muted-foreground">
-            <a href={author.url} target="_blank" rel="author noopener noreferrer" className="hover:text-accent">
-              By {author.name}
-            </a>
+            <Link href={author.profileUrl} rel="author" className="hover:text-accent">Maintainer attribution · {author.name}</Link>
             <span aria-hidden="true">·</span>
             <time dateTime={post.updated}>Updated {post.updated}</time>
+            <span aria-hidden="true">·</span>
+            <span>{evidenceLevelLabel(evidence.level)}</span>
             <span aria-hidden="true">·</span>
             <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:text-accent">
               Source ↗
@@ -73,12 +75,21 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
 
         <aside className="mb-8 max-w-3xl border-l-2 border-accent bg-muted/40 px-5 py-4 text-sm leading-6 text-muted-foreground">
           <p>
-            Evidence and limitations: implementation claims should be verified against the current release and repository tests. Architectural direction is identified separately from shipped behavior.
+            Evidence and limitations: commands, observable outputs, and known failure boundaries are kept in the article. Repository tests are first-party engineering evidence, not an independent production benchmark.
           </p>
-          <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-medium text-foreground underline decoration-border underline-offset-4 hover:text-accent">
-            View source and revision history ↗
-          </a>
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+            <a href={sourceUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline decoration-border underline-offset-4 hover:text-accent">View source and revision history ↗</a>
+            <a href={author.contributionsUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-foreground underline decoration-border underline-offset-4 hover:text-accent">Author contribution history ↗</a>
+            {evidence.run ? <Link href="/benchmarks" className="font-medium text-foreground underline decoration-border underline-offset-4 hover:text-accent">View evidence run ↗</Link> : null}
+          </div>
+          <p className="mt-3 text-xs">{author.description} This attribution identifies a stable maintainer link; it does not claim that the person wrote every sentence.</p>
         </aside>
+
+        {evidence.run ? (
+          <p className="mb-8 max-w-3xl text-xs leading-6 text-muted-foreground">
+            This article belongs to the repository-tested set. The related public retrieval artifact is <Link href="/benchmarks#replay-artifact" className="underline underline-offset-4 hover:text-accent">{defaultEvidenceArtifact.title}</Link>; it remains a fixture-level result, not a production benchmark.
+          </p>
+        ) : null}
 
         <article className="geo-prose max-w-3xl">
           <ReactMarkdown

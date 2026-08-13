@@ -29,9 +29,9 @@ const notoSansSC = Noto_Sans_SC({
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteIdentity.productUrl),
-  title: "Semantix - a self-evolving agent kernel",
+  title: "Semantix - a verifiable memory kernel for agents",
   description:
-    "A self-evolving agent kernel that sits between any agent harness and its resources, with semantic caching, speculative prefetch, and adaptive scheduling.",
+    "An open-source Go memory kernel with semantic slice extraction, BM25 retrieval, stable injection, and explicit experimental boundaries.",
   alternates: { canonical: "/" },
   icons: [{ rel: "icon", url: "/seo/favicon.svg", type: "image/svg+xml" }],
 };

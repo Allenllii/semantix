@@ -12,6 +12,7 @@ export type BlogPostMeta = {
   slug: string;
   title: string;
   description: string;
+  published: string;
   updated: string;
   group: BlogGroup;
   order: number;

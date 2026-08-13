@@ -2,6 +2,7 @@
 title: "Threat Model: When Reused Agent Context Becomes an Attack Surface"
 description: "A threat-model view of semantic injection, stale results, credentials, local storage, and safe degradation."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Scheduling & Harness"
 order: 302
 ---
@@ -32,9 +33,26 @@ Retrieval and embedding are optimization layers; failure should skip them and co
 
 L2 content is still untrusted input to a model. Sanitization cannot make an outdated instruction correct, and Windows permission semantics differ from Unix modes. Operators must avoid ingesting secrets and should test scope isolation on their deployment. The security document also lists sandbox and credential-management items that remain checklist work, so this is not a certification claim.
 
+## A security check that did not pass
+
+Security claims are more useful when the failed check is visible. On 2026-08-12, main at `e93668e` was tested with Go 1.26.5 on Windows/amd64:
+
+```bash
+go test -count=1 ./kernel/slice ./cmd/semantix
+```
+
+The run failed on two file-mode assertions:
+
+```text
+FAIL TestFileStoreKeepsPerm0600: store file perm = 666, want 600
+FAIL TestRunUsageWithEvolve: evolve state perms = 666, want 600
+```
+
+I would not translate Unix-style `0600` directly into a cross-platform security guarantee. Windows ACLs need a platform-specific test and documented behavior. Retrieval, cache, and injection packages passed in the same full run, but these failures keep the stronger security claim open. The practical decision is to avoid secrets in stored slices and to verify the storage directory ACL in the deployment environment.
+
 ## Sources and limitations
 
-- [Security design](https://github.com/Gnosil/semantix/blob/main/docs/Security-%E5%AE%89%E5%85%A8%E8%AE%BE%E8%AE%A1.md) ? threat list, controls, and open checklist.
-- [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) ? commands and supported release paths.
-- [M0 gate report](https://github.com/Gnosil/semantix/blob/main/docs/reports/m0-gate.md) ? what passed, what is conditional, and what remains unverified.
-- [Source and tests](https://github.com/Gnosil/semantix) ? implementation is the final authority.
+- [Security design](https://github.com/Gnosil/semantix/blob/main/docs/Security-%E5%AE%89%E5%85%A8%E8%AE%BE%E8%AE%A1.md) — threat list, controls, and open checklist.
+- [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) — commands and supported release paths.
+- [M0 gate report](https://github.com/Gnosil/semantix/blob/main/docs/reports/m0-gate.md) — what passed, what is conditional, and what remains unverified.
+- [Source and tests](https://github.com/Gnosil/semantix) — implementation is the final authority.

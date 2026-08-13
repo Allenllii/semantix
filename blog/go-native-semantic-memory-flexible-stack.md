@@ -1,14 +1,15 @@
 ---
-title: "Go Builder?s Guide: Add Local Memory Without Choosing a Framework"
+title: "Go Builder's Guide: Add Local Memory Without Choosing a Framework"
 description: "A Go-focused builder guide for integrating local semantic memory through a CLI and stable data contracts."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Go & Framework Independence"
 order: 401
 ---
 
-# Go Builder?s Guide: Add Local Memory Without Choosing a Framework
+# Go Builder's Guide: Add Local Memory Without Choosing a Framework
 
-If your agent stack is already written in Go?or merely needs a portable local binary?the smallest integration surface is a process plus files. Semantix builds as one binary and uses JSONL and a local database rather than requiring a framework SDK.
+If your agent stack is already written in Go—or merely needs a portable local binarythe smallest integration surface is a process plus files. Semantix builds as one binary and uses JSONL and a local database rather than requiring a framework SDK.
 
 ## Build and inspect
 
@@ -41,8 +42,27 @@ A CLI boundary is framework-neutral and easy to replace. It also adds process st
 
 The repository builds and tests these paths and publishes six v0.2.0 platform artifacts in its quickstart. Compatibility with every Go agent framework is not demonstrated. The accurate claim is that integration is framework-agnostic at the file/CLI boundary.
 
+## Reproduced package evidence
+
+For this article I tested the smallest stack implied by the integration boundary on 2026-08-12, main `e93668e`, Go 1.26.5, Windows/amd64:
+
+```bash
+go test -count=1 ./kernel/event ./kernel/ingest ./kernel/bm25 ./kernel/inject
+```
+
+Observed result:
+
+```text
+ok  semantix/kernel/event
+ok  semantix/kernel/ingest
+ok  semantix/kernel/bm25
+ok  semantix/kernel/inject
+```
+
+I consider this evidence for a local Go pipeline, not for universal framework compatibility. The test does not launch LangChain, ADK, Eino, or a production harness. A convincing portability result would implement two independent adapters and publish the event mappings, error behavior, latency, and rollback procedure for both.
+
 ## Sources and limitations
 
-- [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) ? commands and supported release paths.
-- [M0 gate report](https://github.com/Gnosil/semantix/blob/main/docs/reports/m0-gate.md) ? what passed, what is conditional, and what remains unverified.
-- [Source and tests](https://github.com/Gnosil/semantix) ? implementation is the final authority.
+- [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) — commands and supported release paths.
+- [M0 gate report](https://github.com/Gnosil/semantix/blob/main/docs/reports/m0-gate.md) — what passed, what is conditional, and what remains unverified.
+- [Source and tests](https://github.com/Gnosil/semantix) — implementation is the final authority.

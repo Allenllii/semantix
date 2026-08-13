@@ -137,12 +137,12 @@ export default function Install() {
             </a>
             {"、"}
             <a
-              href="https://github.com/Allenli1233"
+              href="https://github.com/Allenllii"
               target="_blank"
               rel="noopener"
               className="text-accent hover:underline"
             >
-              Allenli1233
+              Allenllii
             </a>
             {"、"}
             <a
