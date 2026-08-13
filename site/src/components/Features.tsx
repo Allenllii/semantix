@@ -190,7 +190,7 @@ export default function Features() {
                     <CopyCode
                       className="mt-7 max-w-2xl rounded-none"
                       code={selected.code}
-                      tone="dark"
+                      tone="gray"
                     />
                   </div>
 

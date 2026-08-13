@@ -8,7 +8,7 @@ type CopyCodeProps = {
   className?: string;
   prompt?: boolean;
   singleLine?: boolean;
-  tone?: "light" | "dark";
+  tone?: "light" | "dark" | "gray";
 };
 
 type CopyState = "idle" | "copied" | "failed";
@@ -40,6 +40,7 @@ export default function CopyCode({
   const [state, setState] = useState<CopyState>("idle");
   const resetTimer = useRef<number | undefined>(undefined);
   const isDark = tone === "dark";
+  const isGray = tone === "gray";
 
   useEffect(
     () => () => {
@@ -80,7 +81,9 @@ export default function CopyCode({
       className={`flex min-w-0 overflow-hidden rounded-md border ${
         isDark
           ? "border-white/10 bg-[oklch(0.21_0.006_260)]"
-          : "border-border/60 bg-[oklch(0.976_0.005_165)]"
+          : isGray
+            ? "border-slate-500 bg-slate-600"
+            : "border-border/60 bg-[oklch(0.976_0.005_165)]"
       } ${className}`}
     >
       <pre
@@ -91,7 +94,9 @@ export default function CopyCode({
         } ${
           isDark
             ? "text-slate-300"
-            : "text-[oklch(0.45_0.02_260)]"
+            : isGray
+              ? "text-slate-200"
+              : "text-[oklch(0.45_0.02_260)]"
         }`}
       >
         <code>{prompt ? `$ ${code}` : code}</code>
@@ -104,7 +109,9 @@ export default function CopyCode({
         className={`flex w-11 shrink-0 items-center justify-center border-l transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent active:translate-y-px ${
           isDark
             ? "border-white/10 bg-[oklch(0.25_0.008_260)] text-slate-300 hover:bg-[oklch(0.29_0.01_260)] hover:text-emerald-300"
-            : "border-border/60 bg-white text-accent hover:bg-accent/5"
+            : isGray
+              ? "border-slate-500 bg-slate-500 text-slate-100 hover:bg-slate-400 hover:text-emerald-300"
+              : "border-border/60 bg-white text-accent hover:bg-accent/5"
         }`}
       >
         {state === "copied" ? (
