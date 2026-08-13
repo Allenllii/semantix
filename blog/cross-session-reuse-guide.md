@@ -2,6 +2,7 @@
 title: "Lab Notes: Reusing One Coding-Agent Session in the Next"
 description: "A hands-on lab that captures one session, retrieves it with new wording, and checks the resulting reuse block."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Evaluation Guides"
 order: 3
 ---

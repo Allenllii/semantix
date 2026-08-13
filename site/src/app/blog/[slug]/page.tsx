@@ -39,7 +39,7 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
     headline: post.title,
     description: post.description,
     dateModified: post.updated,
-    datePublished: post.updated,
+    datePublished: post.published,
     inLanguage: "en",
     mainEntityOfPage: `${siteIdentity.productUrl}/blog/${post.slug}`,
     author: personJsonLd(author),
@@ -62,6 +62,8 @@ export default async function BlogArticlePage({ params }: BlogPageProps) {
             <a href={author.url} target="_blank" rel="author noopener noreferrer" className="hover:text-accent">
               By {author.name}
             </a>
+            <span aria-hidden="true">·</span>
+            <time dateTime={post.published}>Published {post.published}</time>
             <span aria-hidden="true">·</span>
             <time dateTime={post.updated}>Updated {post.updated}</time>
             <span aria-hidden="true">·</span>

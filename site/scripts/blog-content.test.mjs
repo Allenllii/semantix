@@ -57,11 +57,13 @@ test("blog corpus contains twenty standalone, valid Markdown articles", async ()
   for (const file of files) {
     const source = await readFile(path.join(blogRoot, file), "utf8");
     const meta = parseFrontmatter(source);
-    for (const key of ["title", "description", "updated", "group", "order"]) {
+    for (const key of ["title", "description", "updated", "published", "group", "order"]) {
       assert.ok(meta[key], `${file} is missing ${key}`);
     }
     assert.ok(allowedGroups.has(meta.group), `${file} has invalid group ${meta.group}`);
     assert.match(meta.updated, /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(meta.published, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(meta.published <= meta.updated, `${file}: published must not be after updated`);
     assert.equal((source.match(/^# /gm) ?? []).length, 1, `${file} must contain one H1`);
     assert.ok((source.match(/^## /gm) ?? []).length >= 1, `${file} must contain an H2`);
     const slug = file.replace(/\.md$/, "");

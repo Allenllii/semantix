@@ -2,6 +2,7 @@
 title: "Workshop: Make a Past Tool Sequence Searchable"
 description: "A workshop-style walkthrough for extracting tool patterns, searching them, and inspecting retrieval differences."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Semantic Slices"
 order: 102
 ---

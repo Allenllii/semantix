@@ -2,6 +2,7 @@
 title: "Field Note: Searchable Experience Is Not Conversation History"
 description: "A field note distinguishing searchable execution experience from transcripts, summaries, and generic vector storage."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Semantic Slices"
 order: 103
 ---
