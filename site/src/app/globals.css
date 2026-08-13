@@ -190,6 +190,24 @@
   text-wrap: nowrap;
 }
 
+/* Title block: shift up on shorter viewports so the GitHub/CLI cards
+   (incl. the copy-code box) are not clipped by the sticky 100svh frame. */
+.brand-intro-title-block {
+  top: 48%;
+}
+
+@media (max-height: 860px) {
+  .brand-intro-title-block {
+    top: 44%;
+  }
+}
+
+@media (max-height: 740px) {
+  .brand-intro-title-block {
+    top: 40%;
+  }
+}
+
 /* ---- site-wide patterns (extracted from reasonix.io) ---- */
 @layer utilities {
   .wrap {
