@@ -97,7 +97,7 @@ export default function BrandIntroOverlay() {
         </p>
 
         <div
-          className="absolute inset-x-0 top-[48%] z-10 px-6 text-center text-[#101313]"
+          className="brand-intro-title-block absolute inset-x-0 z-10 px-6 text-center text-[#101313]"
           style={{
             opacity: titleProgress,
             transform: `translateY(${(1 - titleProgress) * 56}px)`,
@@ -107,12 +107,12 @@ export default function BrandIntroOverlay() {
           <h1 className="font-brand-serif text-balance text-5xl font-normal leading-[0.88] tracking-[0.015em] md:text-6xl lg:whitespace-nowrap lg:text-[4.9rem]">
             A <span className="text-[#00a878]">verifiable</span> agent memory kernel.
           </h1>
-          <p className="font-brand-display mx-auto mt-7 max-w-4xl text-[2rem] font-black leading-[0.98] tracking-[-0.055em] md:text-[2.75rem]">
+          <p className="font-brand-display mx-auto mt-5 max-w-4xl text-[1.9rem] font-black leading-[0.98] tracking-[-0.055em] md:text-[2.5rem]">
             <span className="block md:inline">把每一次对话，</span>
             <span className="block text-[#168b6d]">沉淀为可检索的记忆</span>
           </p>
 
-          <p className="mx-auto mt-8 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
+          <p className="mx-auto mt-6 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
             Semantix 连接 Agent Harness 与资源层，提供切片提取、BM25 检索和稳定注入路径。
             <br className="hidden md:block" />
             当前公开证据来自仓库测试与合成演示；生产环境中的成本和性能收益仍待验证。
@@ -124,7 +124,7 @@ export default function BrandIntroOverlay() {
             Last updated · {siteIdentity.lastUpdated}
           </time>
 
-          <div className="mx-auto mt-8 hidden max-w-3xl grid-cols-2 gap-4 text-left md:grid">
+          <div className="mx-auto mt-6 hidden max-w-3xl grid-cols-2 gap-4 text-left md:grid">
             <div className="relative overflow-hidden rounded-lg border border-border bg-white p-4 transition-colors hover:border-accent">
               <ParticleCanvas className="pointer-events-none absolute inset-0 opacity-45" />
               <div className="relative">
