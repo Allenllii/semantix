@@ -204,7 +204,7 @@ The following statements clarify the questions developers most often confuse:
 1. **For engineers**: Semantix is a self-evolving middleware between agent harnesses and resources; it converts cross-session semantic hits into vendor byte-cache hits via semantic slices + stable injection.
 2. **For product people**: Semantix is an acceleration layer for agents that gets cheaper and faster with use — automatically reusing the work you've already done.
 3. **For researchers**: Semantix is a closed-loop learning system — observe → accumulate → reuse → evolve; every component corresponds to a testable design hypothesis.
-4. **For open-source enthusiasts**: Semantix is an MIT-licensed, Go-implemented community project with complete design docs, currently in early development.
+4. **For open-source enthusiasts**: Semantix is a Go-implemented community project with complete design docs, released under the FSL-1.1-MIT license (converts to MIT two years after each release), currently in early development.
 
 ---
 

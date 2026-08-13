@@ -40,6 +40,8 @@
 - [Understanding Semantix from Scratch](https://semantix.ensureok.ai/docs/guide): Chinese deep dive from first principles — ecosystem, architecture, and the four components plus evolution engine.
 - [Understanding Semantix from Scratch (EN)](https://semantix.ensureok.ai/docs/guide-en): English deep dive covering the same architecture and mechanisms.
 - [Semantix FAQ](https://semantix.ensureok.ai/docs/faq): Project positioning, semantic cache levels, evolution mechanisms, and contribution requirements.
+- [Benchmarks and evidence](https://semantix.ensureok.ai/benchmarks): Reproducible commands, repository test boundaries, and the small labeled retrieval fixture.
+- [Evidence methodology](https://semantix.ensureok.ai/evidence/methodology): E0–E3 labels explaining what each result does and does not establish.
 
 ## Blog
 

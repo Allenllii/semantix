@@ -153,7 +153,7 @@ export default function Install() {
             >
               jh10724-dotcom
             </a>
-            {" · "}© 2026 MIT License · 技术作者：Gnosil
+            {" · "}© 2026 FSL-1.1-MIT · 技术作者：Gnosil
           </p>
         </Reveal>
       </div>

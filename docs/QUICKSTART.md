@@ -8,18 +8,27 @@
 
 ### 方式一：GitHub Release（推荐）
 
-从 [Releases](https://github.com/Gnosil/semantix/releases) 下载对应平台二进制：
+**完整产品（v0.3.0+）**：`semantix-agent-v0.3.0-<platform>.tar.gz`——reasonix（coding-agent harness）+ semantix（记忆内核）+ 示例配置 + 安装脚本：
+
+```bash
+tar -xzf semantix-agent-v0.3.0-darwin-arm64.tar.gz
+cd semantix-agent-v0.3.0-darwin-arm64
+./semantix-install.sh v0.3.0   # 安装两个二进制 + 配置
+reasonix --config reasonix.toml   # 启动完整 agent
+```
+
+**仅内核**：从 [Releases](https://github.com/Gnosil/semantix/releases) 下载对应平台二进制：
 
 | 平台 | 文件 |
 |---|---|
-| macOS Intel | `semantix-v0.2.0-darwin-amd64` |
-| macOS Apple Silicon | `semantix-v0.2.0-darwin-arm64` |
-| Linux amd64/arm64 | `semantix-v0.2.0-linux-{amd64,arm64}` |
-| Windows amd64/arm64 | `semantix-v0.2.0-windows-{amd64,arm64}.exe` |
+| macOS Intel | `semantix-v0.3.0-darwin-amd64` |
+| macOS Apple Silicon | `semantix-v0.3.0-darwin-arm64` |
+| Linux amd64/arm64 | `semantix-v0.3.0-linux-{amd64,arm64}` |
+| Windows amd64/arm64 | `semantix-v0.3.0-windows-{amd64,arm64}.exe` |
 
 ```bash
-chmod +x semantix-v0.2.0-darwin-arm64
-sudo mv semantix-v0.2.0-darwin-arm64 /usr/local/bin/semantix
+chmod +x semantix-v0.3.0-darwin-arm64
+sudo mv semantix-v0.3.0-darwin-arm64 /usr/local/bin/semantix
 ```
 
 校验：`shasum -a 256 -c SHA256SUMS.txt`

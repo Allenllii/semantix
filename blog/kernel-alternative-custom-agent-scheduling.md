@@ -2,6 +2,7 @@
 title: "Control-Loop Walkthrough: What the Kernel Does Before a Tool Call"
 description: "A control-loop walkthrough separating shipped retrieval behavior from scheduling and prefetch direction."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Scheduling & Harness"
 order: 304
 ---
@@ -10,7 +11,7 @@ order: 304
 
 Start with the shipped path, not the roadmap diagram.
 
-## Today?s path
+## Today's path
 
 Historical sessions are captured as JSONL. The extractor creates typed slices. Search ranks them with BM25, deterministic hash vectors, or hybrid fusion. Injection selects relevant slices and emits a stable marked block for the harness.
 
@@ -46,8 +47,8 @@ go test -count=1 ./kernel/sched ./kernel/prefetch ./kernel/evolve
 The result matters because it separates interfaces from exercised behavior:
 
 ```text
-?   semantix/kernel/sched     [no test files]
-?   semantix/kernel/prefetch  [no test files]
+    semantix/kernel/sched     [no test files]
+    semantix/kernel/prefetch  [no test files]
 ok  semantix/kernel/evolve
 ```
 
@@ -55,6 +56,6 @@ My reading is deliberately conservative. The adaptation package has executable t
 
 ## Sources and limitations
 
-- [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) ? commands and supported release paths.
-- [M0 gate report](https://github.com/Gnosil/semantix/blob/main/docs/reports/m0-gate.md) ? what passed, what is conditional, and what remains unverified.
-- [Source and tests](https://github.com/Gnosil/semantix) ? implementation is the final authority.
+- [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) — commands and supported release paths.
+- [M0 gate report](https://github.com/Gnosil/semantix/blob/main/docs/reports/m0-gate.md) — what passed, what is conditional, and what remains unverified.
+- [Source and tests](https://github.com/Gnosil/semantix) — implementation is the final authority.

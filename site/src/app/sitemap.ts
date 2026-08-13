@@ -28,8 +28,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     })),
     { url: `${BASE}/docs/faq`, lastModified, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${BASE}/benchmarks`, lastModified, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${BASE}/evidence/methodology`, lastModified, changeFrequency: "monthly", priority: 0.7 },
     { url: `${BASE}/blog`, lastModified, changeFrequency: "weekly", priority: 0.9 },
     ...blogPosts,
+    ...["gnosil", "radianceded", "jh10724-dotcom", "allenli1233"].map((name) => ({
+      url: `${BASE}/authors/${name}`,
+      lastModified,
+      changeFrequency: "monthly" as const,
+      priority: 0.5,
+    })),
     { url: `${BASE}/terms`, lastModified, changeFrequency: "yearly", priority: 0.3 },
     { url: `${BASE}/privacy`, lastModified, changeFrequency: "yearly", priority: 0.3 },
   ];
