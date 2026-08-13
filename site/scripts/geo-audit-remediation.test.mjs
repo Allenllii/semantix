@@ -67,6 +67,9 @@ test("benchmark and evidence pages expose a reproducible boundary", async () => 
   assert.match(benchmarkHtml, /Reproducible retrieval artifact/);
   assert.match(benchmarkHtml, /15 rows/);
   assert.match(benchmarkHtml, /grey ratio 40\.0%/);
+  assert.match(benchmarkHtml, /Run record and page review by/);
+  assert.match(benchmarkHtml, /Why this run is public/);
+  assert.match(benchmarkHtml, /Next evaluation/);
   assert.match(methodologyHtml, /E0/);
   assert.match(methodologyHtml, /E1/);
   assert.match(methodologyHtml, /E2/);
@@ -93,8 +96,12 @@ test("author profiles and evidence data are discoverable", async () => {
   for (const authorHtml of authorPages) {
     assert.match(authorHtml, /ProfilePage/);
     assert.match(authorHtml, /Semantix contribution history/);
+    assert.match(authorHtml, /Verified repository work/);
+    assert.match(authorHtml, /How to verify this profile/);
+    assert.match(authorHtml, /Inspect commit/);
   }
   assert.match(sitemap, /<loc>https:\/\/semantix\.ensureok\.ai\/benchmarks<\/loc>/);
+  assert.match(sitemap, /<loc>https:\/\/semantix\.ensureok\.ai\/evidence\/semantix-2026-08-12-windows\.json<\/loc>/);
   for (const slug of authorSlugs) {
     assert.match(sitemap, new RegExp(`<loc>https://semantix\\.ensureok\\.ai/authors/${slug}</loc>`));
   }

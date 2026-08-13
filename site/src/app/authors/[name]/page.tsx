@@ -49,11 +49,31 @@ export default async function AuthorPage({ params }: AuthorPageProps) {
         <p className="font-mono text-xs font-semibold text-accent">CONTRIBUTOR PROFILE</p>
         <h1 className="mt-5 text-4xl font-semibold tracking-tight md:text-6xl">{author.name}</h1>
         <p className="mt-5 text-lg leading-8 text-muted-foreground">{author.description}</p>
+        <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground">
+          This profile is generated from public repository evidence. It records reviewable work, not a job title, endorsement, or claim of sole authorship over the pages listed below.
+        </p>
         <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm">
           <a className="text-accent underline underline-offset-4" href={author.url}>GitHub profile ↗</a>
           <a className="text-accent underline underline-offset-4" href={author.contributionsUrl}>Semantix contribution history ↗</a>
         </div>
       </header>
+
+      <section className="mt-12 max-w-4xl" aria-labelledby="verified-work">
+        <h2 id="verified-work" className="text-2xl font-semibold tracking-tight">Verified repository work</h2>
+        <p className="mt-3 max-w-3xl text-sm leading-7 text-muted-foreground">
+          Current focus: {author.focus} Each item links to the commit that supports the description, so readers can inspect the patch, review context, and date directly.
+        </p>
+        <div className="mt-6 grid gap-x-8 gap-y-8 md:grid-cols-3">
+          {author.verifiedContributions.map((contribution) => (
+            <article key={contribution.url} className="border-t border-border pt-4">
+              <time dateTime={contribution.date} className="font-mono text-xs text-muted-foreground">{contribution.date}</time>
+              <h3 className="mt-3 font-semibold leading-6">{contribution.title}</h3>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">{contribution.summary}</p>
+              <a href={contribution.url} className="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4">Inspect commit</a>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <section className="mt-12 max-w-4xl" aria-labelledby="maintained-pages">
         <h2 id="maintained-pages" className="text-2xl font-semibold tracking-tight">Attributed pages</h2>
@@ -72,6 +92,13 @@ export default async function AuthorPage({ params }: AuthorPageProps) {
             );
           })}
         </div>
+      </section>
+
+      <section className="mt-12 max-w-3xl border-t border-border pt-8" aria-labelledby="verification-note">
+        <h2 id="verification-note" className="text-xl font-semibold">How to verify this profile</h2>
+        <p className="mt-4 text-sm leading-7 text-muted-foreground">
+          Follow the commit links above for exact diffs. The complete contribution-history link may include merges or follow-up fixes that are not summarized here. Editorial attribution is deterministic so pages do not change names between builds, while repository commits remain the authority for who changed code.
+        </p>
       </section>
     </main>
   );
