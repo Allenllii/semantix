@@ -1,0 +1,77 @@
+name: Feature request
+description: Suggest an improvement or new capability for Semantix
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Semantix. Describe the problem first so the proposed solution can be evaluated in context.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem, limitation, or repeated workflow should Semantix address?
+      placeholder: Describe who encounters the problem, when it occurs, and why the current behavior is insufficient.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior or capability you would like to add.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any workarounds or alternative designs you considered.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary area
+      description: Select the area most affected by this request.
+      options:
+        - Semantic slices and extraction
+        - Retrieval and ranking
+        - L2 injection or L3 reuse
+        - Scheduling or prefetch
+        - Evaluation and benchmarks
+        - CLI and configuration
+        - Agent or harness integration
+        - Documentation or website
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Suggested acceptance criteria
+      description: What observable behavior or result would show that this request is complete?
+      placeholder: |
+        - Given ...
+        - When ...
+        - Then ...
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Include related issues, examples, benchmarks, screenshots, or references.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmation
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: This request describes a concrete problem or use case.
+          required: true
