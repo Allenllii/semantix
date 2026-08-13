@@ -94,6 +94,7 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
           >
             {isEnglish ? "View source and revision history ↗" : "查看原文与修订记录 ↗"}
           </a>
+          <p className="mt-3 text-xs">{isEnglish ? "Evidence label: E0 design or editorial context. " : "证据等级：E0，设计或编辑背景。"}{isEnglish ? "See the benchmark boundary before treating an implementation statement as measured evidence." : "如需查看已复现的仓库测试与实验夹具，请先阅读证据页。"} <Link href="/benchmarks" className="underline underline-offset-4 hover:text-accent">{isEnglish ? "Evidence page ↗" : "证据页 ↗"}</Link></p>
         </aside>
 
         <article className="geo-prose max-w-3xl">

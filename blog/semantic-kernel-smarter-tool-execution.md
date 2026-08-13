@@ -2,7 +2,6 @@
 title: "Threat Model: When Reused Agent Context Becomes an Attack Surface"
 description: "A threat-model view of semantic injection, stale results, credentials, local storage, and safe degradation."
 updated: 2026-08-12
-published: 2026-08-10
 group: "Scheduling & Harness"
 order: 302
 ---
@@ -52,7 +51,7 @@ I would not translate Unix-style `0600` directly into a cross-platform security 
 
 ## Sources and limitations
 
-- [Security design](https://github.com/Gnosil/semantix/blob/main/docs/Security-%E5%AE%89%E5%85%A8%E8%AE%BE%E8%AE%A1.md) ? threat list, controls, and open checklist.
-- [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) ? commands and supported release paths.
-- [M0 gate report](https://github.com/Gnosil/semantix/blob/main/docs/reports/m0-gate.md) ? what passed, what is conditional, and what remains unverified.
-- [Source and tests](https://github.com/Gnosil/semantix) ? implementation is the final authority.
+- [Security design](https://github.com/Gnosil/semantix/blob/main/docs/Security-%E5%AE%89%E5%85%A8%E8%AE%BE%E8%AE%A1.md) — threat list, controls, and open checklist.
+- [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) — commands and supported release paths.
+- [M0 gate report](https://github.com/Gnosil/semantix/blob/main/docs/reports/m0-gate.md) — what passed, what is conditional, and what remains unverified.
+- [Source and tests](https://github.com/Gnosil/semantix) — implementation is the final authority.

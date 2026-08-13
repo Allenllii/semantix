@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { faqItems } from "@/lib/faq-items";
 import { siteIdentity } from "@/lib/site-identity";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "常见问题 | Semantix 文档",
@@ -38,6 +39,9 @@ export default function FaqPage() {
         </h1>
         <p className="mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
           从项目定位到三级语义缓存，再到参与开发所需的验证要求。
+        </p>
+        <p className="mt-5 max-w-3xl border-l-2 border-accent bg-muted/40 px-5 py-4 text-sm leading-6 text-muted-foreground">
+          FAQ 的回答以当前仓库代码、测试和公开限制为准；它不是生产性能承诺。需要查看输入、命令与原始输出时，请阅读 <Link href="/benchmarks" className="font-medium text-foreground underline underline-offset-4 hover:text-accent">证据与复现记录 ↗</Link>。
         </p>
 
         <div className="mt-12 max-w-3xl border-t border-border">

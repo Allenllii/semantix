@@ -2,7 +2,6 @@
 title: "Design Memo: Why Semantix Stores Slices Instead of Sessions"
 description: "A concise design memo explaining the decision to store typed semantic slices and the tradeoffs it introduces."
 updated: 2026-08-12
-published: 2026-08-10
 group: "Semantic Slices"
 order: 104
 ---

@@ -3,6 +3,7 @@ import Link from "next/link";
 import Footer from "@/components/Footer";
 import Nav from "@/components/Nav";
 import { siteIdentity } from "@/lib/site-identity";
+import { maintainersJsonLd } from "@/lib/content-authors";
 
 export const metadata: Metadata = {
   title: "关于 Semantix",
@@ -17,10 +18,22 @@ const operatorDetails = [
 ] as const;
 
 export default function AboutPage() {
+  const aboutJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "AboutPage",
+    "@id": `${siteIdentity.productUrl}/about#about`,
+    url: `${siteIdentity.productUrl}/about`,
+    name: "关于 Semantix",
+    dateModified: siteIdentity.lastUpdated,
+    publisher: { "@id": `${siteIdentity.operator.url}#organization` },
+    mainEntity: maintainersJsonLd["@graph"],
+  };
+
   return (
     <>
       <Nav />
       <main className="min-h-[100dvh] bg-background pt-16">
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(aboutJsonLd).replace(/</g, "\\u003c") }} />
         <section className="border-b border-border bg-muted/40 py-20 md:py-28">
           <div className="wrap">
             <p className="font-mono text-sm font-semibold text-accent">

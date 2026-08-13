@@ -20,6 +20,8 @@ const header = `# Semantix — Full Site Text for AI Assistants
 
 - [Semantix website](${baseUrl}/): Official homepage — positioning, features, components, roadmap, and install instructions.
 - [Semantix repository](https://github.com/Gnosil/semantix): Source code, tests, design documents, and issue tracker.
+- [Benchmarks and evidence](${baseUrl}/benchmarks): Reproducible commands, repository test boundaries, and the labeled retrieval fixture.
+- [Evidence methodology](${baseUrl}/evidence/methodology): E0–E3 labels explaining what each result does and does not establish.
 
 ## Full text
 
