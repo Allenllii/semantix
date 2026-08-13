@@ -45,14 +45,53 @@ test("contact export keeps the official email crawler-readable", () => {
 test("technical content exposes authorship, evidence, and limitations", async () => {
   const docsHtml = await readExport("docs/guide/index.html");
   const blogHtml = await readExport("blog/open-source-semantic-memory-comparison-guide/index.html");
+  const auditedBlogHtml = await readExport("blog/turning-tool-calls-searchable-semantic-slices/index.html");
   const visibleDocsHtml = docsHtml.replaceAll("<!-- -->", "");
   const visibleBlogHtml = blogHtml.replaceAll("<!-- -->", "");
 
   assert.match(visibleDocsHtml, /作者 · (Gnosil|radianceded|jh10724-dotcom|Allenli1233)/);
   assert.match(visibleDocsHtml, /证据与限制/);
-  assert.match(visibleBlogHtml, /By (Gnosil|radianceded|jh10724-dotcom|Allenli1233)/);
+  assert.match(visibleBlogHtml, /Maintainer attribution · (Gnosil|radianceded|jh10724-dotcom|Allenli1233)/);
   assert.match(visibleBlogHtml, /Evidence and limitations/);
   assert.match(visibleBlogHtml, /View source and revision history/);
+  assert.match(auditedBlogHtml, /View evidence run/);
+});
+
+test("benchmark and evidence pages expose a reproducible boundary", async () => {
+  const benchmarkHtml = await readExport("benchmarks/index.html");
+  const methodologyHtml = await readExport("evidence/methodology/index.html");
+  assert.match(benchmarkHtml, /go test -count=1 \.\/\.\.\./);
+  assert.match(benchmarkHtml, /Windows\/amd64/);
+  assert.match(benchmarkHtml, /Download JSON/);
+  assert.match(benchmarkHtml, /does not establish real-session relevance/);
+  assert.match(benchmarkHtml, /Reproducible retrieval artifact/);
+  assert.match(benchmarkHtml, /15 rows/);
+  assert.match(benchmarkHtml, /grey ratio 40\.0%/);
+  assert.match(methodologyHtml, /E0/);
+  assert.match(methodologyHtml, /E1/);
+  assert.match(methodologyHtml, /E2/);
+  assert.match(methodologyHtml, /E3/);
+  assert.match(methodologyHtml, /Publishing rules/);
+});
+
+test("docs and FAQ point readers to evidence instead of leaving claims unbounded", async () => {
+  const docsHtml = await readExport("docs/index.html");
+  const faqHtml = await readExport("docs/faq/index.html");
+  const aboutHtml = await readExport("about/index.html");
+  assert.match(docsHtml, /验证与来源/);
+  assert.match(faqHtml, /FAQ 的回答以当前仓库代码/);
+  assert.match(aboutHtml, /AboutPage/);
+});
+
+test("author profiles and evidence data are discoverable", async () => {
+  const authorHtml = await readExport("authors/radianceded/index.html");
+  const sitemap = await readExport("sitemap.xml");
+  const evidence = await readExport("evidence/semantix-2026-08-12-windows.json");
+  assert.match(authorHtml, /ProfilePage/);
+  assert.match(authorHtml, /Semantix contribution history/);
+  assert.match(sitemap, /<loc>https:\/\/semantix\.ensureok\.ai\/benchmarks<\/loc>/);
+  assert.match(sitemap, /<loc>https:\/\/semantix\.ensureok\.ai\/authors\/radianceded<\/loc>/);
+  assert.match(evidence, /"productionBenchmark": false/);
 });
 
 test("maintainer identity graph uses verifiable Person profiles", () => {

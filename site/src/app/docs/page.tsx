@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "文档 | Semantix",
@@ -27,6 +28,14 @@ export default function GeoIndexPage() {
               手机端点击正文上方的“文档目录”展开全部入口。中文与英文版本按速览和深入两组排列。
             </p>
           </div>
+        </section>
+
+        <section className="mt-12 max-w-2xl border-t border-border pt-8">
+          <h2 className="text-xl font-semibold">验证与来源</h2>
+          <p className="mt-5 text-sm leading-7 text-muted-foreground">
+            文档中的实现描述与实验边界都应回到代码、测试和可下载的运行记录核对。证据等级、复现命令和已知限制统一放在证据页。
+          </p>
+          <Link href="/benchmarks" className="mt-4 inline-block text-sm font-medium text-accent underline underline-offset-4">查看证据与复现记录 ↗</Link>
         </section>
       </div>
     </div>

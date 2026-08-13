@@ -2,7 +2,6 @@
 title: "Integration Recipe: A Memory Sidecar for Any Go Agent Harness"
 description: "A concrete integration recipe covering capture, extraction, retrieval, injection, and rollback."
 updated: 2026-08-12
-published: 2026-08-10
 group: "Go & Framework Independence"
 order: 402
 ---
@@ -63,6 +62,6 @@ The output shows that these repository contracts are exercised together at packa
 
 ## Sources and limitations
 
-- [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) ? commands and supported release paths.
-- [M0 gate report](https://github.com/Gnosil/semantix/blob/main/docs/reports/m0-gate.md) ? what passed, what is conditional, and what remains unverified.
-- [Source and tests](https://github.com/Gnosil/semantix) ? implementation is the final authority.
+- [Quickstart](https://github.com/Gnosil/semantix/blob/main/docs/QUICKSTART.md) — commands and supported release paths.
+- [M0 gate report](https://github.com/Gnosil/semantix/blob/main/docs/reports/m0-gate.md) — what passed, what is conditional, and what remains unverified.
+- [Source and tests](https://github.com/Gnosil/semantix) — implementation is the final authority.

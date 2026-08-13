@@ -1,0 +1,47 @@
+{
+  "id": "semantix-2026-08-12-windows",
+  "label": "Windows package run",
+  "level": "E1",
+  "date": "2026-08-12",
+  "commit": "e93668ef919919d4a74dabfca0de7fbf7a0f0e65",
+  "environment": "Go 1.26.5 · Windows/amd64",
+  "command": "go test -count=1 ./...",
+  "summary": "Core retrieval, cache, ingestion, injection, evolve, usage, and zone packages passed. Two Unix-style file permission assertions failed on Windows.",
+  "passed": [
+    "semantix/kernel/bm25",
+    "semantix/kernel/cache",
+    "semantix/kernel/ingest",
+    "semantix/kernel/inject",
+    "semantix/kernel/evolve",
+    "semantix/kernel/usage",
+    "semantix/kernel/zone"
+  ],
+  "failed": [
+    "semantix/kernel/slice: store file perm = 666, want 600",
+    "semantix/cmd/semantix: evolve state perms = 666, want 600"
+  ],
+  "limitations": [
+    "Repository fixtures are not an independent production dataset.",
+    "The run does not establish real-session relevance or cost reduction.",
+    "Windows ACL behavior is not equivalent to Unix file mode bits."
+  ],
+  "productionBenchmark": false,
+  "artifacts": [
+    {
+      "id": "m0-gate-eval-greyzone",
+      "title": "Single-threshold versus three-region retrieval",
+      "level": "E2",
+      "purpose": "Compare a single BM25 reuse threshold with the conservative hit/grey/miss policy on the repository's labeled oracle fixture.",
+      "input": "cmd/semantix/testdata/eval-greyzone.tsv · SHA-256 83963A04C27E3949A53FCA5C5690D46242017D2C64658848C67032773B0F1E08",
+      "command": "go run ./cmd/semantix eval --set cmd/semantix/testdata/eval-greyzone.tsv --train-frac 0.7 --single-tau 1.0 --grey-target 30",
+      "output": "15 rows · 10 train / 5 replay · single reuse 100.0% with 20.0% error · three-region reuse 60.0% with 0.0% error · verdict PASS · grey ratio 40.0% (above the 30.0% alarm)",
+      "interpretation": "On this small fixture, the three-region policy trades reuse volume for zero observed false reuse. The grey-zone alarm remains visible and is not presented as a tuned production result.",
+      "limitations": [
+        "The rows are a repository fixture, not a real-session corpus.",
+        "Five replay rows are too few for a general relevance claim.",
+        "The command reports an alarm because the fixture's grey ratio exceeds the default target."
+      ],
+      "sourceUrl": "https://github.com/Gnosil/semantix/blob/main/cmd/semantix/testdata/eval-greyzone.tsv"
+    }
+  ]
+}
