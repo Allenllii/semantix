@@ -84,13 +84,20 @@ test("docs and FAQ point readers to evidence instead of leaving claims unbounded
 });
 
 test("author profiles and evidence data are discoverable", async () => {
-  const authorHtml = await readExport("authors/radianceded/index.html");
+  const authorSlugs = ["gnosil", "radianceded", "jh10724-dotcom", "allenli1233"];
+  const authorPages = await Promise.all(
+    authorSlugs.map((slug) => readExport(`authors/${slug}/index.html`)),
+  );
   const sitemap = await readExport("sitemap.xml");
   const evidence = await readExport("evidence/semantix-2026-08-12-windows.json");
-  assert.match(authorHtml, /ProfilePage/);
-  assert.match(authorHtml, /Semantix contribution history/);
+  for (const authorHtml of authorPages) {
+    assert.match(authorHtml, /ProfilePage/);
+    assert.match(authorHtml, /Semantix contribution history/);
+  }
   assert.match(sitemap, /<loc>https:\/\/semantix\.ensureok\.ai\/benchmarks<\/loc>/);
-  assert.match(sitemap, /<loc>https:\/\/semantix\.ensureok\.ai\/authors\/radianceded<\/loc>/);
+  for (const slug of authorSlugs) {
+    assert.match(sitemap, new RegExp(`<loc>https://semantix\\.ensureok\\.ai/authors/${slug}</loc>`));
+  }
   assert.match(evidence, /"productionBenchmark": false/);
 });
 
