@@ -2,6 +2,7 @@
 title: "Cost Notebook: What Repository Context Actually Costs Twice"
 description: "A transparent cost notebook separating measured events, assumptions, and the data needed for a real savings claim."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Semantic Cache"
 order: 204
 ---

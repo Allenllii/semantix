@@ -2,6 +2,7 @@
 title: "Whiteboard: Three Caches, Three Different Risks"
 description: "A whiteboard explanation of L1 byte caching, L2 semantic injection, and L3 verified result reuse."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Semantic Cache"
 order: 202
 ---

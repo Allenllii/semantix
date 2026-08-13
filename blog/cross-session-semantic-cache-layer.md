@@ -2,6 +2,7 @@
 title: "Postmortem: Why the Agent Re-read the Same Repository Again"
 description: "A postmortem-style analysis of repeated repository discovery and the cache layer that can prevent it."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Semantic Cache"
 order: 201
 ---

@@ -2,6 +2,7 @@
 title: "Team Decision Record: Buy a Kernel Layer or Keep the Custom Glue?"
 description: "A team decision record comparing shared kernel policy with custom per-harness scheduling and memory glue."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Scheduling & Harness"
 order: 303
 ---

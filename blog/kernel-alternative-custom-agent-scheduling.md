@@ -2,6 +2,7 @@
 title: "Control-Loop Walkthrough: What the Kernel Does Before a Tool Call"
 description: "A control-loop walkthrough separating shipped retrieval behavior from scheduling and prefetch direction."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Scheduling & Harness"
 order: 304
 ---

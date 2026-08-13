@@ -2,6 +2,7 @@
 title: "Persistent Memory for Coding Agents: An Evidence-First Evaluation Worksheet"
 description: "A procurement-style worksheet for testing persistent agent memory with observable commands, failure criteria, and evidence grades."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Evaluation Guides"
 order: 1
 ---

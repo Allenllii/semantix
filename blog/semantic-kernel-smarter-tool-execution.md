@@ -2,6 +2,7 @@
 title: "Threat Model: When Reused Agent Context Becomes an Attack Surface"
 description: "A threat-model view of semantic injection, stale results, credentials, local storage, and safe degradation."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Scheduling & Harness"
 order: 302
 ---

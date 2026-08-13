@@ -2,6 +2,7 @@
 title: "Debug Diary: BM25 Found It, Hybrid Ranked It First"
 description: "A debugging diary that compares lexical, hash-vector, and hybrid retrieval without overstating semantic quality."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Semantic Cache"
 order: 205
 ---

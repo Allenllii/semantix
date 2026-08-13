@@ -2,6 +2,7 @@
 title: "Architecture Review: Put Execution Policy Beside the Harness"
 description: "An architecture review of the case for a separate execution kernel, including integration and failure costs."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Scheduling & Harness"
 order: 301
 ---

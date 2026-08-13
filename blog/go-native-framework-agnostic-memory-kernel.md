@@ -2,6 +2,7 @@
 title: "Code Review: Is the Memory Kernel Really Framework-Agnostic?"
 description: "A code-review checklist testing whether Semantix is genuinely independent of agent frameworks."
 updated: 2026-08-12
+published: 2026-08-10
 group: "Go & Framework Independence"
 order: 403
 ---
