@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import {
+  INTRO_COMPLETION_EVENT,
+  type IntroCompletionDetail,
+} from "@/lib/intro-events";
+import { siteIdentity } from "@/lib/site-identity";
 import type { NavLink } from "@/types/content";
 
 const links: NavLink[] = [
@@ -15,39 +21,35 @@ const links: NavLink[] = [
   { label: "安装", labelEn: "Install", href: "/#start" },
 ];
 
+function NavLabel({ label, labelEn }: Pick<NavLink, "label" | "labelEn">) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      <span>{labelEn}</span>
+      <span>{label}</span>
+    </span>
+  );
+}
+
 export default function Nav() {
-  const [scrolled, setScrolled] = useState(false);
   const [visible, setVisible] = useState(false);
   const [open, setOpen] = useState(false);
 
-  // 滚动状态：>8px 后白底 + 边框（对齐原站 header 行为）
+  // 首页导航由品牌开场动画发出完成信号；其他页面直接显示。
   useEffect(() => {
-    const onScroll = () => {
-      setScrolled(window.scrollY > 8);
+    const syncVisibility = () => {
       const intro = document.getElementById("brand-intro");
-      setVisible(!intro || window.scrollY > 8);
+      setVisible(!intro || document.documentElement.dataset.introComplete === "true");
     };
 
-    const onScrollIntent = (event: WheelEvent) => {
-      if (event.deltaY > 0 && document.getElementById("brand-intro")) {
-        setVisible(true);
-      }
+    const onIntroCompletion = (event: Event) => {
+      const { complete } = (event as CustomEvent<IntroCompletionDetail>).detail;
+      setVisible(complete);
     };
 
-    const onTouchMove = () => {
-      if (document.getElementById("brand-intro")) setVisible(true);
-    };
-
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("wheel", onScrollIntent, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-    window.addEventListener("resize", onScroll);
+    syncVisibility();
+    window.addEventListener(INTRO_COMPLETION_EVENT, onIntroCompletion);
     return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("wheel", onScrollIntent);
-      window.removeEventListener("touchmove", onTouchMove);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener(INTRO_COMPLETION_EVENT, onIntroCompletion);
     };
   }, []);
 
@@ -62,36 +64,45 @@ export default function Nav() {
   return (
     <header
       className={cn(
-        "fixed top-0 z-50 w-full border-b transition-all duration-300",
-        visible ? "translate-y-0 opacity-100" : "pointer-events-none -translate-y-full opacity-0",
-        scrolled || open
-          ? "border-border bg-white/85 backdrop-blur"
-          : "border-transparent bg-transparent",
+        "fixed top-0 z-50 w-full border-b border-border bg-white/90 backdrop-blur transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
+        visible
+          ? "translate-y-0 opacity-100 delay-100"
+          : "pointer-events-none -translate-y-full opacity-0 delay-0",
       )}
     >
       <div className="mx-auto flex h-16 w-full max-w-[1360px] items-center justify-between px-5 sm:px-6">
         {/* Logo */}
-        <Link href="/" aria-label="Semantix 首页" className="flex items-center gap-2.5">
-          <img
-            src="/seo/favicon.svg"
-            alt=""
-            className="size-8 text-foreground"
-            aria-hidden="true"
-          />
-          <span className="font-mono text-lg font-semibold text-foreground">
-            semantix
+        <a
+          href={siteIdentity.operator.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="访问 EnsureOK 官网"
+          className="block shrink-0 transition-opacity hover:opacity-65"
+        >
+          <span className="flex flex-col items-center gap-0.5 text-[#050505]">
+            <Image
+              src="/seo/favicon.svg"
+              alt=""
+              width={22}
+              height={22}
+              className="size-[1.15rem] sm:size-5"
+              aria-hidden="true"
+            />
+            <span className="font-brand-display text-[10px] font-black leading-none tracking-[0.045em] sm:text-[11px]">
+              ENSUREOK
+            </span>
           </span>
-        </Link>
+        </a>
 
         {/* 桌面端中间导航链接（移动端隐藏） */}
-        <nav className="hidden items-center gap-4 xl:flex 2xl:gap-6">
+        <nav className="hidden items-center gap-5 xl:flex 2xl:gap-7">
           {links.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="shrink-0 whitespace-nowrap text-xs text-muted-foreground transition-colors hover:text-accent 2xl:text-sm"
+              className="font-brand-display shrink-0 whitespace-nowrap text-xs font-bold tracking-[0.025em] text-muted-foreground transition-colors hover:text-accent 2xl:text-sm"
             >
-              <span className="font-semibold">{link.labelEn}</span> {link.label}
+              <NavLabel label={link.label} labelEn={link.labelEn} />
             </Link>
           ))}
         </nav>
@@ -102,15 +113,15 @@ export default function Nav() {
             href="https://github.com/Gnosil/semantix"
             target="_blank"
             rel="noopener noreferrer"
-            className="hidden rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-accent hover:text-foreground sm:inline-block"
+            className="font-brand-display hidden rounded-md border border-border px-3 py-1.5 text-sm font-bold text-muted-foreground transition-colors hover:border-accent hover:text-foreground sm:inline-block"
           >
             GitHub <span aria-hidden="true">↗</span>
           </a>
           <Link
             href="/#start"
-            className="rounded-md bg-accent px-3 py-1.5 text-sm text-white transition-opacity hover:opacity-90"
+            className="font-brand-display rounded-md bg-accent px-3 py-1.5 text-sm font-bold text-white transition-opacity hover:opacity-90"
           >
-            <span className="font-semibold">Install</span> 安装
+            Install 安装
           </Link>
 
           {/* 汉堡按钮（移动端） */}
@@ -158,16 +169,16 @@ export default function Nav() {
               key={link.href}
               href={link.href}
               onClick={() => setOpen(false)}
-              className="rounded-lg px-3 py-4 text-lg font-medium text-foreground transition-colors hover:bg-muted"
+              className="font-brand-display rounded-lg px-3 py-4 text-lg font-bold tracking-[0.025em] text-foreground transition-colors hover:bg-muted"
             >
-              <span className="font-semibold">{link.labelEn}</span> {link.label}
+              <NavLabel label={link.label} labelEn={link.labelEn} />
             </Link>
           ))}
           <a
             href="https://github.com/Gnosil/semantix"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-lg px-3 py-4 text-lg text-muted-foreground transition-colors hover:bg-muted"
+            className="font-brand-display rounded-lg px-3 py-4 text-lg font-bold text-muted-foreground transition-colors hover:bg-muted"
           >
             GitHub <span aria-hidden="true">↗</span>
           </a>

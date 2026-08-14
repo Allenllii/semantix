@@ -61,6 +61,19 @@ func (f *fakeStore) List(scope slice.Scope) ([]*slice.Slice, error) {
 	return items, nil
 }
 
+func (f *fakeStore) ListAll() ([]*slice.Slice, error) {
+	items := make([]*slice.Slice, 0, len(f.items))
+	for _, item := range f.items {
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+func (f *fakeStore) Delete(id string) error {
+	delete(f.items, id)
+	return nil
+}
+
 func (f *fakeStore) UpdateStats(string, slice.SliceStats) error { return nil }
 
 func (f *fakeStore) Close() error {
@@ -291,7 +304,7 @@ func TestHelpShowsPlannedGroups(t *testing.T) {
 	}
 	out := stdout.String()
 	for _, want := range []string{
-		"Maintenance (planned: gc export import)",
+		"Maintenance",
 		"Service mode (planned: serve watch)",
 	} {
 		if !strings.Contains(out, want) {
@@ -300,6 +313,9 @@ func TestHelpShowsPlannedGroups(t *testing.T) {
 	}
 	if strings.Contains(out, "Product & management (planned") {
 		t.Errorf("doctor is implemented; the product group must not render as planned:\n%s", out)
+	}
+	if strings.Contains(out, "Maintenance (planned") {
+		t.Errorf("gc/export/import are implemented; the maintenance group must not render as planned:\n%s", out)
 	}
 }
 

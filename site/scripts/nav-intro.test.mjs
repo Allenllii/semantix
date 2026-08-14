@@ -4,11 +4,9 @@ import test from "node:test";
 
 const navSource = await readFile(new URL("../src/components/Nav.tsx", import.meta.url), "utf8");
 
-test("homepage navigation reacts to the first downward scroll intent", () => {
-  assert.match(navSource, /event\.deltaY > 0/);
-  assert.match(navSource, /addEventListener\("wheel", onScrollIntent/);
-  assert.match(navSource, /addEventListener\("touchmove", onTouchMove/);
-  assert.match(navSource, /setVisible\(!intro \|\| window\.scrollY > 8\)/);
+test("homepage navigation appears when the brand intro completes", () => {
+  assert.match(navSource, /setVisible\(!intro \|\| document\.documentElement\.dataset\.introComplete === "true"\)/);
+  assert.match(navSource, /addEventListener\(INTRO_COMPLETION_EVENT, onIntroCompletion/);
 });
 
 test("navigation enters with a transition instead of delayed layout insertion", () => {

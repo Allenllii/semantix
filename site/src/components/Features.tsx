@@ -91,7 +91,7 @@ export default function Features() {
         onClick={() => setActive(isActive ? null : index)}
         aria-expanded={isActive}
         aria-controls={panelId}
-        className="group grid w-full grid-cols-[3rem_1fr_auto] items-center gap-3 border-b border-[#101313]/20 py-5 text-left md:grid-cols-[5rem_1fr_auto] md:py-7"
+        className="group grid w-full grid-cols-[3rem_1fr_auto] items-center gap-3 border-b border-[#101313]/20 py-5 text-left md:grid-cols-[5rem_1fr_auto] md:py-6"
       >
         <span
           className={`font-mono text-[10px] tracking-[0.16em] transition-colors ${
@@ -217,7 +217,7 @@ export default function Features() {
           <CopyCode key={capability.num} code={capability.code} />
         ))}
       </div>
-      <div className="mx-auto grid max-w-[1600px] gap-14 px-5 py-24 md:px-10 md:py-32 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20">
+      <div className="mx-auto grid max-w-[1600px] gap-14 px-5 py-20 md:px-10 md:py-24 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20">
         <div className="lg:sticky lg:top-24 lg:self-start">
           <p className="font-mono text-[10px] font-medium tracking-[0.24em] text-[#168b6d]">
             Features 特性
@@ -239,8 +239,8 @@ export default function Features() {
           {groups.map((group, groupIndex) => {
             const panelId = `semantix-feature-detail-${groupIndex}`;
             return (
-              <div key={group.label} className={groupIndex === 0 ? "" : "mt-16"}>
-                <div className="flex items-center justify-between border-b border-[#101313]/20 py-5 font-mono text-[11px] font-semibold tracking-[0.16em] text-[#168b6d] md:text-sm">
+              <div key={group.label} className={groupIndex === 0 ? "" : "mt-6"}>
+                <div className="sticky top-16 z-20 flex items-center justify-between border-b border-[#101313]/20 bg-white/95 py-4 font-mono text-[11px] font-semibold tracking-[0.16em] text-[#168b6d] backdrop-blur md:text-sm">
                   <span>{group.label}</span>
                   <span className="text-[10px] font-normal tracking-[0.12em] md:text-xs">
                     {group.action}

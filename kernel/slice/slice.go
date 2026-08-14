@@ -105,6 +105,10 @@ type Slice struct {
 	Stats     SliceStats
 	Weight    float64     // value weight, updated by the evolution engine
 	Meta      SliceMeta
+	// CreatedAt is the unix-seconds creation time (maintenance gc retention
+	// basis). Zero means unknown (legacy/imported lines without the field):
+	// retention never expires unknown-age slices.
+	CreatedAt int64 `json:"created_at,omitempty"`
 }
 
 // Hit is one search result.

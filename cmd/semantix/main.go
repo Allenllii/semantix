@@ -96,7 +96,7 @@ func (g commandGroup) String() string {
 // exit 2 until their unit lands.
 var plannedByGroup = map[commandGroup][]string{
 	groupProduct:     {"install", "completion"},
-	groupMaintenance: {"gc", "export", "import"},
+	groupMaintenance: {},
 	groupService:     {"serve", "watch"},
 }
 
@@ -169,6 +169,18 @@ var commands = []commandSpec{
 		run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
 			return runVersion(args, stdout, stderr)
 		}},
+	{name: "export", group: groupMaintenance,
+		usage:   "semantix export --output <file> [--db ...] [--json]",
+		summary: "JSONL backup of the slice store (incl. Meta)",
+		run:     errCommand("export", runExport)},
+	{name: "import", group: groupMaintenance,
+		usage:   "semantix import --input <file> [--db ...] [--json]",
+		summary: "restore the slice store from an export",
+		run:     errCommand("import", runImport)},
+	{name: "gc", group: groupMaintenance,
+		usage:   "semantix gc [--retention-days N] [--min-weight W] [--dry-run] [--json]",
+		summary: "prune stale / low-weight slices",
+		run:     errCommand("gc", runGC)},
 }
 
 func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
@@ -254,9 +266,11 @@ func printHelp(w io.Writer) {
 	fmt.Fprintln(w, `Run "semantix help <command>" or "semantix <command> --help" for details.`)
 }
 
-// errCommand adapts an error-returning command (extract/search/lookup/inject)
-// to the dispatch signature, mapping errors to the U19 exit-code contract:
-// 0 ok, 0 for --help, 2 usage error, 1 runtime error.
+// errCommand adapts an error-returning command (extract/search/lookup/inject/
+// export/import/gc) to the dispatch signature, mapping errors to the U19
+// exit-code contract: 0 ok, 0 for --help, 2 usage error, 1 runtime error.
+// When the invocation requested --json, the failure also emits the §4.2
+// envelope (ok:false, error.code) so a JSON consumer stays parseable.
 func errCommand(name string, fn func(args []string, stdout, stderr io.Writer, deps dependencies) error) func(args []string, stdout, stderr io.Writer, deps dependencies) int {
 	return func(args []string, stdout, stderr io.Writer, deps dependencies) int {
 		if err := fn(args, stdout, stderr, deps); err == nil {
@@ -264,6 +278,9 @@ func errCommand(name string, fn func(args []string, stdout, stderr io.Writer, de
 		} else if errors.Is(err, flag.ErrHelp) {
 			return 0 // --help is a successful request, not a failure
 		} else if isUsage(err) {
+			if wantsJSON(args) {
+				_ = writeErrorEnvelope(stdout, name, 2, err.Error())
+			}
 			fmt.Fprintf(stderr, "semantix %s: %v\n", name, err)
 			return 2
 		} else {
