@@ -61,6 +61,19 @@ func (f *fakeStore) List(scope slice.Scope) ([]*slice.Slice, error) {
 	return items, nil
 }
 
+func (f *fakeStore) ListAll() ([]*slice.Slice, error) {
+	items := make([]*slice.Slice, 0, len(f.items))
+	for _, item := range f.items {
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+func (f *fakeStore) Delete(id string) error {
+	delete(f.items, id)
+	return nil
+}
+
 func (f *fakeStore) UpdateStats(string, slice.SliceStats) error { return nil }
 
 func (f *fakeStore) Close() error {
