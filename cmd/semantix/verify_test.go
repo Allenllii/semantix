@@ -55,8 +55,8 @@ func TestVerifyReplayProducesEvaluationTable(t *testing.T) {
 		if len(cols) != 6 {
 			t.Fatalf("row %q: want 6 tab columns (session/turn/score/zone/top1/query), got %d", l, len(cols))
 		}
-		if cols[3] != "hit" && cols[3] != "grey" && cols[3] != "miss" {
-			t.Fatalf("row %q: zone column %q not a valid zone", l, cols[3])
+		if cols[3] != "✅hit" && cols[3] != "🟡grey" && cols[3] != "❌miss" {
+			t.Fatalf("row %q: zone column %q not an iconized zone", l, cols[3])
 		}
 	}
 	if rows != 2 {
@@ -76,6 +76,31 @@ func TestVerifyReplayProducesEvaluationTable(t *testing.T) {
 	}
 	if !foundScore {
 		t.Fatalf("replayed '修复 go 测试失败' turn did not get a scored top-1 hit:\n%s", out.String())
+	}
+}
+
+// TestVerifyIconicOutput verifies the Issue #153 / U29 human-readable output:
+// iconized zone cells, the zone distribution bar, and the gate verdict line.
+func TestVerifyIconicOutput(t *testing.T) {
+	dir := t.TempDir()
+	writeSession(t, dir, "s1.jsonl", []string{"修复 go 测试失败"})
+	writeSession(t, dir, "s2.jsonl", []string{"修复 go 测试失败"})
+
+	var out bytes.Buffer
+	db := filepath.Join(t.TempDir(), "v.db")
+	code := runVerify([]string{"--session", dir, "--db", db, "--holdout", "0.5"}, &out, productionDependencies())
+	if code != 0 {
+		t.Fatalf("runVerify = %d, want 0; out:\n%s", code, out.String())
+	}
+	s := out.String()
+	for _, want := range []string{
+		"✅hit",               // iconized zone cell
+		"# zones: hit",        // distribution bar line
+		"✅ PASS relevance=",  // gate verdict line
+	} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("output missing %q:\n%s", want, s)
+		}
 	}
 }
 
