@@ -148,6 +148,41 @@ func TestFileStorePutGetList(t *testing.T) {
 	}
 }
 
+// TestSliceMetaGatewayFieldsRoundTrip: the gateway metadata fields
+// (Issue #133) survive a store round trip and are absent on legacy slices
+// (omitempty keeps the JSONL wire format backward compatible).
+func TestSliceMetaGatewayFieldsRoundTrip(t *testing.T) {
+	st, err := NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sl := &Slice{
+		ID: "gw", Type: Result, Scope: Project, Content: []byte("cached answer"),
+		Meta: SliceMeta{
+			Model:       "deepseek-chat",
+			ContextHash: "abc123",
+		},
+	}
+	if err := st.Put(sl); err != nil {
+		t.Fatal(err)
+	}
+	got, err := st.Get("gw")
+	if err != nil || got == nil {
+		t.Fatalf("Get(gw) = %v, %v", got, err)
+	}
+	if got.Meta.Model != "deepseek-chat" || got.Meta.ContextHash != "abc123" {
+		t.Fatalf("gateway meta not preserved: %+v", got.Meta)
+	}
+
+	var legacy Slice
+	if err := json.Unmarshal([]byte(`{"id":"x","content":"y"}`), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Meta.Model != "" || legacy.Meta.ContextHash != "" {
+		t.Fatalf("legacy slice must parse with empty gateway meta, got %+v", legacy.Meta)
+	}
+}
+
 // Put with the same ID replaces (no duplicates).
 func TestFileStoreReplaceSameID(t *testing.T) {
 	st, err := NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))

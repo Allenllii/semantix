@@ -93,6 +93,16 @@ type SliceMeta struct {
 	// silently skipping dimension-mismatched vectors.
 	EmbedModel string `json:"embed_model,omitempty"`
 	EmbedDim   int    `json:"embed_dim,omitempty"`
+	// Model records the client-visible model that produced this slice
+	// (gateway L3 entries, Issue #133): L3 reuse is gated on the same model
+	// so a Claude answer can never serve a GPT request. Empty for slices
+	// produced by the CLI/extract path — the check is skipped when unset.
+	Model string `json:"model,omitempty"`
+	// ContextHash records the gateway-computed fingerprint of the request
+	// messages at write time (Issue #133): L3 reuse additionally requires
+	// the current request's context fingerprint to match, preventing
+	// cross-context reuse / information leakage (design §3.5).
+	ContextHash string `json:"context_hash,omitempty"`
 }
 
 // Slice is the core semantic slice value.
