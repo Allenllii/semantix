@@ -70,7 +70,7 @@ func parseScope(value string) (slice.Scope, error) {
 	case "user":
 		return slice.User, nil
 	default:
-		return 0, fmt.Errorf("invalid scope %q (want session, project, or user)", value)
+		return 0, usagef("invalid scope %q (want session, project, or user)", value)
 	}
 }
 

@@ -29,13 +29,13 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	l3Safe := flags.Bool("l3-safe", false, "mark dependency-free Result slices as explicitly L3-reusable (opt-in; ignored when --fingerprint is set)")
 	embedder := flags.String("embedder", "hash", "embedder for stored slices: hash (default, zero-dependency) | model (remote OpenAI-compatible API; see SEMANTIX_EMBED_* env)")
 	if err := flags.Parse(args); err != nil {
-		return err
+		return usageWrap(err)
 	}
 	if *input == "" {
-		return errors.New("--input is required")
+		return usagef("--input is required")
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("unexpected arguments: %v", flags.Args())
+		return usagef("unexpected arguments: %v", flags.Args())
 	}
 
 	scope, err := parseScope(*scopeValue)

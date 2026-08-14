@@ -62,13 +62,34 @@ semantix verify --session <会话目录> --project demo > eval.tsv
 
 ## 命令参考
 
+命令树按四组组织，`semantix help` 按组列出全部命令；每个子命令
+`semantix <command> --help` 查看其全部 flags。
+
+**kernel 运维**
+
 | 命令 | 用途 | 关键参数 |
 |---|---|---|
 | `extract` | 会话 JSONL → 语义切片入库 | `--input` `--db` `--scope` `--project` |
 | `search` | 检索切片 | `--query` `--retriever bm25\|vector\|hybrid` `--limit` `--json` |
+| `verify` | 离线回放命中率验证（门禁） | `--session` `--holdout` `--db` `--strict` |
+| `eval` | 检索策略比较（单阈值 vs 三段） | `--set` `--train-frac` `--tau-*` |
+| `eval-judge` | LLM judge 真实性评估（门禁） | `--stub` `--audit` `--min-consistency` |
+| `usage` | 成本节省统计 | `--db` `--evolve-db` |
 | `lookup` | semantix_lookup 工具（JSON） | `--query` `--limit` `--scope` |
 | `inject` | L2 注入块（规范序/预算截断） | `--query` `--budget` `--k` |
-| `verify` | 离线回放命中率验证 | `--session` `--holdout` `--db` |
+
+**产品与管理**：`doctor` 健康检查（db / config / embedder / judge，任一 FAIL 退出码 3）
+已实现；`init` `config` `version` `install` `completion`、`gc` `export` `import`、
+`serve` `watch` 为规划中命令（后续 M2 单元挂载，执行会报 unknown command）。
+
+**退出码契约**（所有命令统一）：
+
+| 码 | 语义 |
+|---|---|
+| 0 | 成功 |
+| 1 | 运行错误（IO、db、检索失败） |
+| 2 | 用法错误（未知命令、flag 非法） |
+| 3 | 门禁未达标（`verify --strict`、`eval-judge` 一致性） |
 
 ## 配置
 

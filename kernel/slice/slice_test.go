@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -108,8 +109,12 @@ func TestFileStoreKeepsPerm0600(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Fatalf("store file perm = %o, want 600 (writeAll must not widen to 0644)", perm)
+	// Windows has no POSIX permission bits (Go reports 0666 regardless of
+	// the mode passed to OpenFile), so assert only where they are real.
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Fatalf("store file perm = %o, want 600 (writeAll must not widen to 0644)", perm)
+		}
 	}
 }
 
