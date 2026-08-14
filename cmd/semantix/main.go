@@ -251,6 +251,7 @@ func buildCommands() []commandSpec {
 		summary: "prune stale / low-weight slices",
 		run:     errCommand("gc", runGC),
 		completionFlags: []string{"--retention-days", "--min-weight", "--dry-run", "--json"}},
+	}
 }
 
 func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
