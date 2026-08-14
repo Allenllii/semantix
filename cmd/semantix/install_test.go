@@ -297,6 +297,120 @@ func TestInstallSourceEnvFallback(t *testing.T) {
 	}
 }
 
+// TestInstallExplicitSourceIsFinal: an invalid --source must fail even when
+// another source would be resolvable (env/exe-relative/cwd). The user's
+// explicit choice is never silently overridden by a fallback.
+func TestInstallExplicitSourceIsFinal(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "agent-skill")
+	writeSkillPayload(t, src)
+	dest := filepath.Join(t.TempDir(), "dest")
+	t.Setenv("SEMANTIX_SKILL_DIR", src) // valid fallback exists
+
+	code, _, stderr := installRuns(t,
+		"--target", "claude-code", "--dir", dest,
+		"--source", filepath.Join(t.TempDir(), "bogus"))
+	if code != 1 {
+		t.Fatalf("code = %d, want 1 (stderr %q)", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatal("install must not proceed when --source is invalid")
+	}
+}
+
+// TestInstallJSONFailureEnvelope: with --json a runtime failure still emits
+// the §4.2 envelope (ok=false, error:{code,message}) instead of silent stdout.
+func TestInstallJSONFailureEnvelope(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "dest")
+	code, stdout, _ := installRuns(t,
+		"--target", "custom", "--dir", dest,
+		"--source", filepath.Join(t.TempDir(), "nope"), "--json")
+	if code != 1 {
+		t.Fatalf("code = %d, want 1", code)
+	}
+	var env installEnvelope
+	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+		t.Fatalf("stdout is not a JSON envelope: %v\n%s", err, stdout)
+	}
+	if env.OK || env.Command != "install" || env.Error == nil {
+		t.Fatalf("envelope = %+v, want ok=false with error payload", env)
+	}
+	if errEnv, ok := env.Error.(map[string]any); !ok || errEnv["code"] != float64(1) {
+		t.Fatalf("error payload = %v, want code 1", env.Error)
+	}
+}
+
+// TestInstallUninstallRejectsTraversal: manifest entries that escape dest
+// (.., absolute paths) are skipped, never resolved; files outside dest stay.
+func TestInstallUninstallRejectsTraversal(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "agent-skill")
+	writeSkillPayload(t, src)
+	dest := filepath.Join(t.TempDir(), "dest")
+	if code, _, stderr := installRuns(t, "--target", "custom", "--dir", dest, "--source", src); code != 0 {
+		t.Fatalf("install code = %d, stderr = %q", code, stderr)
+	}
+	victim := filepath.Join(t.TempDir(), "victim.txt")
+	if err := os.WriteFile(victim, []byte("must survive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := installManifest{
+		Command: "install",
+		Target:  "custom",
+		Version: cliVersion,
+		Files:   []string{"SKILL.md", "../victim.txt", filepath.Join(t.TempDir(), "abs.txt")},
+	}
+	content, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, installManifestName), content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, stderr := installRuns(t, "--target", "custom", "--dir", dest, "--uninstall")
+	if code != 0 {
+		t.Fatalf("uninstall code = %d, stderr = %q", code, stderr)
+	}
+	if data, err := os.ReadFile(victim); err != nil || string(data) != "must survive" {
+		t.Fatalf("victim file was touched: %q, err=%v", data, err)
+	}
+	if !strings.Contains(stdout, "skipped unsafe manifest entry") {
+		t.Fatalf("stdout must report skipped unsafe entries:\n%s", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatal("safe manifest entry not removed")
+	}
+}
+
+// TestInstallUninstallCorruptManifest: a corrupt manifest is a runtime error
+// (exit 1), not a silent success.
+func TestInstallUninstallCorruptManifest(t *testing.T) {
+	dest := filepath.Join(t.TempDir(), "dest")
+	if err := os.MkdirAll(dest, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, installManifestName), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := installRuns(t, "--target", "custom", "--dir", dest, "--uninstall")
+	if code != 1 {
+		t.Fatalf("code = %d, want 1 (stderr %q)", code, stderr)
+	}
+}
+
+// TestInstallRefusesSourceOverlap: installing into the payload source itself
+// (or a subdirectory of it) is refused.
+func TestInstallRefusesSourceOverlap(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "agent-skill")
+	writeSkillPayload(t, src)
+	for _, dest := range []string{src, filepath.Join(src, "sub")} {
+		code, _, stderr := installRuns(t,
+			"--target", "custom", "--dir", dest, "--source", src)
+		if code != 1 {
+			t.Errorf("dest=%s: code = %d, want 1 (stderr %q)", dest, code, stderr)
+		}
+	}
+}
+
 // readInstallManifest decodes the manifest written into dest.
 func readInstallManifest(t *testing.T, dest string) installManifest {
 	t.Helper()
