@@ -182,6 +182,32 @@ export default function Components() {
             </Reveal>
           ))}
         </div>
+
+        <Reveal delay={55}>
+          <div className="mt-5 border border-[#168b6d]/35 bg-[#101313] text-[#bde8d9]">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-5 py-3 font-mono text-[10px] font-semibold tracking-[0.18em]">
+              <span>REUSE VISUALIZATION / CLI 示例</span>
+              <span className="text-white/35">示意输出 · 与 U28–U31 CLI 格式一致</span>
+            </div>
+            <pre className="overflow-x-auto p-5 font-mono text-xs leading-6 text-[#bde8d9] md:p-6">
+{`$ semantix dashboard
+
+💰 Cost saved            79.8%   ████████████████
+🎯 Hit rate (L2/L3)      78.6%   ███████████████▌
+🗂 Zone distribution     hit ████████████  grey ███  miss █
+📦 Reused slices         12      (from 4 sessions)
+
+$ semantix search "gate"     # 来源会话
+🎯 3/10 hits in 2 sessions
+✅ hit  0.87  from:session-2026-08-12-7f3a
+🟡 grey 0.61  from:session-2026-08-12-7f3a
+❌ miss 0.24`}
+            </pre>
+            <p className="border-t border-white/10 px-5 py-3 font-mono text-[10px] leading-5 text-white/40">
+              三要素：命中率（🎯）· 节省成本（💰）· 来源会话（from:）——真实数据以 semantix verify 门禁报告为准
+            </p>
+          </div>
+        </Reveal>
       </div>
     </section>
   );
