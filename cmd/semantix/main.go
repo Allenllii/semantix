@@ -95,7 +95,7 @@ func (g commandGroup) String() string {
 // implement yet. They render in help as planned and reject dispatch with
 // exit 2 until their unit lands.
 var plannedByGroup = map[commandGroup][]string{
-	groupProduct:     {"init", "config", "version", "doctor", "install", "completion"},
+	groupProduct:     {"init", "config", "version", "install", "completion"},
 	groupMaintenance: {"gc", "export", "import"},
 	groupService:     {"serve", "watch"},
 }
@@ -145,6 +145,12 @@ var commands = []commandSpec{
 		usage:   "semantix inject --query <q> [--budget N] [--db ...]",
 		summary: "L2 injection block generation (harness backend)",
 		run:     errCommand("inject", runInject)},
+	{name: "doctor", group: groupProduct,
+		usage:   "semantix doctor [--config <path>] [--db <path>] [--json]",
+		summary: "health check (db / config / embedder / judge; exit 3 on any FAIL)",
+		run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
+			return runDoctor(args, stdout, stderr)
+		}},
 }
 
 func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
@@ -221,6 +227,9 @@ func printHelp(w io.Writer) {
 		fmt.Fprintf(w, "%s\n", g)
 		for _, c := range inGroup {
 			fmt.Fprintf(w, "  %-11s %s\n", c.name, c.summary)
+		}
+		if planned := plannedByGroup[g]; len(planned) > 0 {
+			fmt.Fprintf(w, "  (planned: %s)\n", strings.Join(planned, " "))
 		}
 		fmt.Fprintln(w)
 	}
