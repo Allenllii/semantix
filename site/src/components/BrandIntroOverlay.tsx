@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import ParticleCanvas from "@/components/ParticleCanvas";
 import CopyCode from "@/components/CopyCode";
+import {
+  INTRO_COMPLETION_EVENT,
+  type IntroCompletionDetail,
+} from "@/lib/intro-events";
 import { siteIdentity } from "@/lib/site-identity";
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
@@ -10,9 +14,12 @@ const clamp = (value: number) => Math.min(1, Math.max(0, value));
 const range = (value: number, start: number, end: number) =>
   clamp((value - start) / (end - start));
 
+const NAV_REVEAL_PROGRESS = 0.78;
+
 export default function BrandIntroOverlay() {
   const storyRef = useRef<HTMLElement>(null);
   const frameRef = useRef<number | null>(null);
+  const introCompleteRef = useRef(false);
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
@@ -23,7 +30,23 @@ export default function BrandIntroOverlay() {
 
       const rect = story.getBoundingClientRect();
       const travel = Math.max(1, story.offsetHeight - window.innerHeight);
-      setProgress(clamp(-rect.top / travel));
+      const nextProgress = clamp(-rect.top / travel);
+      const complete = nextProgress >= NAV_REVEAL_PROGRESS;
+      const publishedComplete = document.documentElement.dataset.introComplete;
+
+      setProgress(nextProgress);
+      document.documentElement.dataset.introComplete = String(complete);
+      if (
+        introCompleteRef.current !== complete ||
+        publishedComplete !== String(complete)
+      ) {
+        introCompleteRef.current = complete;
+        window.dispatchEvent(
+          new CustomEvent<IntroCompletionDetail>(INTRO_COMPLETION_EVENT, {
+            detail: { complete },
+          }),
+        );
+      }
     };
 
     const requestUpdate = () => {
@@ -39,6 +62,7 @@ export default function BrandIntroOverlay() {
       window.removeEventListener("scroll", requestUpdate);
       window.removeEventListener("resize", requestUpdate);
       if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
+      delete document.documentElement.dataset.introComplete;
     };
   }, []);
 
@@ -112,14 +136,9 @@ export default function BrandIntroOverlay() {
             <span className="block text-[#168b6d]">沉淀为可检索的记忆</span>
           </p>
 
-          <p className="mx-auto mt-6 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
-            Semantix 连接 Agent Harness 与资源层，提供切片提取、BM25 检索和稳定注入路径。
-            <br className="hidden md:block" />
-            当前公开证据来自仓库测试与合成演示；生产环境中的成本和性能收益仍待验证。
-          </p>
           <time
             dateTime={siteIdentity.lastUpdated}
-            className="mt-3 block font-mono text-[10px] tracking-[0.12em] text-muted-foreground"
+            className="mt-6 block font-mono text-[10px] tracking-[0.12em] text-muted-foreground"
           >
             Last updated · {siteIdentity.lastUpdated}
           </time>
