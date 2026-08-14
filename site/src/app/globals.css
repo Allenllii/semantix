@@ -1,3 +1,6 @@
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
+@import "@fontsource-variable/noto-sans-sc/wght.css";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -134,7 +137,7 @@
 
 /* EnsureOK uses Noto Sans SC 900 for its oversized Chinese display copy. */
 .font-brand-display {
-  font-family: var(--font-noto-sans-sc), "PingFang SC", "Microsoft YaHei",
+  font-family: "Noto Sans SC Variable", "PingFang SC", "Microsoft YaHei",
     sans-serif;
   font-synthesis: none;
 }
