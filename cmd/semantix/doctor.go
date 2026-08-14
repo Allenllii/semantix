@@ -17,8 +17,9 @@ import (
 )
 
 // cliVersion is the semantix CLI release reported in the --json envelope
-// (docs/reports/cli-v2-architecture.md §4.2). Bump it with each release tag.
-const cliVersion = "0.3.1"
+// (docs/reports/cli-v2-architecture.md §4.2). It is injected at link time
+// via -ldflags "-X main.version=..." — keep in sync with `semantix version`.
+var cliVersion = version
 
 // doctorStatus is one health-check outcome.
 type doctorStatus string
