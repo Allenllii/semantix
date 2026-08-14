@@ -20,9 +20,11 @@ test("site fonts are self-hosted through pinned Fontsource packages", () => {
 
   for (const [packageName, familyName] of fonts) {
     assert.equal(packageJson.dependencies[`@fontsource-variable/${packageName}`], "5.3.0");
+    // Fontsource CSS is loaded via JS imports in layout.tsx (Tailwind v4's
+    // LightningCSS cannot resolve bare package names in CSS @import).
     assert.match(
-      globals,
-      new RegExp(`@import ["']@fontsource-variable/${packageName}/wght\\.css["']`),
+      layout,
+      new RegExp(`import ["']@fontsource-variable/${packageName}/wght\\.css["']`),
     );
     assert.ok(globals.includes(`"${familyName}"`), `${familyName} should be used by the theme`);
     assert.ok(licenses.includes(`@fontsource-variable/${packageName}`));
