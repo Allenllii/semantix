@@ -75,6 +75,23 @@ func zoneIcon(z zone.Zone) string {
 	}
 }
 
+// verifyBar renders an ASCII bar (█ filled, ░ empty) for a ratio in [0,1].
+// Kept local to verify so U29 stays file-disjoint from U28 (usage.go owns
+// its own barChart helper).
+func verifyBar(ratio float64, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 1 {
+		ratio = 1
+	}
+	filled := int(ratio*float64(width) + 0.5)
+	return strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+}
+
 // verifyExit maps the grey-zone alarm to the exit code contract (3 = gate).
 func verifyExit(greyTarget, greyRatio float64, strict bool) int {
 	if strict && greyTarget > 0 && greyRatio > greyTarget {
@@ -91,8 +108,11 @@ func verifyExit(greyTarget, greyRatio float64, strict bool) int {
 // (query → top-1 hit + score) for human relevance marking.
 //
 // Output columns (tab-separated, first line is a header):
-//   session turn score top1_content query
-// After marking each row ✅/❌, relevance rate = marked-correct / total.
+//   session turn score zone top1_content query
+// The zone cell is iconized (✅hit / 🟡grey / ❌miss) and the tail appends a
+// zone-distribution bar plus a gate verdict line. The verdict's relevance is
+// the AUTO-classified hit share (hit / replayed) — NOT the human-marked
+// relevance of #58, which requires offline labeling and is not computed here.
 // Target for M0-Gate: ≥70% of replayed turns find a "previously done similar"
 // top-1 hit.
 
@@ -374,6 +394,8 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	relevance := 0.0
 	if replayed > 0 {
 		greyRatio = 100 * float64(zoneCount[int(zone.Grey)]) / float64(replayed)
+		// relevance is the auto-classified hit share (hit / replayed), not the
+		// human-marked relevance of #58 — see the runVerify doc comment.
 		relevance = float64(zoneCount[int(zone.Hit)]) / float64(replayed)
 	}
 	icon := verifyVerdict(relevance, greyRatio, *greyTarget)
@@ -400,9 +422,9 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	// zone distribution bar (Issue #153 / U29).
 	if replayed > 0 {
 		fmt.Fprintf(stdout, "# zones: hit %s grey %s miss %s\n",
-			barChart(float64(zoneCount[int(zone.Hit)])/float64(replayed), 8),
-			barChart(float64(zoneCount[int(zone.Grey)])/float64(replayed), 8),
-			barChart(float64(zoneCount[int(zone.Miss)])/float64(replayed), 8))
+			verifyBar(float64(zoneCount[int(zone.Hit)])/float64(replayed), 8),
+			verifyBar(float64(zoneCount[int(zone.Grey)])/float64(replayed), 8),
+			verifyBar(float64(zoneCount[int(zone.Miss)])/float64(replayed), 8))
 	}
 	// gate verdict line (Issue #153 / U29).
 	switch icon {
