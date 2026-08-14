@@ -8,6 +8,24 @@ import {
 import { maintainersJsonLd } from "@/lib/content-authors";
 import "./globals.css";
 
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+const jetbrains = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+});
+
+const notoSansSC = Noto_Sans_SC({
+  variable: "--font-noto-sans-sc",
+  subsets: ["latin"],
+  weight: ["700", "900"],
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteIdentity.productUrl),
   title: "Semantix - a verifiable memory kernel for agents",
@@ -54,4 +72,3 @@ export default function RootLayout({
     </html>
   );
 }
-
