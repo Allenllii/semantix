@@ -89,6 +89,47 @@ Semantix asks:
 
 ---
 
+# Reuse Visualization
+
+> **跨会话复用看得见**：Semantix 把「命中率 / 节省成本 / 来源会话」三要素画成一屏（Agile 1 DoD「复用可视化」）。下面是指标格式示例——U28–U31（`usage` / `verify` / `search` / `dashboard` 图标化）合入后，示例将替换为真实命令输出；当前真实测量见 `docs/reports/m0-cost-comparison.md`（合成回放成本节省 **79.8%**）。
+
+`semantix dashboard` 示例输出：
+
+```text
+$ semantix dashboard
+
+💰 Cost saved            79.8%   ████████████████
+🎯 Hit rate (L2/L3)      78.6%   ███████████████▌
+🗂 Zone distribution     hit ████████████  grey ███  miss █
+📦 Reused slices         12      (from 4 sessions)
+```
+
+状态图例（`verify` / `search` / `lookup` 输出共用）：
+
+| 图标 | 状态       | 含义                                                             |
+| ---- | ---------- | ---------------------------------------------------------------- |
+| ✅   | hit / PASS | 高置信命中；回放相关性达标，门禁通过（`semantix verify`）         |
+| 🟡   | grey / WARN| 灰色地带：介于 hit 与 miss 之间；grey 占比超限时门禁告警          |
+| ❌   | miss / FAIL| 未命中；门禁不达标                                               |
+
+对应命令示例：
+
+```text
+$ semantix verify            # 门禁结论一眼可读
+✅ PASS  relevance=78.6% (≥70%) · grey_ratio=2.1% (≤5%)
+
+$ semantix search "gate"     # 命中摘要 + 来源会话
+🎯 3/10 hits in 2 sessions
+✅ hit  0.87  from:session-2026-08-12-7f3a
+🟡 grey 0.61  from:session-2026-08-12-7f3a
+❌ miss 0.24
+
+$ semantix usage             # 节省成本条形
+💰 savings_rate 79.8%  ████████████████
+```
+
+---
+
 # Features
 
 ## Semantic Slice Library
