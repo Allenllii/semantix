@@ -6,6 +6,9 @@ import {
   websiteJsonLd,
 } from "@/lib/site-identity";
 import { maintainersJsonLd } from "@/lib/content-authors";
+import "@fontsource-variable/inter/wght.css";
+import "@fontsource-variable/jetbrains-mono/wght.css";
+import "@fontsource-variable/noto-sans-sc/wght.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

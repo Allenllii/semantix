@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -12,23 +13,55 @@ import (
 	"semantix/kernel/usage"
 )
 
+// usageJSON is the --json envelope payload for `semantix usage` (M2-U22).
+type usageJSON struct {
+	Events         int     `json:"events"`
+	TokensIn       int64   `json:"tokens_in"`
+	TokensOut      int64   `json:"tokens_out"`
+	CacheHitTokens int64   `json:"cache_hit_tokens"`
+	L3Reuses       int     `json:"l3_reuses"`
+	InjectedTokens int64   `json:"injected_tokens"`
+	CostPaidUSD    float64 `json:"cost_paid_usd"`
+	CostNoCacheUSD float64 `json:"cost_no_cache_usd"`
+	SavingsUSD     float64 `json:"savings_usd"`
+	SavingsRate    float64 `json:"savings_rate"`
+}
+
 // runUsage summarizes the usage log and reports cost savings (Issue #60 /
 // U17). With --evolve-db it also feeds cost/latency signals into the
 // evolution engine and prints the adjusted params.
-func runUsage(args []string, stdout io.Writer) int {
+func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 	fs := flag.NewFlagSet("usage", flag.ContinueOnError)
 	db := fs.String("db", filepath.Join(".semantix", "usage.jsonl"), "usage log path (default .semantix/usage.jsonl)")
-	costMiss := fs.Float64("cost-miss", usage.DefaultCostMissPerMTok, "USD per 1M tokens at cache miss")
-	costHit := fs.Float64("cost-hit", usage.DefaultCostHitPerMTok, "USD per 1M tokens at cache hit")
+	costMiss := fs.Float64("cost-miss", cfgFloat(deps.resolved, "cost.input_price_usd", usage.DefaultCostMissPerMTok), "USD per 1M tokens at cache miss")
+	costHit := fs.Float64("cost-hit", cfgFloat(deps.resolved, "cost.cache_price_usd", usage.DefaultCostHitPerMTok), "USD per 1M tokens at cache hit")
 	evolveDB := fs.String("evolve-db", "", "optional evolve engine state dir (feeds cost signals and prints adjusted params)")
+	jsonOut := fs.Bool("json", false, "output as JSON envelope")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // --help is a successful request
+		}
 		return 2
 	}
 
 	s, err := usage.Summarize(*db, *costMiss, *costHit)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "usage:", err)
-		return 2
+		return 1 // runtime/IO error, not a usage mistake
+	}
+
+	if *jsonOut {
+		data := usageJSON{
+			Events: s.Events, TokensIn: s.TokensIn, TokensOut: s.TokensOut,
+			CacheHitTokens: s.CacheHitTokens, L3Reuses: s.L3Reuses, InjectedTokens: s.InjectedTokens,
+			CostPaidUSD: s.CostPaidUSD, CostNoCacheUSD: s.CostNoCacheUSD,
+			SavingsUSD: s.SavingsUSD, SavingsRate: s.SavingsRate,
+		}
+		if err := writeJSON(stdout, okEnvelope("usage", data)); err != nil {
+			fmt.Fprintln(os.Stderr, "usage:", err)
+			return 1
+		}
+		return 0
 	}
 
 	fmt.Fprintf(stdout, "events\t%d\n", s.Events)
@@ -45,7 +78,7 @@ func runUsage(args []string, stdout io.Writer) int {
 	if *evolveDB != "" {
 		if err := feedEvolve(*evolveDB, s, stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "usage: evolve:", err)
-			return 2
+			return 1 // runtime error
 		}
 	}
 	return 0

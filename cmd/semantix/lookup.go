@@ -17,18 +17,19 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	flags := flag.NewFlagSet("lookup", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	query := flags.String("query", "", "task description to match against stored slices")
-	scopeValue := flags.String("scope", "project", "slice scope: session, project, or user")
-	limit := flags.Int("limit", 5, "maximum number of slices (capped at 50)")
-	dbOverride := flags.String("db", "", "database path override")
-	// Accepted for compatibility with the harness tool contract
-	// (semantix_lookup calls `semantix lookup --json`); output is JSON anyway.
-	_ = flags.Bool("json", false, "output as JSON (default output is already JSON)")
+	scopeValue := flags.String("scope", cfgString(deps.resolved, "store.scope", "project"), "slice scope: session, project, or user")
+	limit := flags.Int("limit", cfgInt(deps.resolved, "retrieval.limit", 5), "maximum number of slices (capped at 50)")
+	dbOverride := flags.String("db", cfgString(deps.resolved, "store.db", ""), "database path override")
+	// H1 harness protocol entry point (semantix_lookup calls
+	// `semantix lookup --json`): the envelope is the machine-readable form.
+	// Without --json the legacy bare-array output is kept for compat.
+	jsonOut := flags.Bool("json", false, "output as JSON envelope (H1 protocol)")
 	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
-		return err
+		return usageWrap(err)
 	}
 	if err := zf.validate(); err != nil {
-		return err
+		return usagef("%v", err)
 	}
 	if *limit > 50 { // match kernel lookup.Execute hard cap
 		*limit = 50
@@ -40,7 +41,7 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 		*query = flags.Arg(0)
 	}
 	if *query == "" {
-		return fmt.Errorf("lookup: --query is required")
+		return usagef("lookup: --query is required")
 	}
 
 	store, err := deps.openStore(storePath(*dbOverride, *scopeValue))
@@ -78,6 +79,9 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 			Content: string(h.Slice.Content),
 		})
 	}
+	if *jsonOut {
+		return writeJSON(stdout, okEnvelope("lookup", out))
+	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(out)
@@ -89,22 +93,22 @@ func runInject(args []string, stdout, stderr io.Writer, deps dependencies) error
 	flags := flag.NewFlagSet("inject", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	query := flags.String("query", "", "current user turn to match against stored slices")
-	scopeValue := flags.String("scope", "project", "slice scope: session, project, or user")
-	k := flags.Int("k", 5, "top-k slices to consider")
-	budget := flags.Int("budget", inject.DefaultBudget, "max injection block bytes")
-	dbOverride := flags.String("db", "", "database path override")
+	scopeValue := flags.String("scope", cfgString(deps.resolved, "store.scope", "project"), "slice scope: session, project, or user")
+	k := flags.Int("k", cfgInt(deps.resolved, "retrieval.limit", 5), "top-k slices to consider")
+	budget := flags.Int("budget", cfgInt(deps.resolved, "inject.budget", inject.DefaultBudget), "max injection block bytes")
+	dbOverride := flags.String("db", cfgString(deps.resolved, "store.db", ""), "database path override")
 	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
-		return err
+		return usageWrap(err)
 	}
 	if err := zf.validate(); err != nil {
-		return err
+		return usagef("%v", err)
 	}
 	if *query == "" && flags.NArg() > 0 {
 		*query = flags.Arg(0)
 	}
 	if *query == "" {
-		return fmt.Errorf("inject: --query is required")
+		return usagef("inject: --query is required")
 	}
 
 	store, err := deps.openStore(storePath(*dbOverride, *scopeValue))

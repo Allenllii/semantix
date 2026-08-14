@@ -78,3 +78,15 @@ func TestReadEvalSet(t *testing.T) {
 		t.Fatalf("first row = %+v", rows[0])
 	}
 }
+
+// TestEvalRejectsNaNInFlags: NaN/Inf thresholds must be usage errors, not
+// silently pass the range check (NaN <= 0 and NaN >= 1 are both false).
+func TestEvalRejectsNaNInFlags(t *testing.T) {
+	set := filepath.Join("testdata", "eval-greyzone.tsv")
+	for _, frac := range []string{"NaN", "Inf", "-Inf"} {
+		var out bytes.Buffer
+		if code := runEval([]string{"--set", set, "--train-frac", frac}, &out); code != 2 {
+			t.Errorf("--train-frac %s: code = %d, want usage error 2", frac, code)
+		}
+	}
+}

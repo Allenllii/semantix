@@ -74,6 +74,18 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 		if z.Classify(h.Score, top1) != zone.Hit {
 			continue // grey/miss: not clearly the same task
 		}
+		// Context/model isolation (Issue #133 gateway): a cached outcome
+		// produced under a different conversation history or model must
+		// never be served. When the query carries a context/model (gateway
+		// always does), entries without a matching stamp — including
+		// unstamped legacy slices — fail closed; empty query fields keep
+		// the legacy CLI behavior.
+		if q.ContextHash != "" && s.Meta.ContextHash != q.ContextHash {
+			continue
+		}
+		if q.Model != "" && s.Meta.Model != q.Model {
+			continue
+		}
 		if !d.verified(ctx, s) {
 			continue // deps changed: stale, reject this candidate
 		}

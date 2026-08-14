@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -26,33 +25,33 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	flags := flag.NewFlagSet("search", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	queryFlag := flags.String("query", "", "search query (alternatively pass it as positional text)")
-	scopeValue := flags.String("scope", "project", "slice scope: session, project, or user")
-	limit := flags.Int("limit", 10, "maximum number of results")
+	scopeValue := flags.String("scope", cfgString(deps.resolved, "store.scope", "project"), "slice scope: session, project, or user")
+	limit := flags.Int("limit", cfgInt(deps.resolved, "retrieval.limit", 10), "maximum number of results")
 	dbOverride := flags.String("db", "", "database path override")
-	projectDB := flags.String("project-db", defaultProjectDB(), "project/session database path")
+	projectDB := flags.String("project-db", cfgString(deps.resolved, "store.db", defaultProjectDB()), "project/session database path")
 	userDB := flags.String("user-db", defaultUserDB(), "user database path")
-	jsonOutput := flags.Bool("json", false, "write JSON results")
-	retriever := flags.String("retriever", "bm25", "retriever: bm25 (default) | vector (hash-embedding) | hybrid (RRF fusion)")
+	jsonOutput := flags.Bool("json", false, "write JSON envelope")
+	retriever := flags.String("retriever", cfgString(deps.resolved, "retrieval.retriever", "bm25"), "retriever: bm25 (default) | vector (hash-embedding) | hybrid (RRF fusion)")
 	embedder := flags.String("embedder", "hash", "embedder: hash (default, zero-dependency) | model (remote OpenAI-compatible API; see SEMANTIX_EMBED_* env)")
 	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
-		return err
+		return usageWrap(err)
 	}
 	if err := zf.validate(); err != nil {
-		return err
+		return usagef("%v", err)
 	}
 	if *limit <= 0 {
-		return errors.New("--limit must be greater than zero")
+		return usagef("--limit must be greater than zero")
 	}
 
 	query := strings.TrimSpace(*queryFlag)
 	if query == "" {
 		query = strings.TrimSpace(strings.Join(flags.Args(), " "))
 	} else if flags.NArg() != 0 {
-		return errors.New("use either --query or positional query text, not both")
+		return usagef("use either --query or positional query text, not both")
 	}
 	if query == "" {
-		return errors.New("query is required")
+		return usagef("query is required")
 	}
 
 	scope, err := parseScope(*scopeValue)
@@ -89,7 +88,7 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	switch *retriever {
 	case "bm25", "vector", "hybrid":
 	default:
-		return fmt.Errorf("invalid --retriever %q (want bm25, vector, or hybrid)", *retriever)
+		return usagef("invalid --retriever %q (want bm25, vector, or hybrid)", *retriever)
 	}
 	var hits []slice.Hit
 	switch *retriever {
@@ -156,9 +155,7 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	}
 
 	if *jsonOutput {
-		encoder := json.NewEncoder(stdout)
-		encoder.SetIndent("", "  ")
-		return encoder.Encode(results)
+		return writeJSON(stdout, okEnvelope("search", results))
 	}
 	for i, result := range results {
 		content := stripESC(strings.Join(strings.Fields(result.Content), " "))

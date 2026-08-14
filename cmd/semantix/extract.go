@@ -17,9 +17,9 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	flags := flag.NewFlagSet("extract", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	input := flags.String("input", "", "session JSONL path, or - for stdin")
-	scopeValue := flags.String("scope", "project", "slice scope: session, project, or user")
+	scopeValue := flags.String("scope", cfgString(deps.resolved, "store.scope", "project"), "slice scope: session, project, or user")
 	dbOverride := flags.String("db", "", "database path override")
-	projectDB := flags.String("project-db", defaultProjectDB(), "project/session database path")
+	projectDB := flags.String("project-db", cfgString(deps.resolved, "store.db", defaultProjectDB()), "project/session database path")
 	userDB := flags.String("user-db", defaultUserDB(), "user database path")
 	session := flags.String("session", "", "source session identifier")
 	project := flags.String("project", "", "project slug")
@@ -29,13 +29,13 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	l3Safe := flags.Bool("l3-safe", false, "mark dependency-free Result slices as explicitly L3-reusable (opt-in; ignored when --fingerprint is set)")
 	embedder := flags.String("embedder", "hash", "embedder for stored slices: hash (default, zero-dependency) | model (remote OpenAI-compatible API; see SEMANTIX_EMBED_* env)")
 	if err := flags.Parse(args); err != nil {
-		return err
+		return usageWrap(err)
 	}
 	if *input == "" {
-		return errors.New("--input is required")
+		return usagef("--input is required")
 	}
 	if flags.NArg() != 0 {
-		return fmt.Errorf("unexpected arguments: %v", flags.Args())
+		return usagef("unexpected arguments: %v", flags.Args())
 	}
 
 	scope, err := parseScope(*scopeValue)

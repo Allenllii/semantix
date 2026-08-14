@@ -91,7 +91,7 @@ export default function Components() {
       id="components"
       className="border-t border-[#0f735c] bg-[#168b6d] p-3 text-[#168b6d] md:p-6"
     >
-      <div className="mx-auto max-w-[1760px] bg-[#f7f6f1] px-5 py-14 md:px-10 md:py-16 lg:px-12">
+      <div className="mx-auto max-w-[1760px] bg-white px-5 py-14 md:px-10 md:py-16 lg:px-12">
         <Reveal>
           <header className="grid gap-6 border-b border-[#168b6d]/35 pb-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-end lg:gap-16">
             <div>
@@ -117,7 +117,7 @@ export default function Components() {
         <div className="mt-8 grid gap-5 md:grid-cols-2">
           {components.map((component, index) => (
             <Reveal key={component.titleEn} delay={index * 55}>
-              <article className="flex h-full flex-col border border-[#168b6d]/35 bg-[#fbfaf6] p-5 transition-colors duration-300 hover:border-[#168b6d] md:p-6">
+              <article className="flex h-full flex-col border border-[#168b6d]/35 bg-white p-5 transition-colors duration-300 hover:border-[#168b6d] md:p-6">
                 <div className="flex items-center justify-between border-b border-[#168b6d]/25 pb-4 font-mono text-[10px] font-semibold tracking-[0.18em]">
                   <span>{component.num}&nbsp; / &nbsp;{component.label}</span>
                   <span className="text-[#101313]/55">{component.status}</span>
