@@ -53,7 +53,17 @@
 |---|---|
 | H2 ResourceLayer | ToolRegistry 可挂起/恢复/并发分组 + BudgetController（token/成本配额）+ 资源目录上报 |
 | H3 编排 | kernel/sched 落地：意图 → 资源分配指令下发 + 反馈闭环（观测 → 决策 → 执行 → 进化） |
-| H5 预取/进化 | kernel/prefetch Planner MVP + evolve 接入编排闭环 |
+| H5 预取/进化 | kernel/prefetch（Planner + MatrixPrefetcher + Runner）+ evolve 接入编排闭环 |
+
+### 当前状态（2026-08-14 更新）
+
+**kernel 侧 MVP 已随 M1-U18b 提前落地**（合入 main，commit d8b0558）：
+
+- ✅ `kernel/sched.RuleDecider`（并行分组 + behavior gate + 模型 tier + prefetch hints）
+- ✅ `kernel/prefetch`（Planner 离线转置矩阵 / MatrixPrefetcher 在线 hit-waste 学习 / Runner 串行只读执行 + 结果落 Result 切片）
+- ✅ `kernel/evolve` MVP（独立已实现）
+
+**harness 侧未开工**：H2 ResourceLayer（工具挂起/恢复/预算配额）、H3 编排指令下发、evolve 闭环接线均未开始。
 
 ### 验收标准（蓝图 §5）
 
@@ -112,7 +122,7 @@
 | Agile | 目标 | 当前状态 | DoD 摘要 |
 |---|---|---|---|
 | 1 | 首个可下载品牌化 agent | M0 ✅ · M1 遗留 #58 · CLI v2 进行中 | v1.0 发布 + 命中率 ≥70% + 复用可视化 |
-| 2 | 自进化闭环（kernel 调配 harness） | H2/H3/H5 蓝图，未开工 | 调度演示 + 自进化曲线 |
+| 2 | 自进化闭环（kernel 调配 harness） | 🚧 kernel 侧 MVP 已合入（M1-U18b：RuleDecider/Planner/MatrixPrefetcher/Runner）；harness 侧（H2/H3）未开工 | 调度演示 + 自进化曲线 |
 | 3 | 多 harness 生态 | 路径已文档化 | ≥3 harness 正式接入 |
 
 ---
@@ -122,7 +132,7 @@
 | README 功能阶段 | 归属 Agile |
 |---|---|
 | P0 Observability / P1 SSL / P2 Semantic Cache | Agile 1（已基本完成） |
-| P3 Adaptive Scheduler / P4 Prefetch | Agile 2 |
+| P3 Adaptive Scheduler / P4 Prefetch | Agile 2（kernel 侧 MVP 已落地 M1-U18b，harness 侧待 H2/H3） |
 | P5 Evolution Loop（MVP 已做）+ 多 harness 接入 | Agile 2 尾 + Agile 3 |
 
 ---
