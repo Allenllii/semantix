@@ -4,11 +4,12 @@
 #   (memory kernel) + example configs + install.sh + README, per platform.
 #
 # Usage: build-full.sh --version v0.3.0 [--platforms darwin-arm64,linux-amd64]
+# Default platforms: darwin-arm64, darwin-amd64, linux-amd64, linux-arm64
 # Output: dist/semantix-agent-<version>-<platform>.tar.gz + SHA256SUMS
 set -euo pipefail
 
 VERSION=""
-PLATFORMS="darwin-arm64"
+PLATFORMS="darwin-arm64,darwin-amd64,linux-amd64,linux-arm64"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
