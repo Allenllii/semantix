@@ -15,17 +15,17 @@ test("homepage ships a reuse-visualization terminal mockup", async () => {
   for (const marker of [
     "REUSE VISUALIZATION",
     "semantix dashboard",
-    "💰 Cost saved",
-    "🎯 Hit rate",
+    "💰 Cost savings",
+    "🎯 Cache hit rate (L3/L2)",
     "🗂 Zone distribution",
-    "📦 Reused slices",
-    "from:session-",
-    "3/10 hits in 2 sessions",
+    "📦 Slice library",
+    "from:2026-08-",
+    "3/3 hits in 3 sessions",
   ]) {
     assert.ok(componentsSource.includes(marker), `Components.tsx should show ${marker}`);
   }
-  assert.match(componentsSource, /示意输出/);
-  assert.match(componentsSource, /真实数据以 semantix verify 门禁报告为准/);
+  assert.match(componentsSource, /真实输出|演示库实录/);
+  assert.match(componentsSource, /门禁数据以 semantix verify 报告为准/);
 });
 
 test("README documents the dashboard example and zone legend", async () => {
@@ -33,18 +33,20 @@ test("README documents the dashboard example and zone legend", async () => {
 
   assert.match(readme, /# Reuse Visualization/);
   assert.match(readme, /semantix dashboard/);
-  assert.match(readme, /💰 Cost saved/);
-  assert.match(readme, /🎯 Hit rate/);
+  assert.match(readme, /💰 Cost savings/);
+  assert.match(readme, /🎯 Cache hit rate \(L3\/L2\)/);
   assert.match(readme, /🗂 Zone distribution/);
-  assert.match(readme, /📦 Reused slices/);
+  assert.match(readme, /📦 Slice library/);
 
-  for (const legendRow of ["✅", "🟡", "❌"]) {
-    assert.ok(readme.includes(legendRow), `README zone legend should include ${legendRow}`);
-  }
-  assert.match(readme, /hit \/ PASS/);
-  assert.match(readme, /grey \/ WARN/);
-  assert.match(readme, /miss \/ FAIL/);
+  // Two icon families: retrieval zones vs. the verify gate.
+  assert.match(readme, /🟢 hit · 🟡 grey · ⚪ miss/);
+  assert.match(readme, /✅hit · 🟡grey · ❌miss/);
+  assert.match(readme, /✅ PASS · ⚠ WARN · ❌ FAIL/);
+  assert.match(readme, /# ✅ PASS relevance=75\.0% \(≥70%\)/);
+  assert.match(readme, /🎯 3\/3 hits in 3 sessions/);
+
   assert.match(readme, /CLI v2 \(U19–U27\) ✅/);
+  assert.match(readme, /CLI reuse viz \(U28–U31\) ✅/);
 });
 
 test("homepage export renders the reuse dashboard", async () => {
@@ -53,5 +55,5 @@ test("homepage export renders the reuse dashboard", async () => {
 
   assert.ok(visible.includes("REUSE VISUALIZATION"), "export should contain the mockup header");
   assert.ok(visible.includes("semantix dashboard"), "export should show the dashboard command");
-  assert.ok(visible.includes("Cost saved"), "export should show the cost-savings bar");
+  assert.ok(visible.includes("Cost savings"), "export should show the cost-savings bar");
 });

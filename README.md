@@ -91,42 +91,77 @@ Semantix asks:
 
 # Reuse Visualization
 
-> **跨会话复用看得见**：Semantix 把「命中率 / 节省成本 / 来源会话」三要素画成一屏（Agile 1 DoD「复用可视化」）。下面是指标格式示例——U28–U31（`usage` / `verify` / `search` / `dashboard` 图标化）合入后，示例将替换为真实命令输出；当前真实测量见 `docs/reports/m0-cost-comparison.md`（合成回放成本节省 **79.8%**）。
+> **Cross-session reuse you can see.** Semantix renders the three reuse signals — hit rate, cost saved, source session — as one-glance CLI output (the Agile 1 DoD "reuse visualization", shipped as U28–U31). Every block below is **real output** captured from a small demo library (4 extracted sessions); the real-data measurement lives in [`docs/reports/m0-cost-comparison.md`](./docs/reports/m0-cost-comparison.md) (**79.8%** cost saved on synthetic replay).
 
-`semantix dashboard` 示例输出：
+One-screen snapshot — `semantix dashboard`:
 
 ```text
 $ semantix dashboard
 
-💰 Cost saved            79.8%   ████████████████
-🎯 Hit rate (L2/L3)      78.6%   ███████████████▌
-🗂 Zone distribution     hit ████████████  grey ███  miss █
-📦 Reused slices         12      (from 4 sessions)
+  semantix dashboard — reuse snapshot
+  ------------------------------------------------
+
+  💰 Cost savings
+     paid        $ 0.0060
+     baseline    $ 0.0141
+     saved       $ 0.0080  (56.99%)
+     ██████████████░░░░░░░░░░
+
+  🎯 Cache hit rate (L3/L2)
+     4 / 5 turns  (80.00%)
+     L3 1 · L2 3
+     ███████████████████░░░░░
+
+  🗂 Zone distribution (library replay)
+     hit  ████ 4   grey ██████ 6   miss  0
+
+  📦 Slice library
+     10 slices · 3 cross-session sessions
 ```
 
-状态图例（`verify` / `search` / `lookup` 输出共用）：
-
-| 图标 | 状态       | 含义                                                             |
-| ---- | ---------- | ---------------------------------------------------------------- |
-| ✅   | hit / PASS | 高置信命中；回放相关性达标，门禁通过（`semantix verify`）         |
-| 🟡   | grey / WARN| 灰色地带：介于 hit 与 miss 之间；grey 占比超限时门禁告警          |
-| ❌   | miss / FAIL| 未命中；门禁不达标                                               |
-
-对应命令示例：
+Every hit carries its zone icon and source session — `semantix search` / `semantix lookup`:
 
 ```text
-$ semantix verify            # 门禁结论一眼可读
-✅ PASS  relevance=78.6% (≥70%) · grey_ratio=2.1% (≤5%)
-
-$ semantix search "gate"     # 命中摘要 + 来源会话
-🎯 3/10 hits in 2 sessions
-✅ hit  0.87  from:session-2026-08-12-7f3a
-🟡 grey 0.61  from:session-2026-08-12-7f3a
-❌ miss 0.24
-
-$ semantix usage             # 节省成本条形
-💰 savings_rate 79.8%  ████████████████
+$ semantix search --query "fix failing go test"
+1. 🟢 score=4.331011 zone=hit id=619551c54af5437a scope=project from:2026-08-14-c9d4
+   fix failing go test after refactor
+2. 🟢 score=3.852740 zone=hit id=73b12bb117664106 scope=project from:2026-08-13-b7c2
+   fix failing go test in kernel slice extractor
+3. 🟢 score=3.852740 zone=hit id=adfecdd9bff0db2d scope=project from:2026-08-12-a1f3
+   fix failing go test in kernel slice store
+🎯 3/3 hits in 3 sessions
 ```
+
+Replay gate with zone bars and a one-line verdict — `semantix verify`:
+
+```text
+$ semantix verify --session ./sessions
+session	turn	score	zone	top1_content	query
+session-2026-08-14-d2e5.jsonl	3	7.1261	✅hit	add shell completion for bash and zsh	add shell completion for zsh
+session-2026-08-14-d2e5.jsonl	4	0.0000	❌miss		design a brand new logo
+# done: 4 replayed turns; zones hit=3 grey=0 miss=1 grey_ratio=0.0% (target 30.0%)
+# zones: hit ██████░░ grey ░░░░░░░░ miss ██░░░░░░
+# ✅ PASS relevance=75.0% (≥70%)
+```
+
+Per-session cost meter — `semantix usage`:
+
+```text
+$ semantix usage
+💰 节省成本  ██████░░░░  $0.008017
+📈 节省率    57.0%
+🧠 L3 复用   1
+📦 命中切片  10
+…
+```
+
+Icon legend (two icon families — retrieval zones vs. the verify gate):
+
+| Where                                | Icons                     | Meaning                                                          |
+| ------------------------------------ | ------------------------- | ---------------------------------------------------------------- |
+| Retrieval zone (`search` / `lookup`) | 🟢 hit · 🟡 grey · ⚪ miss | 🟢 clearly reusable · 🟡 verify before reuse · ⚪ do not reuse    |
+| Replay table (`verify` TSV)          | ✅hit · 🟡grey · ❌miss    | top-1 zone verdict for each replayed turn                        |
+| Gate verdict (`verify` tail)         | ✅ PASS · ⚠ WARN · ❌ FAIL | ✅ relevance ≥ 70% · ⚠ grey ratio over target · ❌ under the bar |
 
 ---
 
@@ -941,9 +976,9 @@ Architecture v2                    ✅
 
 Agile 1 · First downloadable agent   🚧 M0 ✅ · M1 near-complete (gate #58) · CLI v2 (U19–U27) ✅
   · Observability (P0)               ✅  kernel/event + kernel/usage
-  · Semantic Slice Library (P1)      🚧  ✅ extract + BM25/hybrid shipped · pending local embeddings + ANN
-  · Semantic Cache (P2)              🚧  ✅ L2 + L3 shipped · pending real-harness e2e
-  · bundle + reuse visualization     🚧  v0.3.1 shipped; CLI 复用可视化 (U28–U31) in flight · H4 UI pending
+  · Semantic Slice Library (P1)      🚧  extract + BM25/hybrid shipped ✅ · local embeddings + ANN pending
+  · Semantic Cache (P2)              🚧  L2 + L3 shipped ✅ · real-harness e2e pending
+  · bundle + reuse visualization     🚧  v0.3.1 shipped; CLI reuse viz (U28–U31) ✅ · H4 UI pending
 
 Agile 2 · Self-evolving loop          🚧 kernel-side MVP landed (M1-U18b); harness side pending
   · Adaptive Scheduler (P3)           ✅  kernel/sched.RuleDecider (MVP)
@@ -977,8 +1012,8 @@ Execution is organized in **Agile cycles** — one downloadable milestone per Ag
 | Phase  | Deliverable                                                                     | Status                                                              | In Agile |
 | ------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------- | -------- |
 | **P0** | Observability layer — harness adapter, event stream, baseline metrics           | ✅ shipped — `kernel/event`, `kernel/usage`                          | 1        |
-| **P1** | Semantic Slice Library — extraction, embeddings, ANN index, project/user stores | 🚧 ✅ extraction + BM25/hybrid shipped; pending local embeddings + ANN | 1        |
-| **P2** | Semantic cache — stable L2 injection, verified L3 reuse, pollution detection    | 🚧 ✅ L2 + L3 shipped; pending real-harness e2e                      | 1        |
+| **P1** | Semantic Slice Library — extraction, embeddings, ANN index, project/user stores | 🚧 extraction + BM25/hybrid shipped ✅; local embeddings + ANN pending | 1        |
+| **P2** | Semantic cache — stable L2 injection, verified L3 reuse, pollution detection    | 🚧 L2 + L3 shipped ✅; real-harness e2e pending                      | 1        |
 | **P3** | Adaptive scheduler — intent classification, concurrency learning, model tier    | ✅ `kernel/sched.RuleDecider` MVP (M1-U18b); learning overlay pending | 2        |
 | **P4** | Speculative prefetch — T-Slice prediction, path patterns, budget control        | ✅ Planner + MatrixPrefetcher + Runner MVP (M1-U18b)                 | 2        |
 | **P5** | Evolution loop — online adaptation, offline optimization, ablation              | ✅ `kernel/evolve` MVP; closed-loop wiring + ablation pending        | 2        |
