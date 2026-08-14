@@ -96,6 +96,23 @@ func TestCompletionUsageContract(t *testing.T) {
 	}
 }
 
+// helpShowsFlag reports whether a `--help`/`-h` listing contains the flag
+// `short` (without dashes) as a standalone option token. The flag package
+// renders options as `-name [type]` lines; a line-level token match avoids
+// substring false positives such as `-db` matching `-user-db`.
+func helpShowsFlag(helpOut, short string) bool {
+	for _, line := range strings.Split(helpOut, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "-") {
+			continue
+		}
+		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == "-"+short {
+			return true
+		}
+	}
+	return false
+}
+
 // TestCompletionFlagsMatchCommandHelp locks completionFlags against each
 // command's real FlagSet: a flag listed for completion must appear in
 // `semantix <command> --help`. Adding a flag without registering it for
@@ -112,7 +129,7 @@ func TestCompletionFlagsMatchCommandHelp(t *testing.T) {
 		helpOut := stdout.String() + stderr.String()
 		for _, f := range c.completionFlags {
 			short := strings.TrimPrefix(f, "--")
-			if strings.Contains(helpOut, "-"+short) {
+			if helpShowsFlag(helpOut, short) {
 				continue
 			}
 			// eval/eval-judge/usage/verify keep their FlagSet output on
@@ -121,7 +138,7 @@ func TestCompletionFlagsMatchCommandHelp(t *testing.T) {
 			realStderr := captureRealStderr(t, func() {
 				run([]string{c.name, "--help"}, io.Discard, io.Discard, productionDependencies())
 			})
-			if !strings.Contains(realStderr, "-"+short) {
+			if !helpShowsFlag(realStderr, short) {
 				t.Errorf("%s: completion declares %s but --help does not show it", c.name, f)
 			}
 		}
