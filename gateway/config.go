@@ -147,7 +147,10 @@ func DefaultConfig() *Config {
 		db = ".semantix/gateway.jsonl"
 	}
 	c := &Config{
-		Addr:      ":8080",
+		// Loopback by default: the gateway carries API keys and must sit
+		// behind New API (compose internal network) — a wildcard bind is
+		// an explicit operator choice.
+		Addr:      "127.0.0.1:8080",
 		StoreDB:   db,
 		Scope:     slice.Project,
 		Retrieval: struct{ TopK, Budget int }{TopK: 5, Budget: 4096},
@@ -164,11 +167,6 @@ func DefaultConfig() *Config {
 	c.Ingest.Extract = true
 	return c
 }
-
-// envVarPattern matches ${VAR} placeholders (design §3.9: unresolved
-// placeholders are a startup error — a literal "${...}" must never be
-// treated as a credential).
-var envVarPattern = `\$\{[A-Za-z_][A-Za-z0-9_]*\}`
 
 // substituteEnv expands ${VAR} in the raw TOML text. An unset variable is
 // an error (fail fast, never leak the literal placeholder onward).

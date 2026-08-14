@@ -59,7 +59,9 @@ func New(cfg Config) (*Server, error) {
 		}
 		s.usage = rec
 	}
-	if cfg.Ingest.SessionsDir != "" {
+	if cfg.Ingest.SessionsDir != "" || cfg.Cache.L3Safe {
+		// The worker owns both session extraction and L3 write-back, so it
+		// must exist whenever either is enabled.
 		s.mem = newMemoryWorker(s, cfg.Ingest.SessionsDir, cfg.Ingest.Extract)
 	}
 	return s, nil

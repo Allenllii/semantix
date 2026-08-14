@@ -64,13 +64,18 @@ func mustJSON(s string) string {
 // extract --l3-safe with deps, or by the gateway write-back).
 func seedResult(t *testing.T, dbPath string, content, model, ctxHash string, deps fingerprint.Deps, mtimes map[string]int64) {
 	t.Helper()
+	seedResultMeta(t, dbPath, content, model, ctxHash, deps, mtimes)
+}
+
+// seedResultMeta is seedResult with full meta control.
+func seedResultMeta(t *testing.T, dbPath string, content, model, ctxHash string, deps fingerprint.Deps, mtimes map[string]int64) {
+	t.Helper()
 	st, err := slice.NewFileStore(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	id := seedID(content)
 	sl := &slice.Slice{
-		ID: id, Type: slice.Result, Scope: slice.Project,
+		ID: seedID(content), Type: slice.Result, Scope: slice.Project,
 		Content:   []byte(content),
 		Weight:    1.0,
 		CreatedAt: time.Now().Unix(),
@@ -84,7 +89,6 @@ func seedResult(t *testing.T, dbPath string, content, model, ctxHash string, dep
 	if err := st.Put(sl); err != nil {
 		t.Fatal(err)
 	}
-	_ = id
 }
 
 func seedID(content string) string {
@@ -496,6 +500,69 @@ func TestUpstreamFailureSurfacesOpenAIError(t *testing.T) {
 	}
 	if errMsg, _ := m["error"].(map[string]any); errMsg["code"] != "upstream_error" {
 		t.Fatalf("error = %v", m)
+	}
+}
+
+// TestL3EmptyMetaNoReuse: an entry without the gateway metadata (e.g. a
+// CLI-extracted Result slice) must never serve a gateway request
+// (review fix: fail-closed on missing Model/ContextHash).
+func TestL3EmptyMetaNoReuse(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("data v1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deps, mtimes := captureDeps(t, root, "a.txt")
+
+	body := requestBody("deepseek-chat", false, "user:how do I run go tests with race detection")
+	cfg := gatewayConfig(t, "deepseek-chat")
+	cfg.Cache.DepsRoot = root
+	// No Model / no ContextHash in meta (legacy/CLI entry).
+	seedResultMeta(t, cfg.StoreDB, "answer without gateway meta",
+		"", "", deps, mtimes)
+
+	up := newTestUpstream(t, func(w http.ResponseWriter, r *http.Request, body []byte) {
+		io.WriteString(w, jsonCompletion("fresh answer"))
+	})
+	cfg.Upstreams[0].BaseURL = up.url()
+	s := testServer(t, &cfg)
+
+	rec, _ := doJSON(t, s.Handler(), http.MethodPost, "/v1/chat/completions", string(body), "")
+	if rec.Header().Get("x-semantix-cache") == "hit" {
+		t.Fatal("entry without gateway meta must not be reused")
+	}
+	if !strings.Contains(rec.Body.String(), "fresh answer") {
+		t.Fatalf("expected upstream answer: %s", rec.Body.String())
+	}
+}
+
+// TestL3SkippedWithoutDepsRoot: with no deps_root configured the L3 lookup
+// is skipped entirely (fail-closed — verification against the process CWD
+// must never happen), even for a fully qualified entry.
+func TestL3SkippedWithoutDepsRoot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("data v1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deps, mtimes := captureDeps(t, root, "a.txt")
+
+	body := requestBody("deepseek-chat", false, "user:how do I run go tests with race detection")
+	cfg := gatewayConfig(t, "deepseek-chat")
+	// cfg.Cache.DepsRoot intentionally left empty.
+	seedResult(t, cfg.StoreDB, "fully qualified cached answer",
+		"deepseek-chat", ctxHashOf(body), deps, mtimes)
+
+	up := newTestUpstream(t, func(w http.ResponseWriter, r *http.Request, body []byte) {
+		io.WriteString(w, jsonCompletion("fresh answer"))
+	})
+	cfg.Upstreams[0].BaseURL = up.url()
+	s := testServer(t, &cfg)
+
+	rec, _ := doJSON(t, s.Handler(), http.MethodPost, "/v1/chat/completions", string(body), "")
+	if rec.Header().Get("x-semantix-cache") == "hit" {
+		t.Fatal("L3 must be skipped without deps_root")
+	}
+	if !strings.Contains(rec.Body.String(), "fresh answer") {
+		t.Fatalf("expected upstream answer: %s", rec.Body.String())
 	}
 }
 

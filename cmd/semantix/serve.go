@@ -65,6 +65,10 @@ func runServe(args []string, stdout, stderr io.Writer, deps dependencies) error 
 
 	fmt.Fprintf(stdout, "semantix serve: gateway listening on %s (models: %v, cache: %s)\n",
 		cfg.Addr, srv.ModelAliases(), cacheMode(cfg))
+	if cfg.GatewayKey == "" {
+		fmt.Fprintln(stdout, "semantix serve: WARNING gateway key is empty — auth is disabled; "+
+			"only run this behind New API on a trusted network (set gateway_key / SEMANTIX_GATEWAY_KEY)")
+	}
 
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ctx, ln) }()

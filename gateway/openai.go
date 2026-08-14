@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,22 +36,6 @@ func writeAPIError(w http.ResponseWriter, status int, typ, code, message string)
 	}})
 }
 
-// newUpstreamError formats an upstream failure into an OpenAI error with a
-// machine-readable code (retryable network errors get 502 so the client /
-// New API can retry).
-func newUpstreamError(err error) (int, string, string) {
-	msg := fmt.Sprintf("upstream request failed: %v", err)
-	var netErr interface{ Timeout() bool }
-	if errors.As(err, &netErr) || isConnRefused(err) {
-		return http.StatusBadGateway, "upstream_error", msg
-	}
-	return http.StatusBadGateway, "upstream_error", msg
-}
-
-func isConnRefused(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "connection refused")
-}
-
 // --- chat completions request ---
 
 // chatRequest is the minimal decoded form of POST /v1/chat/completions.
@@ -68,9 +51,11 @@ type chatRequest struct {
 
 // messageFields decodes just the fields the gateway needs from one message.
 type messageFields struct {
-	Role      string          `json:"role"`
-	Content   json.RawMessage `json:"content"`
-	ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
+	Role       string          `json:"role"`
+	Content    json.RawMessage `json:"content"`
+	ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
+	Name       string          `json:"name,omitempty"`
+	ToolCallID string          `json:"tool_call_id,omitempty"`
 }
 
 // decodeChatRequest parses the request body (bounded) and keeps the raw
@@ -152,58 +137,17 @@ func systemMessageText(messages []json.RawMessage) (string, bool, error) {
 // after the block stays byte-stable for L1). When no system message exists,
 // a new one is prepended.
 func injectIntoMessages(messages []json.RawMessage, block string) ([]json.RawMessage, error) {
-	out := make([]json.RawMessage, 0, len(messages)+1)
-	patched := false
-	for _, raw := range messages {
+	lastSystem := -1
+	for i := range messages {
 		var mf messageFields
-		if err := json.Unmarshal(raw, &mf); err != nil {
+		if err := json.Unmarshal(messages[i], &mf); err != nil {
 			return nil, fmt.Errorf("invalid message: %w", err)
 		}
-		if !patched && mf.Role == "system" {
-			patched = true
-			var content string
-			var parts []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			}
-			if err := json.Unmarshal(mf.Content, &content); err == nil {
-				content += "\n\n" + block
-				patchedRaw, err := json.Marshal(struct {
-					Role       string          `json:"role"`
-					Content    string          `json:"content"`
-					ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
-					Name       string          `json:"name,omitempty"`
-					ToolCallID string          `json:"tool_call_id,omitempty"`
-				}{Role: mf.Role, Content: content, ToolCalls: mf.ToolCalls})
-				if err != nil {
-					return nil, err
-				}
-				out = append(out, patchedRaw)
-				continue
-			}
-			if err := json.Unmarshal(mf.Content, &parts); err == nil {
-				parts = append(parts, struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				}{Type: "text", Text: "\n\n" + block})
-				patchedRaw, err := json.Marshal(struct {
-					Role      string          `json:"role"`
-					Content   any             `json:"content"`
-					ToolCalls json.RawMessage `json:"tool_calls,omitempty"`
-				}{Role: mf.Role, Content: parts, ToolCalls: mf.ToolCalls})
-				if err != nil {
-					return nil, err
-				}
-				out = append(out, patchedRaw)
-				continue
-			}
-			// Unknown content shape: leave the message untouched.
-			out = append(out, raw)
-			continue
+		if mf.Role == "system" {
+			lastSystem = i
 		}
-		out = append(out, raw)
 	}
-	if !patched {
+	if lastSystem < 0 {
 		// No system message: prepend a system message holding the block.
 		prepended, err := json.Marshal(struct {
 			Role    string `json:"role"`
@@ -212,7 +156,61 @@ func injectIntoMessages(messages []json.RawMessage, block string) ([]json.RawMes
 		if err != nil {
 			return nil, err
 		}
-		out = append([]json.RawMessage{prepended}, out...)
+		out := make([]json.RawMessage, 0, len(messages)+1)
+		out = append(out, prepended)
+		return append(out, messages...), nil
+	}
+
+	out := make([]json.RawMessage, 0, len(messages))
+	for i, raw := range messages {
+		if i != lastSystem {
+			out = append(out, raw)
+			continue
+		}
+		var mf messageFields
+		if err := json.Unmarshal(raw, &mf); err != nil {
+			return nil, fmt.Errorf("invalid message: %w", err)
+		}
+		var content string
+		if err := json.Unmarshal(mf.Content, &content); err == nil {
+			content += "\n\n" + block
+			patchedRaw, err := json.Marshal(struct {
+				Role       string          `json:"role"`
+				Content    string          `json:"content"`
+				ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
+				Name       string          `json:"name,omitempty"`
+				ToolCallID string          `json:"tool_call_id,omitempty"`
+			}{Role: mf.Role, Content: content, ToolCalls: mf.ToolCalls})
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, patchedRaw)
+			continue
+		}
+		var parts []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal(mf.Content, &parts); err == nil {
+			parts = append(parts, struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			}{Type: "text", Text: "\n\n" + block})
+			patchedRaw, err := json.Marshal(struct {
+				Role       string          `json:"role"`
+				Content    any             `json:"content"`
+				ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
+				Name       string          `json:"name,omitempty"`
+				ToolCallID string          `json:"tool_call_id,omitempty"`
+			}{Role: mf.Role, Content: parts, ToolCalls: mf.ToolCalls, Name: mf.Name})
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, patchedRaw)
+			continue
+		}
+		// Unknown content shape: leave the message untouched.
+		out = append(out, raw)
 	}
 	return out, nil
 }

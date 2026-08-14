@@ -141,6 +141,9 @@ func TestL3WriteBackThenHit(t *testing.T) {
 	if rec.Header().Get("x-semantix-cache") != "miss" {
 		t.Fatalf("first request must miss, got %s", rec.Header().Get("x-semantix-cache"))
 	}
+	// The write-back runs on the async worker — wait for it before
+	// asserting the cache state.
+	s.mem.flush()
 
 	// The write-back lands in the store + index.
 	st, err := slice.NewFileStore(cfg.StoreDB)
@@ -200,6 +203,7 @@ func TestWriteBackInvalidatedOnDepsChange(t *testing.T) {
 	if up.calls.Load() != 1 {
 		t.Fatalf("calls after first = %d", up.calls.Load())
 	}
+	s.mem.flush() // write-back must land before we mutate the deps
 
 	// Change a dependency: the entry must fail verification.
 	if err := os.WriteFile(dep, []byte("version 2"), 0o600); err != nil {

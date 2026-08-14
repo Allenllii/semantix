@@ -1,8 +1,12 @@
 # New API 网关集成设计 —— Semantix Gateway（v1）
 > 日期：2026-08-13 · 状态：**已落地（v1，Issue #133）** · 对应：Semantix 对外形态扩展
-> 落地差异（以 Issue #133 文件面为准）：组件为 `gateway/` 包 + `cmd/semantix serve` 命令
-> （不再单独 `cmd/semantix-gateway/` 二进制）；`semantix lookup --json` 子进程协议同构，
-> 网关后端在进程内直接复用 `kernel/lookup` + `kernel/inject`（等价于该子进程协议）。
+> 落地差异（以 Issue #133 文件面为准）：
+> - 组件为 `gateway/` 包 + `cmd/semantix serve` 命令（不再单独 `cmd/semantix-gateway/` 二进制）；
+> - 网关后端在进程内直接复用 kernel 检索/注入路径（`kernel/cache.L3Decider` + `kernel/inject` +
+>   `kernel/ingest`），与 `semantix lookup --json` 子进程协议同构（该协议即这些 kernel 包的 CLI 壳）；
+> - v1 未接线 `judge.RuleGate`/`promote.CascadeInvalidate`（LLM 异步裁决与级联失效留待 M1）——
+>   L3 验证走 L3Decider 的 zone 灰度区 + deps/mtime/指纹链（fail-closed）；
+> - L3 TTL 实现为单一 `cache.ttl_seconds`（vendor 差异化 TTL 待上游文档确认后配置）。
 > 一句话目标：以 **New API（OpenAI 兼容中转）**，在它后面挂一个 **Semantix Gateway**
 > （新组件，复用 kernel 三层缓存），让任意 OpenAI 兼容客户端（Claude Code / chatbox / IDE 插件等）
 > 的请求在到达上游 LLM 之前先过语义缓存——**L3 命中零上游调用、L2 注入跳过重复探索**，
@@ -159,8 +163,8 @@ POST /v1/chat/completions {model, messages, stream, ...}
 # 注：配置加载器实现 ${VAR} 环境变量替换 + ~ 路径展开；
 #     任何未解析的 ${...} 启动即报错（防把字面量当凭据）。
 [server]
-addr = ":8080"
-gateway_key = "${SEMANTIX_GATEWAY_KEY}"   # New API 渠道转发时携带的 key（env 注入，不入库）
+addr = "127.0.0.1:8080"              # 默认回环绑定；配 New API 内网时改为 :8080
+gateway_key = "${SEMANTIX_GATEWAY_KEY}"   # New API 渠道转发时携带的 key（env 注入，不入库；空 = 关闭鉴权，仅限内网）
 [store]
 db = "~/.semantix/gateway.jsonl"          # 切片库 + L3 缓存库（JSONL 单文件，§3.1）
 scope = "project"                         # 默认切片作用域
@@ -251,7 +255,8 @@ docker-compose.yml
 
 要点：
 - **new-api 用 SQLite**（单机够用，零外部依赖）；规模上来再迁 MySQL；
-- 网关镜像：`go build ./cmd/semantix` → scratch/distroless 单二进制镜像，*零第三方依赖**——`go.mod` 无外部包，文件存储为 JSONL；镜像 <10MB；
+- 网关镜像：`go build ./cmd/semantix` → scratch/distroless 单二进制镜像；网关自身不引入新的
+  第三方依赖（沿用仓库已有的 toml 解析库），文件存储为 JSONL，镜像 <10MB；
 - 网络：`semantix-gateway:8080` **只暴露给 new-api 容器**（compose 内部 network），不发布到宿主机；
 - 健康检查：New API 渠道可用性检测可配置为 `GET /healthz`（或渠道自检开关）；
 - 日志：stdout JSON 日志 + usage 汇总（`semantix usage` 可对账）；建议接 Loki/Promtail 或仅文件轮转。

@@ -205,6 +205,34 @@ func TestOpenAIProtocolHelpers(t *testing.T) {
 	if first.Role != "system" || first.Content != "block" {
 		t.Fatalf("prepended = %+v", first)
 	}
+
+	// Multiple system messages: the block lands at the END of the LAST one
+	// (design §3.6 "system 提示末尾"), earlier system messages untouched.
+	multiSys := []json.RawMessage{
+		json.RawMessage(`{"role":"system","content":"first"}`),
+		json.RawMessage(`{"role":"user","content":"u1"}`),
+		json.RawMessage(`{"role":"system","content":"second"}`),
+	}
+	patched, err = injectIntoMessages(multiSys, "tail-block")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sys0, sys1 struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal(patched[0], &sys0); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(patched[2], &sys1); err != nil {
+		t.Fatal(err)
+	}
+	if sys0.Content != "first" {
+		t.Fatalf("first system mutated: %+v", sys0)
+	}
+	if sys1.Content != "second\n\ntail-block" {
+		t.Fatalf("last system not tail-injected: %+v", sys1)
+	}
 }
 
 // TestServeLifecycle: Serve serves requests until the context is cancelled,

@@ -63,8 +63,10 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	sessionID := sessionID(r)
 
 	// Step 3: L3 verified-result reuse (design §3.5). A hit returns the
-	// cached response with zero upstream calls.
-	if !s.cfg.Disable && query != "" {
+	// cached response with zero upstream calls. Without a configured deps
+	// root the L3 gate cannot verify anything (and must not verify against
+	// the gateway process CWD) — fail-closed, skip the lookup entirely.
+	if !s.cfg.Disable && query != "" && s.cfg.Cache.DepsRoot != "" {
 		if hit := s.lookupL3(r.Context(), query, cr.Model, ctxHash); hit != nil {
 			s.serveL3Hit(w, r, cr, sessionID, hit)
 			return
@@ -141,8 +143,12 @@ type forwardMeta struct {
 
 // lookupL3 runs the kernel fail-closed L3 gate (kernel/cache.L3Decider:
 // retrieval + grey zone + deps/mtime/fingerprint verification) and then the
-// gateway-specific reuse gates: model match, messages-context fingerprint
-// match and TTL (design §3.5 cache key).
+// gateway-specific reuse gates (design §3.5 cache key): model match,
+// messages-context fingerprint match and TTL.
+//
+// Every gate is fail-closed: an entry without the gateway metadata
+// (Model/ContextHash — e.g. a CLI-extracted Result slice), an unknown-age
+// entry (CreatedAt == 0) or a stale entry is never served.
 func (s *Server) lookupL3(ctx context.Context, query, model, ctxHash string) *cache.L3Result {
 	decider := &cache.L3Decider{
 		Index: s.index,
@@ -161,16 +167,23 @@ func (s *Server) lookupL3(ctx context.Context, query, model, ctxHash string) *ca
 	if err != nil || sl == nil {
 		return nil
 	}
-	if sl.Meta.Model != "" && sl.Meta.Model != model {
+	if sl.Meta.Model == "" || sl.Meta.ContextHash == "" {
+		// Gateway entries always carry both; anything else is not
+		// verified for gateway reuse (review: fail-open on missing meta).
+		s.logf("L3 reject: entry %s lacks gateway meta (model=%q context=%q)",
+			sl.ID, sl.Meta.Model, sl.Meta.ContextHash)
+		return nil
+	}
+	if sl.Meta.Model != model {
 		s.logf("L3 reject: model %q != %q", sl.Meta.Model, model)
 		return nil
 	}
-	if sl.Meta.ContextHash != "" && sl.Meta.ContextHash != ctxHash {
+	if sl.Meta.ContextHash != ctxHash {
 		s.logf("L3 reject: context mismatch")
 		return nil
 	}
-	if s.cfg.Cache.TTLSeconds > 0 && sl.CreatedAt > 0 &&
-		time.Now().Unix()-sl.CreatedAt > s.cfg.Cache.TTLSeconds {
+	if sl.CreatedAt <= 0 ||
+		(s.cfg.Cache.TTLSeconds > 0 && time.Now().Unix()-sl.CreatedAt > s.cfg.Cache.TTLSeconds) {
 		s.logf("L3 reject: TTL expired")
 		return nil
 	}
@@ -267,21 +280,24 @@ func (s *Server) forwardJSON(w http.ResponseWriter, r *http.Request, up *Upstrea
 
 	respBody, status, retried, err := s.doUpstream(ctx, up, body)
 	if err != nil {
-		code, typ, msg := newUpstreamError(err)
-		writeAPIError(w, code, typ, "upstream_error", msg)
+		writeAPIError(w, http.StatusBadGateway, "upstream_error", "upstream_error",
+			fmt.Sprintf("upstream request failed: %v", err))
 		return
 	}
 	defer respBody.Close()
-	w.Header().Set("x-semantix-cache", "miss")
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
 
+	// Read the full body before writing any status/headers: a read failure
+	// must surface as a clean 502, not a 200 with a truncated body.
 	data, readErr := io.ReadAll(io.LimitReader(respBody, maxResponseBodyBytes))
 	if readErr != nil {
 		writeAPIError(w, http.StatusBadGateway, "upstream_error", "upstream_error",
 			fmt.Sprintf("read upstream response: %v", readErr))
 		return
 	}
+
+	w.Header().Set("x-semantix-cache", "miss")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
 	_, _ = w.Write(data)
 
 	content, toolCalls := parseCompletionContent(data)
@@ -297,8 +313,8 @@ func (s *Server) forwardStream(w http.ResponseWriter, r *http.Request, up *Upstr
 
 	respBody, status, retried, err := s.doUpstream(ctx, up, body)
 	if err != nil {
-		code, typ, msg := newUpstreamError(err)
-		writeAPIError(w, code, typ, "upstream_error", msg)
+		writeAPIError(w, http.StatusBadGateway, "upstream_error", "upstream_error",
+			fmt.Sprintf("upstream request failed: %v", err))
 		return
 	}
 	defer respBody.Close()
@@ -371,7 +387,7 @@ func (s *Server) forwardStream(w http.ResponseWriter, r *http.Request, up *Upstr
 					"completion_tokens": estTokens(contentBuf.String()),
 					"total_tokens":      est + estTokens(contentBuf.String()),
 					"prompt_tokens_details": map[string]any{
-						"cached_tokens": estTokens(strings.Repeat("a", meta.injected)),
+						"cached_tokens": estTokensN(meta.injected),
 					},
 				},
 			})
@@ -522,21 +538,24 @@ func (s *Server) recordUsage(e usage.Event) {
 
 // estTokens is a crude token estimate (≈ bytes/4, design §4.3 synthetic
 // usage; the gateway never bills — New API does).
-func estTokens(s string) int {
-	n := len(s) / 4
-	if n < 1 && len(s) > 0 {
-		n = 1
+func estTokens(s string) int { return estTokensN(len(s)) }
+
+// estTokensN estimates tokens for a byte count.
+func estTokensN(n int) int {
+	if n <= 0 {
+		return 0
 	}
-	return n
+	return (n + 3) / 4
 }
 
 const maxResponseBodyBytes = 32 << 20 // 32 MiB
 
 // afterResponse runs the post-forward write-memory path (design §3.7):
 // usage record + session bypass write + async extraction + L3 write-back.
-// Everything is best-effort and never blocks the main chain.
+// Everything is best-effort and never blocks the main chain; the deps-tree
+// fingerprint capture for the write-back runs on the worker goroutine.
 func (s *Server) afterResponse(meta forwardMeta, content string, toolCalls, retried bool) {
-	injectedEst := estTokens(strings.Repeat("a", meta.injected))
+	injectedEst := estTokensN(meta.injected)
 	s.recordUsage(usage.Event{
 		SessionID:      meta.sessionID,
 		TokensIn:       int64(meta.promptEst),
@@ -554,7 +573,7 @@ func (s *Server) afterResponse(meta forwardMeta, content string, toolCalls, retr
 			{Role: "user", Content: meta.query},
 			{Role: "assistant", Content: content, ToolCalls: calls},
 		})
-		s.mem.submit(meta.sessionID)
+		s.mem.submitSession(meta.sessionID)
+		s.mem.submitWriteback(meta, content, toolCalls)
 	}
-	s.maybeWriteBack(meta, content, toolCalls)
 }

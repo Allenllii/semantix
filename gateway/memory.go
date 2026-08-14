@@ -13,8 +13,12 @@ import (
 // This file implements the write-memory path (design §3.7): every
 // request/response pair is bypassed to a per-session JSONL file, and an
 // async worker extracts the sessions into slices via the kernel ingest
-// pipeline (P/C/R/T/M). Extraction is best-effort and never blocks the
-// main chain.
+// pipeline (P/C/R/T/M). The same worker also runs the L3 write-back
+// (design §3.5) off the request goroutine — capturing a deps-tree
+// fingerprint can take seconds on large repositories, and the main chain
+// must stay <10ms local (design §3.3).
+//
+// Everything here is best-effort: failures are logged, never fatal.
 
 // sessionLine is one transcript line, compatible with ingest.JSONLSource.
 type sessionLine struct {
@@ -30,39 +34,49 @@ type sessionToolCall struct {
 	Name string `json:"name"`
 }
 
-// memoryWorker appends session transcripts and extracts them asynchronously.
+// memJob is one queued write-memory unit.
+type memJob struct {
+	sessionID string
+	meta      forwardMeta // write-back
+	content   string      // write-back
+	toolCalls bool        // write-back
+}
+
+// memoryWorker processes session extraction and L3 write-back jobs
+// asynchronously. It exists when either write-memory or L3 write-back is
+// enabled.
 type memoryWorker struct {
-	dir     string
+	dir     string // sessions dir; empty = session extraction disabled
 	extract bool
 	s       *Server
 
-	jobs chan string
+	jobs chan memJob
 	wg   sync.WaitGroup
 	done chan struct{}
 }
 
-// newMemoryWorker starts the async extraction worker (when extract is true).
+// newMemoryWorker starts the async worker goroutine.
 func newMemoryWorker(s *Server, dir string, extract bool) *memoryWorker {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		s.logf("sessions dir: %v", err)
+	if dir != "" {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			s.logf("sessions dir: %v", err)
+		}
 	}
 	w := &memoryWorker{
 		dir:     dir,
 		extract: extract,
 		s:       s,
-		jobs:    make(chan string, 256),
+		jobs:    make(chan memJob, 256),
 		done:    make(chan struct{}),
 	}
-	if extract {
-		go w.loop()
-	}
+	go w.loop()
 	return w
 }
 
 // appendSession appends transcript lines to <dir>/<sessionID>.jsonl (0600,
 // append-only). Failure is best-effort: logged, never fatal to the chain.
 func (w *memoryWorker) appendSession(sessionID string, lines []sessionLine) {
-	if w == nil {
+	if w == nil || w.dir == "" {
 		return
 	}
 	path := filepath.Join(w.dir, safeFilename(sessionID)+".jsonl")
@@ -81,22 +95,34 @@ func (w *memoryWorker) appendSession(sessionID string, lines []sessionLine) {
 	}
 }
 
-// submit queues a session file for extraction (non-blocking; a full queue
-// drops the job — extraction is best-effort, a later request re-queues it).
-func (w *memoryWorker) submit(sessionID string) {
-	if w == nil || !w.extract {
+// submitSession queues a session file for extraction (non-blocking; a full
+// queue drops the job — extraction is best-effort, a later request
+// re-queues it).
+func (w *memoryWorker) submitSession(sessionID string) {
+	if w == nil || w.dir == "" || !w.extract {
 		return
 	}
-	path := filepath.Join(w.dir, safeFilename(sessionID)+".jsonl")
+	w.enqueue(memJob{sessionID: sessionID})
+}
+
+// submitWriteback queues an L3 write-back.
+func (w *memoryWorker) submitWriteback(meta forwardMeta, content string, toolCalls bool) {
+	if w == nil {
+		return
+	}
+	w.enqueue(memJob{meta: meta, content: content, toolCalls: toolCalls})
+}
+
+func (w *memoryWorker) enqueue(j memJob) {
 	w.wg.Add(1)
 	select {
-	case w.jobs <- path:
+	case w.jobs <- j:
 	default:
 		w.wg.Done() // queue full: skip this pass
 	}
 }
 
-// flush blocks until all queued extractions are processed (test hook).
+// flush blocks until all queued jobs are processed (test hook).
 func (w *memoryWorker) flush() {
 	if w == nil {
 		return
@@ -104,35 +130,53 @@ func (w *memoryWorker) flush() {
 	w.wg.Wait()
 }
 
-// close stops the worker goroutine.
+// close drains the queue and stops the worker goroutine.
 func (w *memoryWorker) close() {
 	if w == nil {
 		return
 	}
-	if w.extract {
-		select {
-		case <-w.done:
-		default:
-			close(w.done)
-		}
+	select {
+	case <-w.done:
+		return
+	default:
+		close(w.done)
 	}
 }
 
 func (w *memoryWorker) loop() {
 	for {
 		select {
-		case path := <-w.jobs:
-			w.process(path)
+		case j := <-w.jobs:
+			w.process(j)
 		case <-w.done:
-			return
+			// Drain whatever is already queued (never lose accepted
+			// jobs; wg.Done is guaranteed for every enqueued job).
+			for {
+				select {
+				case j := <-w.jobs:
+					w.process(j)
+				default:
+					return
+				}
+			}
 		}
 	}
 }
 
-// process extracts one session file into slices (idempotent: slices dedup
-// by content-derived ID via store.Put).
-func (w *memoryWorker) process(path string) {
+// process runs one job.
+func (w *memoryWorker) process(j memJob) {
 	defer w.wg.Done()
+	if j.sessionID != "" {
+		w.extractSession(j.sessionID)
+		return
+	}
+	w.s.maybeWriteBack(j.meta, j.content, j.toolCalls)
+}
+
+// extractSession runs the ingest pipeline over one session file (idempotent:
+// slices dedup by content-derived ID via store.Put).
+func (w *memoryWorker) extractSession(sessionID string) {
+	path := filepath.Join(w.dir, safeFilename(sessionID)+".jsonl")
 	pipe := ingest.Pipeline{
 		Extractor: slice.NewExtractor(),
 		Store:     w.s.store,
