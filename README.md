@@ -277,7 +277,7 @@ Write operations are never blindly replayed.
 
 # Adaptive Kernel Scheduler
 
-> **Status: in progress** — a rule-based decider exists in `kernel/sched`; learned model-tiering and concurrency learning are planned.
+> **Status: shipped (MVP)** — `kernel/sched.RuleDecider` implements parallel groups, a behavior-learning gate, model tiering, and prefetch hints (see `docs/Agile路线图.md` H3); provider-level model switching is planned.
 
 Semantix is not only a cache.
 
@@ -340,7 +340,7 @@ Optimization should never come before task correctness.
 
 # Speculative Prefetch
 
-> **Status: design phase** — only the interface skeleton (`kernel/prefetch`) exists; implementation is planned for a later milestone.
+> **Status: shipped (MVP)** — `kernel/prefetch` ships `Planner` (offline, Issue 62) + `MatrixPrefetcher` (online, hit/waste feedback) plus a `Runner`; wired into the scheduler via `prefetch.AsPlanFunc` (see `docs/Agile路线图.md` H5).
 
 Agent execution contains a surprising amount of waiting.
 
@@ -900,8 +900,8 @@ Architecture v2                    ✅
 P0 · Observability                ✅  kernel/event + kernel/usage (cost savings)
 P1 · Semantic Slice Library       🚧  extract + BM25/hybrid search shipped; local embeddings + ANN pending
 P2 · Semantic Cache               🚧  L2 injection + L3 verified reuse shipped; real-harness e2e pending
-P3 · Adaptive Scheduler           🚧  rule-based decider (kernel/sched); learned tiering pending
-P4 · Speculative Prefetch         ⏳  interface skeleton only (kernel/prefetch)
+P3 · Adaptive Scheduler           ✅  kernel/sched.RuleDecider — parallel groups + behavior gate + tier + prefetch hints (MVP)
+P4 · Speculative Prefetch         ✅  Planner (offline seed) + MatrixPrefetcher (online, hit/waste) + Runner (MVP)
 P5 · Evolution Loop               ✅  kernel/evolve — online adaptation + offline optimization (MVP)
 ```
 
