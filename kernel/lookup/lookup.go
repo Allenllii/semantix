@@ -61,14 +61,16 @@ func Schema() ArgSchema {
 
 // Result is one returned slice, safe to serialize as tool output. Zone is
 // the grey-zone verdict (Krites arXiv:2602.13165): hit = clearly reusable,
-// grey = verify before reuse, miss = do not reuse.
+// grey = verify before reuse, miss = do not reuse. SourceSession records
+// which session the slice was extracted from (U30; empty when unknown).
 type Result struct {
-	ID      string  `json:"id"`
-	Type    string  `json:"type"`
-	Scope   string  `json:"scope"`
-	Score   float64 `json:"score"`
-	Zone    string  `json:"zone"`
-	Content string  `json:"content"`
+	ID            string  `json:"id"`
+	Type          string  `json:"type"`
+	Scope         string  `json:"scope"`
+	Score         float64 `json:"score"`
+	Zone          string  `json:"zone"`
+	Content       string  `json:"content"`
+	SourceSession string  `json:"source_session"`
 }
 
 // Execute runs the lookup against idx. args uses the JSON schema names;
@@ -111,12 +113,13 @@ func Execute(idx slice.Index, args map[string]any) ([]Result, error) {
 	out := make([]Result, 0, len(hits))
 	for _, h := range hits {
 		out = append(out, Result{
-			ID:      h.Slice.ID,
-			Type:    h.Slice.Type.String(),
-			Scope:   h.Slice.Scope.String(),
-			Score:   h.Score,
-			Zone:    zones.Classify(h.Score, top1).String(),
-			Content: string(h.Slice.Content),
+			ID:            h.Slice.ID,
+			Type:          h.Slice.Type.String(),
+			Scope:         h.Slice.Scope.String(),
+			Score:         h.Score,
+			Zone:          zones.Classify(h.Score, top1).String(),
+			Content:       string(h.Slice.Content),
+			SourceSession: h.Slice.Meta.SourceSession,
 		})
 	}
 	return out, nil

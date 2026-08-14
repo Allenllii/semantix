@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"semantix/kernel/bm25"
@@ -46,15 +47,26 @@ func TestLookupJSONEnvelope(t *testing.T) {
 	if !ok || len(data) != 1 {
 		t.Fatalf("data = %#v, want 1 result row", env.Data)
 	}
+	// U30: 每项追加 source_session 字段（向后兼容：只加不删）。
+	row, ok := data[0].(map[string]any)
+	if !ok {
+		t.Fatalf("row = %#v, want object", data[0])
+	}
+	if _, ok := row["source_session"]; !ok {
+		t.Fatalf("row missing source_session field: %#v", row)
+	}
 
-	// 无 --json 保持裸数组（既有 H1 契约，向后兼容）。
+	// 无 --json 为 vibe-coder 可读文本（U30）：zone 图标 + 摘要行。
+	// 机器可读形态统一走 --json 信封（H1 协议入口）。
 	var out2 bytes.Buffer
 	if err := runLookup([]string{"--query", "修复", "--db", db}, &out2, &emptyStderr{}, deps); err != nil {
 		t.Fatal(err)
 	}
-	var arr []map[string]any
-	if err := json.Unmarshal(out2.Bytes(), &arr); err != nil {
-		t.Fatalf("legacy bare-array output broken: %v\n%s", err, out2.String())
+	if !strings.ContainsAny(out2.String(), "🟢🟡⚪") {
+		t.Fatalf("default lookup output missing zone icon:\n%s", out2.String())
+	}
+	if !strings.Contains(out2.String(), "🎯 ") {
+		t.Fatalf("default lookup output missing hits summary:\n%s", out2.String())
 	}
 }
 

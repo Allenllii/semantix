@@ -11,7 +11,6 @@ import (
 
 	"semantix/kernel/bm25"
 	"semantix/kernel/config"
-	"semantix/kernel/lookup"
 	"semantix/kernel/slice"
 )
 
@@ -44,16 +43,18 @@ func TestConfigDefaultsWiredIntoCommands(t *testing.T) {
 
 	// lookup 不带 --db/--limit：db 默认取 config.store.db（custom.db），
 	// limit 默认取 config.retrieval.limit（2，而非硬编码 5）。
+	// 用 --json 信封读取结果数（U30 起默认输出为人类可读文本）。
 	var out bytes.Buffer
-	if err := runLookup([]string{"--query", "修复 go 测试"}, &out, &emptyStderr{}, deps); err != nil {
+	if err := runLookup([]string{"--query", "修复 go 测试", "--json"}, &out, &emptyStderr{}, deps); err != nil {
 		t.Fatalf("lookup with config defaults: %v", err)
 	}
-	var results []lookup.Result
-	if err := json.Unmarshal(out.Bytes(), &results); err != nil {
+	var env envelope
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
 		t.Fatalf("bad JSON: %v\n%s", err, out.String())
 	}
-	if len(results) != 2 {
-		t.Fatalf("results = %d, want 2 (config retrieval.limit + store.db applied)", len(results))
+	data, ok := env.Data.([]any)
+	if !ok || len(data) != 2 {
+		t.Fatalf("results = %d, want 2 (config retrieval.limit + store.db applied)", len(data))
 	}
 }
 
