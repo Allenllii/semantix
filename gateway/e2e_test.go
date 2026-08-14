@@ -159,10 +159,11 @@ func TestE2EL3HitZeroUpstreamCalls(t *testing.T) {
 	srv := httptest.NewServer(g)
 	defer srv.Close()
 
+	chash, _ := contextHash([]chatMessage{msg("user", "hello world")})
 	seed(t, g, &slice.Slice{
 		ID: "l3-a", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("hello world hello world cached answer"),
-		Meta:    slice.SliceMeta{L3Safe: true},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
 	})
 
 	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "hello world", false))
@@ -305,10 +306,11 @@ func TestE2EL3StreamingReplay(t *testing.T) {
 	srv := httptest.NewServer(g)
 	defer srv.Close()
 
+	chash, _ := contextHash([]chatMessage{msg("user", "widgets cached")})
 	seed(t, g, &slice.Slice{
 		ID: "l3-s", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("widgets cached widgets cached stream answer"),
-		Meta:    slice.SliceMeta{L3Safe: true},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
 	})
 
 	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "widgets cached", true))
@@ -423,3 +425,99 @@ func TestE2EScopeHeader(t *testing.T) {
 }
 
 var _ = fmt.Sprintf
+
+// ---------------------------------------------------------------------------
+// model alias mapping (review fix: upstream_model must reach the upstream)
+
+func TestE2EAliasMapping(t *testing.T) {
+	up := &testUpstream{plain: `{"choices":[{"message":{"role":"assistant","content":"mapped"}}]}`}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	g.cfg.Upstreams[0].ModelAlias = []string{"client-model"}
+	g.cfg.Upstreams[0].UpstreamModel = "real-model"
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	_, out := postChat(t, srv, "test-key", chatBody("client-model", "hi", false))
+	if respContent(t, out) != "mapped" {
+		t.Fatalf("unexpected: %s", out)
+	}
+	up.mu.Lock()
+	model, _ := up.lastBody["model"].(string)
+	up.mu.Unlock()
+	if model != "real-model" {
+		t.Errorf("forwarded model = %q, want real-model (alias must be mapped)", model)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// L3 context isolation (review fix: different history must not reuse)
+
+func TestE2ECrossContextIsolation(t *testing.T) {
+	up := &testUpstream{plain: `{"choices":[{"message":{"role":"assistant","content":"fresh"}}]}`}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	messagesA := []chatMessage{msg("system", "project alpha"), msg("user", "hello world cached")}
+	chashA, _ := contextHash(messagesA)
+	seed(t, g, &slice.Slice{
+		ID: "l3-ctx", Type: slice.Result, Scope: slice.Project,
+		Content: []byte("hello world cached answer from context A"),
+		Meta: slice.SliceMeta{
+			L3Safe: true, ContextHash: chashA, Model: "deepseek-chat",
+		},
+	})
+
+	body := func(messages []chatMessage) string {
+		raw, _ := json.Marshal(map[string]any{
+			"model": "deepseek-chat", "messages": messages,
+		})
+		return string(raw)
+	}
+
+	// same context → hit, zero upstream calls
+	resp, out := postChat(t, srv, "test-key", body(messagesA))
+	if resp.Header.Get("x-semantix-cache") != "hit" {
+		t.Errorf("same context: cache = %q, want hit (%s)", resp.Header.Get("x-semantix-cache"), out)
+	}
+
+	// different system prompt (different context) → miss, upstream called
+	other := []chatMessage{msg("system", "project beta"), msg("user", "hello world cached")}
+	resp2, out2 := postChat(t, srv, "test-key", body(other))
+	if resp2.Header.Get("x-semantix-cache") != "miss" {
+		t.Errorf("different context: cache = %q, want miss (%s)", resp2.Header.Get("x-semantix-cache"), out2)
+	}
+	if n := up.callCount(); n != 1 {
+		t.Errorf("upstream calls = %d, want exactly 1 (only the different-context request)", n)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// L3Safe=false rejection (design §3.5: gateway results are not L3 by default)
+
+func TestE2EL3SafeFalseRejected(t *testing.T) {
+	up := &testUpstream{plain: `{"choices":[{"message":{"role":"assistant","content":"not cached"}}]}`}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	seed(t, g, &slice.Slice{
+		ID: "l3-unsafe", Type: slice.Result, Scope: slice.Project,
+		Content: []byte("hello world hello world unsafe answer"),
+		Meta:    slice.SliceMeta{L3Safe: false}, // no deps + not opted in
+	})
+
+	resp, _ := postChat(t, srv, "test-key", chatBody("deepseek-chat", "hello world", false))
+	if resp.Header.Get("x-semantix-cache") != "miss" {
+		t.Errorf("cache = %q, want miss (L3Safe=false must not be served)", resp.Header.Get("x-semantix-cache"))
+	}
+	if n := up.callCount(); n != 1 {
+		t.Errorf("upstream calls = %d, want 1", n)
+	}
+}

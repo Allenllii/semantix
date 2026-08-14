@@ -13,6 +13,10 @@ type Query struct {
 	Intent      string // from the intent classifier (later milestone)
 	ContextHash string // stable hash of the current context fingerprint
 	Scope       slice.Scope
+	// Model is the client-visible model alias. The L3 gate requires the
+	// cached slice to carry the same Model (cross-model reuse is never
+	// allowed, Issue #133). Empty disables the check for legacy entries.
+	Model string
 }
 
 // L3Result is a reusable cached outcome (verified, fail-closed).

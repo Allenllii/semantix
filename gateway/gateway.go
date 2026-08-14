@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
@@ -36,6 +37,8 @@ type Gateway struct {
 	sessionsMu sync.Mutex // serializes sidecar JSONL appends
 	ingestMu   sync.Mutex // serializes the async ingest writes
 	ingestWG   sync.WaitGroup
+	shutdownMu sync.Mutex // guards closing flag vs recordSession's Add
+	closing    bool
 	disabled   bool       // SEMANTIX_GATEWAY_DISABLE ablation switch
 
 	now func() time.Time
@@ -97,9 +100,13 @@ func New(cfg *Config) (*Gateway, error) {
 	return g, nil
 }
 
-// Close waits for in-flight sidecar ingestion (write memory is best-effort
-// but must not be silently dropped on shutdown), then releases the store.
+// Close stops accepting new sidecar writes, waits for in-flight ingestion
+// (write memory is best-effort but must not be silently dropped on
+// shutdown), then releases the store.
 func (g *Gateway) Close() error {
+	g.shutdownMu.Lock()
+	g.closing = true
+	g.shutdownMu.Unlock()
 	g.ingestWG.Wait()
 	return closeStore(g.store)
 }
@@ -175,16 +182,30 @@ func randomID() string {
 // ---------------------------------------------------------------------------
 // session sidecar (write memory, design §3.7)
 
+// sessionIDPattern bounds the client-supplied session id so it can only
+// name a sidecar file inside the sessions dir (no path traversal).
+var sessionIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
 // recordSession appends this request/response pair to a session JSONL file
 // (0600, ingest.JSONLSource-compatible lines) and asynchronously extracts it
 // into the slice library. Best-effort: failures are logged, never returned
-// to the client.
-func (g *Gateway) recordSession(sessionID string, turns []map[string]any) {
-	if sessionID == "" {
+// to the client. ctxHash/model are stamped onto extracted Result slices so
+// the L3 gate can isolate outcomes per context and model.
+func (g *Gateway) recordSession(sessionID string, ctxHash, model string, turns []map[string]any) {
+	g.shutdownMu.Lock()
+	if g.closing {
+		g.shutdownMu.Unlock()
+		return
+	}
+	g.ingestWG.Add(1)
+	g.shutdownMu.Unlock()
+
+	if sessionID == "" || !sessionIDPattern.MatchString(sessionID) {
 		sessionID = "gw-" + randomID()
 	}
 	dir := g.cfg.Ingest.SessionsDir
 	if dir == "" {
+		g.ingestWG.Done()
 		return
 	}
 	path := filepath.Join(dir, sessionID+".jsonl")
@@ -193,21 +214,22 @@ func (g *Gateway) recordSession(sessionID string, turns []map[string]any) {
 	err := appendJSONLLines(path, turns)
 	g.sessionsMu.Unlock()
 	if err != nil {
+		g.ingestWG.Done()
 		log.Printf("gateway: write session %s: %v", path, err)
 		return
 	}
-	g.ingestWG.Add(1)
 	go func() {
 		defer g.ingestWG.Done()
-		g.ingestSession(path)
+		g.ingestSession(path, ctxHash, model)
 	}()
 }
 
 // ingestSession drains one sidecar file into the slice library via the
-// kernel ingest pipeline, wrapping the extractor so gateway-generated
-// dependency-free Result slices honor the configured L3-safe default
-// (design §3.5: gateway entries are NOT L3-eligible unless opted in).
-func (g *Gateway) ingestSession(path string) {
+// kernel ingest pipeline. Result slices are stamped with the producing
+// request's context hash and model (through metaStore) so the L3 gate can
+// isolate outcomes per context and model; the L3-safe default adapter keeps
+// gateway entries out of L3 unless explicitly configured.
+func (g *Gateway) ingestSession(path, ctxHash, model string) {
 	g.ingestMu.Lock()
 	defer g.ingestMu.Unlock()
 	src, err := ingest.NewJSONLSource(path)
@@ -217,7 +239,7 @@ func (g *Gateway) ingestSession(path string) {
 	}
 	p := ingest.Pipeline{
 		Extractor: l3SafeExtractor{inner: slice.NewExtractor(), l3Safe: g.cfg.Ingest.L3SafeDefault},
-		Store:     g.store,
+		Store:     metaStore{inner: g.store, ctxHash: ctxHash, model: model},
 		Index:     g.index,
 		Scope:     g.injector.Scope,
 		Project:   filepath.Base(path),
@@ -226,6 +248,31 @@ func (g *Gateway) ingestSession(path string) {
 		log.Printf("gateway: ingest %s: %v", path, err)
 	}
 }
+
+// metaStore stamps the producing request's context/model onto Result slices
+// as they are persisted (the only type the L3 gate ever serves). Non-Result
+// slices pass through untouched.
+type metaStore struct {
+	inner   slice.Store
+	ctxHash string
+	model   string
+}
+
+func (m metaStore) Put(s *slice.Slice) error {
+	if s.Type == slice.Result {
+		s.Meta.ContextHash = m.ctxHash
+		s.Meta.Model = m.model
+	}
+	return m.inner.Put(s)
+}
+
+func (m metaStore) Get(id string) (*slice.Slice, error)      { return m.inner.Get(id) }
+func (m metaStore) List(scope slice.Scope) ([]*slice.Slice, error) { return m.inner.List(scope) }
+func (m metaStore) UpdateStats(id string, delta slice.SliceStats) error {
+	return m.inner.UpdateStats(id, delta)
+}
+func (m metaStore) ListAll() ([]*slice.Slice, error) { return m.inner.ListAll() }
+func (m metaStore) Delete(id string) error           { return m.inner.Delete(id) }
 
 // l3SafeExtractor delegates to the kernel extractor, then applies the
 // configured L3-safe default to dependency-free Result slices (the only

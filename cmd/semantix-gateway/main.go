@@ -46,6 +46,7 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("semantix-gateway: %v", err)
 	}
+	_ = srv.Shutdown(nil) // graceful: let in-flight handlers finish
 }
 
 func upstreamNames(cfg *gateway.Config) string {

@@ -49,7 +49,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, http.StatusMethodNotAllowed, "invalid_request_error", "method not allowed")
 			return
 		}
-		body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
 		if err != nil {
 			writeAPIError(w, http.StatusBadRequest, "invalid_request_error", "read body: "+err.Error())
 			return

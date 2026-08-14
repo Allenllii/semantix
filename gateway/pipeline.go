@@ -43,9 +43,11 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	}
 	sessionID := r.Header.Get("x-semantix-session")
 	ctx := r.Context()
-	q := cache.Query{UserInput: query, ContextHash: chash, Scope: scope}
+	q := cache.Query{UserInput: query, ContextHash: chash, Scope: scope, Model: req.Model}
 
-	// L3: verified reuse — zero upstream calls (design §3.3 step 3).
+	// L3: verified reuse — zero upstream calls (design §3.3 step 3). The
+	// kernel gate enforces context/model isolation (fail closed) on top of
+	// the dep-fingerprint chain.
 	if !g.disabled {
 		if res, lerr := g.decider.DecideL3(ctx, q); lerr == nil && res != nil && g.l3Eligible(res.SliceID) {
 			g.recordUsage(usage.Event{
@@ -66,8 +68,8 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	}
 	if inj != nil {
 		injectedTokens = int64(inj.Bytes / 4)
-		body = g.attachInjection(body, req, inj)
 	}
+	body = g.rewriteOutgoing(body, req, up, inj)
 
 	resp, ferr := g.forward(ctx, up, body)
 	if ferr != nil {
@@ -78,10 +80,10 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	defer resp.Body.Close()
 
 	if req.Stream {
-		g.streamThrough(w, resp, sessionID, req, query, injectedTokens)
+		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens)
 		return
 	}
-	g.passthrough(w, resp, sessionID, req, query, injectedTokens)
+	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens)
 }
 
 // l3Eligible applies the gateway-side TTL window on top of the kernel
@@ -95,22 +97,21 @@ func (g *Gateway) l3Eligible(id string) bool {
 	return g.cacheFresh(s)
 }
 
-// attachInjection rewrites the outgoing body: the injection block is
-// appended to the first system message (byte-stable prefix tail, L1) or
-// prepended as a new system message when none exists. All other request
-// fields pass through untouched.
-func (g *Gateway) attachInjection(body []byte, req *chatRequest, inj *inject.Injection) []byte {
-	if inj == nil || inj.Text == "" {
-		return body
-	}
-	messages := append([]chatMessage(nil), req.Messages...)
-	messages = attachBlock(messages, inj.Text)
-
+// rewriteOutgoing rewrites the outgoing body in place: the client model
+// alias is mapped to the upstream model name, and (when an injection block
+// was assembled) the block is appended to the first system message
+// (byte-stable prefix tail, L1) or prepended as a new system message. All
+// other request fields pass through untouched.
+func (g *Gateway) rewriteOutgoing(body []byte, req *chatRequest, up UpstreamConfig, inj *inject.Injection) []byte {
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return body
 	}
-	raw["messages"] = messages
+	raw["model"] = up.UpstreamModel
+	if inj != nil && inj.Text != "" {
+		messages := append([]chatMessage(nil), req.Messages...)
+		raw["messages"] = attachBlock(messages, inj.Text)
+	}
 	out, err := json.Marshal(raw)
 	if err != nil {
 		return body
@@ -147,16 +148,23 @@ func (g *Gateway) forward(ctx context.Context, up UpstreamConfig, body []byte) (
 }
 
 // passthrough relays a non-streaming upstream response, records usage and
-// writes the session sidecar (request turns + assistant reply).
-func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, query string, injectedTokens int64) {
-	out, err := io.ReadAll(resp.Body)
+// writes the session sidecar (request turns + assistant reply) — only for
+// successful exchanges, so failed requests never enter the reuse library.
+func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64) {
+	out, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		writeAPIError(w, http.StatusBadGateway, "upstream_error",
 			fmt.Sprintf("read upstream response: %v", err))
 		return
 	}
+	if resp.StatusCode >= 400 {
+		// upstream error: relay the OpenAI error envelope, nothing reusable
+		writeAPIError(w, resp.StatusCode, "upstream_error",
+			fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(out))))
+		return
+	}
 	content := extractAssistantContent(out)
-	g.recordSession(sessionID, turns(req, content))
+	g.recordSession(sessionID, ctxHash, req.Model, turns(req, content))
 
 	for k, vs := range resp.Header {
 		for _, v := range vs {
@@ -167,16 +175,12 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(out)
 
-	if resp.StatusCode >= 400 {
-		return // upstream error: nothing reusable happened
-	}
 	g.recordUsage(usage.Event{
-		SessionID: sessionID,
-		TokensIn:  int64(len(query)/4) + injectedTokens,
-		TokensOut: int64(len(out) / 4),
-		CacheHitToken: 0,
+		SessionID:      sessionID,
+		TokensIn:       int64(len(query)/4) + injectedTokens,
+		TokensOut:      int64(len(out) / 4),
 		InjectedTokens: injectedTokens,
-		At: g.now().Unix(),
+		At:             g.now().Unix(),
 	})
 }
 
@@ -184,7 +188,13 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 // preserving events verbatim (design §3.4: never reorder/rewrite the
 // upstream stream). Sidecar records the request turns only — parsing the
 // assistant content out of the SSE chunks is deferred (documented debt).
-func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, query string, injectedTokens int64) {
+func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64) {
+	if resp.StatusCode >= 400 {
+		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+		writeAPIError(w, resp.StatusCode, "upstream_error",
+			fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(out))))
+		return
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("x-semantix-cache", "miss")
@@ -204,15 +214,13 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 			break
 		}
 	}
-	if resp.StatusCode < 400 {
-		g.recordSession(sessionID, turns(req, ""))
-		g.recordUsage(usage.Event{
-			SessionID: sessionID,
-			TokensIn:  int64(len(query)/4) + injectedTokens,
-			InjectedTokens: injectedTokens,
-			At: g.now().Unix(),
-		})
-	}
+	g.recordSession(sessionID, ctxHash, req.Model, turns(req, ""))
+	g.recordUsage(usage.Event{
+		SessionID:      sessionID,
+		TokensIn:       int64(len(query)/4) + injectedTokens,
+		InjectedTokens: injectedTokens,
+		At:             g.now().Unix(),
+	})
 }
 
 // turns renders the request messages plus the assistant reply as the
