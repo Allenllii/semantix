@@ -88,7 +88,7 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	rows := make([]hitRow, len(out))
 	for i, r := range out {
 		content := stripESC(strings.Join(strings.Fields(r.Content), " "))
-		fmt.Fprintf(stdout, "%s\n   %s\n", formatHitLine(i+1, zoneIcon(r.Zone), fmt.Sprintf("%.6f", r.Score), r.Zone, r.ID, r.Scope, r.SourceSession), content)
+		fmt.Fprintf(stdout, "%s\n   %s\n", formatHitLine(i+1, verdictIcon(r.Zone), fmt.Sprintf("%.6f", r.Score), r.Zone, r.ID, r.Scope, r.SourceSession), content)
 		rows[i] = hitRow{Zone: r.Zone, SourceSession: r.SourceSession}
 	}
 	writeHitsSummary(stdout, rows)

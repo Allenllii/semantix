@@ -17,8 +17,8 @@ func TestZoneIcon(t *testing.T) {
 		{"bogus", "⚪"},
 		{"", "⚪"},
 	} {
-		if got := zoneIcon(tc.zone); got != tc.want {
-			t.Errorf("zoneIcon(%q) = %q, want %q", tc.zone, got, tc.want)
+		if got := verdictIcon(tc.zone); got != tc.want {
+			t.Errorf("verdictIcon(%q) = %q, want %q", tc.zone, got, tc.want)
 		}
 	}
 }
