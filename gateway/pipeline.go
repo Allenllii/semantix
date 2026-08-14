@@ -63,12 +63,14 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 
 	// L2: inject reuse context, then forward (design §3.3 steps 4-5).
 	var injectedTokens int64
+	var sliceHits int
 	inj, ierr := g.injector.Build(query)
 	if ierr != nil {
 		log.Printf("gateway: inject: %v", ierr) // never blocks the main path
 	}
 	if inj != nil {
 		injectedTokens = int64(inj.Bytes / 4)
+		sliceHits = len(inj.Slices)
 	}
 	body = g.rewriteOutgoing(body, req, up, inj)
 
@@ -81,10 +83,10 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	defer resp.Body.Close()
 
 	if req.Stream {
-		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens)
+		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits)
 		return
 	}
-	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens)
+	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits)
 }
 
 // l3Eligible applies the gateway-side TTL window on top of the kernel
@@ -169,7 +171,7 @@ func (g *Gateway) forward(ctx context.Context, up UpstreamConfig, body []byte) (
 // passthrough relays a non-streaming upstream response, records usage and
 // writes the session sidecar (request turns + assistant reply) — only for
 // successful exchanges, so failed requests never enter the reuse library.
-func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64) {
+func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int) {
 	out, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		writeAPIError(w, http.StatusBadGateway, "upstream_error",
@@ -202,6 +204,7 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 		TokensIn:       int64(len(query)/4) + injectedTokens,
 		TokensOut:      int64(len(out) / 4),
 		InjectedTokens: injectedTokens,
+		SliceHits:      sliceHits,
 		At:             g.now().Unix(),
 	})
 }
@@ -212,7 +215,7 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 // disconnect), the gateway appends one so the client never hangs on an
 // unterminated stream. Sidecar records the request turns only — parsing the
 // assistant content out of the SSE chunks is deferred (documented debt).
-func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64) {
+func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 		writeAPIError(w, resp.StatusCode, "upstream_error",
@@ -258,6 +261,7 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 		SessionID:      sessionID,
 		TokensIn:       int64(len(query)/4) + injectedTokens,
 		InjectedTokens: injectedTokens,
+		SliceHits:      sliceHits,
 		At:             g.now().Unix(),
 	})
 }
