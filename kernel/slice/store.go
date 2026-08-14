@@ -7,6 +7,11 @@ type Store interface {
 	Get(id string) (*Slice, error)
 	List(scope Scope) ([]*Slice, error)
 	UpdateStats(id string, delta SliceStats) error
+	// ListAll returns every slice in the store regardless of scope
+	// (maintenance commands: export/gc).
+	ListAll() ([]*Slice, error)
+	// Delete removes the slice with id. Removing a missing id is a no-op.
+	Delete(id string) error
 }
 
 // Index provides similarity retrieval over the slice corpus (BM25 lands in U5).

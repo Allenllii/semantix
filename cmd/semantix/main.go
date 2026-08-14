@@ -61,6 +61,12 @@ func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
 		return runInit(args[1:], stdout, stderr)
 	case "config":
 		return runConfig(args[1:], stdout, stderr)
+	case "export":
+		err = runExport(args[1:], stdout, stderr, deps)
+	case "import":
+		err = runImport(args[1:], stdout, stderr, deps)
+	case "gc":
+		err = runGC(args[1:], stdout, stderr, deps)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return 0
@@ -74,6 +80,16 @@ func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
 		// package reports ErrHelp after printing usage for any subcommand.
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
+		}
+		var ue usageError
+		if errors.As(err, &ue) {
+			// Usage problems are the caller's fault: exit 2 (U19 §4.3).
+			// A --json consumer must still get parseable output (§4.2).
+			if wantsJSON(args) {
+				_ = writeErrorEnvelope(stdout, args[0], 2, ue.err.Error())
+			}
+			fmt.Fprintf(stderr, "semantix %s: %v\n", args[0], ue.err)
+			return 2
 		}
 		fmt.Fprintf(stderr, "semantix %s: %v\n", args[0], err)
 		return 1
@@ -92,6 +108,9 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  semantix init [--config <path>] [--force]              (generate semantix.toml + .semantix/)")
 	fmt.Fprintln(w, "  semantix config [--config <path>] [--json]             (print effective config with sources)")
 	fmt.Fprintln(w, "  semantix version [--json]                              (version + commit + build time)")
+	fmt.Fprintln(w, "  semantix export --output <file> [--db ...] [--json]    (JSONL backup incl. Meta)")
+	fmt.Fprintln(w, "  semantix import --input <file> [--db ...] [--json]     (restore from export)")
+	fmt.Fprintln(w, "  semantix gc [--retention-days N] [--min-weight W] [--dry-run] [--json]")
 }
 
 type storeCloser interface {
