@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -155,12 +156,13 @@ func truncate(b []byte, max int) []byte {
 
 func newSlice(t SliceType, sc Scope, content []byte, meta SliceMeta) *Slice {
 	return &Slice{
-		ID:      sliceID(content, t, sc),
-		Type:    t,
-		Scope:   sc,
-		Content: content,
-		Weight:  1.0,
-		Meta:    meta,
+		ID:        sliceID(content, t, sc),
+		Type:      t,
+		Scope:     sc,
+		Content:   content,
+		Weight:    1.0,
+		Meta:      meta,
+		CreatedAt: time.Now().Unix(),
 	}
 }
 

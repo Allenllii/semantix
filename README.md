@@ -7,7 +7,8 @@
 **Semantic Caching · Adaptive Scheduling · Speculative Prefetch · Cross-Session Learning**
 
 [![License: FSL-1.1-MIT](https://img.shields.io/badge/License-FSL--1.1--MIT-blue.svg?style=flat-square)](./LICENSE)
-[![Status](https://img.shields.io/badge/status-design%20v2-orange?style=flat-square)](#project-status)
+[![Status](https://img.shields.io/badge/status-v0.3.1-green?style=flat-square)](#project-status)
+[![Version](https://img.shields.io/badge/release-0.3.1-blue?style=flat-square)](https://github.com/Gnosil/semantix/releases)
 [![GitHub stars](https://img.shields.io/github/stars/Gnosil/semantix?style=flat-square\&logo=github)](https://github.com/Gnosil/semantix/stargazers)
 [![GitHub contributors](https://img.shields.io/github/contributors/Gnosil/semantix?style=flat-square\&logo=github)](https://github.com/Gnosil/semantix/graphs/contributors)
 
@@ -91,6 +92,8 @@ Semantix asks:
 
 ## Semantic Slice Library
 
+> **Status: shipped (v0.3.1)** — the extractor (P/T/R slices), BM25 + hybrid retrieval, and a file-backed store are implemented in `kernel/` with tests; local embeddings (Ollama/bge-m3) and an ANN index are the next step.
+
 At the center of Semantix is the **Semantic Slice Library (SSL)**.
 
 Semantix extracts reusable semantic units from historical agent sessions and stores them in a persistent vector-indexed library.
@@ -128,6 +131,8 @@ The objective is for the library to become:
 ---
 
 # Three-Layer Semantic Cache
+
+> **Status: partially shipped** — L2 deterministic injection (`semantix inject`) and L3 verified reuse (`kernel/fingerprint` + `kernel/judge` + `kernel/promote`, accepted per `docs/reports/issue-08-acceptance.md`) are implemented; real-harness end-to-end validation is pending.
 
 Semantix adds semantic reuse on top of existing provider-side prefix caching.
 
@@ -272,6 +277,8 @@ Write operations are never blindly replayed.
 
 # Adaptive Kernel Scheduler
 
+> **Status: shipped (MVP)** — `kernel/sched.RuleDecider` implements parallel groups, a behavior-learning gate, model tiering, and prefetch hints (see `docs/Agile路线图.md` H3); provider-level model switching is planned.
+
 Semantix is not only a cache.
 
 It also acts as a resource scheduler around the agent loop.
@@ -332,6 +339,8 @@ Optimization should never come before task correctness.
 ---
 
 # Speculative Prefetch
+
+> **Status: shipped (MVP)** — `kernel/prefetch` ships `Planner` (offline, Issue 62) + `MatrixPrefetcher` (online, hit/waste feedback) plus a `Runner`; wired into the scheduler via `prefetch.AsPlanFunc` (see `docs/Agile路线图.md` H5).
 
 Agent execution contains a surprising amount of waiting.
 
@@ -465,6 +474,8 @@ and
 ---
 
 # Self-Evolving Optimization
+
+> **Status: shipped (MVP)** — `kernel/evolve` implements EWMA tuning (retrieval threshold, injection budget, pollution guard) with online and offline optimization paths.
 
 Semantix is designed around a feedback loop.
 
@@ -663,7 +674,7 @@ Reuse result                     │
 
 # Semantix + Reasonix
 
-Reasonix is the initial architecture baseline and intended first integration target for Semantix.
+Reasonix is the initial architecture baseline and first integration target for Semantix. Since v0.3.0 the release bundle ships both binaries together (reasonix + semantix) with a shared install script and example config.
 
 The two projects solve different layers of the agent-infrastructure problem.
 
@@ -719,6 +730,27 @@ LLM Provider
 Semantix is not designed to replace Reasonix.
 
 It is designed to make harnesses like Reasonix more efficient over time.
+
+---
+
+# Future Agent Integrations
+
+Semantix's kernel is designed to stay harness-independent — "one kernel, many harnesses" (see [`docs/Agent-Infra-架构设计.md`](./docs/Agent-Infra-架构设计.md)). The integration surface is a small set of hooks (tool registration, message interception, session export / event bypass), so a new coding agent can be attached without touching the kernel.
+
+| Agent / harness            | Integration path                                                             | Status                                    |
+| -------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------- |
+| DeepSeek-Reasonix          | Built-in bundle: `[semantix] enabled=true` + `semantix_lookup` tool           | ✅ shipped since v0.3.0                   |
+| Claude Code                | Tool registration via `semantix_lookup` / `semantix_inject` schemas           | ✅ path documented (`agent-skill/tools/`) |
+| LangChain apps             | Middleware with two hooks (message rewrite + session extraction)              | ✅ path documented (`docs/reports/langchain-middleware.md`) |
+| Custom / self-hosted agent | Session bypass: export / event bypass / direct call                          | ✅ path documented (`agent-skill/hooks/session-bypass.md`) |
+| OpenAI Codex CLI           | Tool registration (function calling) + session export                         | 🔜 candidate — same path as Claude Code   |
+| Cursor                     | Session export + context hook                                                 | 🔜 candidate                               |
+| Windsurf                   | Session export + context hook                                                 | 🔜 candidate                               |
+| GitHub Copilot (agent mode)| Function-calling tool registration                                            | 🔜 candidate                               |
+| Gemini CLI                 | Tool registration + session export                                            | 🔜 candidate                               |
+| Cline / Continue / Aider   | Tool registration or session-bypass                                           | 🔜 candidate                               |
+
+Adapters are thin and share the same kernel surface; priorities are driven by where users actually work, so the list above is a candidate set rather than a commitment. If you maintain or use one of these agents and want a concrete integration, open an [integration request](https://github.com/Gnosil/semantix/issues) — the repo ships a template (`.github/ISSUE_TEMPLATE/integration_request.yml`).
 
 ---
 
@@ -854,39 +886,60 @@ Cross-project reuse must avoid leaking project-specific secrets or paths.
 
 # Project Status
 
-> **Semantix is currently in the architecture and implementation-design phase.**
+> **Semantix v0.3.1 is released** (2026-08-13). The kernel, CLI, website, and agent-skill packaging are shipping. The remaining gate before scaling up is **real-data validation of the cross-session hit rate**.
 
 Architecture specification v2 is complete.
 
-The project is planned to be implemented incrementally so each major optimization mechanism can be evaluated independently.
+The project is implemented incrementally so each major optimization mechanism is evaluated independently.
 
 Current status:
 
 ```text
 Architecture v2                    ✅
 
-P0 · Observability                ⏳
-P1 · Semantic Slice Library       ⏳
-P2 · Semantic Cache               ⏳
-P3 · Adaptive Scheduler           ⏳
-P4 · Speculative Prefetch         ⏳
-P5 · Evolution Loop               ⏳
+Agile 1 · First downloadable agent   🚧 M0 ✅ · M1 near-complete (gate #58) · CLI v2 (U19–U27) open
+  · Observability (P0)               ✅  kernel/event + kernel/usage
+  · Semantic Slice Library (P1)      🚧  extract + BM25/hybrid shipped; local embeddings + ANN pending
+  · Semantic Cache (P2)              🚧  L2 + L3 shipped; real-harness e2e pending
+  · bundle + reuse visualization     🚧  v0.3.1 shipped; H4 UI pending
+
+Agile 2 · Self-evolving loop          🚧 kernel-side MVP landed (M1-U18b); harness side pending
+  · Adaptive Scheduler (P3)           ✅  kernel/sched.RuleDecider (MVP)
+  · Speculative Prefetch (P4)         ✅  Planner + MatrixPrefetcher + Runner (MVP)
+  · Evolution Loop (P5)               ✅  kernel/evolve (MVP); closed-loop wiring pending
+  · H2 ResourceLayer / H3 orchestration ⏳ blueprint only
+
+Agile 3 · Multi-harness ecosystem     ⏳  paths documented (agent-skill/); no adapter shipped
 ```
 
-The first intended integration target is **DeepSeek-Reasonix**.
+**First integration target shipped**: since v0.3.0 the release bundle packages **reasonix + semantix** together (per-platform archives, install script, example config).
+
+**Gate**: M0-Gate passed conditionally (2026-08-09) — technical feasibility and cost savings (79.8% on synthetic replay, `docs/reports/m0-cost-comparison.md`) are verified; **real-data cross-session hit rate ≥ 70%** (`semantix verify`) is the remaining gate, per `docs/reports/m0-gate.md`.
+
+**Agile roadmap**: Agile 1 (first downloadable, brandable agent) is in progress — M0 shipped, M1 nearly complete, with #58 (real-data hit rate) as the remaining gate; Agile 2 (self-evolving loop) and Agile 3 (multi-harness ecosystem) are defined in [`docs/Agile路线图.md`](./docs/Agile路线图.md).
 
 ---
 
 # Roadmap
 
-| Phase  | Deliverable                                                                     |
-| ------ | ------------------------------------------------------------------------------- |
-| **P0** | Observability layer — harness adapter, event stream, baseline metrics           |
-| **P1** | Semantic Slice Library — extraction, embeddings, ANN index, project/user stores |
-| **P2** | Semantic cache — stable L2 injection, verified L3 reuse, pollution detection    |
-| **P3** | Adaptive scheduler — intent classification, concurrency learning, model tier    |
-| **P4** | Speculative prefetch — T-Slice prediction, path patterns, budget control        |
-| **P5** | Evolution loop — online adaptation, offline optimization, ablation              |
+Execution is organized in **Agile cycles** — one downloadable milestone per Agile (see [`docs/Agile路线图.md`](./docs/Agile路线图.md)). The technical phases P0–P5 map onto them as follows:
+
+| Agile | Milestone                                               | Technical scope                              | Status                                                                 |
+| ----- | ------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------- |
+| **1** | First downloadable, brandable agent (v1.0)              | P0–P2 + bundle + reuse visualization (H4)     | 🚧 M0 ✅ · M1 near-complete · gate #58 · CLI v2 (U19–U27) open          |
+| **2** | Self-evolving loop — kernel orchestrates the harness    | P3–P5 + H2 ResourceLayer + H3 orchestration  | 🚧 kernel-side MVP landed (M1-U18b); harness side pending               |
+| **3** | Multi-harness ecosystem                                 | CLI install / serve / adapter contribution    | ⏳ paths documented; not started                                        |
+
+### Technical phases (P0–P5) detail
+
+| Phase  | Deliverable                                                                     | Status                                                              | In Agile |
+| ------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------- | -------- |
+| **P0** | Observability layer — harness adapter, event stream, baseline metrics           | ✅ shipped — `kernel/event`, `kernel/usage`                          | 1        |
+| **P1** | Semantic Slice Library — extraction, embeddings, ANN index, project/user stores | 🚧 extraction + BM25/hybrid shipped; local embeddings + ANN pending  | 1        |
+| **P2** | Semantic cache — stable L2 injection, verified L3 reuse, pollution detection    | 🚧 L2 + L3 shipped; real-harness e2e pending                         | 1        |
+| **P3** | Adaptive scheduler — intent classification, concurrency learning, model tier    | ✅ `kernel/sched.RuleDecider` MVP (M1-U18b); learning overlay pending | 2        |
+| **P4** | Speculative prefetch — T-Slice prediction, path patterns, budget control        | ✅ Planner + MatrixPrefetcher + Runner MVP (M1-U18b)                 | 2        |
+| **P5** | Evolution loop — online adaptation, offline optimization, ablation              | ✅ `kernel/evolve` MVP; closed-loop wiring + ablation pending        | 2        |
 
 Each stage should remain independently measurable.
 
@@ -898,16 +951,16 @@ The first major implementation hypothesis is:
 
 # Target Metrics
 
-The following numbers are **design targets**, not current benchmark results.
+The following numbers are **design targets**. Where a number has already been measured (see the Verification column), it comes from a specific report — none are claimed as reproducible benchmark results yet.
 
-| Metric                               |                         Target |
-| ------------------------------------ | -----------------------------: |
-| Cross-session L2 cache hit rate      |                          ≥ 40% |
-| Combined L1 + L2 cached input tokens |                          ≥ 90% |
-| Cost per task                        |   ≥ 50% reduction vs. baseline |
-| Prefetch utilization                 | ≥ 30% of eligible wait windows |
-| Context pollution rate               |                           ≤ 5% |
-| End-to-end latency                   |                     ≤ baseline |
+| Metric                               |                         Target | Verification                                                        |
+| ------------------------------------ | -----------------------------: | ------------------------------------------------------------------- |
+| Cross-session L2 cache hit rate      |                          ≥ 40% | pending real data (`semantix verify`)                               |
+| Combined L1 + L2 cached input tokens |                          ≥ 90% | pending                                                             |
+| Cost per task                        |   ≥ 50% reduction vs. baseline | 79.8% on synthetic replay (`docs/reports/m0-cost-comparison.md`)    |
+| Prefetch utilization                 | ≥ 30% of eligible wait windows | n/a — P4 not implemented                                            |
+| Context pollution rate               |                           ≤ 5% | pending                                                             |
+| End-to-end latency                   |                     ≤ baseline | pending real-harness e2e                                            |
 
 These targets are intended to guide implementation and evaluation.
 
@@ -968,6 +1021,18 @@ It is:
 # Documentation
 
 Detailed architecture documents are available in [`docs/`](./docs).
+
+### Quickstart
+
+[`docs/QUICKSTART.md`](./docs/QUICKSTART.md) — install (release binary or source build), 30-second demo, command reference, security conventions.
+
+### Agent Skill
+
+[`agent-skill/SKILL.md`](./agent-skill/SKILL.md) — self-serve integration for any harness (Reasonix fork / LangChain / Claude Code / custom): install + selftest scripts, tool schemas, session-bypass hooks.
+
+### Website
+
+[`site/`](./site) — marketing site and product docs (Next.js), including the blog on semantic caching and cross-session reuse.
 
 ### Architecture
 

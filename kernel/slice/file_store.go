@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -80,6 +81,33 @@ func (s *fileStore) List(scope Scope) ([]*Slice, error) {
 	return out, nil
 }
 
+// ListAll returns every slice in the store, regardless of scope.
+func (s *fileStore) ListAll() ([]*Slice, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.readAll()
+}
+
+// Delete removes the slice with id; a missing id is a no-op.
+func (s *fileStore) Delete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	all, err := s.readAll()
+	if err != nil {
+		return err
+	}
+	kept := make([]*Slice, 0, len(all))
+	for _, e := range all {
+		if e.ID != id {
+			kept = append(kept, e)
+		}
+	}
+	if len(kept) == len(all) {
+		return nil // nothing to delete
+	}
+	return s.writeAll(kept)
+}
+
 // UpdateStats applies delta to the slice's stats.
 func (s *fileStore) UpdateStats(id string, delta SliceStats) error {
 	s.mu.Lock()
@@ -102,26 +130,48 @@ func (s *fileStore) UpdateStats(id string, delta SliceStats) error {
 }
 
 func (s *fileStore) readAll() ([]*Slice, error) {
+	all, _, err := s.readAllSkipped()
+	return all, err
+}
+
+// readAllSkipped reads every parseable slice and also reports how many store
+// lines were corrupt and dropped (maintenance export surfaces this so a
+// "lossless backup" cannot silently be incomplete). Oversized (> 8 MiB) lines
+// are skipped and counted, exactly like Import — a store must never become
+// unreadable because of one oversized/corrupt line.
+func (s *fileStore) readAllSkipped() ([]*Slice, int, error) {
 	f, err := os.Open(s.path)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer f.Close()
 	var out []*Slice
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024) // tolerate slices up to 8 MiB
-	for sc.Scan() {
-		line := bytes.TrimSpace(sc.Bytes())
+	skipped := 0
+	br := bufio.NewReader(f)
+	for {
+		line, tooLong, err := readJSONLLine(br)
+		if err == io.EOF {
+			break // clean end of stream
+		}
+		if err != nil {
+			return out, skipped, err
+		}
+		if tooLong {
+			skipped++
+			continue
+		}
+		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
 		}
 		var sl Slice
 		if err := json.Unmarshal(line, &sl); err != nil {
-			continue // tolerant: skip corrupt lines
+			skipped++ // tolerant: count and skip corrupt lines
+			continue
 		}
 		out = append(out, &sl)
 	}
-	return out, sc.Err()
+	return out, skipped, nil
 }
 
 func (s *fileStore) writeAll(slices []*Slice) error {

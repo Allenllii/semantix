@@ -1,0 +1,336 @@
+// Package sched implements the M3 MVP scheduler (N04): one tool round's
+// resource orchestration — parallel groups, model tier, injection list, and
+// prefetch hints — decided by deterministic rules plus a light behavior-
+// learning overlay.
+//
+// Design (see 总体架构-流程树.md §N04 and Agent-Infra-架构设计.md §P3):
+//   - static base: contiguous known read-only tools form parallel groups,
+//     writers/unknowns/blacklisted tools run serially (provider order kept);
+//   - behavior learning: a read-only tool whose recent success history is
+//     below the floor is treated as unsafe to parallelize (candidates must
+//     pass the behavior gate, per N04 "候选须过静态数据依赖检查");
+//   - tier: writer presence or a large round → pro, otherwise the default
+//     (flash) tier;
+//   - injection list: SliceHits ids in canonical (ID-ascending) order, so the
+//     byte-stable prefix-cache invariant is preserved.
+//
+// The Decider interface itself (DecideRound) is frozen since U1; this file
+// adds the concrete implementation.
+package sched
+
+import (
+	"context"
+	"sort"
+	"strings"
+	"sync"
+
+	"semantix/kernel/slice"
+)
+
+// SerialToolNames are the built-in tools that never join a parallel group
+// (kept in sync with the reasonix harness partitionToolCalls blacklist:
+// complete_step, todo_write, wait, bash_output, use_capability, compress).
+var SerialToolNames = map[string]struct{}{
+	"complete_step":  {},
+	"todo_write":     {},
+	"wait":           {},
+	"bash_output":    {},
+	"use_capability": {},
+	"compress":       {},
+}
+
+// PrefetchPlanFunc optionally maps the current round's tool names to
+// prefetch target keys (tool names). The kernel prefetch package plugs in
+// here so RoundPlan.PrefetchIDs stays populated without sched importing
+// prefetch (keeps the dependency direction sched → nothing).
+type PrefetchPlanFunc func(lastToolNames []string) []string
+
+// Config carries operator knobs; zero values select documented defaults.
+type Config struct {
+	// MaxParallel caps how many read-only tools may run in one parallel
+	// group (default 8, mirrors the harness runParallel semaphore).
+	MaxParallel int
+	// MinSamples is the behavior-statistics sample count a tool needs
+	// before the success gate applies (default 5).
+	MinSamples int
+	// SuccessFloor: a read-only tool whose success rate is below this
+	// (with >= MinSamples samples) is pulled out of parallel groups
+	// (default 0.7).
+	SuccessFloor float64
+	// ComplexTools: a round with more calls than this is scheduled to the
+	// pro tier (default 3).
+	ComplexTools int
+	// DefaultTier names the cheap tier (default "flash").
+	DefaultTier string
+	// ProTier names the strong tier (default "pro").
+	ProTier string
+	// InjectMax caps the InjectIDs list length (default 8).
+	InjectMax int
+	// SerialTools adds extra tool names that never parallelize, on top of
+	// the built-in SerialToolNames set.
+	SerialTools []string
+}
+
+// Defaults returns the built-in configuration.
+func Defaults() Config {
+	return Config{
+		MaxParallel:  8,
+		MinSamples:   5,
+		SuccessFloor: 0.7,
+		ComplexTools: 3,
+		DefaultTier:  "flash",
+		ProTier:      "pro",
+		InjectMax:    8,
+	}
+}
+
+// toolStat is one tool's recent behavior history (all access under
+// RuleDecider.mu).
+type toolStat struct {
+	runs     int
+	failures int
+	durMs    int64
+}
+
+// successRate returns the tool's observed success rate; 1 for no history.
+func (t *toolStat) successRate() float64 {
+	if t == nil || t.runs == 0 {
+		return 1
+	}
+	return float64(t.runs-t.failures) / float64(t.runs)
+}
+
+// RuleDecider is the concrete M3 Decider. Safe for concurrent use: each
+// DecideRound call is independent and Observe only mutates stats under the
+// lock. It is a plain struct (no interface split) so the harness can hold
+// it directly; it satisfies the frozen Decider interface.
+type RuleDecider struct {
+	mu         sync.Mutex
+	cfg        Config
+	stats      map[string]*toolStat
+	prefetchFn PrefetchPlanFunc
+}
+
+// NewRuleDecider builds a RuleDecider with cfg (zero values → Defaults).
+func NewRuleDecider(cfg Config) *RuleDecider {
+	def := Defaults()
+	if cfg.MaxParallel <= 0 {
+		cfg.MaxParallel = def.MaxParallel
+	}
+	if cfg.MinSamples <= 0 {
+		cfg.MinSamples = def.MinSamples
+	}
+	if cfg.SuccessFloor <= 0 || cfg.SuccessFloor > 1 {
+		cfg.SuccessFloor = def.SuccessFloor
+	}
+	if cfg.ComplexTools <= 0 {
+		cfg.ComplexTools = def.ComplexTools
+	}
+	if cfg.DefaultTier == "" {
+		cfg.DefaultTier = def.DefaultTier
+	}
+	if cfg.ProTier == "" {
+		cfg.ProTier = def.ProTier
+	}
+	if cfg.InjectMax <= 0 {
+		cfg.InjectMax = def.InjectMax
+	}
+	return &RuleDecider{
+		cfg:   cfg,
+		stats: make(map[string]*toolStat),
+	}
+}
+
+// SetPrefetchPlanFunc wires the optional prefetch planner (nil disables).
+func (d *RuleDecider) SetPrefetchPlanFunc(fn PrefetchPlanFunc) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.prefetchFn = fn
+}
+
+// DecideRound implements the frozen Decider interface.
+func (d *RuleDecider) DecideRound(ctx context.Context, in RoundInput) (RoundPlan, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	plan := RoundPlan{
+		ParallelGroups: d.partition(in.ToolCalls),
+		Tier:           decideTier(in.ToolCalls, d.cfg),
+		InjectIDs:      canonicalInjectIDs(in.SliceHits, d.cfg.InjectMax),
+	}
+	if d.prefetchFn != nil {
+		plan.PrefetchIDs = d.prefetchFn(toolNames(in.ToolCalls))
+	}
+	return plan, nil
+}
+
+// Observe feeds one completed tool round back into the behavior statistics.
+// Every executed tool call should be reported once; unexecuted (blocked/
+// cancelled) calls should be reported with success=false when the failure
+// is attributed to the tool itself. Duration is milliseconds.
+func (d *RuleDecider) Observe(name string, success bool, durMs int64) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	st := d.stats[name]
+	if st == nil {
+		st = &toolStat{}
+		d.stats[name] = st
+	}
+	st.runs++
+	if !success {
+		st.failures++
+	}
+	st.durMs += durMs
+}
+
+// ToolStatSnapshot is the exported, immutable view of one tool's history.
+type ToolStatSnapshot struct {
+	Runs        int
+	Failures    int
+	DurationMs  int64
+	SuccessRate float64
+}
+
+// Stats returns a snapshot of the observed per-tool statistics (for
+// observability / the cost dashboard).
+func (d *RuleDecider) Stats() map[string]ToolStatSnapshot {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	out := make(map[string]ToolStatSnapshot, len(d.stats))
+	for name, st := range d.stats {
+		out[name] = ToolStatSnapshot{
+			Runs:        st.runs,
+			Failures:    st.failures,
+			DurationMs:  st.durMs,
+			SuccessRate: st.successRate(),
+		}
+	}
+	return out
+}
+
+// serialNames merges built-in and configured serial tools into one set.
+func (d *RuleDecider) serialNames() map[string]struct{} {
+	if len(d.cfg.SerialTools) == 0 {
+		return SerialToolNames
+	}
+	out := make(map[string]struct{}, len(SerialToolNames)+len(d.cfg.SerialTools))
+	for n := range SerialToolNames {
+		out[n] = struct{}{}
+	}
+	for _, n := range d.cfg.SerialTools {
+		out[n] = struct{}{}
+	}
+	return out
+}
+
+// partition splits calls into parallel groups (contiguous read-only calls
+// that pass both the static blacklist and the behavior gate) and serial
+// singles, preserving provider order. A read-only tool whose behavior
+// history fails the success gate is pulled into its own serial slot —
+// conservative: an unreliable read may still be re-run safely, but must not
+// run concurrently with siblings that could depend on it. Called with d.mu
+// held.
+func (d *RuleDecider) partition(calls []ToolCallInfo) [][]string {
+	serial := d.serialNames()
+	var groups [][]string
+	for i := 0; i < len(calls); {
+		if d.parallelisable(calls[i], serial) {
+			start := i
+			i++
+			for i < len(calls) && d.parallelisable(calls[i], serial) {
+				i++
+			}
+			// Sub-split oversized groups under the cap.
+			cap := d.cfg.MaxParallel
+			for s := start; s < i; s += cap {
+				end := s + cap
+				if end > i {
+					end = i
+				}
+				groups = append(groups, ids(calls[s:end]))
+			}
+			continue
+		}
+		groups = append(groups, []string{calls[i].CallID})
+		i++
+	}
+	return groups
+}
+
+// parallelisable reports whether call may join a parallel group: known
+// read-only, not blacklisted, and passing the behavior gate. Called with
+// d.mu held.
+func (d *RuleDecider) parallelisable(c ToolCallInfo, serial map[string]struct{}) bool {
+	if !c.ReadOnly {
+		return false
+	}
+	if _, black := serial[c.Name]; black {
+		return false
+	}
+	return d.passesBehaviorGate(c.Name)
+}
+
+// passesBehaviorGate applies the behavior-learning overlay: a tool with
+// enough history whose success rate falls below the floor runs serially.
+// Unknown tools (no history) pass by default. Called with d.mu held.
+func (d *RuleDecider) passesBehaviorGate(name string) bool {
+	st := d.stats[name]
+	if st == nil || st.runs < d.cfg.MinSamples {
+		return true // no evidence yet: default to the static rule
+	}
+	return st.successRate() >= d.cfg.SuccessFloor
+}
+
+// decideTier maps a round to a model tier: any writer or a large round goes
+// to the pro tier, everything else to the default (flash) tier.
+func decideTier(calls []ToolCallInfo, cfg Config) string {
+	for _, c := range calls {
+		if !c.ReadOnly {
+			return cfg.ProTier
+		}
+	}
+	if len(calls) > cfg.ComplexTools {
+		return cfg.ProTier
+	}
+	return cfg.DefaultTier
+}
+
+// canonicalInjectIDs returns hit slice ids in canonical (ID-ascending)
+// order, capped at InjectMax. Canonical order keeps the injected block
+// byte-stable across rounds — never score order (inject §design invariants).
+func canonicalInjectIDs(hits []slice.Hit, max int) []string {
+	ids := make([]string, 0, len(hits))
+	for _, h := range hits {
+		if h.Slice != nil {
+			ids = append(ids, h.Slice.ID)
+		}
+	}
+	sort.Strings(ids)
+	if max > 0 && len(ids) > max {
+		ids = ids[:max]
+	}
+	return ids
+}
+
+// toolNames returns the call names in round order (used for prefetch).
+func toolNames(calls []ToolCallInfo) []string {
+	names := make([]string, len(calls))
+	for i, c := range calls {
+		names[i] = c.Name
+	}
+	return names
+}
+
+// ids extracts CallIDs preserving order.
+func ids(calls []ToolCallInfo) []string {
+	out := make([]string, len(calls))
+	for i, c := range calls {
+		out[i] = c.CallID
+	}
+	return out
+}
+
+// stripPrefix normalizes a tool name for stats lookup (lower-case, trimmed).
+func stripPrefix(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}

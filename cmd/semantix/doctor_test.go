@@ -451,8 +451,11 @@ func TestDoctorHelpShowsPlanned(t *testing.T) {
 		t.Fatalf("help: code = %d", code)
 	}
 	if !strings.Contains(stdout.String(), "Product & management") ||
-		!strings.Contains(stdout.String(), "planned: init config version install completion") {
-		t.Errorf("help must show product-group planned commands:\n%s", stdout.String())
+		!strings.Contains(stdout.String(), "planned: install completion") ||
+		!strings.Contains(stdout.String(), "version") ||
+		!strings.Contains(stdout.String(), "config") ||
+		!strings.Contains(stdout.String(), "init") {
+		t.Errorf("help must show product-group commands and remaining planned:\n%s", stdout.String())
 	}
 }
 
