@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 import Reveal from "@/components/Reveal";
 import { siteIdentity } from "@/lib/site-identity";
@@ -9,13 +10,6 @@ const contributors = [
   "jh10724-dotcom",
   "Allenllii",
   "lr",
-];
-
-const avatarColors = [
-  "bg-[oklch(0.608_0.14_165)]",
-  "bg-[oklch(0.524_0.12_165)]",
-  "bg-[oklch(0.45_0.1_165)]",
-  "bg-[oklch(0.35_0.08_165)]",
 ];
 
 const repo = siteIdentity.repositoryUrl;
@@ -175,18 +169,26 @@ export default function Community() {
                 <div className="crew-row">
                   {[...contributors, ...contributors].map((login, i) => (
                     <a key={`a-${i}`} href={`https://github.com/${login}`} target="_blank" rel="noopener noreferrer" title={login}>
-                      <span className={`flex h-9 w-9 items-center justify-center rounded-full border border-white/70 text-xs font-semibold text-white shadow-sm ${avatarColors[i % avatarColors.length]}`}>
-                        {login.charAt(0).toUpperCase()}
-                      </span>
+                      <Image
+                        src={`https://github.com/${login}.png`}
+                        width={72}
+                        height={72}
+                        alt={`${login} 的头像`}
+                        className="h-9 w-9 rounded-full border border-white/70 object-cover shadow-sm"
+                      />
                     </a>
                   ))}
                 </div>
                 <div className="crew-row rev mt-3">
                   {[...contributors, ...contributors].map((login, i) => (
                     <a key={`b-${i}`} href={`https://github.com/${login}`} target="_blank" rel="noopener noreferrer" title={login}>
-                      <span className={`flex h-9 w-9 items-center justify-center rounded-full border border-white/70 text-xs font-semibold text-white shadow-sm ${avatarColors[(i + 2) % avatarColors.length]}`}>
-                        {login.charAt(0).toUpperCase()}
-                      </span>
+                      <Image
+                        src={`https://github.com/${login}.png`}
+                        width={72}
+                        height={72}
+                        alt={`${login} 的头像`}
+                        className="h-9 w-9 rounded-full border border-white/70 object-cover shadow-sm"
+                      />
                     </a>
                   ))}
                 </div>
