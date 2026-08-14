@@ -95,7 +95,7 @@ func (g commandGroup) String() string {
 // implement yet. They render in help as planned and reject dispatch with
 // exit 2 until their unit lands.
 var plannedByGroup = map[commandGroup][]string{
-	groupProduct:     {"install", "completion"},
+	groupProduct:     {"completion"},
 	groupMaintenance: {},
 	groupService:     {"serve", "watch"},
 }
@@ -150,6 +150,12 @@ var commands = []commandSpec{
 		summary: "health check (db / config / embedder / judge; exit 3 on any FAIL)",
 		run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
 			return runDoctor(args, stdout, stderr)
+		}},
+	{name: "install", group: groupProduct,
+		usage:   "semantix install --target reasonix|claude-code|custom [--dir <path>] [--uninstall]",
+		summary: "install agent-skill (skill + tool schema) into a harness",
+		run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
+			return runInstall(args, stdout, stderr)
 		}},
 	{name: "init", group: groupProduct,
 		usage:   "semantix init [--config <path>] [--force]",
