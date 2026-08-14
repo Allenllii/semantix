@@ -20,12 +20,14 @@ import (
 // to the `semantix lookup --json` subprocess protocol), the upstream set
 // and the async write-memory worker.
 type Server struct {
-	cfg   Config
-	store slice.Store
-	index slice.Index
-	up    *upstreamSet
-	usage *usage.Recorder // nil when recording is disabled
-	logf  func(format string, args ...any)
+	cfg    Config
+	store  slice.Store
+	index  slice.Index
+	up     *upstreamSet
+	usage  *usage.Recorder // nil when recording is disabled
+	mem    *memoryWorker   // nil when write-memory is disabled
+	client *http.Client
+	logf   func(format string, args ...any)
 }
 
 // New builds a Server from the effective config: opens the slice store,
@@ -41,11 +43,12 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:   cfg,
-		store: store,
-		index: idx,
-		up:    newUpstreamSet(cfg.Upstreams),
-		logf:  func(format string, args ...any) { log.Printf("[gateway] "+format, args...) },
+		cfg:    cfg,
+		store:  store,
+		index:  idx,
+		up:     newUpstreamSet(cfg.Upstreams),
+		client: &http.Client{Timeout: 120 * time.Second},
+		logf:   func(format string, args ...any) { log.Printf("[gateway] "+format, args...) },
 	}
 	if cfg.UsageDB != "" {
 		rec, err := usage.NewRecorder(cfg.UsageDB)
@@ -54,11 +57,17 @@ func New(cfg Config) (*Server, error) {
 		}
 		s.usage = rec
 	}
+	if cfg.Ingest.SessionsDir != "" {
+		s.mem = newMemoryWorker(s, cfg.Ingest.SessionsDir, cfg.Ingest.Extract)
+	}
 	return s, nil
 }
 
 // Close releases the server's resources.
 func (s *Server) Close() error {
+	if s.mem != nil {
+		s.mem.close()
+	}
 	if closer, ok := s.store.(interface{ Close() error }); ok {
 		return closer.Close()
 	}
@@ -169,13 +178,6 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCompletions501(w http.ResponseWriter, r *http.Request) {
 	writeAPIError(w, http.StatusNotImplemented, "invalid_request_error",
 		"not_implemented", "POST /v1/completions is not implemented in v1; use /v1/chat/completions")
-}
-
-// handleChatCompletions is the core pipeline entry (design §3.3); the
-// pipeline itself lands with the caching layers.
-func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	writeAPIError(w, http.StatusNotImplemented, "invalid_request_error",
-		"not_implemented", "chat completions pipeline not yet wired")
 }
 
 // indexFromStore rebuilds an in-memory index from the persistent store,

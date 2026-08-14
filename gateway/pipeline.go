@@ -117,6 +117,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		query:     query,
 		ctxHash:   ctxHash,
 		injected:  len(block),
+		promptEst: estTokens(string(body)),
 	}
 	if cr.Stream {
 		s.forwardStream(w, r, up, body, meta)
@@ -133,6 +134,7 @@ type forwardMeta struct {
 	query     string
 	ctxHash   string
 	injected  int // injected block bytes (0 = none)
+	promptEst int // estimated input tokens (incl. injection)
 }
 
 // --- L3 ---
@@ -530,14 +532,29 @@ func estTokens(s string) int {
 
 const maxResponseBodyBytes = 32 << 20 // 32 MiB
 
-// afterResponse records usage for a forwarded request (write-memory and L3
-// write-back hooks land with the write-memory commit).
+// afterResponse runs the post-forward write-memory path (design §3.7):
+// usage record + session bypass write + async extraction + L3 write-back.
+// Everything is best-effort and never blocks the main chain.
 func (s *Server) afterResponse(meta forwardMeta, content string, toolCalls, retried bool) {
-	out := estTokens(content)
+	injectedEst := estTokens(strings.Repeat("a", meta.injected))
 	s.recordUsage(usage.Event{
 		SessionID:      meta.sessionID,
-		TokensIn:       int64(estTokens(strings.Repeat("a", meta.injected))),
-		TokensOut:      int64(out),
-		InjectedTokens: int64(estTokens(strings.Repeat("a", meta.injected))),
+		TokensIn:       int64(meta.promptEst),
+		TokensOut:      int64(estTokens(content)),
+		CacheHitToken:  int64(injectedEst),
+		InjectedTokens: int64(injectedEst),
 	})
+
+	if s.mem != nil {
+		var calls []sessionToolCall
+		if toolCalls {
+			calls = []sessionToolCall{{ID: "gateway-tool", Name: "tool_call"}}
+		}
+		s.mem.appendSession(meta.sessionID, []sessionLine{
+			{Role: "user", Content: meta.query},
+			{Role: "assistant", Content: content, ToolCalls: calls},
+		})
+		s.mem.submit(meta.sessionID)
+	}
+	s.maybeWriteBack(meta, content, toolCalls)
 }
