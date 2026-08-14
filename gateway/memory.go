@@ -130,7 +130,8 @@ func (w *memoryWorker) flush() {
 	w.wg.Wait()
 }
 
-// close drains the queue and stops the worker goroutine.
+// close drains the queue and stops the worker goroutine, waiting for the
+// already-accepted jobs to finish (store writes stay consistent).
 func (w *memoryWorker) close() {
 	if w == nil {
 		return
@@ -141,6 +142,7 @@ func (w *memoryWorker) close() {
 	default:
 		close(w.done)
 	}
+	w.wg.Wait()
 }
 
 func (w *memoryWorker) loop() {

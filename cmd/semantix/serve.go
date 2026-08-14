@@ -22,7 +22,7 @@ import (
 func runServe(args []string, stdout, stderr io.Writer, deps dependencies) error {
 	flags := flag.NewFlagSet("serve", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	addr := flags.String("addr", "", "listen address (default :8080; env SEMANTIX_GATEWAY_ADDR)")
+	addr := flags.String("addr", "", "listen address (default 127.0.0.1:8080; env SEMANTIX_GATEWAY_ADDR)")
 	config := flags.String("config", "", "gateway config file (default semantix-gateway.toml)")
 	db := flags.String("db", "", "slice store path override (env SEMANTIX_GATEWAY_DB)")
 	scope := flags.String("scope", "", "slice scope override: session|project|user")

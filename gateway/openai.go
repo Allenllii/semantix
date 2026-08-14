@@ -180,7 +180,8 @@ func injectIntoMessages(messages []json.RawMessage, block string) ([]json.RawMes
 				ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
 				Name       string          `json:"name,omitempty"`
 				ToolCallID string          `json:"tool_call_id,omitempty"`
-			}{Role: mf.Role, Content: content, ToolCalls: mf.ToolCalls})
+			}{Role: mf.Role, Content: content, ToolCalls: mf.ToolCalls,
+				Name: mf.Name, ToolCallID: mf.ToolCallID})
 			if err != nil {
 				return nil, err
 			}
@@ -202,7 +203,8 @@ func injectIntoMessages(messages []json.RawMessage, block string) ([]json.RawMes
 				ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
 				Name       string          `json:"name,omitempty"`
 				ToolCallID string          `json:"tool_call_id,omitempty"`
-			}{Role: mf.Role, Content: parts, ToolCalls: mf.ToolCalls, Name: mf.Name})
+			}{Role: mf.Role, Content: parts, ToolCalls: mf.ToolCalls,
+				Name: mf.Name, ToolCallID: mf.ToolCallID})
 			if err != nil {
 				return nil, err
 			}

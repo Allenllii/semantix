@@ -505,7 +505,9 @@ func TestUpstreamFailureSurfacesOpenAIError(t *testing.T) {
 
 // TestL3EmptyMetaNoReuse: an entry without the gateway metadata (e.g. a
 // CLI-extracted Result slice) must never serve a gateway request
-// (review fix: fail-closed on missing Model/ContextHash).
+// (review fix: fail-closed on missing Model/ContextHash). The seed content
+// deliberately overlaps the query so the retrieval/zone gates pass and the
+// meta gate is actually exercised.
 func TestL3EmptyMetaNoReuse(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("data v1"), 0o600); err != nil {
@@ -516,8 +518,9 @@ func TestL3EmptyMetaNoReuse(t *testing.T) {
 	body := requestBody("deepseek-chat", false, "user:how do I run go tests with race detection")
 	cfg := gatewayConfig(t, "deepseek-chat")
 	cfg.Cache.DepsRoot = root
-	// No Model / no ContextHash in meta (legacy/CLI entry).
-	seedResultMeta(t, cfg.StoreDB, "answer without gateway meta",
+	// No Model / no ContextHash in meta (legacy/CLI entry) — content
+	// overlaps the query so it would be retrieved if it were eligible.
+	seedResultMeta(t, cfg.StoreDB, "go tests with race detection: answer without gateway meta",
 		"", "", deps, mtimes)
 
 	up := newTestUpstream(t, func(w http.ResponseWriter, r *http.Request, body []byte) {
@@ -535,9 +538,46 @@ func TestL3EmptyMetaNoReuse(t *testing.T) {
 	}
 }
 
+// TestL3UnknownAgeNoReuse: an entry with unknown creation time (CreatedAt
+// == 0) is never served (review fix: TTL gate treats unknown age as
+// expired).
+func TestL3UnknownAgeNoReuse(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("data v1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deps, mtimes := captureDeps(t, root, "a.txt")
+
+	body := requestBody("deepseek-chat", false, "user:how do I run go tests with race detection")
+	cfg := gatewayConfig(t, "deepseek-chat")
+	cfg.Cache.DepsRoot = root
+	seedResult(t, cfg.StoreDB, "go tests with race detection: cached answer of unknown age",
+		"deepseek-chat", ctxHashOf(body), deps, mtimes)
+	st, _ := slice.NewFileStore(cfg.StoreDB)
+	sl, _ := st.Get(seedID("go tests with race detection: cached answer of unknown age"))
+	sl.CreatedAt = 0
+	if err := st.Put(sl); err != nil {
+		t.Fatal(err)
+	}
+
+	up := newTestUpstream(t, func(w http.ResponseWriter, r *http.Request, body []byte) {
+		io.WriteString(w, jsonCompletion("fresh answer"))
+	})
+	cfg.Upstreams[0].BaseURL = up.url()
+	s := testServer(t, &cfg)
+
+	rec, _ := doJSON(t, s.Handler(), http.MethodPost, "/v1/chat/completions", string(body), "")
+	if rec.Header().Get("x-semantix-cache") == "hit" {
+		t.Fatal("unknown-age entry must not be reused")
+	}
+	if !strings.Contains(rec.Body.String(), "fresh answer") {
+		t.Fatalf("expected upstream answer: %s", rec.Body.String())
+	}
+}
+
 // TestL3SkippedWithoutDepsRoot: with no deps_root configured the L3 lookup
 // is skipped entirely (fail-closed — verification against the process CWD
-// must never happen), even for a fully qualified entry.
+// must never happen), even for a fully qualified, retrievable entry.
 func TestL3SkippedWithoutDepsRoot(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("data v1"), 0o600); err != nil {
@@ -548,7 +588,7 @@ func TestL3SkippedWithoutDepsRoot(t *testing.T) {
 	body := requestBody("deepseek-chat", false, "user:how do I run go tests with race detection")
 	cfg := gatewayConfig(t, "deepseek-chat")
 	// cfg.Cache.DepsRoot intentionally left empty.
-	seedResult(t, cfg.StoreDB, "fully qualified cached answer",
+	seedResult(t, cfg.StoreDB, "go tests with race detection: fully qualified cached answer",
 		"deepseek-chat", ctxHashOf(body), deps, mtimes)
 
 	up := newTestUpstream(t, func(w http.ResponseWriter, r *http.Request, body []byte) {
