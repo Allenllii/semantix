@@ -79,8 +79,23 @@ semantix verify --session <会话目录> --project demo > eval.tsv
 | `inject` | L2 注入块（规范序/预算截断） | `--query` `--budget` `--k` |
 
 **产品与管理**：`doctor` 健康检查（db / config / embedder / judge，任一 FAIL 退出码 3）
-已实现；`init` `config` `version` `install` `completion`、`gc` `export` `import`、
-`serve` `watch` 为规划中命令（后续 M2 单元挂载，执行会报 unknown command）。
+与 `install` 一键安装已实现；`init` `config` `version` `completion`、
+`gc` `export` `import`、`serve` `watch` 为规划中命令（后续 M2 单元挂载，执行会报 unknown command）。
+
+`semantix install` 按 `agent-skill/` 现有文档（SKILL.md + tools/ + hooks/ + config/ + scripts/）
+落盘到目标 harness，幂等可重跑，`--uninstall` 精确移除安装的文件：
+
+| 目标 | 默认落盘位置 | 说明 |
+|---|---|---|
+| `reasonix` | `~/.semantix/agent-skill/` | fork 已内置集成；落参考文档 + 打印 `[semantix] enabled=true` 配置步骤 |
+| `claude-code` | `~/.claude/skills/semantix/` | Claude Code agent skills 目录，重启后生效 |
+| `custom` | `--dir` 必填 | 任意目录；`--source`/`SEMANTIX_SKILL_DIR` 指定 agent-skill 源 |
+
+```bash
+semantix install --target claude-code          # 安装到 ~/.claude/skills/semantix/
+semantix install --target custom --dir ./agent  # 自定义目录
+semantix install --target claude-code --uninstall   # 卸载（仅移除 install 记录的文件）
+```
 
 **退出码契约**（所有命令统一）：
 

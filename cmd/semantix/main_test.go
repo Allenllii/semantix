@@ -238,6 +238,9 @@ func TestDispatchExitCodeContract(t *testing.T) {
 		{"usage unknown flag → usage", []string{"usage", "--bogus"}, 2},
 		{"lookup missing query → usage", []string{"lookup"}, 2},
 		{"inject missing query → usage", []string{"inject"}, 2},
+		{"install missing --target → usage", []string{"install"}, 2},
+		{"install invalid target → usage", []string{"install", "--target", "vscode"}, 2},
+		{"install missing source → runtime", []string{"install", "--target", "custom", "--dir", filepath.Join(dir, "d"), "--source", filepath.Join(dir, "nope")}, 1},
 	}
 	for _, c := range cases {
 		var stdout, stderr bytes.Buffer
