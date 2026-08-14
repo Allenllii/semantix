@@ -73,10 +73,10 @@ func isUsage(err error) bool {
 type commandGroup int
 
 const (
-	groupKernelOps commandGroup = iota // kernel 运维（U19：现有 8 命令，行为不变）
-	groupProduct                       // 产品与管理（U21/U23/U24/U25 挂载）
-	groupMaintenance                   // 维护（U26 挂载）
-	groupService                       // 服务模式（U27 挂载）
+	groupKernelOps   commandGroup = iota // kernel 运维（U19：现有 8 命令，行为不变）
+	groupProduct                         // 产品与管理（U21/U23/U24/U25 挂载）
+	groupMaintenance                     // 维护（U26 挂载）
+	groupService                         // 服务模式（U27 挂载）
 )
 
 func (g commandGroup) String() string {
@@ -99,7 +99,7 @@ func (g commandGroup) String() string {
 var plannedByGroup = map[commandGroup][]string{
 	groupProduct:     {"install", "completion"},
 	groupMaintenance: {},
-	groupService:     {"serve", "watch"},
+	groupService:     {"watch"},
 }
 
 // commandSpec registers one CLI command in the command tree. All commands
@@ -183,6 +183,10 @@ var commands = []commandSpec{
 		usage:   "semantix gc [--retention-days N] [--min-weight W] [--dry-run] [--json]",
 		summary: "prune stale / low-weight slices",
 		run:     errCommand("gc", runGC)},
+	{name: "serve", group: groupService,
+		usage:   "semantix serve [--addr :8080] [--config <file>] [--db <path>] [--disable]",
+		summary: "Semantix Gateway: OpenAI-compatible HTTP service (Issue #133)",
+		run:     errCommand("serve", runServe)},
 }
 
 func run(args []string, stdout, stderr io.Writer, deps dependencies) int {

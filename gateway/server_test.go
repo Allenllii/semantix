@@ -1,13 +1,16 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"semantix/kernel/slice"
 )
@@ -29,9 +32,6 @@ func testServer(t *testing.T, cfg *Config) *Server {
 	}
 	if base.Retrieval.Budget == 0 {
 		base.Retrieval.Budget = 4096
-	}
-	if base.Ingest.Extract {
-		base.Ingest.Extract = false
 	}
 	s, err := New(base)
 	if err != nil {
@@ -150,17 +150,6 @@ func TestCompletionsNotImplemented(t *testing.T) {
 	}
 }
 
-func TestChatCompletionsNotWiredYet(t *testing.T) {
-	s := testServer(t, &Config{Upstreams: []Upstream{
-		{Name: "ds", BaseURL: "http://x", APIKey: "k", ModelAlias: []string{"m"}},
-	}})
-	rec, _ := doJSON(t, s.Handler(), http.MethodPost, "/v1/chat/completions",
-		`{"model":"m","messages":[{"role":"user","content":"hi"}]}`, "")
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("chat = %d, want 501 (pipeline lands next)", rec.Code)
-	}
-}
-
 func TestOpenAIProtocolHelpers(t *testing.T) {
 	messages := []json.RawMessage{
 		json.RawMessage(`{"role":"system","content":"base"}`),
@@ -215,5 +204,45 @@ func TestOpenAIProtocolHelpers(t *testing.T) {
 	}
 	if first.Role != "system" || first.Content != "block" {
 		t.Fatalf("prepended = %+v", first)
+	}
+}
+
+// TestServeLifecycle: Serve serves requests until the context is cancelled,
+// then shuts down cleanly (graceful shutdown path used by `semantix serve`).
+func TestServeLifecycle(t *testing.T) {
+	cfg := gatewayConfig(t, "ds-chat")
+	up := newTestUpstream(t, func(w http.ResponseWriter, r *http.Request, body []byte) {
+		io.WriteString(w, jsonCompletion("up"))
+	})
+	cfg.Upstreams[0].BaseURL = up.url()
+	s := testServer(t, &cfg)
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ctx, ln) }()
+
+	url := "http://" + ln.Addr().String() + "/healthz"
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("healthz during serve: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "ok") {
+		t.Fatalf("healthz = %d %s", resp.StatusCode, body)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve after cancel = %v, want nil", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Serve did not shut down after cancel")
 	}
 }

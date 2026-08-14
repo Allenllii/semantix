@@ -153,10 +153,10 @@ POST /v1/chat/completions {model, messages, stream, ...}
 
 **模型映射**：`semantix-gateway.toml` 中定义 `upstreams[].model_alias`（New API 侧模型名 → 上游模型名）；New API 渠道的模型名即网关的 model_alias，网关负责换成上游真实模型名。
 **超时与重试**：网关给上游设保守超时（connect 10s / 首字节 60s / 总时长延续 New API 配置）；重试逻辑**主要在 New API 渠道层**（New API 有重试/负载均衡），网关只做一次重试兜底（幂等 GET 类；chat 请求重试仅对网络错误）。
-### 3.9 配置（semantix-gateway.toml 草案）
+### 3.9 配置（semantix-gateway.toml，v1 已实现）
 ```toml
-# semantix-gateway.toml
-# 注：配置加载器需实现 ${VAR} 环境变量替换 + ~ 路径展开；
+# semantix-gateway.toml（semantix serve 读取；另有 SEMANTIX_GATEWAY_* 环境变量层）
+# 注：配置加载器实现 ${VAR} 环境变量替换 + ~ 路径展开；
 #     任何未解析的 ${...} 启动即报错（防把字面量当凭据）。
 [server]
 addr = ":8080"
@@ -165,16 +165,17 @@ gateway_key = "${SEMANTIX_GATEWAY_KEY}"   # New API 渠道转发时携带的 key
 db = "~/.semantix/gateway.jsonl"          # 切片库 + L3 缓存库（JSONL 单文件，§3.1）
 scope = "project"                         # 默认切片作用域
 [retrieval]
-retriever = "hybrid"                      # bm25 | vector | hybrid
 top_k = 5
 budget = 4096                             # L2 注入块字节预算
 [cache]
-ttl_seconds = 86400                       # 默认 TTL（vendor 差异化优先）
-judge_api_key = "${SEMANTIX_JUDGE_API_KEY}"   # 可选：grey 区 LLM judge
-
+ttl_seconds = 86400                       # L3 条目 TTL（秒；0 = 不过期）
+l3_safe = false                           # 显式开启网关 L3 写回（需 deps_root，§3.5）
+deps_root = "${SEMANTIX_GATEWAY_DEPS_ROOT}"  # 依赖指纹根目录（文件一变缓存即失效）
 [ingest]
-sessions_dir = "~/.semantix/sessions"     # 会话旁路落盘目录
-l3_safe_default = false                   # 无 deps 的结果切片默认不进入 L3
+sessions_dir = "~/.semantix/sessions"     # 会话旁路落盘目录（空 = 关闭写记忆）
+extract = true                            # 旁路会话异步提取为切片
+[usage]
+db = "~/.semantix/gateway-usage.jsonl"    # usage 记录（kernel/usage，与 `semantix usage` 对账）
 
 [[upstreams]]                             # 每个 New API 渠道模型对应一段
 name = "deepseek-chat"
@@ -182,7 +183,8 @@ base_url = "https://api.deepseek.com/v1"
 api_key = "${DEEPSEEK_API_KEY}"
 model_alias = ["deepseek-chat", "ds-chat"]   # 网关侧别名（New API 渠道模型名，§4.2 第一层）
 upstream_model = "deepseek-chat"          # 上游真实模型名（§4.2 映射目标，第三层）
-vendor = "deepseek"                       # deepseek | anthropic | openai | moonshot（决定 cache_control/格式处理）
+vendor = "deepseek"                       # deepseek | anthropic | openai | moonshot（预留）
+timeout_seconds = 60                      # 单次上游调用超时
 ```
 
 ### 3.10 安全
@@ -249,7 +251,7 @@ docker-compose.yml
 
 要点：
 - **new-api 用 SQLite**（单机够用，零外部依赖）；规模上来再迁 MySQL；
-- 网关镜像：`go build ./cmd/semantix` → scratch/distroless 单二进制镜像，*零第三方依赖**——`go.mod` 无外部包，文件存储为 JSONL；镜像 <10MB）；
+- 网关镜像：`go build ./cmd/semantix` → scratch/distroless 单二进制镜像，*零第三方依赖**——`go.mod` 无外部包，文件存储为 JSONL；镜像 <10MB；
 - 网络：`semantix-gateway:8080` **只暴露给 new-api 容器**（compose 内部 network），不发布到宿主机；
 - 健康检查：New API 渠道可用性检测可配置为 `GET /healthz`（或渠道自检开关）；
 - 日志：stdout JSON 日志 + usage 汇总（`semantix usage` 可对账）；建议接 Loki/Promtail 或仅文件轮转。

@@ -1,11 +1,13 @@
 package gateway
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -84,15 +86,29 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-// ListenAndServe runs the HTTP server on cfg.Addr until the context is
-// cancelled (graceful shutdown). It returns the server error on failure.
-func (s *Server) ListenAndServe(addr string) error {
+// Serve runs the HTTP server on ln until ctx is cancelled, then shuts down
+// gracefully (in-flight requests finish within a 5s budget).
+func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	srv := &http.Server{
-		Addr:              addr,
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	return srv.ListenAndServe()
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+	err := srv.Serve(ln)
+	if err == http.ErrServerClosed {
+		return nil
+	}
+	return err
+}
+
+// ModelAliases lists every routable client-visible model name (design §4.2).
+func (s *Server) ModelAliases() []string {
+	return s.up.aliases()
 }
 
 // recover maps handler panics to OpenAI-format 500 responses.

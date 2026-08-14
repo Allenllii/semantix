@@ -305,11 +305,15 @@ func TestHelpShowsPlannedGroups(t *testing.T) {
 	out := stdout.String()
 	for _, want := range []string{
 		"Maintenance",
-		"Service mode (planned: serve watch)",
+		"serve",
+		"(planned: watch)",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help missing %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "Service mode (planned") {
+		t.Errorf("serve is implemented; the service group must not render as planned:\n%s", out)
 	}
 	if strings.Contains(out, "Product & management (planned") {
 		t.Errorf("doctor is implemented; the product group must not render as planned:\n%s", out)
