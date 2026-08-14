@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -193,6 +194,11 @@ func TestCompletionHelpRenders(t *testing.T) {
 // TestCompletionBashScriptExecutes drives the generated bash script in a
 // real shell: syntax check plus simulated COMP_WORDS/COMP_CWORD triggers.
 func TestCompletionBashScriptExecutes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// exec.LookPath finds the WSL bash stub here, but it cannot read
+		// Windows temp paths; the real shell check runs on CI (Linux).
+		t.Skip("bash syntax check runs on CI (WSL path translation unsupported)")
+	}
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("bash not available")
