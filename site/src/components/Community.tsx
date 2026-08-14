@@ -9,7 +9,6 @@ const contributors = [
   "radianceded",
   "jh10724-dotcom",
   "Allenllii",
-  "lr",
 ];
 
 const repo = siteIdentity.repositoryUrl;
