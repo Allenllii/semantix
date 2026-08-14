@@ -23,6 +23,16 @@ func TestServeUnknownFlag(t *testing.T) {
 	}
 }
 
+// TestServeInvalidScopeIsUsageError: `serve --scope bogus` is a usage
+// mistake (exit 2), not a runtime error.
+func TestServeInvalidScopeIsUsageError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"serve", "--scope", "bogus"}, &stdout, &stderr, productionDependencies())
+	if code != 2 {
+		t.Fatalf("serve --scope bogus: code = %d, want 2; stderr %q", code, stderr.String())
+	}
+}
+
 // TestServeWithoutUpstreamsFails: a gateway with nothing to forward to must
 // refuse to start (runtime error, not a silently empty service).
 func TestServeWithoutUpstreamsFails(t *testing.T) {

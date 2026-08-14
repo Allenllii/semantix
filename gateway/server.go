@@ -9,6 +9,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -35,6 +37,14 @@ type Server struct {
 // New builds a Server from the effective config: opens the slice store,
 // rebuilds the in-memory index, wires upstreams and the write-memory worker.
 func New(cfg Config) (*Server, error) {
+	// The store file's parent may not exist on first run (e.g. a fresh
+	// ~/.semantix) — create it like usage/sessions paths already do,
+	// otherwise the very first `semantix serve` would fail to open.
+	if dir := filepath.Dir(cfg.StoreDB); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return nil, fmt.Errorf("gateway: create store dir %s: %w", dir, err)
+		}
+	}
 	store, err := slice.NewFileStore(cfg.StoreDB)
 	if err != nil {
 		return nil, fmt.Errorf("gateway: open store %s: %w", cfg.StoreDB, err)
@@ -90,10 +100,15 @@ func (s *Server) Handler() http.Handler {
 
 // Serve runs the HTTP server on ln until ctx is cancelled, then shuts down
 // gracefully (in-flight requests finish within a 5s budget).
+//
+// Note: no WriteTimeout is set — streaming responses (SSE) legitimately
+// outlive any fixed write deadline; IdleTimeout alone keeps keep-alive
+// sockets from piling up.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	srv := &http.Server{
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	go func() {
 		<-ctx.Done()

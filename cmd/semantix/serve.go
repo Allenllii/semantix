@@ -33,6 +33,15 @@ func runServe(args []string, stdout, stderr io.Writer, deps dependencies) error 
 	if flags.NArg() != 0 {
 		return usagef("serve: unexpected arguments: %v", flags.Args())
 	}
+	if *scope != "" {
+		// Flag-domain validation is a usage error (exit 2), not a runtime
+		// error — validate here so gateway.Load never sees it.
+		switch *scope {
+		case "session", "project", "user":
+		default:
+			return usagef("serve: invalid --scope %q (want session|project|user)", *scope)
+		}
+	}
 
 	cfg, err := gateway.Load(gateway.Options{
 		ConfigPath: *config,

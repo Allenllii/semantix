@@ -328,23 +328,42 @@ func Load(opts Options) (*Config, error) {
 		return nil, fmt.Errorf("config: file %s does not exist", path)
 	}
 
-	// Env layer (SEMANTIX_GATEWAY_*).
-	applyEnv := func(name string, apply func(string)) {
+	// Env layer (SEMANTIX_GATEWAY_*). Invalid values are hard errors
+	// (a typo must surface at startup, not silently fall back to defaults).
+	applyEnv := func(name string, apply func(string) error) error {
 		if v, ok := os.LookupEnv(name); ok && v != "" {
-			apply(v)
+			return apply(v)
 		}
+		return nil
 	}
-	applyEnv("SEMANTIX_GATEWAY_ADDR", func(v string) { cfg.Addr = v })
-	applyEnv("SEMANTIX_GATEWAY_KEY", func(v string) { cfg.GatewayKey = v })
-	applyEnv("SEMANTIX_GATEWAY_DB", func(v string) { cfg.StoreDB = v })
-	applyEnv("SEMANTIX_GATEWAY_SCOPE", func(v string) {
-		if sc, err := parseScopeValue(v); err == nil {
-			cfg.Scope = sc
+	if err := applyEnv("SEMANTIX_GATEWAY_ADDR", func(v string) error { cfg.Addr = v; return nil }); err != nil {
+		return nil, err
+	}
+	if err := applyEnv("SEMANTIX_GATEWAY_KEY", func(v string) error { cfg.GatewayKey = v; return nil }); err != nil {
+		return nil, err
+	}
+	if err := applyEnv("SEMANTIX_GATEWAY_DB", func(v string) error { cfg.StoreDB = v; return nil }); err != nil {
+		return nil, err
+	}
+	if err := applyEnv("SEMANTIX_GATEWAY_SCOPE", func(v string) error {
+		sc, err := parseScopeValue(v)
+		if err != nil {
+			return fmt.Errorf("config: SEMANTIX_GATEWAY_SCOPE: %w", err)
 		}
-	})
-	applyEnv("SEMANTIX_GATEWAY_SESSIONS_DIR", func(v string) { cfg.Ingest.SessionsDir = v })
-	applyEnv("SEMANTIX_GATEWAY_DEPS_ROOT", func(v string) { cfg.Cache.DepsRoot = v })
-	applyEnv("SEMANTIX_GATEWAY_USAGE_DB", func(v string) { cfg.UsageDB = v })
+		cfg.Scope = sc
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if err := applyEnv("SEMANTIX_GATEWAY_SESSIONS_DIR", func(v string) error { cfg.Ingest.SessionsDir = v; return nil }); err != nil {
+		return nil, err
+	}
+	if err := applyEnv("SEMANTIX_GATEWAY_DEPS_ROOT", func(v string) error { cfg.Cache.DepsRoot = v; return nil }); err != nil {
+		return nil, err
+	}
+	if err := applyEnv("SEMANTIX_GATEWAY_USAGE_DB", func(v string) error { cfg.UsageDB = v; return nil }); err != nil {
+		return nil, err
+	}
 	if v := os.Getenv("SEMANTIX_GATEWAY_DISABLE"); v == "1" || strings.EqualFold(v, "true") {
 		cfg.Disable = true
 	}

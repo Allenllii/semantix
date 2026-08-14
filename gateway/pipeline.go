@@ -187,6 +187,12 @@ func (s *Server) lookupL3(ctx context.Context, query, model, ctxHash string) *ca
 		s.logf("L3 reject: TTL expired")
 		return nil
 	}
+	if res.Response == "" {
+		// An empty answer is not a reusable outcome (gateway write-back
+		// never produces one; reject defensively).
+		s.logf("L3 reject: empty cached response %s", sl.ID)
+		return nil
+	}
 	return res
 }
 
@@ -273,7 +279,9 @@ func (s *Server) replayL3Stream(w http.ResponseWriter, cr *chatRequest, hit *cac
 
 // forwardJSON forwards a non-stream request and passes the upstream body
 // through byte-exact (design §3.4 byte-stability note). The response is
-// parsed (in a copy) only for write-memory/usage decisions.
+// parsed (in a copy) only for write-memory/usage decisions. Upstream
+// error responses (status >= 400) are passed through untouched and never
+// enter the write-memory path.
 func (s *Server) forwardJSON(w http.ResponseWriter, r *http.Request, up *Upstream, body []byte, meta forwardMeta) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.upstreamTimeout(up))
 	defer cancel()
@@ -300,13 +308,26 @@ func (s *Server) forwardJSON(w http.ResponseWriter, r *http.Request, up *Upstrea
 	w.WriteHeader(status)
 	_, _ = w.Write(data)
 
+	if retried {
+		s.logf("upstream retry succeeded (%s)", up.Name)
+	}
+	if status >= 400 {
+		// Error responses are not conversations: no usage record, no
+		// session write, no L3 write-back.
+		return
+	}
+
 	content, toolCalls := parseCompletionContent(data)
-	s.afterResponse(meta, content, toolCalls, retried)
+	s.afterResponse(meta, content, toolCalls)
 }
 
 // forwardStream pipes the upstream SSE stream through verbatim, line by
 // line (design §3.4: 逐块透传，不重排不重写), injecting a usage chunk before
 // [DONE] only when the upstream omitted usage and L2 injected tokens exist.
+//
+// Upstream error responses (status >= 400) are NOT SSE: they are passed
+// through as their original JSON body so the client can surface the error
+// (e.g. 429 rate limit) instead of hanging on a stream that never ends.
 func (s *Server) forwardStream(w http.ResponseWriter, r *http.Request, up *Upstream, body []byte, meta forwardMeta) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.upstreamTimeout(up))
 	defer cancel()
@@ -320,6 +341,24 @@ func (s *Server) forwardStream(w http.ResponseWriter, r *http.Request, up *Upstr
 	defer respBody.Close()
 
 	w.Header().Set("x-semantix-cache", "miss")
+	if status >= 400 {
+		// Upstream refused the request: relay its error verbatim (it is
+		// already in OpenAI error format) — never as an SSE stream.
+		data, readErr := io.ReadAll(io.LimitReader(respBody, maxResponseBodyBytes))
+		if readErr != nil {
+			writeAPIError(w, http.StatusBadGateway, "upstream_error", "upstream_error",
+				fmt.Sprintf("read upstream error: %v", readErr))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write(data)
+		if retried {
+			s.logf("upstream retry succeeded (%s)", up.Name)
+		}
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(status)
@@ -330,6 +369,7 @@ func (s *Server) forwardStream(w http.ResponseWriter, r *http.Request, up *Upstr
 	var contentBuf strings.Builder
 	toolCallsSeen := false
 	usageSeen := false
+	sawDone := false
 	writeFailed := false
 
 	for {
@@ -340,8 +380,13 @@ func (s *Server) forwardStream(w http.ResponseWriter, r *http.Request, up *Upstr
 				payload := strings.TrimPrefix(trimmed, "data: ")
 				if payload == "[DONE]" {
 					// Defer [DONE]: a usage chunk may need to precede it
-					// (design §3.4). Rewritten below after the loop.
+					// (design §3.4). Any lines after [DONE] are abnormal —
+					// dropped, the stream is over.
+					sawDone = true
 					continue
+				}
+				if sawDone {
+					continue // already terminated upstream: ignore tail
 				}
 				var evt struct {
 					Choices []struct {
@@ -378,10 +423,16 @@ func (s *Server) forwardStream(w http.ResponseWriter, r *http.Request, up *Upstr
 	if !writeFailed {
 		// Design §3.4: fill in a usage chunk before [DONE] when the
 		// upstream omitted usage and the gateway injected tokens
-		// (observability for L1 savings).
+		// (observability for L1 savings). The chunk carries the standard
+		// SSE envelope so strict clients parse it like any other chunk.
 		if !usageSeen && meta.injected > 0 {
 			est := estTokens(string(body))
 			payload, _ := json.Marshal(map[string]any{
+				"id":      "chatcmpl-semantix-usage",
+				"object":  "chat.completion.chunk",
+				"created": time.Now().Unix(),
+				"model":   meta.model,
+				"choices": []map[string]any{},
 				"usage": map[string]any{
 					"prompt_tokens":     est,
 					"completion_tokens": estTokens(contentBuf.String()),
@@ -400,7 +451,10 @@ func (s *Server) forwardStream(w http.ResponseWriter, r *http.Request, up *Upstr
 	}
 
 	if !writeFailed {
-		s.afterResponse(meta, contentBuf.String(), toolCallsSeen, retried)
+		if retried {
+			s.logf("upstream retry succeeded (%s)", up.Name)
+		}
+		s.afterResponse(meta, contentBuf.String(), toolCallsSeen)
 	}
 }
 
@@ -554,7 +608,7 @@ const maxResponseBodyBytes = 32 << 20 // 32 MiB
 // usage record + session bypass write + async extraction + L3 write-back.
 // Everything is best-effort and never blocks the main chain; the deps-tree
 // fingerprint capture for the write-back runs on the worker goroutine.
-func (s *Server) afterResponse(meta forwardMeta, content string, toolCalls, retried bool) {
+func (s *Server) afterResponse(meta forwardMeta, content string, toolCalls bool) {
 	injectedEst := estTokensN(meta.injected)
 	s.recordUsage(usage.Event{
 		SessionID:      meta.sessionID,

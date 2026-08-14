@@ -633,6 +633,48 @@ func TestRebuildBodyDeterministic(t *testing.T) {
 	}
 }
 
+// TestStreamUsageChunkEnvelope: when the upstream omits usage and the
+// gateway injected L2 tokens, the gateway appends a well-formed usage
+// chunk (with the standard SSE envelope) before [DONE] (design §3.4).
+func TestStreamUsageChunkEnvelope(t *testing.T) {
+	cfg := gatewayConfig(t, "ds-chat")
+	seedPrompt(t, cfg.StoreDB, "how to fix a failing go test: run go test -race and read the failure trace")
+
+	up := newTestUpstream(t, func(w http.ResponseWriter, r *http.Request, body []byte) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher, _ := w.(http.Flusher)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"fixed"},"finish_reason":null}]}`)
+		flusher.Flush()
+		// No usage in the stream.
+	})
+	cfg.Upstreams[0].BaseURL = up.url()
+	s := testServer(t, &cfg)
+
+	body := requestBody("ds-chat", true, "user:how do I fix this failing go test")
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+
+	out := rec.Body.String()
+	idx := strings.Index(out, `"object":"chat.completion.chunk"`)
+	if idx < 0 {
+		t.Fatalf("no SSE chunk envelope in stream:\n%s", out)
+	}
+	if !strings.Contains(out, `"usage"`) || !strings.Contains(out, `"cached_tokens"`) {
+		t.Fatalf("usage chunk missing:\n%s", out)
+	}
+	doneIdx := strings.LastIndex(out, "data: [DONE]")
+	usageIdx := strings.Index(out, `"usage"`)
+	if usageIdx > doneIdx || doneIdx < 0 {
+		t.Fatalf("usage chunk must precede [DONE]:\n%s", out)
+	}
+	if !strings.Contains(out, `"model":"ds-chat"`) {
+		t.Fatalf("usage chunk envelope missing model:\n%s", out)
+	}
+}
+
 func TestNormalizeQuery(t *testing.T) {
 	cases := map[string]string{
 		"  fix\n my\t tests  ": "fix my tests",
