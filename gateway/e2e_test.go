@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"semantix/kernel/slice"
+	"semantix/kernel/usage"
 )
 
 // ---------------------------------------------------------------------------
@@ -196,6 +197,15 @@ func TestE2EL2InjectionForwarded(t *testing.T) {
 		ID: "l2-a", Type: slice.Prompt, Scope: slice.Project,
 		Content: []byte("prior knowledge about widgets"),
 	})
+	// Keep the target's BM25 score above the default absolute hit threshold.
+	// A single-document corpus scores too low and only produces an empty
+	// marker block, which is not an L2 slice hit.
+	for i, content := range []string{"alpha", "bravo", "charlie", "delta"} {
+		seed(t, g, &slice.Slice{
+			ID: fmt.Sprintf("distractor-%d", i), Type: slice.Prompt, Scope: slice.Project,
+			Content: []byte(content),
+		})
+	}
 
 	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "widgets", false))
 	if resp.StatusCode != http.StatusOK {
@@ -217,6 +227,13 @@ func TestE2EL2InjectionForwarded(t *testing.T) {
 	sys, _ := msgs[0]["content"].(string)
 	if msgs[0]["role"] != "system" || !strings.Contains(sys, "[semantix-reuse]") {
 		t.Errorf("injection block not prepended as system message: %#v", msgs[0])
+	}
+	summary, err := usage.Summarize(g.cfg.Ingest.UsageLog, usage.DefaultCostMissPerMTok, usage.DefaultCostHitPerMTok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.SliceHits != 1 {
+		t.Errorf("usage slice hits = %d, want 1", summary.SliceHits)
 	}
 }
 
