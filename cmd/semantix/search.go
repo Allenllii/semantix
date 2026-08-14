@@ -33,6 +33,7 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	userDB := flags.String("user-db", defaultUserDB(), "user database path")
 	jsonOutput := flags.Bool("json", false, "write JSON results")
 	retriever := flags.String("retriever", "bm25", "retriever: bm25 (default) | vector (hash-embedding) | hybrid (RRF fusion)")
+	embedder := flags.String("embedder", "hash", "embedder: hash (default, zero-dependency) | model (remote OpenAI-compatible API; see SEMANTIX_EMBED_* env)")
 	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -93,7 +94,10 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	var hits []slice.Hit
 	switch *retriever {
 	case "vector", "hybrid":
-		emb := embed.HashEmbedder{}
+		emb, err := buildEmbedder(*embedder, stderr)
+		if err != nil {
+			return err
+		}
 		texts := make([]string, len(items))
 		for i, item := range items {
 			texts[i] = string(item.Content)

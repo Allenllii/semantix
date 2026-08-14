@@ -87,6 +87,12 @@ type SliceMeta struct {
 	// when Deps is empty, so a shared/injected library cannot silently
 	// mark results reusable.
 	L3Safe bool `json:"l3_safe,omitempty"`
+	// EmbedModel / EmbedDim record the provenance of Slice.Embedding
+	// (Issue #63): which embedder produced the vector and its dimension, so
+	// future retrieval can detect mixed-dimension libraries instead of
+	// silently skipping dimension-mismatched vectors.
+	EmbedModel string `json:"embed_model,omitempty"`
+	EmbedDim   int    `json:"embed_dim,omitempty"`
 }
 
 // Slice is the core semantic slice value.

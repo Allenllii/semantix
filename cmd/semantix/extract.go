@@ -27,6 +27,7 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	language := flags.String("language", "", "language metadata")
 	fingerprintPaths := flags.String("fingerprint", "", "comma-separated relative paths to fingerprint (sha256) into each slice's Deps")
 	l3Safe := flags.Bool("l3-safe", false, "mark dependency-free Result slices as explicitly L3-reusable (opt-in; ignored when --fingerprint is set)")
+	embedder := flags.String("embedder", "hash", "embedder for stored slices: hash (default, zero-dependency) | model (remote OpenAI-compatible API; see SEMANTIX_EMBED_* env)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -91,6 +92,14 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	items, err := extractor.Extract(data, meta)
 	if err != nil {
 		return fmt.Errorf("extract slices: %w", err)
+	}
+
+	emb, err := buildEmbedder(*embedder, stderr)
+	if err != nil {
+		return err
+	}
+	if err := embedItems(emb, items, *embedder); err != nil {
+		return fmt.Errorf("embed slices: %w", err)
 	}
 
 	dbPath := selectDB(scope, *dbOverride, *projectDB, *userDB)
