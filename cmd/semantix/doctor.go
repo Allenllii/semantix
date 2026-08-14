@@ -65,8 +65,9 @@ type doctorEnvelope struct {
 // embedder, and an invalid judge setup. Every check prints
 // PASS/WARN/FAIL + remediation; any FAIL makes doctor exit 3 (gate,
 // docs/reports/cli-v2-architecture.md §4.3).
-func runDoctor(args []string, stdout io.Writer) int {
+func runDoctor(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
+	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "config file path (default: ./semantix.toml; skipped when absent)")
 	dbFlag := fs.String("db", "", "slice store path (overrides SEMANTIX_DB and [store] db)")
 	jsonOutput := fs.Bool("json", false, "write the report as JSON (envelope per cli-v2-architecture §4.2)")
@@ -77,7 +78,7 @@ func runDoctor(args []string, stdout io.Writer) int {
 		return 2
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintln(stdout, "Usage: semantix doctor [--config <path>] [--db <path>] [--json]")
+		fmt.Fprintln(stderr, "Usage: semantix doctor [--config <path>] [--db <path>] [--json]")
 		return 2
 	}
 
@@ -189,6 +190,7 @@ func emitDoctorJSON(w io.Writer, report doctorReport) error {
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false) // advice strings may contain < > &; keep them readable
 	return enc.Encode(env)
 }
 
@@ -221,8 +223,11 @@ func parseDoctorConfig(path string) (*doctorConfig, error) {
 	seen := map[string]bool{}
 	section := ""
 	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024) // tolerate 8 MiB lines (e.g. a long comment)
 	for lineNo := 1; sc.Scan(); lineNo++ {
-		line := strings.TrimSpace(stripTOMLComment(sc.Text()))
+		// Strip a UTF-8 BOM: PowerShell 5.1 writes one on Set-Content and
+		// TrimSpace does not remove it, which would break line 1.
+		line := strings.TrimPrefix(strings.TrimSpace(stripTOMLComment(sc.Text())), "\ufeff")
 		if line == "" {
 			continue
 		}
@@ -279,29 +284,40 @@ func parseDoctorConfig(path string) (*doctorConfig, error) {
 }
 
 // stripTOMLComment removes a # comment, keeping # inside quoted strings.
+// Both TOML quote styles are tracked: "basic" strings (where a backslash
+// escapes the next character, so \" must not toggle the quote state) and
+// 'literal' strings (no escapes at all).
 func stripTOMLComment(line string) string {
-	inQuote := false
-	for i, r := range line {
-		switch r {
-		case '"':
-			inQuote = !inQuote
-		case '#':
-			if !inQuote {
-				return line[:i]
+	inQuote := byte(0) // 0 = outside, '"' or '\'' = inside
+	for i := 0; i < len(line); i++ {
+		switch {
+		case inQuote == '"' && line[i] == '\\':
+			i++ // escaped character inside a basic string
+		case line[i] == '"' || line[i] == '\'':
+			if inQuote == line[i] {
+				inQuote = 0
+			} else if inQuote == 0 {
+				inQuote = line[i]
 			}
+		case line[i] == '#' && inQuote == 0:
+			return line[:i]
 		}
 	}
 	return line
 }
 
-// unquote strips surrounding double quotes and resolves the two escapes a
-// path/URL might contain (\" and \\). Unquoted values pass through.
+// unquote strips surrounding quotes: "basic" strings resolve the two
+// escapes a path/URL might contain (\" and \\); 'literal' strings pass
+// through verbatim. Unquoted (bare) values pass through.
 func unquote(v string) string {
-	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+	switch {
+	case len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"':
 		inner := v[1 : len(v)-1]
 		inner = strings.ReplaceAll(inner, `\"`, `"`)
 		inner = strings.ReplaceAll(inner, `\\`, `\`)
 		return inner
+	case len(v) >= 2 && v[0] == '\'' && v[len(v)-1] == '\'':
+		return v[1 : len(v)-1]
 	}
 	return v
 }
@@ -385,7 +401,9 @@ func checkDoctorDB(dbPath string) doctorCheck {
 	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024) // tolerate slices up to 8 MiB
 	for sc.Scan() {
 		total++
-		line := bytes.TrimSpace(sc.Bytes())
+		// A UTF-8 BOM on the first line (PowerShell Set-Content) would
+		// corrupt an otherwise valid slice; strip it before unmarshal.
+		line := bytes.TrimPrefix(bytes.TrimSpace(sc.Bytes()), []byte("\ufeff"))
 		if len(line) == 0 {
 			continue
 		}
@@ -479,17 +497,34 @@ func resolveJudge(cfg *doctorConfig) (baseURL, model, protocol, key string) {
 
 // checkDoctorJudge validates the judge setup only when one is configured
 // ("judge 配置有效（若配置）"): unconfigured is a PASS because the grey zone
-// then falls back to the conservative reject, which is the safe default.
+// then falls back to the conservative reject, which is the safe default. A
+// stray API key without an endpoint is a WARN (it is simply unused). A
+// configured endpoint that cannot run — missing pieces, empty or invalid
+// protocol — is a FAIL, matching kernel/judge.NewLLMJudge which rejects
+// such configs at runtime.
 func checkDoctorJudge(cfg *doctorConfig) doctorCheck {
 	baseURL, model, protocol, key := resolveJudge(cfg)
-	if baseURL == "" && model == "" && protocol == "" && key == "" {
+	endpointConfigured := baseURL != "" || model != "" || protocol != ""
+	switch {
+	case !endpointConfigured && key == "":
 		return doctorCheck{
 			ID: "judge", Name: "judge", Status: statusPass,
 			Detail: "no judge configured — grey-zone candidates are conservatively rejected (safe default)",
 			Advice: "to enable the LLM judge set [judge] base_url / model / protocol and SEMANTIX_JUDGE_API_KEY",
 		}
-	}
-	if protocol != "" && protocol != "openai" && protocol != "anthropic" {
+	case !endpointConfigured:
+		return doctorCheck{
+			ID: "judge", Name: "judge", Status: statusWarn,
+			Detail: "SEMANTIX_JUDGE_API_KEY set but no [judge] endpoint configured — the key is unused",
+			Advice: "set [judge] base_url / model / protocol, or unset the key",
+		}
+	case protocol == "":
+		return doctorCheck{
+			ID: "judge", Name: "judge", Status: statusFail,
+			Detail: "judge protocol missing (want openai or anthropic)",
+			Advice: "add [judge] protocol = \"openai\" (or \"anthropic\")",
+		}
+	case protocol != "openai" && protocol != "anthropic":
 		return doctorCheck{
 			ID: "judge", Name: "judge", Status: statusFail,
 			Detail: fmt.Sprintf("invalid judge protocol %q (want openai or anthropic)", protocol),

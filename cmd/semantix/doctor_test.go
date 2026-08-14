@@ -351,8 +351,113 @@ func TestDoctorAcceptsEmptyStringValues(t *testing.T) {
 	}
 }
 
-// TestDoctorEnvOverridesConfig: SEMANTIX_DB / SEMANTIX_CONFIG override the
-// defaults, and embedder env completes a config that doctor must not fail on.
+// TestDoctorJudgeMissingProtocol: an endpoint without [judge] protocol is a
+// FAIL — kernel/judge.NewLLMJudge rejects an empty protocol, so doctor must
+// not certify it (review M1).
+func TestDoctorJudgeMissingProtocol(t *testing.T) {
+	clearDoctorEnv(t)
+	chdirTemp(t)
+	t.Setenv("SEMANTIX_JUDGE_API_KEY", "sk-test")
+	cfgPath := writeConfig(t, "[judge]\nbase_url = \"https://api.openai.com/v1\"\nmodel = \"gpt-4o-mini\"\n")
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"doctor", "--config", cfgPath}, &stdout, &stderr, productionDependencies())
+	if code != 3 {
+		t.Fatalf("doctor: code = %d, want 3; stdout = %q", code, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "judge protocol missing") {
+		t.Errorf("stdout missing protocol report:\n%s", stdout.String())
+	}
+}
+
+// TestDoctorJudgeKeyOnlyEnv: a stray SEMANTIX_JUDGE_API_KEY without any
+// endpoint is a WARN (the key is unused), not a FAIL (review m4).
+func TestDoctorJudgeKeyOnlyEnv(t *testing.T) {
+	clearDoctorEnv(t)
+	chdirTemp(t)
+	t.Setenv("SEMANTIX_JUDGE_API_KEY", "sk-test")
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"doctor"}, &stdout, &stderr, productionDependencies())
+	if code != 0 {
+		t.Fatalf("doctor: code = %d, want 0; stdout = %q", code, stdout.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "[WARN] judge") || !strings.Contains(out, "key is unused") {
+		t.Errorf("stdout missing key-only judge WARN:\n%s", out)
+	}
+}
+
+// TestDoctorConfigEdgeCases: the TOML subset parser must survive real-world
+// files — a UTF-8 BOM (PowerShell), escaped quotes with an inline comment,
+// single-quoted literal paths, and very long comment lines (review M2/M3,
+// m2/m3).
+func TestDoctorConfigEdgeCases(t *testing.T) {
+	clearDoctorEnv(t)
+	chdirTemp(t)
+
+	// BOM + inline comment + single-quoted literal scope.
+	bomConfig := "\ufeff[store]\ndb = \"never.db\" # trailing comment\nscope = 'project'\n"
+	cfgPath := filepath.Join(t.TempDir(), "semantix.toml")
+	if err := os.WriteFile(cfgPath, []byte(bomConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"doctor", "--config", cfgPath}, &stdout, &stderr, productionDependencies())
+	if code != 0 {
+		t.Fatalf("doctor (BOM/escapes): code = %d, want 0; stdout = %q", code, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "[PASS] config") {
+		t.Errorf("config must PASS:\n%s", stdout.String())
+	}
+
+	// A huge pure-comment line must not trip the scanner token limit.
+	longComment := "[store]\n# " + strings.Repeat("x", 100*1024) + "\ndb = \"never.db\"\n"
+	longPath := filepath.Join(t.TempDir(), "long.toml")
+	if err := os.WriteFile(longPath, []byte(longComment), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout2, stderr2 bytes.Buffer
+	if code := run([]string{"doctor", "--config", longPath}, &stdout2, &stderr2, productionDependencies()); code != 0 {
+		t.Fatalf("doctor (long comment): code = %d, want 0; stdout = %q", code, stdout2.String())
+	}
+	if !strings.Contains(stdout2.String(), "[PASS] config") {
+		t.Errorf("config must PASS with long comments:\n%s", stdout2.String())
+	}
+}
+
+// TestParseDoctorConfigEscapedQuotes: `#` inside a basic string with an
+// escaped quote must survive comment stripping, and the escaped quote must
+// resolve (review M2). A value containing a quote is never a usable path on
+// Windows, so this unit test pins the parser without touching the store.
+func TestParseDoctorConfigEscapedQuotes(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "cfg.toml")
+	content := "[embed]\nmodel = \"a\\\"#b\" # trailing comment\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := parseDoctorConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("parseDoctorConfig: %v", err)
+	}
+	if cfg.embedModel != `a"#b` {
+		t.Errorf("model = %q, want %q", cfg.embedModel, `a"#b`)
+	}
+}
+
+// TestDoctorHelpShowsPlanned: mounting doctor must not hide the remaining
+// planned commands of its group from `semantix help` (review m6).
+func TestDoctorHelpShowsPlanned(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"help"}, &stdout, &stderr, productionDependencies()); code != 0 {
+		t.Fatalf("help: code = %d", code)
+	}
+	if !strings.Contains(stdout.String(), "Product & management") ||
+		!strings.Contains(stdout.String(), "planned: init config version install completion") {
+		t.Errorf("help must show product-group planned commands:\n%s", stdout.String())
+	}
+}
+
+// TestDoctorEnvOverridesConfig: SEMANTIX_DB / SEMANTIX_CONFIG env overrides
+// beat the config file and the built-in defaults.
 func TestDoctorEnvOverridesConfig(t *testing.T) {
 	clearDoctorEnv(t)
 	chdirTemp(t)

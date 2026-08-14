@@ -95,7 +95,7 @@ func (g commandGroup) String() string {
 // implement yet. They render in help as planned and reject dispatch with
 // exit 2 until their unit lands.
 var plannedByGroup = map[commandGroup][]string{
-	groupProduct:     {"init", "config", "version", "install", "completion"},
+	groupProduct:     {"install", "completion"},
 	groupMaintenance: {"gc", "export", "import"},
 	groupService:     {"serve", "watch"},
 }
@@ -148,7 +148,27 @@ var commands = []commandSpec{
 	{name: "doctor", group: groupProduct,
 		usage:   "semantix doctor [--config <path>] [--db <path>] [--json]",
 		summary: "health check (db / config / embedder / judge; exit 3 on any FAIL)",
-		run:     intCommand(runDoctor)},
+		run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
+			return runDoctor(args, stdout, stderr)
+		}},
+	{name: "init", group: groupProduct,
+		usage:   "semantix init [--config <path>] [--force]",
+		summary: "generate semantix.toml + .semantix/ skeleton",
+		run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
+			return runInit(args, stdout, stderr)
+		}},
+	{name: "config", group: groupProduct,
+		usage:   "semantix config [--config <path>] [--db <path>] [--json]",
+		summary: "print effective config with per-key source annotation",
+		run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
+			return runConfig(args, stdout, stderr)
+		}},
+	{name: "version", group: groupProduct,
+		usage:   "semantix version [--json]",
+		summary: "version + commit + build time",
+		run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
+			return runVersion(args, stdout, stderr)
+		}},
 }
 
 func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
@@ -225,6 +245,9 @@ func printHelp(w io.Writer) {
 		fmt.Fprintf(w, "%s\n", g)
 		for _, c := range inGroup {
 			fmt.Fprintf(w, "  %-11s %s\n", c.name, c.summary)
+		}
+		if planned := plannedByGroup[g]; len(planned) > 0 {
+			fmt.Fprintf(w, "  (planned: %s)\n", strings.Join(planned, " "))
 		}
 		fmt.Fprintln(w)
 	}
