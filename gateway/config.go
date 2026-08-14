@@ -119,9 +119,9 @@ func (c *Config) expand() error {
 		u := &c.Upstreams[i]
 		fields = append(fields, &u.Name, &u.BaseURL, &u.APIKey, &u.UpstreamModel, &u.Vendor)
 		for j := range u.ModelAlias {
-			alias := u.ModelAlias[j]
-			fields = append(fields, &alias)
-			u.ModelAlias[j] = alias
+			// Take the address of the slice element itself — a copy would
+			// make the ${VAR} substitution below a no-op.
+			fields = append(fields, &u.ModelAlias[j])
 		}
 	}
 	for _, f := range fields {

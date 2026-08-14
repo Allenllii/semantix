@@ -21,10 +21,16 @@ type chatRequest struct {
 
 // chatMessage is one OpenAI chat message. Content may be a plain string or
 // a multimodal part array (text/image urls); the gateway only reads text
-// parts for query extraction and fingerprints the raw structure.
+// parts for query extraction and fingerprints the raw structure. Tool-call
+// fields must be preserved verbatim: they are re-marshaled into the
+// forwarded request when the L2 injection block rewrites the messages, so
+// dropping them would corrupt tool-calling conversations.
 type chatMessage struct {
-	Role    string `json:"role"`
-	Content any    `json:"content"`
+	Role       string `json:"role"`
+	Content    any    `json:"content"`
+	ToolCalls  any    `json:"tool_calls,omitempty"`
+	Name       string `json:"name,omitempty"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 
 // textParts renders a message content value as its text form: a string is
