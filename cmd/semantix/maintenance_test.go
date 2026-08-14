@@ -172,7 +172,7 @@ func TestExportJSONEnvelope(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("envelope not valid JSON: %v\n%s", err, stdout.String())
 	}
-	if !env.OK || env.Command != "export" || env.Error != nil || env.Version != cliVersion {
+	if !env.OK || env.Command != "export" || env.Error != nil || env.Version != version {
 		t.Fatalf("envelope = %+v", env)
 	}
 	data := env.Data.(map[string]interface{})

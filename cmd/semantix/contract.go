@@ -7,34 +7,12 @@ import (
 	"strings"
 )
 
-// cliVersion is reported in every JSON envelope (U19 §4.2) and matches the
-// release line in docs/reports/cli-v2-architecture.md.
-const cliVersion = "0.3.1"
-
-// envelope is the uniform --json output shape (U19 §4.2):
-//
-//	{"ok": true, "command": "gc", "data": {...}, "error": null, "version": "0.3.1"}
-//
-// On failure ok is false and error carries {code, message}; the process exit
-// code still follows §4.3.
-type envelope struct {
-	OK      bool        `json:"ok"`
-	Command string      `json:"command"`
-	Data    interface{} `json:"data"`
-	Error   *envError   `json:"error"`
-	Version string      `json:"version"`
-}
-
-type envError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-// writeEnvelope writes a success envelope (ok:true, error:null) to w.
+// writeEnvelope writes a success envelope (ok:true, error:null) to w,
+// using the shared §4.2 envelope type from envelope.go.
 func writeEnvelope(w io.Writer, command string, data interface{}) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(envelope{OK: true, Command: command, Data: data, Version: cliVersion})
+	return enc.Encode(okEnvelope(command, data))
 }
 
 // writeErrorEnvelope writes a failure envelope (ok:false) with the U19 §4.3
@@ -42,12 +20,7 @@ func writeEnvelope(w io.Writer, command string, data interface{}) error {
 func writeErrorEnvelope(w io.Writer, command string, code int, message string) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	return enc.Encode(envelope{
-		OK:      false,
-		Command: command,
-		Error:   &envError{Code: code, Message: message},
-		Version: cliVersion,
-	})
+	return enc.Encode(errEnvelope(command, code, message))
 }
 
 // usageError marks a command-line usage problem (bad flag, missing required

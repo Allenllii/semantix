@@ -55,6 +55,12 @@ func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
 		err = runLookup(args[1:], stdout, stderr, deps)
 	case "inject":
 		err = runInject(args[1:], stdout, stderr, deps)
+	case "version":
+		return runVersion(args[1:], stdout, stderr)
+	case "init":
+		return runInit(args[1:], stdout, stderr)
+	case "config":
+		return runConfig(args[1:], stdout, stderr)
 	case "export":
 		err = runExport(args[1:], stdout, stderr, deps)
 	case "import":
@@ -99,6 +105,9 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  semantix eval --set <oracle.tsv> [--tau-*]            (Issue #7 single-vs-three comparison)")
 	fmt.Fprintln(w, "  semantix lookup --query <q> [--limit N] [--db ...]     (semantix_lookup tool)")
 	fmt.Fprintln(w, "  semantix inject --query <q> [--budget N] [--db ...]    (L2 injection block)")
+	fmt.Fprintln(w, "  semantix init [--config <path>] [--force]              (generate semantix.toml + .semantix/)")
+	fmt.Fprintln(w, "  semantix config [--config <path>] [--json]             (print effective config with sources)")
+	fmt.Fprintln(w, "  semantix version [--json]                              (version + commit + build time)")
 	fmt.Fprintln(w, "  semantix export --output <file> [--db ...] [--json]    (JSONL backup incl. Meta)")
 	fmt.Fprintln(w, "  semantix import --input <file> [--db ...] [--json]     (restore from export)")
 	fmt.Fprintln(w, "  semantix gc [--retention-days N] [--min-weight W] [--dry-run] [--json]")

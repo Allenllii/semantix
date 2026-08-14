@@ -277,7 +277,7 @@ Write operations are never blindly replayed.
 
 # Adaptive Kernel Scheduler
 
-> **Status: in progress** — a rule-based decider exists in `kernel/sched`; learned model-tiering and concurrency learning are planned.
+> **Status: shipped (MVP)** — `kernel/sched.RuleDecider` implements parallel groups, a behavior-learning gate, model tiering, and prefetch hints (see `docs/Agile路线图.md` H3); provider-level model switching is planned.
 
 Semantix is not only a cache.
 
@@ -340,7 +340,7 @@ Optimization should never come before task correctness.
 
 # Speculative Prefetch
 
-> **Status: design phase** — only the interface skeleton (`kernel/prefetch`) exists; implementation is planned for a later milestone.
+> **Status: shipped (MVP)** — `kernel/prefetch` ships `Planner` (offline, Issue 62) + `MatrixPrefetcher` (online, hit/waste feedback) plus a `Runner`; wired into the scheduler via `prefetch.AsPlanFunc` (see `docs/Agile路线图.md` H5).
 
 Agent execution contains a surprising amount of waiting.
 
@@ -897,12 +897,19 @@ Current status:
 ```text
 Architecture v2                    ✅
 
-P0 · Observability                ✅  kernel/event + kernel/usage (cost savings)
-P1 · Semantic Slice Library       🚧  extract + BM25/hybrid search shipped; local embeddings + ANN pending
-P2 · Semantic Cache               🚧  L2 injection + L3 verified reuse shipped; real-harness e2e pending
-P3 · Adaptive Scheduler           🚧  rule-based decider (kernel/sched); learned tiering pending
-P4 · Speculative Prefetch         ⏳  interface skeleton only (kernel/prefetch)
-P5 · Evolution Loop               ✅  kernel/evolve — online adaptation + offline optimization (MVP)
+Agile 1 · First downloadable agent   🚧 M0 ✅ · M1 near-complete (gate #58) · CLI v2 (U19–U27) open
+  · Observability (P0)               ✅  kernel/event + kernel/usage
+  · Semantic Slice Library (P1)      🚧  extract + BM25/hybrid shipped; local embeddings + ANN pending
+  · Semantic Cache (P2)              🚧  L2 + L3 shipped; real-harness e2e pending
+  · bundle + reuse visualization     🚧  v0.3.1 shipped; H4 UI pending
+
+Agile 2 · Self-evolving loop          🚧 kernel-side MVP landed (M1-U18b); harness side pending
+  · Adaptive Scheduler (P3)           ✅  kernel/sched.RuleDecider (MVP)
+  · Speculative Prefetch (P4)         ✅  Planner + MatrixPrefetcher + Runner (MVP)
+  · Evolution Loop (P5)               ✅  kernel/evolve (MVP); closed-loop wiring pending
+  · H2 ResourceLayer / H3 orchestration ⏳ blueprint only
+
+Agile 3 · Multi-harness ecosystem     ⏳  paths documented (agent-skill/); no adapter shipped
 ```
 
 **First integration target shipped**: since v0.3.0 the release bundle packages **reasonix + semantix** together (per-platform archives, install script, example config).
@@ -915,16 +922,24 @@ P5 · Evolution Loop               ✅  kernel/evolve — online adaptation + of
 
 # Roadmap
 
-The phases below (P0–P5) are the product/feature view; execution happens in Agile cycles — see [`docs/Agile路线图.md`](./docs/Agile路线图.md): **Agile 1** ships the first downloadable agent (P0–P2 + packaging), **Agile 2** completes the self-evolving loop (P3–P5 core), **Agile 3** broadens into the multi-harness ecosystem.
+Execution is organized in **Agile cycles** — one downloadable milestone per Agile (see [`docs/Agile路线图.md`](./docs/Agile路线图.md)). The technical phases P0–P5 map onto them as follows:
 
-| Phase  | Deliverable                                                                     | Status                                                              |
-| ------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| **P0** | Observability layer — harness adapter, event stream, baseline metrics           | ✅ shipped — `kernel/event`, `kernel/usage`                          |
-| **P1** | Semantic Slice Library — extraction, embeddings, ANN index, project/user stores | 🚧 extraction + BM25/hybrid shipped; local embeddings + ANN pending  |
-| **P2** | Semantic cache — stable L2 injection, verified L3 reuse, pollution detection    | 🚧 L2 + L3 shipped; real-harness e2e pending                         |
-| **P3** | Adaptive scheduler — intent classification, concurrency learning, model tier    | 🚧 rule decider shipped; learning pending                            |
-| **P4** | Speculative prefetch — T-Slice prediction, path patterns, budget control        | ⏳ skeleton only                                                     |
-| **P5** | Evolution loop — online adaptation, offline optimization, ablation              | ✅ `kernel/evolve` shipped; ablation pending                         |
+| Agile | Milestone                                               | Technical scope                              | Status                                                                 |
+| ----- | ------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------- |
+| **1** | First downloadable, brandable agent (v1.0)              | P0–P2 + bundle + reuse visualization (H4)     | 🚧 M0 ✅ · M1 near-complete · gate #58 · CLI v2 (U19–U27) open          |
+| **2** | Self-evolving loop — kernel orchestrates the harness    | P3–P5 + H2 ResourceLayer + H3 orchestration  | 🚧 kernel-side MVP landed (M1-U18b); harness side pending               |
+| **3** | Multi-harness ecosystem                                 | CLI install / serve / adapter contribution    | ⏳ paths documented; not started                                        |
+
+### Technical phases (P0–P5) detail
+
+| Phase  | Deliverable                                                                     | Status                                                              | In Agile |
+| ------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------- | -------- |
+| **P0** | Observability layer — harness adapter, event stream, baseline metrics           | ✅ shipped — `kernel/event`, `kernel/usage`                          | 1        |
+| **P1** | Semantic Slice Library — extraction, embeddings, ANN index, project/user stores | 🚧 extraction + BM25/hybrid shipped; local embeddings + ANN pending  | 1        |
+| **P2** | Semantic cache — stable L2 injection, verified L3 reuse, pollution detection    | 🚧 L2 + L3 shipped; real-harness e2e pending                         | 1        |
+| **P3** | Adaptive scheduler — intent classification, concurrency learning, model tier    | ✅ `kernel/sched.RuleDecider` MVP (M1-U18b); learning overlay pending | 2        |
+| **P4** | Speculative prefetch — T-Slice prediction, path patterns, budget control        | ✅ Planner + MatrixPrefetcher + Runner MVP (M1-U18b)                 | 2        |
+| **P5** | Evolution loop — online adaptation, offline optimization, ablation              | ✅ `kernel/evolve` MVP; closed-loop wiring + ablation pending        | 2        |
 
 Each stage should remain independently measurable.
 
