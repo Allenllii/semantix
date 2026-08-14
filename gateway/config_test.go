@@ -130,3 +130,22 @@ func TestModelListAndUpstreamFor(t *testing.T) {
 		t.Error("UpstreamFor(nope) must be false")
 	}
 }
+
+// TestModelAliasEnvSubstitution: ${VAR} references inside model_alias must
+// expand (regression: the old code took the address of a loop copy, making
+// the substitution a silent no-op).
+func TestModelAliasEnvSubstitution(t *testing.T) {
+	t.Setenv("GW_KEY", "k1")
+	t.Setenv("DS_KEY", "k2")
+	t.Setenv("ALIAS_EXTRA", "ds-chat")
+	body := strings.Replace(validConfig, `model_alias = ["deepseek-chat", "ds-chat"]`,
+		`model_alias = ["deepseek-chat", "${ALIAS_EXTRA}"]`, 1)
+	cfg, err := Load(writeConfig(t, body))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	aliases := cfg.Upstreams[0].ModelAlias
+	if len(aliases) != 2 || aliases[1] != "ds-chat" {
+		t.Fatalf("model_alias env substitution failed: %v", aliases)
+	}
+}
