@@ -27,7 +27,7 @@ func TestRunUsageSummary(t *testing.T) {
 		}
 	}
 	var out bytes.Buffer
-	if code := runUsage([]string{"--db", logPath}, &out); code != 0 {
+	if code := runUsage([]string{"--db", logPath}, &out, productionDependencies()); code != 0 {
 		t.Fatalf("usage exit code = %d, want 0", code)
 	}
 	s := out.String()
@@ -43,7 +43,7 @@ func TestRunUsageSummary(t *testing.T) {
 
 func TestRunUsageMissingDB(t *testing.T) {
 	var out bytes.Buffer
-	if code := runUsage([]string{"--db", filepath.Join(t.TempDir(), "nope.jsonl")}, &out); code != 1 {
+	if code := runUsage([]string{"--db", filepath.Join(t.TempDir(), "nope.jsonl")}, &out, productionDependencies()); code != 1 {
 		t.Fatalf("missing db is a runtime/IO error, must exit 1, got %d", code)
 	}
 }
@@ -60,7 +60,7 @@ func TestRunUsageWithEvolve(t *testing.T) {
 	}
 	evolveDir := filepath.Join(dir, "evolve")
 	var out bytes.Buffer
-	if code := runUsage([]string{"--db", logPath, "--evolve-db", evolveDir}, &out); code != 0 {
+	if code := runUsage([]string{"--db", logPath, "--evolve-db", evolveDir}, &out, productionDependencies()); code != 0 {
 		t.Fatalf("usage --evolve exit code = %d, want 0", code)
 	}
 	s := out.String()
@@ -82,7 +82,7 @@ func TestRunUsageWithEvolve(t *testing.T) {
 	}
 	// Second run loads state (epoch advances).
 	var out2 bytes.Buffer
-	if code := runUsage([]string{"--db", logPath, "--evolve-db", evolveDir}, &out2); code != 0 {
+	if code := runUsage([]string{"--db", logPath, "--evolve-db", evolveDir}, &out2, productionDependencies()); code != 0 {
 		t.Fatalf("second usage --evolve exit code = %d", code)
 	}
 	if !strings.Contains(out2.String(), "evolve_epoch\t2") {

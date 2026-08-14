@@ -22,6 +22,40 @@ import (
 	"semantix/kernel/zone"
 )
 
+// verifyRow is one replayed turn in the --json envelope.
+type verifyRow struct {
+	Session string  `json:"session"`
+	Turn    int     `json:"turn"`
+	Score   float64 `json:"score"`
+	Zone    string  `json:"zone"`
+	Top1    string  `json:"top1_content"`
+	Query   string  `json:"query"`
+}
+
+// verifySummary is the --json envelope payload (M2-U22 §4.2).
+type verifySummary struct {
+	Sessions       int          `json:"sessions"`
+	TrainedTurns   int          `json:"trained_turns"`
+	ReplaySessions int          `json:"replay_sessions"`
+	ReplayedTurns  int          `json:"replayed_turns"`
+	ZonesHit       int          `json:"zones_hit"`
+	ZonesGrey      int          `json:"zones_grey"`
+	ZonesMiss      int          `json:"zones_miss"`
+	GreyRatioPct   float64      `json:"grey_ratio_pct"`
+	GreyTargetPct  float64      `json:"grey_target_pct"`
+	WarnGrey       bool         `json:"warn_grey"`
+	Judge          *judge.Stats `json:"judge,omitempty"`
+	Rows           []verifyRow  `json:"rows"`
+}
+
+// verifyExit maps the grey-zone alarm to the exit code contract (3 = gate).
+func verifyExit(greyTarget, greyRatio float64, strict bool) int {
+	if strict && greyTarget > 0 && greyRatio > greyTarget {
+		return 3
+	}
+	return 0
+}
+
 // verify implements offline replay validation for the M0-2 hypothesis:
 // "when using a coding agent, repeated intermediate work appears across
 // sessions and can be reused". It splits sessions by time (holdout fraction
@@ -129,13 +163,14 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
 	var opt verifyOptions
 	fs.Var(stringListFlag{&opt.sessions}, "session", "session JSONL file or directory (repeatable)")
-	fs.StringVar(&opt.db, "db", "", "database path override (default: .semantix/project.db)")
+	fs.StringVar(&opt.db, "db", cfgString(deps.resolved, "store.db", ""), "database path override (default: .semantix/project.db)")
 	fs.StringVar(&opt.project, "project", "", "project slug")
-	fs.Float64Var(&opt.holdout, "holdout", 0.3, "fraction of latest sessions reserved as replay stream (0-1)")
+	fs.Float64Var(&opt.holdout, "holdout", cfgFloat(deps.resolved, "verify.holdout", 0.3), "fraction of latest sessions reserved as replay stream (0-1)")
 	var scopeName string
-	fs.StringVar(&scopeName, "scope", "project", "scope: project|user|session")
+	fs.StringVar(&scopeName, "scope", cfgString(deps.resolved, "store.scope", "project"), "scope: project|user|session")
 	greyTarget := fs.Float64("grey-target", 30.0, "grey-zone traffic ratio alarm threshold in percent (0 disables the alarm)")
 	strict := fs.Bool("strict", false, "return exit code 3 when the grey-zone ratio exceeds --grey-target")
+	jsonOut := fs.Bool("json", false, "output as JSON envelope (summary + rows)")
 	zf := addZoneFlags(fs)
 	judgeProtocol := fs.String("judge-protocol", "", "LLM judge protocol: openai|anthropic (empty = rules only)")
 	judgeBaseURL := fs.String("judge-base-url", "", "LLM judge endpoint base URL (e.g. https://api.openai.com/v1)")
@@ -213,11 +248,11 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 		}
 		for _, t := range turns {
 			sl := &slice.Slice{
-				ID:    turnSliceID(t.Query),
-				Type:  slice.Prompt,
-				Scope: opt.scope,
+				ID:      turnSliceID(t.Query),
+				Type:    slice.Prompt,
+				Scope:   opt.scope,
 				Content: []byte(t.Query),
-				Meta: slice.SliceMeta{ProjectSlug: opt.project, SourceSession: t.Session},
+				Meta:    slice.SliceMeta{ProjectSlug: opt.project, SourceSession: t.Session},
 			}
 			if err := store.Put(sl); err != nil {
 				fmt.Fprintf(stdout, "verify: put: %v\n", err)
@@ -232,10 +267,13 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	}
 
 	// Replay: for every user turn of later sessions, top-1 hit.
-	fmt.Fprintf(stdout, "# verify: %d sessions, %d trained turns, %d replay sessions\n", len(files), trained, len(replay))
-	fmt.Fprintln(stdout, "# mark each row ✅ (top-1 is a 'previously done similar' turn) or ❌; relevance = marked / total ≥ 0.7")
-	fmt.Fprintln(stdout, "# zone distribution (Issue #7): top-1 grey ratio should stay ≤ 30%")
-	fmt.Fprintln(stdout, "session\tturn\tscore\tzone\ttop1_content\tquery")
+	if !*jsonOut {
+		fmt.Fprintf(stdout, "# verify: %d sessions, %d trained turns, %d replay sessions\n", len(files), trained, len(replay))
+		fmt.Fprintln(stdout, "# mark each row ✅ (top-1 is a 'previously done similar' turn) or ❌; relevance = marked / total ≥ 0.7")
+		fmt.Fprintln(stdout, "# zone distribution (Issue #7): top-1 grey ratio should stay ≤ 30%")
+		fmt.Fprintln(stdout, "session\tturn\tscore\tzone\ttop1_content\tquery")
+	}
+	var rows []verifyRow
 
 	// LLM judge (Issue #8 stage ②): user picks the protocol and endpoint;
 	// the API key comes from SEMANTIX_JUDGE_API_KEY, never from flags.
@@ -295,13 +333,35 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 				}
 			}
 			zoneCount[int(z)]++
-			fmt.Fprintf(stdout, "%s\t%d\t%.4f\t%s\t%s\t%s\n",
-				tabSafe(t.Session), t.Turn, score, z.String(), tabSafe(top1), tabSafe(t.Query))
+			if *jsonOut {
+				rows = append(rows, verifyRow{
+					Session: t.Session, Turn: t.Turn, Score: score, Zone: z.String(), Top1: top1, Query: t.Query,
+				})
+			} else {
+				fmt.Fprintf(stdout, "%s\t%d\t%.4f\t%s\t%s\t%s\n",
+					tabSafe(t.Session), t.Turn, score, z.String(), tabSafe(top1), tabSafe(t.Query))
+			}
 		}
 	}
 	greyRatio := 0.0
 	if replayed > 0 {
 		greyRatio = 100 * float64(zoneCount[int(zone.Grey)]) / float64(replayed)
+	}
+	if *jsonOut {
+		summary := verifySummary{
+			Sessions: len(files), TrainedTurns: trained, ReplaySessions: len(replay), ReplayedTurns: replayed,
+			ZonesHit: zoneCount[int(zone.Hit)], ZonesGrey: zoneCount[int(zone.Grey)], ZonesMiss: zoneCount[int(zone.Miss)],
+			GreyRatioPct: greyRatio, GreyTargetPct: *greyTarget, WarnGrey: *greyTarget > 0 && greyRatio > *greyTarget,
+			Rows: rows,
+		}
+		if *judgeProtocol != "" {
+			summary.Judge = &jstats
+		}
+		if err := writeJSON(stdout, okEnvelope("verify", summary)); err != nil {
+			fmt.Fprintf(stdout, "verify: %v\n", err)
+			return 1
+		}
+		return verifyExit(*greyTarget, greyRatio, *strict)
 	}
 	fmt.Fprintf(stdout, "# done: %d replayed turns; zones hit=%d grey=%d miss=%d grey_ratio=%.1f%% (target %.1f%%)\n",
 		replayed, zoneCount[int(zone.Hit)], zoneCount[int(zone.Grey)], zoneCount[int(zone.Miss)], greyRatio, *greyTarget)

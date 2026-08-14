@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"semantix/kernel/bm25"
+	"semantix/kernel/config"
 	"semantix/kernel/slice"
 )
 
@@ -16,6 +17,7 @@ type dependencies struct {
 	newExtractor func() slice.Extractor
 	openStore    func(string) (slice.Store, error)
 	newIndex     func() slice.Index
+	resolved     *config.Resolved // M2-U20 effective config (nil in unit tests)
 }
 
 func productionDependencies() dependencies {
@@ -136,7 +138,7 @@ var commands = []commandSpec{
 	{name: "usage", group: groupKernelOps,
 		usage:   "semantix usage [--db <usage.jsonl>] [--evolve-db <dir>]",
 		summary: "cost-savings statistics (Issue #60)",
-		run:     intCommand(runUsage)},
+		run:     depsCommand(runUsage)},
 	{name: "lookup", group: groupKernelOps,
 		usage:   "semantix lookup --query <q> [--limit N] [--db ...]",
 		summary: "single-query retrieval (harness tool backend)",
@@ -188,6 +190,23 @@ func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
 		printHelp(stderr)
 		return 2
 	}
+
+	// M2-U20 config layer: resolve semantix.toml (flag > env > file > default)
+	// once per invocation so every command's flag defaults come from config.
+	// An invalid config file is a usage-class error (exit 2, §4.3); a missing
+	// file is fine — built-in defaults apply.
+	cfg, cfgErr := config.Load(config.Options{})
+	if cfgErr != nil {
+		var cerr *config.Error
+		if errors.As(cfgErr, &cerr) && cerr.Kind == config.KindInvalid {
+			fmt.Fprintf(stderr, "semantix: invalid config: %v\n", cfgErr)
+			return 2
+		}
+		fmt.Fprintf(stderr, "semantix: config: %v\n", cfgErr)
+		return 1
+	}
+	deps.resolved = cfg
+
 	switch args[0] {
 	case "help", "-h", "--help":
 		return runHelp(args[1:], stdout, stderr)
