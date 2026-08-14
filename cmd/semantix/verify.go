@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -140,6 +141,9 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	judgeBaseURL := fs.String("judge-base-url", "", "LLM judge endpoint base URL (e.g. https://api.openai.com/v1)")
 	judgeModel := fs.String("judge-model", "", "LLM judge model name")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // --help is a successful request
+		}
 		return 2
 	}
 	if err := zf.validate(); err != nil {

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -52,6 +53,9 @@ func runEval(args []string, stdout io.Writer) int {
 	fs.BoolVar(&opt.strict, "strict", false, "return exit code 3 when the grey-zone ratio exceeds --grey-target")
 	opt.zf = *addZoneFlags(fs)
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // --help is a successful request
+		}
 		return 2
 	}
 	if err := opt.zf.validate(); err != nil {
@@ -62,7 +66,7 @@ func runEval(args []string, stdout io.Writer) int {
 		fmt.Fprintln(stdout, "Usage: semantix eval --set <oracle.tsv> [--train-frac 0.7] [--single-tau 1.0] [--tau-* ...]")
 		return 2
 	}
-	if opt.trainFrac <= 0 || opt.trainFrac >= 1 {
+	if math.IsNaN(opt.trainFrac) || math.IsInf(opt.trainFrac, 0) || opt.trainFrac <= 0 || opt.trainFrac >= 1 {
 		fmt.Fprintln(stdout, "--train-frac must be in (0,1)")
 		return 2
 	}

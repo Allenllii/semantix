@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -22,13 +23,16 @@ func runUsage(args []string, stdout io.Writer) int {
 	costHit := fs.Float64("cost-hit", usage.DefaultCostHitPerMTok, "USD per 1M tokens at cache hit")
 	evolveDB := fs.String("evolve-db", "", "optional evolve engine state dir (feeds cost signals and prints adjusted params)")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // --help is a successful request
+		}
 		return 2
 	}
 
 	s, err := usage.Summarize(*db, *costMiss, *costHit)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "usage:", err)
-		return 2
+		return 1 // runtime/IO error, not a usage mistake
 	}
 
 	fmt.Fprintf(stdout, "events\t%d\n", s.Events)
@@ -45,7 +49,7 @@ func runUsage(args []string, stdout io.Writer) int {
 	if *evolveDB != "" {
 		if err := feedEvolve(*evolveDB, s, stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "usage: evolve:", err)
-			return 2
+			return 1 // runtime error
 		}
 	}
 	return 0

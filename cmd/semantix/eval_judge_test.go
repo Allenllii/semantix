@@ -33,8 +33,8 @@ func TestRunEvalJudgeStubYes(t *testing.T) {
 
 func TestRunEvalJudgeRejectsBadAudit(t *testing.T) {
 	var out bytes.Buffer
-	if code := runEvalJudge([]string{"--stub", "yes", "--audit", "testdata/does-not-exist.tsv"}, &out); code != 2 {
-		t.Fatalf("missing audit file must return 2, got %d", code)
+	if code := runEvalJudge([]string{"--stub", "yes", "--audit", "testdata/does-not-exist.tsv"}, &out); code != 1 {
+		t.Fatalf("missing audit file is a runtime/IO error, must return 1, got %d", code)
 	}
 }
 
@@ -42,5 +42,42 @@ func TestRunEvalJudgeRequiresBackend(t *testing.T) {
 	var out bytes.Buffer
 	if code := runEvalJudge([]string{"--audit", "testdata/judge-audit.tsv"}, &out); code != 2 {
 		t.Fatalf("no stub and no judge config must return 2, got %d", code)
+	}
+}
+
+func TestRunEvalJudgeStubError(t *testing.T) {
+	var out bytes.Buffer
+	// --stub error: every Confirm fails → verdict "error" rows, zero
+	// approvals; --min-consistency 0 makes the gate pass.
+	code := runEvalJudge([]string{"--stub", "error", "--audit", "testdata/judge-audit.tsv", "--min-consistency", "0"}, &out)
+	if code != 0 {
+		t.Fatalf("stub=error with --min-consistency 0 must pass, got code %d", code)
+	}
+	if !strings.Contains(out.String(), "judge=error") {
+		t.Fatalf("stub=error must produce verdict=error rows:\n%s", out.String())
+	}
+}
+
+func TestRunEvalJudgeRejectsBadStub(t *testing.T) {
+	var out bytes.Buffer
+	// An unknown --stub mode is a usage mistake: it must not silently
+	// fall back to "no" (which would mask a CI typo).
+	if code := runEvalJudge([]string{"--stub", "bogus", "--audit", "testdata/judge-audit.tsv"}, &out); code != 2 {
+		t.Fatalf("unknown --stub mode must be a usage error (2), got %d", code)
+	}
+}
+
+func TestRunEvalJudgeRejectsNaNThresholds(t *testing.T) {
+	for _, args := range [][]string{
+		{"--stub", "yes", "--audit", "testdata/judge-audit.tsv", "--min-consistency", "NaN"},
+		{"--stub", "yes", "--audit", "testdata/judge-audit.tsv", "--min-consistency", "Inf"},
+		{"--stub", "yes", "--audit", "testdata/judge-audit.tsv", "--p-prom", "NaN"},
+		{"--stub", "yes", "--audit", "testdata/judge-audit.tsv", "--p-prom", "-0.5"},
+		{"--stub", "yes", "--audit", "testdata/judge-audit.tsv", "--min-consistency", "101"},
+	} {
+		var out bytes.Buffer
+		if code := runEvalJudge(args, &out); code != 2 {
+			t.Errorf("runEvalJudge(%v) = %d, want usage error 2", args, code)
+		}
 	}
 }
