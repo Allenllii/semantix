@@ -1,0 +1,1050 @@
+--- a/internal/config/config.go	2026-08-13 04:40:36
++++ b/internal/config/config.go	2026-08-13 11:43:43
+@@ -65,6 +65,7 @@
+ 	LSP              LSPConfig           `toml:"lsp"`
+ 	Bot              BotConfig           `toml:"bot"`
+ 	Serve            ServeConfig         `toml:"serve"`
++	Semantix         SemantixConfig      `toml:"semantix"`
+ 	Secrets          SecretsConfig       `toml:"secrets"`
+ 	Remote           RemoteConfig        `toml:"remote"`
+ 
+@@ -947,6 +948,24 @@
+ 	BehindProxy bool `toml:"behind_proxy"`
+ }
+ 
++// SemantixConfig wires the semantix memory kernel into this agent (U8/H1).
++// Every field is optional: when the kernel binary is unavailable or the
++// subprocess calls time out, the harness degrades silently (fail-open — the
++// cache layer never blocks the agent main loop).
++type SemantixConfig struct {
++	// Enabled mirrors session events to the kernel's session JSONL sink.
++	Enabled bool `toml:"enabled"`
++	// Binary is the kernel CLI path; empty defaults to "semantix" on PATH.
++	Binary string `toml:"binary"`
++	// Inject appends the [semantix-reuse] block to the system prompt region.
++	Inject bool `toml:"inject"`
++	// Budget caps the L2 injection block size in bytes (default 4096).
++	Budget int `toml:"budget"`
++	// SessionsDir is where the session JSONL mirror is written; empty uses
++	// <controller session dir>/sessions.
++	SessionsDir string `toml:"sessions_dir"`
++}
++
+ // NetworkConfig controls ordinary outbound HTTP traffic such as model providers,
+ // wallet-balance lookups, updater checks, CodeGraph downloads, and web_fetch.
+ // web_fetch reuses these proxy settings while keeping its own SSRF-guarded
+
+--- a/internal/semantix/inject.go	2026-08-10 15:09:49
++++ b/internal/semantix/inject.go	2026-08-13 11:44:12
+@@ -7,24 +7,32 @@
+ 	"time"
+ )
+ 
+-// Inject runs the kernel's L2 injector and returns the [semantix-reuse] block
+-// for query, or "" when the kernel is unavailable/times out (soft degrade).
+-func Inject(ctx context.Context, binary, query string, budget int) string {
++// execCLI runs one kernel CLI invocation with a 3s safety cap and returns
++// its stdout, or "" on any failure (binary missing, timeout, non-zero exit).
++// Every kernel interaction is soft: a broken kernel must never block the
++// agent main loop (fail-open, architecture §10-8).
++func execCLI(ctx context.Context, binary string, args []string) string {
+ 	if binary == "" {
+ 		binary = "semantix"
+ 	}
+-	if query == "" {
+-		return ""
+-	}
+ 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+ 	defer cancel()
+-	args := []string{"inject", "--query", query}
+-	if budget > 0 {
+-		args = append(args, "--budget", fmt.Sprint(budget))
+-	}
+ 	out, err := exec.CommandContext(ctx, binary, args...).Output()
+ 	if err != nil {
+ 		return ""
+ 	}
+ 	return string(out)
+ }
++
++// Inject runs the kernel's L2 injector and returns the [semantix-reuse] block
++// for query, or "" when the kernel is unavailable/times out (soft degrade).
++func Inject(ctx context.Context, binary, query string, budget int) string {
++	if query == "" {
++		return ""
++	}
++	args := []string{"inject", "--query", query}
++	if budget > 0 {
++		args = append(args, "--budget", fmt.Sprint(budget))
++	}
++	return execCLI(ctx, binary, args)
++}
+
+--- a/internal/agent/agent.go	2026-08-13 04:40:36
++++ b/internal/agent/agent.go	2026-08-13 14:03:43
+@@ -30,6 +30,7 @@
+ 	"reasonix/internal/planmode"
+ 	"reasonix/internal/provider"
+ 	"reasonix/internal/sandbox"
++	"reasonix/internal/semantix"
+ 	"reasonix/internal/shellparse"
+ 	"reasonix/internal/taskpolicy"
+ 	"reasonix/internal/tool"
+@@ -308,6 +309,15 @@
+ 	// for the agent's lifetime and validates proxy calls after resolution.
+ 	readOnlyExecution bool
+ 
++	// semantix is the optional kernel bridge (nil = kernel disabled).
++	semantix *semantix.Bridge
++	// sched is the fork-side rule scheduler (P3 MVP); always present.
++	sched *semantix.Scheduler
++	// prefetchedInject caches a warmed [semantix-reuse] block assembled
++	// during LLM wait time (N12); used as a fallback when the turn's
++	// synchronous injection produced nothing.
++	prefetchedInject atomic.Pointer[string]
++
+ 	// mutationDependencyBarrier records the first durable-state write that
+ 	// failed or was blocked in the current provider tool batch. executeOne
+ 	// re-checks it after proxy resolution so use_capability cannot bypass the
+@@ -875,6 +885,10 @@
+ 	// provider instance. It is attached to emitted Usage events so downstream
+ 	// usage accounting can attribute tokens to the exact model.
+ 	ModelRef string
++
++	// Semantix is the optional kernel bridge (U8/H1). Nil disables the
++	// kernel wiring entirely (fail-open).
++	Semantix *semantix.Bridge
+ 	// RequireVisibleFinal makes internal callers reject reasoning-only responses.
+ 	RequireVisibleFinal bool
+ 	// Gate is the per-call permission gate. nil disables gating.
+@@ -1094,6 +1108,8 @@
+ 			recentKeep:         opts.RecentKeep,
+ 			archiveDir:         opts.ArchiveDir,
+ 		},
++		semantix: opts.Semantix,
++		sched:    semantix.NewScheduler(semantix.SchedConfig{}),
+ 		sess: sessionRuntime{
+ 			conversation: session,
+ 			path:         strings.TrimSpace(opts.SessionPath),
+@@ -1778,6 +1794,14 @@
+ 	ch, err := a.streamProviderRequest(ctx, req)
+ 	if err != nil {
+ 		return streamedTurn{usage: provider.UsageWithRequestAttemptCount(ctx, nil), err: err}
++	}
++
++	// N12 speculative prefetch: while the LLM streams, warm the next
++	// injection block in the background so a timed-out or missing
++	// synchronous injection still gets a second chance without ever
++	// blocking the loop (fail-open).
++	if a.semantix != nil && a.semantix.InjectEnabled() {
++		a.startInjectWarm(ctx)
+ 	}
+ 
+ 	// A PostLLMCall hook rewrites the whole reasoning block, so when one is wired
+@@ -2859,3 +2883,23 @@
+ 		return "", false
+ 	}
+ }
++
++// startInjectWarm prefetches the [semantix-reuse] block for the current
++// turn during LLM wait time (N12). The result is stored atomically and
++// consumed by buildSamplingRequest as a fallback when the synchronous
++// injection in beginRunTurn produced nothing (kernel timeout, cold cache).
++// The background goroutine never blocks the main loop.
++func (a *Agent) startInjectWarm(ctx context.Context) {
++	input := a.turn.input
++	if input == "" {
++		return
++	}
++	go func() {
++		// Detach from the stream context so cancellation of the current
++		// request does not cancel the warm-up; Inject applies its own 3s cap.
++		warmCtx := context.WithoutCancel(ctx)
++		if block := a.semantix.Inject(warmCtx, input); block != "" {
++			a.prefetchedInject.Store(&block)
++		}
++	}()
++}
+
+--- a/internal/agent/turnruntime.go	2026-08-13 04:40:36
++++ b/internal/agent/turnruntime.go	2026-08-13 11:45:41
+@@ -30,6 +30,12 @@
+ 	input           string
+ 	workDurationMs  func() int64
+ 
++	// injectBlock is the locked [semantix-reuse] block for this turn,
++	// assembled on the first user message and reused across tool rounds so
++	// the injected prefix stays byte-stable (L1 cache friendly). Empty
++	// disables injection for the turn.
++	injectBlock string
++
+ 	// budget is the turn's spend axis: tokens, money, wall clock.
+ 	budget runBudget
+ 	// landCause records why the grace round was armed, so the pause the Run
+
+--- a/internal/agent/run_loop.go	2026-08-13 04:40:36
++++ b/internal/agent/run_loop.go	2026-08-13 11:47:12
+@@ -254,6 +254,14 @@
+ 		for _, sig := range a.task.ledger.SuccessfulProgressSignaturesSince(0) {
+ 			state.seenTodoProgress[sig] = struct{}{}
+ 		}
++	}
++	// L2 semantic injection (U8): assemble the [semantix-reuse] block for
++	// this turn's task on the first user message and lock it for the whole
++	// turn so the injected prefix stays byte-stable across tool rounds
++	// (DeepSeek prefix-cache friendly). Kernel unavailability degrades to
++	// an empty block — the harness never blocks on the kernel.
++	if a.semantix != nil && a.semantix.Enabled() {
++		state.injectBlock = a.semantix.Inject(ctx, input)
+ 	}
+ 	return rawInput, state
+ }
+@@ -631,6 +639,10 @@
+ 		receiptMark = a.task.ledger.Len()
+ 	}
+ 	batch := a.executeBatch(ctx, state, calls)
++	if batch.Tier != "" {
++		// P3 observability: surface the scheduler's tier choice per round.
++		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: "sched tier=" + batch.Tier})
++	}
+ 	results, images := batch.results, batch.images
+ 	for i, call := range calls {
+ 		msg := provider.Message{
+
+--- a/internal/agent/sampling_request.go	2026-08-13 04:40:36
++++ b/internal/agent/sampling_request.go	2026-08-13 20:48:59
+@@ -99,6 +99,17 @@
+ 	for i := range requestMessages {
+ 		requestMessages[i].CreatedAt = 0
+ 	}
++	// L2 semantic injection (U8): insert this turn's locked [semantix-reuse]
++	// block as a system message right after the system prompt, before any
++	// conversation history. The block is assembled once per turn and is
++	// byte-stable, so the provider prefix cache keeps hitting across rounds.
++	// When the synchronous injection missed (kernel timeout on turn start),
++	// fall back to the block warmed during LLM wait time (N12 prefetch).
++	if block := a.turn.injectBlock; block != "" {
++		requestMessages = prependSystemBlock(requestMessages, block)
++	} else if pb := a.prefetchedInject.Load(); pb != nil && *pb != "" {
++		requestMessages = prependSystemBlock(requestMessages, *pb)
++	}
+ 	// context.prepare: extensions may rewrite the message copy feeding THIS
+ 	// request. The session log is never touched — the replacement is
+ 	// ephemeral, so the next request starts from the unmodified history.
+@@ -174,3 +185,22 @@
+ 	}
+ 	return out
+ }
++
++// prependSystemBlock inserts block as a system message immediately after the
++// first system message (the system prompt); when the message list has no
++// system message the block is prepended. It never mutates the input slice.
++func prependSystemBlock(msgs []provider.Message, block string) []provider.Message {
++	out := make([]provider.Message, 0, len(msgs)+1)
++	inserted := false
++	for _, m := range msgs {
++		out = append(out, m)
++		if !inserted && m.Role == provider.RoleSystem {
++			out = append(out, provider.Message{Role: provider.RoleSystem, Content: block})
++			inserted = true
++		}
++	}
++	if !inserted {
++		out = append([]provider.Message{{Role: provider.RoleSystem, Content: block}}, out...)
++	}
++	return out
++}
+
+--- a/internal/agent/execute_batch.go	2026-08-13 04:40:36
++++ b/internal/agent/execute_batch.go	2026-08-13 11:46:32
+@@ -9,6 +9,7 @@
+ 	"reasonix/internal/event"
+ 	"reasonix/internal/evidence"
+ 	"reasonix/internal/provider"
++	"reasonix/internal/semantix"
+ 	"reasonix/internal/tool"
+ )
+ 
+@@ -72,7 +73,10 @@
+ 
+ // batchExecution is the result of one provider tool-call batch.
+ type batchExecution struct {
+-	results            []string
++	results []string
++	// Tier is the scheduler's model-tier decision for this round
++	// ("flash" | "pro"; empty when no scheduler is wired).
++	Tier               string
+ 	outcomes           []toolOutcome
+ 	images             [][]string
+ 	executions         []*tool.ShellExecution
+@@ -94,6 +98,11 @@
+ 		a.emitFullToolDispatch(ctx, c, false)
+ 	}
+ 
++	// P3 scheduler: decide parallel groups + tier once per round. The plan
++	// replaces the static partitionToolCalls grouping below; when no
++	// scheduler is wired (nil), the static grouping is used unchanged.
++	plan := a.decideRound(calls)
++
+ 	results := make([]string, len(calls))
+ 	outcomes := make([]toolOutcome, len(calls))
+ 	durations := make([]int64, len(calls))
+@@ -136,6 +145,7 @@
+ 			return
+ 		}
+ 		outcomes[i] = a.executeOne(ctx, turn, calls[i])
++		a.observeSched(calls[i], outcomes[i])
+ 		recordWorkspaceMutation(a.svc.sink, outcomes[i].workspaceMutation)
+ 		if outcomes[i].executed {
+ 			surfaceWriters[i] = outcomes[i].workspaceMutation != nil
+@@ -258,7 +268,7 @@
+ 		mutationBatchStop = true
+ 	}
+ 
+-	for _, batch := range partitionToolCalls(a.svc.tools, calls) {
++	for _, batch := range a.planBatches(calls, plan) {
+ 		if ctx.Err() != nil {
+ 			markCancelled(batch.start)
+ 			break
+@@ -401,6 +411,7 @@
+ 	return batchExecution{
+ 		results:            results,
+ 		outcomes:           outcomes,
++		Tier:               plan.Tier,
+ 		images:             images,
+ 		executions:         executions,
+ 		recoveryStopTurn:   recoveryBatchStop,
+@@ -549,4 +560,59 @@
+ 	}
+ 	wg.Wait()
+ 	return ranUntil
++}
++
++// decideRound runs the P3 scheduler for one tool round. Returns the zero
++// RoundPlan when no scheduler is wired so callers degrade to the static
++// grouping (partitionToolCalls).
++func (a *Agent) decideRound(calls []provider.ToolCall) semantix.RoundPlan {
++	if a.sched == nil {
++		return semantix.RoundPlan{}
++	}
++	info := make([]semantix.ToolCallInfo, len(calls))
++	for i, c := range calls {
++		t, _, ambiguous := a.svc.tools.ResolveCall(c.Name)
++		ro := false
++		if t != nil && len(ambiguous) == 0 {
++			ro = t.ReadOnly()
++		}
++		info[i] = semantix.ToolCallInfo{CallID: c.ID, Name: c.Name, ReadOnly: ro}
++	}
++	return a.sched.DecideRound(info)
++}
++
++// planBatches converts a scheduler plan into the same toolCallBatch shape
++// the static partitionToolCalls produced. The plan preserves provider order,
++// so each group maps to one contiguous batch; empty plans fall back to the
++// static grouping so an unwired scheduler is a no-op.
++func (a *Agent) planBatches(calls []provider.ToolCall, plan semantix.RoundPlan) []toolCallBatch {
++	if len(plan.ParallelGroups) == 0 {
++		return partitionToolCalls(a.svc.tools, calls)
++	}
++	idx := make(map[string]int, len(calls))
++	for i, c := range calls {
++		idx[c.ID] = i
++	}
++	var batches []toolCallBatch
++	for _, g := range plan.ParallelGroups {
++		if len(g) == 0 {
++			continue
++		}
++		start, ok := idx[g[0]]
++		if !ok {
++			continue // unknown call id: skip defensively
++		}
++		batches = append(batches, toolCallBatch{start: start, end: start + len(g), parallel: len(g) > 1})
++	}
++	return batches
+ }
++
++// observeSched feeds one executed tool back into the scheduler's behavior
++// statistics (success = clean execution, not blocked/cancelled).
++func (a *Agent) observeSched(call provider.ToolCall, o toolOutcome) {
++	if a.sched == nil {
++		return
++	}
++	success := o.errMsg == "" && !o.blocked
++	a.sched.Observe(call.Name, success)
++}
+
+--- a/internal/boot/boot.go	2026-08-13 04:40:36
++++ b/internal/boot/boot.go	2026-08-13 20:50:11
+@@ -58,6 +58,7 @@
+ 	"reasonix/internal/recovery"
+ 	"reasonix/internal/sandbox"
+ 	"reasonix/internal/secrets"
++	"reasonix/internal/semantix"
+ 	"reasonix/internal/sessiontemp"
+ 	"reasonix/internal/skill"
+ 	"reasonix/internal/stats"
+@@ -288,6 +289,20 @@
+ 	// executor's per-chunk Text/Reasoning stream uncoalesced.
+ 	sink = control.NewGoalUsageTee(event.Coalesce(sink, event.DefaultStreamDeltaWindow))
+ 
++	// Semantix memory kernel wiring (U8/H1): build the optional bridge and
++	// mirror every event into the kernel session JSONL. When [semantix] is
++	// not enabled the bridge returns the sink unchanged (zero overhead on
++	// the hot path); a broken kernel degrades fail-open, never blocking the
++	// main loop.
++	semantixBridge := semantix.NewBridge(semantix.Config{
++		Enabled:     cfg.Semantix.Enabled,
++		Binary:      cfg.Semantix.Binary,
++		Inject:      cfg.Semantix.Inject,
++		Budget:      cfg.Semantix.Budget,
++		SessionsDir: cfg.Semantix.SessionsDir,
++	})
++	sink = semantixBridge.Sink(sink)
++	defer semantixBridge.Close()
+ 	// Extension preflight (stages 5b/7): start the installed, enabled v2 runtime
+ 	// packages ONCE, here, before model resolution, so plugin-namespaced refs
+ 	// (plugin/<plugin>/<provider>/<model>) resolve on the very first boot and the
+@@ -679,6 +694,7 @@
+ 	}
+ 
+ 	reg := tool.NewRegistry()
++	reg.Add(tool.NewSemantixLookup(cfg.Semantix.Binary))
+ 	writeRoots := cfg.WriteRootsForRoot(root)
+ 	writeRoots = appendUniquePaths(writeRoots, additionalDirs...)
+ 	if opts.WorkspaceOnly {
+@@ -1697,6 +1713,7 @@
+ 		SubagentDepth:                0,
+ 		MaxSubagentDepth:             maxSubagentDepth,
+ 		MissingReasoningWarnStateDir: config.MissingReasoningWarnStateDir(),
++		Semantix:                     semantixBridge,
+ 	}, sink)
+ 
+ 	var runner agent.Runner = executor
+@@ -1913,6 +1930,7 @@
+ 		}
+ 	}
+ 	ctrl := control.New(ctrlOpts)
++	semantixBridge.SetLabel(ctrl.Label())
+ 	// Publish the controller to the extension UI hub's indirection: from here
+ 	// on, host/ui/* publishes ride ctrl.EmitExtensionEvent and blocking prompts
+ 	// ride ctrl.Ask, exactly as if the hub had been built after control.New.
+
+--- /dev/null	2026-08-14 13:25:13
++++ b/internal/semantix/bridge.go	2026-08-13 11:49:04
+@@ -0,0 +1,177 @@
++// Package semantix bridges the reasonix harness to the semantix kernel:
++// session events are mirrored to kernel-compatible session JSONL, and kernel
++// retrieval (lookup/inject) is exposed to the agent via subprocess calls.
++package semantix
++
++import (
++	"context"
++	"sync"
++
++	"reasonix/internal/event"
++)
++
++// Config is the kernel wiring configuration for one build. It mirrors
++// config.SemantixConfig without importing internal/config (keeps this
++// package a leaf dependency).
++type Config struct {
++	// Enabled mirrors session events to the kernel's session JSONL sink.
++	Enabled bool
++	// Binary is the kernel CLI path; empty defaults to "semantix" on PATH.
++	Binary string
++	// Inject appends the [semantix-reuse] block to the system prompt region.
++	Inject bool
++	// Budget caps the L2 injection block size in bytes (default 4096).
++	Budget int
++	// SessionsDir is where the session JSONL mirror is written; empty uses
++	// <controller session dir>/sessions.
++	SessionsDir string
++}
++
++// Bridge aggregates the kernel wiring for one harness build. It is optional:
++// a nil Bridge (or one built with Enabled=false) makes the harness run
++// without the kernel — every failure path degrades fail-open, never blocking
++// the agent main loop.
++type Bridge struct {
++	cfg Config
++
++	mu    sync.Mutex
++	hs    *HarnessSink // lazily created once a session label is known
++	dir   string       // resolved sessions dir ("" = not yet)
++	label string       // controller session label (first real session id)
++}
++
++// NewBridge builds a Bridge from cfg.
++func NewBridge(cfg Config) *Bridge {
++	if cfg.Budget <= 0 {
++		cfg.Budget = 4096
++	}
++	return &Bridge{cfg: cfg}
++}
++
++// Enabled reports whether the kernel is wired in.
++func (b *Bridge) Enabled() bool { return b != nil && b.cfg.Enabled }
++
++// InjectEnabled reports whether L2 injection is wired on (used to decide
++// whether speculative prefetch warm-up is worth starting).
++func (b *Bridge) InjectEnabled() bool { return b != nil && b.cfg.Enabled && b.cfg.Inject }
++
++// Sink wraps inner so every event is also mirrored into the kernel session
++// JSONL. Returns inner unchanged when the kernel is not enabled (zero-cost
++// no-op on the hot path).
++func (b *Bridge) Sink(inner event.Sink) event.Sink {
++	if !b.Enabled() {
++		return inner
++	}
++	return &mirrorSink{bridge: b, inner: inner}
++}
++
++// SetLabel records the controller's session label; the JSONL mirror file is
++// created on the first event after this is set. The first label wins: a
++// controller keeps one session id per build.
++func (b *Bridge) SetLabel(label string) {
++	b.mu.Lock()
++	defer b.mu.Unlock()
++	if b.label == "" && label != "" {
++		b.label = label
++	}
++}
++
++// Inject runs the kernel's L2 injector for query and returns the
++// [semantix-reuse] block, or "" when unavailable/timed out (soft degrade).
++func (b *Bridge) Inject(ctx context.Context, query string) string {
++	if !b.Enabled() || !b.cfg.Inject {
++		return ""
++	}
++	return Inject(ctx, b.cfg.Binary, query, b.cfg.Budget)
++}
++
++// Lookup runs the kernel's semantix_lookup tool over the subprocess CLI and
++// returns the raw tool output, or "" on any failure (soft degrade).
++func (b *Bridge) Lookup(ctx context.Context, query string, limit int, scope string) string {
++	if !b.Enabled() || query == "" {
++		return ""
++	}
++	if limit <= 0 {
++		limit = 5
++	}
++	if scope == "" {
++		scope = "project"
++	}
++	args := []string{"lookup", "--query", query, "--limit", itoa(limit), "--scope", scope}
++	return execCLI(ctx, b.cfg.Binary, args)
++}
++
++// mirrorSink forwards every event to inner and mirrors the session-relevant
++// subset into the kernel JSONL via the bridge's HarnessSink.
++type mirrorSink struct {
++	bridge *Bridge
++	inner  event.Sink
++}
++
++func (s *mirrorSink) Emit(e event.Event) {
++	s.inner.Emit(e)
++	s.bridge.mirror(e)
++}
++
++// mirror lazily creates the HarnessSink on the first session event after a
++// label is known, then forwards. Failures are non-fatal: a write error is
++// surfaced once via the inner sink and never blocks emission.
++func (b *Bridge) mirror(e event.Event) {
++	b.mu.Lock()
++	if b.hs == nil {
++		if b.label == "" {
++			b.mu.Unlock()
++			return // no session id yet; skip this event
++		}
++		dir := b.cfg.SessionsDir
++		if dir == "" {
++			dir = "" // caller resolves the controller session dir before SetLabel
++		}
++		hs, err := NewHarnessSink(dirOrFallback(dir), b.label, "")
++		if err != nil {
++			b.mu.Unlock()
++			return // sink unavailable: drop the mirror, keep the harness alive
++		}
++		b.hs = hs
++	}
++	hs := b.hs
++	b.mu.Unlock()
++	hs.Emit(e)
++}
++
++// Close flushes and closes the mirror sink, if created.
++func (b *Bridge) Close() error {
++	b.mu.Lock()
++	hs := b.hs
++	b.hs = nil
++	b.mu.Unlock()
++	if hs == nil {
++		return nil
++	}
++	return hs.Close()
++}
++
++// dirOrFallback returns dir, falling back to a per-build default when empty.
++// (The harness resolves <session dir>/sessions before SetLabel and passes it
++// through SessionsDir; the fallback keeps the bridge self-contained.)
++func dirOrFallback(dir string) string {
++	if dir != "" {
++		return dir
++	}
++	return ".semantix/sessions"
++}
++
++// itoa is a tiny integer formatter avoiding strconv in a hot path.
++func itoa(n int) string {
++	if n == 0 {
++		return "0"
++	}
++	var buf [20]byte
++	i := len(buf)
++	for n > 0 {
++		i--
++		buf[i] = byte('0' + n%10)
++		n /= 10
++	}
++	return string(buf[i:])
++}
+
+--- /dev/null	2026-08-14 13:25:13
++++ b/internal/semantix/sched.go	2026-08-13 11:44:24
+@@ -0,0 +1,179 @@
++// Package semantix — fork-side scheduler (P3 MVP).
++//
++// The reasonix harness cannot import the semantix kernel module (separate
++// binaries), so the rule-based scheduler lives here as a self-contained,
++// deterministic implementation with in-memory behavior learning. It mirrors
++// kernel/sched.RuleDecider (the authoritative implementation with full tests
++// in the semantix repo); keep the two in sync when tuning rules.
++//
++// Design (总体架构-流程树.md §N04): contiguous read-only tools form parallel
++// groups; writers/blacklisted tools run serially (provider order kept); a
++// read-only tool whose recent success rate is below the floor is pulled out
++// of parallel groups (behavior-learning candidate gate); any writer or a
++// large round schedules to the pro tier.
++package semantix
++
++import "sync"
++
++// SerialToolNames never join a parallel group (harness partitionToolCalls
++// blacklist: complete_step, todo_write, wait, bash_output, use_capability,
++// compress).
++var SerialToolNames = map[string]struct{}{
++	"complete_step":  {},
++	"todo_write":     {},
++	"wait":           {},
++	"bash_output":    {},
++	"use_capability": {},
++	"compress":       {},
++}
++
++// ToolCallInfo is one tool call's scheduling view.
++type ToolCallInfo struct {
++	CallID   string
++	Name     string
++	ReadOnly bool
++}
++
++// RoundPlan is the scheduler's joint decision for one tool round.
++type RoundPlan struct {
++	// ParallelGroups are groups of call IDs to run concurrently; every
++	// call appears exactly once, in provider order.
++	ParallelGroups [][]string
++	// Tier is "flash" (default) or "pro".
++	Tier string
++}
++
++// SchedConfig carries operator knobs; zero values select defaults.
++type SchedConfig struct {
++	MaxParallel  int     // parallel fan-out cap per group (default 8)
++	MinSamples   int     // behavior samples before the gate applies (default 5)
++	SuccessFloor float64 // read-only tool below this success rate runs serially (default 0.7)
++	ComplexTools int     // calls above this → pro tier (default 3)
++	DefaultTier  string  // "flash"
++	ProTier      string  // "pro"
++}
++
++// Scheduler is the concrete P3 MVP scheduler. Safe for concurrent use.
++type Scheduler struct {
++	mu    sync.Mutex
++	cfg   SchedConfig
++	stats map[string]*toolStat
++}
++
++type toolStat struct {
++	runs     int
++	failures int
++}
++
++// NewScheduler builds a Scheduler with cfg (zero values → defaults).
++func NewScheduler(cfg SchedConfig) *Scheduler {
++	if cfg.MaxParallel <= 0 {
++		cfg.MaxParallel = 8
++	}
++	if cfg.MinSamples <= 0 {
++		cfg.MinSamples = 5
++	}
++	if cfg.SuccessFloor <= 0 || cfg.SuccessFloor > 1 {
++		cfg.SuccessFloor = 0.7
++	}
++	if cfg.ComplexTools <= 0 {
++		cfg.ComplexTools = 3
++	}
++	if cfg.DefaultTier == "" {
++		cfg.DefaultTier = "flash"
++	}
++	if cfg.ProTier == "" {
++		cfg.ProTier = "pro"
++	}
++	return &Scheduler{cfg: cfg, stats: make(map[string]*toolStat)}
++}
++
++// DecideRound plans one tool round.
++func (s *Scheduler) DecideRound(calls []ToolCallInfo) RoundPlan {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return RoundPlan{
++		ParallelGroups: s.partition(calls),
++		Tier:           decideTier(calls, s.cfg),
++	}
++}
++
++// Observe feeds one executed tool back into the behavior statistics.
++func (s *Scheduler) Observe(name string, success bool) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	st := s.stats[name]
++	if st == nil {
++		st = &toolStat{}
++		s.stats[name] = st
++	}
++	st.runs++
++	if !success {
++		st.failures++
++	}
++}
++
++// partition splits calls into parallel groups and serial singles, preserving
++// provider order. Called with s.mu held.
++func (s *Scheduler) partition(calls []ToolCallInfo) [][]string {
++	var groups [][]string
++	for i := 0; i < len(calls); {
++		if s.parallelisable(calls[i]) {
++			start := i
++			i++
++			for i < len(calls) && s.parallelisable(calls[i]) {
++				i++
++			}
++			cap := s.cfg.MaxParallel
++			for g := start; g < i; g += cap {
++				end := g + cap
++				if end > i {
++					end = i
++				}
++				groups = append(groups, ids(calls[g:end]))
++			}
++			continue
++		}
++		groups = append(groups, []string{calls[i].CallID})
++		i++
++	}
++	return groups
++}
++
++// parallelisable reports whether a call may join a parallel group. Called
++// with s.mu held.
++func (s *Scheduler) parallelisable(c ToolCallInfo) bool {
++	if !c.ReadOnly {
++		return false
++	}
++	if _, black := SerialToolNames[c.Name]; black {
++		return false
++	}
++	st := s.stats[c.Name]
++	if st == nil || st.runs < s.cfg.MinSamples {
++		return true // no evidence: default to the static rule
++	}
++	return float64(st.runs-st.failures)/float64(st.runs) >= s.cfg.SuccessFloor
++}
++
++// decideTier maps a round to a model tier.
++func decideTier(calls []ToolCallInfo, cfg SchedConfig) string {
++	for _, c := range calls {
++		if !c.ReadOnly {
++			return cfg.ProTier
++		}
++	}
++	if len(calls) > cfg.ComplexTools {
++		return cfg.ProTier
++	}
++	return cfg.DefaultTier
++}
++
++// ids extracts CallIDs preserving order.
++func ids(calls []ToolCallInfo) []string {
++	out := make([]string, len(calls))
++	for i, c := range calls {
++		out[i] = c.CallID
++	}
++	return out
++}
+
+--- /dev/null	2026-08-14 13:25:13
++++ b/internal/tool/semantix.go	2026-08-13 21:34:55
+@@ -0,0 +1,82 @@
++package tool
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"os/exec"
++	"time"
++)
++
++// SemantixLookupName is the stable tool name registered in the harness.
++const SemantixLookupName = "semantix_lookup"
++
++// NewSemantixLookup builds the semantix_lookup tool: it queries the kernel's
++// semantic slice library over the CLI subprocess (U8 tool side). binary is
++// the kernel CLI path; empty defaults to "semantix" on PATH. The tool is
++// read-only; kernel unavailability degrades to an empty result (fail-open).
++func NewSemantixLookup(binary string) Tool {
++	return semantixLookup{binary: binary}
++}
++
++type semantixLookup struct {
++	binary string
++}
++
++func (t semantixLookup) Name() string   { return SemantixLookupName }
++func (t semantixLookup) ReadOnly() bool { return true }
++func (t semantixLookup) Description() string {
++	return "Look up previously-done work in the semantic slice library. " +
++		"Use when the current task looks similar to something done before: " +
++		"pass a short query describing the task; returns top slices (prompt/tool pattern/result)."
++}
++
++// Schema mirrors kernel/lookup.Schema (query/limit/scope).
++func (t semantixLookup) Schema() json.RawMessage {
++	return json.RawMessage(`{
++		"type": "object",
++		"properties": {
++			"query":  { "type": "string", "description": "task description to match against stored slices" },
++			"limit":  { "type": "integer", "description": "maximum number of slices to return", "default": 5 },
++			"scope":  { "type": "string", "description": "retrieval scope: project (default) | user | session", "default": "project" }
++		},
++		"required": ["query"]
++	}`)
++}
++
++func (t semantixLookup) Execute(ctx context.Context, rawArgs json.RawMessage) (string, error) {
++	var args struct {
++		Query string `json:"query"`
++		Limit int    `json:"limit"`
++		Scope string `json:"scope"`
++	}
++	if err := json.Unmarshal(rawArgs, &args); err != nil {
++		return "", fmt.Errorf("%s: bad args: %w", SemantixLookupName, err)
++	}
++	if args.Query == "" {
++		return "", fmt.Errorf("%s: query is required", SemantixLookupName)
++	}
++	if args.Limit <= 0 {
++		args.Limit = 5
++	}
++	if args.Scope == "" {
++		args.Scope = "project"
++	}
++	cliArgs := []string{"lookup", "--query", args.Query, "--limit", fmt.Sprint(args.Limit), "--scope", args.Scope}
++	return execSemantix(ctx, t.binary, cliArgs), nil
++}
++
++// execSemantix runs one kernel CLI invocation with a 3s safety cap and
++// returns stdout, or "" on any failure (fail-open: the tool is advisory).
++func execSemantix(ctx context.Context, binary string, args []string) string {
++	if binary == "" {
++		binary = "semantix"
++	}
++	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
++	defer cancel()
++	out, err := exec.CommandContext(ctx, binary, args...).Output()
++	if err != nil {
++		return ""
++	}
++	return string(out)
++}
+
+--- /dev/null	2026-08-14 13:25:13
++++ b/internal/semantix/sched_test.go	2026-08-14 13:24:14
+@@ -0,0 +1,97 @@
++package semantix
++
++import "testing"
++
++func c(id, name string, ro bool) ToolCallInfo {
++	return ToolCallInfo{CallID: id, Name: name, ReadOnly: ro}
++}
++
++func TestSchedReadOnlyParallelWritersSerial(t *testing.T) {
++	s := NewScheduler(SchedConfig{})
++	plan := s.DecideRound([]ToolCallInfo{
++		c("a", "grep", true),
++		c("b", "read_file", true),
++		c("d", "bash", false),
++	})
++	if len(plan.ParallelGroups) != 2 {
++		t.Fatalf("want 2 groups, got %v", plan.ParallelGroups)
++	}
++	if plan.ParallelGroups[0][0] != "a" || plan.ParallelGroups[0][1] != "b" {
++		t.Fatalf("parallel pair wrong: %v", plan.ParallelGroups)
++	}
++}
++
++func TestSchedBlacklistNeverParallel(t *testing.T) {
++	s := NewScheduler(SchedConfig{})
++	plan := s.DecideRound([]ToolCallInfo{
++		c("a", "read_file", true),
++		c("b", "complete_step", true),
++		c("c", "wait", true),
++		c("d", "grep", true),
++	})
++	if len(plan.ParallelGroups) != 4 {
++		t.Fatalf("want 4 serial groups, got %v", plan.ParallelGroups)
++	}
++}
++
++func TestSchedBehaviorGate(t *testing.T) {
++	s := NewScheduler(SchedConfig{MinSamples: 3, SuccessFloor: 0.7})
++	for i := 0; i < 2; i++ {
++		s.Observe("grep", false)
++	}
++	s.Observe("grep", true)
++	plan := s.DecideRound([]ToolCallInfo{
++		c("a", "grep", true),
++		c("b", "read_file", true),
++	})
++	// grep success rate 1/3 < 0.7 → serial; read_file unknown → passes gate
++	if len(plan.ParallelGroups) != 2 {
++		t.Fatalf("unreliable grep must run serial, got %v", plan.ParallelGroups)
++	}
++}
++
++func TestSchedBehaviorGateRecovers(t *testing.T) {
++	s := NewScheduler(SchedConfig{MinSamples: 3, SuccessFloor: 0.5})
++	for i := 0; i < 3; i++ {
++		s.Observe("grep", false)
++	}
++	calls := []ToolCallInfo{c("a", "grep", true), c("b", "read_file", true)}
++	if len(s.DecideRound(calls).ParallelGroups) != 2 {
++		t.Fatal("unreliable grep must be serial first")
++	}
++	for i := 0; i < 3; i++ {
++		s.Observe("grep", true)
++	}
++	if len(s.DecideRound(calls).ParallelGroups) != 1 {
++		t.Fatal("recovered grep must parallelize again")
++	}
++}
++
++func TestSchedTier(t *testing.T) {
++	s := NewScheduler(SchedConfig{})
++	if got := s.DecideRound([]ToolCallInfo{c("a", "grep", true)}).Tier; got != "flash" {
++		t.Fatalf("want flash, got %s", got)
++	}
++	if got := s.DecideRound([]ToolCallInfo{c("a", "grep", true), c("b", "bash", false)}).Tier; got != "pro" {
++		t.Fatalf("want pro (writer), got %s", got)
++	}
++	var many []ToolCallInfo
++	for i := 0; i < 4; i++ {
++		many = append(many, c(string(rune('a'+i)), "grep", true))
++	}
++	if got := s.DecideRound(many).Tier; got != "pro" {
++		t.Fatalf("want pro (complex), got %s", got)
++	}
++}
++
++func TestSchedMaxParallelSubsplit(t *testing.T) {
++	s := NewScheduler(SchedConfig{MaxParallel: 2})
++	var calls []ToolCallInfo
++	for i := 0; i < 5; i++ {
++		calls = append(calls, c(string(rune('a'+i)), "read_file", true))
++	}
++	plan := s.DecideRound(calls)
++	if len(plan.ParallelGroups) != 3 { // 2+2+1
++		t.Fatalf("want 3 capped groups, got %v", plan.ParallelGroups)
++	}
++}
+
+--- /dev/null	2026-08-14 13:25:13
++++ b/internal/tool/semantix_test.go	2026-08-14 13:24:19
+@@ -0,0 +1,63 @@
++package tool
++
++import (
++	"context"
++	"encoding/json"
++	"testing"
++)
++
++func TestSemantixLookupNameAndReadOnly(t *testing.T) {
++	tt := NewSemantixLookup("")
++	if tt.Name() != SemantixLookupName {
++		t.Fatalf("want %s, got %s", SemantixLookupName, tt.Name())
++	}
++	if !tt.ReadOnly() {
++		t.Fatal("semantix_lookup must be read-only")
++	}
++}
++
++func TestSemantixLookupSchemaShape(t *testing.T) {
++	tt := NewSemantixLookup("")
++	var schema map[string]any
++	if err := json.Unmarshal(tt.Schema(), &schema); err != nil {
++		t.Fatalf("schema not valid JSON: %v", err)
++	}
++	props, ok := schema["properties"].(map[string]any)
++	if !ok {
++		t.Fatalf("schema missing properties: %v", schema)
++	}
++	for _, k := range []string{"query", "limit", "scope"} {
++		if _, ok := props[k]; !ok {
++			t.Fatalf("schema missing %q", k)
++		}
++	}
++}
++
++func TestSemantixLookupRejectsMissingQuery(t *testing.T) {
++	tt := NewSemantixLookup("")
++	_, err := tt.Execute(context.Background(), json.RawMessage(`{"limit": 3}`))
++	if err == nil {
++		t.Fatal("missing query must error")
++	}
++}
++
++func TestSemantixLookupDegradesOnMissingBinary(t *testing.T) {
++	// binary guaranteed absent → soft degrade to empty output, no error
++	// (fail-open: the tool is advisory and must never break the turn).
++	tt := NewSemantixLookup("/nonexistent/semantix-bin")
++	out, err := tt.Execute(context.Background(), json.RawMessage(`{"query":"fix test"}`))
++	if err != nil {
++		t.Fatalf("missing binary must not error: %v", err)
++	}
++	if out != "" {
++		t.Fatalf("want empty output, got %q", out)
++	}
++}
++
++func TestSemantixLookupBadArgs(t *testing.T) {
++	tt := NewSemantixLookup("")
++	_, err := tt.Execute(context.Background(), json.RawMessage(`{not json`))
++	if err == nil {
++		t.Fatal("bad args must error")
++	}
++}
