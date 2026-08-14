@@ -67,6 +67,8 @@ func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
 		err = runImport(args[1:], stdout, stderr, deps)
 	case "gc":
 		err = runGC(args[1:], stdout, stderr, deps)
+	case "dashboard":
+		return runDashboard(args[1:], stdout, stderr, deps)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return 0
@@ -111,6 +113,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  semantix export --output <file> [--db ...] [--json]    (JSONL backup incl. Meta)")
 	fmt.Fprintln(w, "  semantix import --input <file> [--db ...] [--json]     (restore from export)")
 	fmt.Fprintln(w, "  semantix gc [--retention-days N] [--min-weight W] [--dry-run] [--json]")
+	fmt.Fprintln(w, "  semantix dashboard [--db ...] [--usage ...] [--config ...] [--json]  (ANSI reuse snapshot, U31)")
 }
 
 type storeCloser interface {
