@@ -451,7 +451,7 @@ func TestDoctorHelpShowsPlanned(t *testing.T) {
 		t.Fatalf("help: code = %d", code)
 	}
 	if !strings.Contains(stdout.String(), "Product & management") ||
-		!strings.Contains(stdout.String(), "planned: install completion") ||
+		!strings.Contains(stdout.String(), "planned: completion") ||
 		!strings.Contains(stdout.String(), "version") ||
 		!strings.Contains(stdout.String(), "config") ||
 		!strings.Contains(stdout.String(), "init") {
