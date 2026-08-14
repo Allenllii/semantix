@@ -313,3 +313,77 @@ func TestDecideL2FiltersGrey(t *testing.T) {
 		}
 	}
 }
+
+// TestDecideL3ContextIsolation (Issue #133): a cached outcome stamped with a
+// different messages-context hash or model must never be served — the same
+// query under another history or model fails closed.
+func TestDecideL3ContextIsolation(t *testing.T) {
+	root, idx, _, _ := buildTestLib(t)
+	d := &L3Decider{Index: idx, Root: root}
+	ctx := context.Background()
+
+	// legacy entry (no stamp) with a context/model-carrying query is
+	// rejected: the gateway must never serve an outcome whose provenance
+	// is unknown (fail closed).
+	res, err := d.DecideL3(ctx, Query{
+		UserInput: "修复 go 测试失败", Scope: slice.Project,
+		ContextHash: "ctx-a", Model: "ds",
+	})
+	if err != nil || res != nil {
+		t.Fatalf("unstamped entry must fail closed under context query: %v %v", res, err)
+	}
+
+	// stamped with matching context+model → reuse
+	stamped := &slice.Slice{
+		ID: "l3-ctx", Type: slice.Result, Scope: slice.Project,
+		Content: []byte("修复 go 测试失败 的缓存答案"),
+		Meta: slice.SliceMeta{
+			Deps: idxDep(t, root), Mtimes: idxMtimes(t, root),
+			ContextHash: "ctx-a", Model: "ds",
+		},
+	}
+	idx.Insert(stamped)
+	res, err = d.DecideL3(ctx, Query{
+		UserInput: "修复 go 测试失败", Scope: slice.Project,
+		ContextHash: "ctx-a", Model: "ds",
+	})
+	if err != nil || res == nil || res.SliceID != "l3-ctx" {
+		t.Fatalf("matching context/model must reuse: %v %v", res, err)
+	}
+
+	// different context → rejected
+	res, err = d.DecideL3(ctx, Query{
+		UserInput: "修复 go 测试失败", Scope: slice.Project,
+		ContextHash: "ctx-b", Model: "ds",
+	})
+	if err != nil || res != nil {
+		t.Fatalf("different context must fail closed: %v %v", res, err)
+	}
+
+	// different model → rejected
+	res, err = d.DecideL3(ctx, Query{
+		UserInput: "修复 go 测试失败", Scope: slice.Project,
+		ContextHash: "ctx-a", Model: "claude",
+	})
+	if err != nil || res != nil {
+		t.Fatalf("different model must fail closed: %v %v", res, err)
+	}
+}
+
+func idxDep(t *testing.T, root string) fingerprint.Deps {
+	t.Helper()
+	deps, err := fingerprint.Capture(root, []string{"dep.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return deps
+}
+
+func idxMtimes(t *testing.T, root string) map[string]int64 {
+	t.Helper()
+	st, err := os.Stat(filepath.Join(root, "dep.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return map[string]int64{"dep.txt": st.ModTime().Unix()}
+}

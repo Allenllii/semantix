@@ -93,6 +93,16 @@ type SliceMeta struct {
 	// silently skipping dimension-mismatched vectors.
 	EmbedModel string `json:"embed_model,omitempty"`
 	EmbedDim   int    `json:"embed_dim,omitempty"`
+	// ContextHash records the messages-context fingerprint of the request
+	// that produced this slice (Issue #133 gateway). The L3 gate compares
+	// it against the live request so the same query under a different
+	// conversation history never reuses another session's outcome. Empty
+	// means unknown/legacy — the L3 gate skips the check then.
+	ContextHash string `json:"context_hash,omitempty"`
+	// Model records the client-visible model alias that produced this
+	// slice (Issue #133 gateway). Cross-model reuse is never allowed, so
+	// the L3 gate requires a match when non-empty.
+	Model string `json:"model,omitempty"`
 }
 
 // Slice is the core semantic slice value.
