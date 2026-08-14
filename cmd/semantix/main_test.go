@@ -206,3 +206,129 @@ func TestRunRejectsUnknownCommand(t *testing.T) {
 		t.Fatalf("run() code = %d, stderr = %q", code, stderr.String())
 	}
 }
+
+// TestDispatchExitCodeContract locks the U19 exit-code contract
+// (docs/reports/cli-v2-architecture.md §4.3) at the dispatch layer:
+// 0 ok · 1 runtime error · 2 usage error · 3 gate not met.
+func TestDispatchExitCodeContract(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "missing.jsonl")
+	cases := []struct {
+		name string
+		args []string
+		want int
+	}{
+		{"no args → usage", nil, 2},
+		{"help → ok", []string{"help"}, 0},
+		{"--help → ok", []string{"--help"}, 0},
+		{"-h → ok", []string{"-h"}, 0},
+		{"unknown command → usage", []string{"nope"}, 2},
+		{"extract missing --input → usage", []string{"extract"}, 2},
+		{"extract missing input file → runtime", []string{"extract", "--input", missing}, 1},
+		{"extract unknown flag → usage", []string{"extract", "--bogus"}, 2},
+		{"search missing query → usage", []string{"search"}, 2},
+		{"search unknown flag → usage", []string{"search", "--bogus"}, 2},
+		{"verify missing --session → usage", []string{"verify"}, 2},
+		{"verify unknown flag → usage", []string{"verify", "--bogus"}, 2},
+		{"eval missing --set → usage", []string{"eval"}, 2},
+		{"eval unknown flag → usage", []string{"eval", "--bogus"}, 2},
+		{"eval-judge missing backend → usage", []string{"eval-judge"}, 2},
+		{"eval-judge missing audit → runtime", []string{"eval-judge", "--stub", "yes", "--audit", missing}, 1},
+		{"usage missing db → runtime", []string{"usage", "--db", filepath.Join(dir, "nope.jsonl")}, 1},
+		{"usage unknown flag → usage", []string{"usage", "--bogus"}, 2},
+		{"lookup missing query → usage", []string{"lookup"}, 2},
+		{"inject missing query → usage", []string{"inject"}, 2},
+	}
+	for _, c := range cases {
+		var stdout, stderr bytes.Buffer
+		if got := run(c.args, &stdout, &stderr, productionDependencies()); got != c.want {
+			t.Errorf("%s: run(%v) = %d, want %d (stderr %q)", c.name, c.args, got, c.want, stderr.String())
+		}
+	}
+}
+
+// TestEveryCommandHelpExitsZero: per the U19 help contract every registered
+// subcommand must accept --help and exit 0.
+func TestEveryCommandHelpExitsZero(t *testing.T) {
+	for _, cmd := range commands {
+		var stdout, stderr bytes.Buffer
+		if code := run([]string{cmd.name, "--help"}, &stdout, &stderr, productionDependencies()); code != 0 {
+			t.Errorf("%s --help: code = %d, want 0; stderr = %q", cmd.name, code, stderr.String())
+		}
+	}
+}
+
+// TestHelpListsAllCommandsByGroup: `semantix help` must list every
+// registered command grouped under the four command-tree branches.
+func TestHelpListsAllCommandsByGroup(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"help"}, &stdout, &stderr, productionDependencies()); code != 0 {
+		t.Fatalf("help: code = %d, stderr = %q", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, group := range []string{"Kernel operations", "Product & management", "Maintenance", "Service mode"} {
+		if !strings.Contains(out, group) {
+			t.Errorf("help missing group %q:\n%s", group, out)
+		}
+	}
+	for _, cmd := range commands {
+		if !strings.Contains(out, cmd.name) {
+			t.Errorf("help missing command %q:\n%s", cmd.name, out)
+		}
+	}
+}
+
+// TestHelpCommandShowsSynopsis: `semantix help <command>` prints the
+// command's synopsis; an unknown command is a usage error.
+func TestHelpCommandShowsSynopsis(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"help", "extract"}, &stdout, &stderr, productionDependencies()); code != 0 {
+		t.Fatalf("help extract: code = %d", code)
+	}
+	if !strings.Contains(stdout.String(), "semantix extract --input") {
+		t.Fatalf("help extract missing synopsis:\n%s", stdout.String())
+	}
+	var stdout2, stderr2 bytes.Buffer
+	if code := run([]string{"help", "nope"}, &stdout2, &stderr2, productionDependencies()); code != 2 {
+		t.Fatalf("help nope: code = %d, want 2", code)
+	}
+}
+
+// TestHelpShowsPlannedGroups: groups without registered commands render
+// their planned command names; a group with a registered command must not
+// be listed as planned.
+func TestHelpShowsPlannedGroups(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"help"}, &stdout, &stderr, productionDependencies()); code != 0 {
+		t.Fatalf("help: code = %d", code)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"Maintenance",
+		"Service mode (planned: serve watch)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Product & management (planned") {
+		t.Errorf("doctor is implemented; the product group must not render as planned:\n%s", out)
+	}
+	if strings.Contains(out, "Maintenance (planned") {
+		t.Errorf("gc/export/import are implemented; the maintenance group must not render as planned:\n%s", out)
+	}
+}
+
+// TestVerifyGateExitCodeThree: the gate contract (exit 3) survives the
+// dispatch layer for verify --strict.
+func TestVerifyGateExitCodeThree(t *testing.T) {
+	dir := t.TempDir()
+	writeSession(t, dir, "s1.jsonl", []string{"修复 go 测试失败", "配置 CI"})
+	writeSession(t, dir, "s2.jsonl", []string{"修复 go 测试失败", "配置 CI"})
+	var stdout, stderr bytes.Buffer
+	args := []string{"verify", "--session", dir, "--db", filepath.Join(t.TempDir(), "v.db"),
+		"--holdout", "0.5", "--abs-high", "100", "--grey-target", "10", "--strict"}
+	if code := run(args, &stdout, &stderr, productionDependencies()); code != 3 {
+		t.Fatalf("verify --strict gate: code = %d, want 3; out:\n%s", code, stdout.String())
+	}
+}

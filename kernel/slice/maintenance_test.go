@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -308,8 +309,12 @@ func TestExportPerm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Fatalf("export perm = %o, want 600", perm)
+	// Windows has no POSIX permission bits (Go reports 0666 regardless of
+	// the mode passed to OpenFile), so assert only where they are real.
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Fatalf("export perm = %o, want 600", perm)
+		}
 	}
 }
 

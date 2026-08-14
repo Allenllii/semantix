@@ -23,14 +23,8 @@ func writeErrorEnvelope(w io.Writer, command string, code int, message string) e
 	return enc.Encode(errEnvelope(command, code, message))
 }
 
-// usageError marks a command-line usage problem (bad flag, missing required
-// argument). run() maps it to exit code 2 per U19 §4.3; plain errors map to 1.
-type usageError struct{ err error }
-
-func (e usageError) Error() string { return e.err.Error() }
-func (e usageError) Unwrap() error { return e.err }
-
-// usageErrf builds a usageError from a format string.
+// usageError is defined in main.go (U19 registry dispatch). usageErrf is
+// kept here as the constructor used by export/import/gc.
 func usageErrf(format string, args ...interface{}) error {
 	return usageError{err: fmt.Errorf(format, args...)}
 }

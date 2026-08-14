@@ -3,9 +3,11 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strings"
 
@@ -17,7 +19,10 @@ import (
 // false-approve rate ε_fa, and the incremental error upper bound
 // Δerr_upper = ε_fa × p_prom. Strategy value and judge authenticity are
 // reported separately (the eval command owns the former).
-// Returns 0 (pass), 3 (consistency below threshold) or 2 (usage/io error).
+// Exit codes (U19 contract): 0 pass · 1 runtime/IO error (missing audit
+// file, scan failure) · 2 usage/input-format error (bad flag, malformed
+// audit line, empty sample, missing judge backend) · 3 consistency below
+// threshold.
 func runEvalJudge(args []string, stdout io.Writer) int {
 	fs := flag.NewFlagSet("eval-judge", flag.ContinueOnError)
 	auditPath := fs.String("audit", "testdata/judge-audit.tsv", "human-audited sample: query\tcached_answer\toracle(approve|reject)")
@@ -29,13 +34,24 @@ func runEvalJudge(args []string, stdout io.Writer) int {
 	pProm := fs.Float64("p-prom", 0.3, "promoted traffic share for the error-upper bound")
 	minConsistency := fs.Float64("min-consistency", 95.0, "fail threshold: consistency %% (exit 3 when below)")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // --help is a successful request
+		}
+		return 2
+	}
+	if math.IsNaN(*pProm) || math.IsInf(*pProm, 0) || *pProm < 0 || *pProm > 1 {
+		fmt.Fprintln(os.Stderr, "eval-judge: invalid --p-prom (want 0 <= v <= 1)")
+		return 2
+	}
+	if math.IsNaN(*minConsistency) || math.IsInf(*minConsistency, 0) || *minConsistency < 0 || *minConsistency > 100 {
+		fmt.Fprintln(os.Stderr, "eval-judge: invalid --min-consistency (want 0 <= v <= 100)")
 		return 2
 	}
 
 	f, err := os.Open(*auditPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "eval-judge:", err)
-		return 2
+		return 1 // runtime/IO error, not a usage mistake
 	}
 	defer f.Close()
 
@@ -61,7 +77,7 @@ func runEvalJudge(args []string, stdout io.Writer) int {
 	}
 	if err := sc.Err(); err != nil {
 		fmt.Fprintln(os.Stderr, "eval-judge:", err)
-		return 2
+		return 1 // runtime/IO error
 	}
 	if len(pairs) == 0 {
 		fmt.Fprintln(os.Stderr, "eval-judge: audit sample empty")
@@ -71,7 +87,11 @@ func runEvalJudge(args []string, stdout io.Writer) int {
 	var j judge.Judge
 	switch {
 	case *stub != "":
-		j = stubJudge(*stub)
+		var err error
+		if j, err = stubJudge(*stub); err != nil {
+			fmt.Fprintln(os.Stderr, "eval-judge:", err)
+			return 2
+		}
 	case *baseURL == "" || *model == "" || apiKey == "":
 		fmt.Fprintln(os.Stderr, "eval-judge: need --stub OR --judge-base-url+--judge-model+SEMANTIX_JUDGE_API_KEY")
 		return 2
@@ -135,18 +155,35 @@ type exitCodeError struct {
 	msg  string
 }
 
-// stubJudge returns a deterministic judge for CI runs.
-func stubJudge(mode string) judge.Judge {
-	if mode == "yes" {
-		return yesJudge{}
+// stubJudge returns a deterministic judge for CI runs. Modes: yes →
+// approve everything; no → reject everything; error → every Confirm
+// fails (exercises the verdict="error" path). An unknown mode is a usage
+// mistake — it must not silently fall back to "no" and mask a CI typo.
+func stubJudge(mode string) (judge.Judge, error) {
+	switch mode {
+	case "yes":
+		return yesJudge{}, nil
+	case "no":
+		return judge.NoopJudge{}, nil
+	case "error":
+		return errJudge{}, nil
+	default:
+		return nil, usagef("invalid --stub %q (want yes, no, or error)", mode)
 	}
-	return judge.NoopJudge{} // no → reject; error mode → Confirm returns false via Noop
 }
 
 // yesJudge approves everything (stub for CI upper-bound runs).
 type yesJudge struct{}
 
 func (yesJudge) Confirm(context.Context, judge.Candidate) (bool, error) { return true, nil }
+
+// errJudge fails every Confirm with an error (CI exercise of the judge
+// error path; errors are conservative: verdict "error" ≠ approval).
+type errJudge struct{}
+
+func (errJudge) Confirm(context.Context, judge.Candidate) (bool, error) {
+	return false, errors.New("stub judge error")
+}
 
 // truncRune truncates s to at most n runes for tabular output.
 func truncRune(s string, n int) string {

@@ -36,23 +36,23 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	embedder := flags.String("embedder", "hash", "embedder: hash (default, zero-dependency) | model (remote OpenAI-compatible API; see SEMANTIX_EMBED_* env)")
 	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
-		return err
+		return usageWrap(err)
 	}
 	if err := zf.validate(); err != nil {
-		return err
+		return usagef("%v", err)
 	}
 	if *limit <= 0 {
-		return errors.New("--limit must be greater than zero")
+		return usagef("--limit must be greater than zero")
 	}
 
 	query := strings.TrimSpace(*queryFlag)
 	if query == "" {
 		query = strings.TrimSpace(strings.Join(flags.Args(), " "))
 	} else if flags.NArg() != 0 {
-		return errors.New("use either --query or positional query text, not both")
+		return usagef("use either --query or positional query text, not both")
 	}
 	if query == "" {
-		return errors.New("query is required")
+		return usagef("query is required")
 	}
 
 	scope, err := parseScope(*scopeValue)
@@ -89,7 +89,7 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	switch *retriever {
 	case "bm25", "vector", "hybrid":
 	default:
-		return fmt.Errorf("invalid --retriever %q (want bm25, vector, or hybrid)", *retriever)
+		return usagef("invalid --retriever %q (want bm25, vector, or hybrid)", *retriever)
 	}
 	var hits []slice.Hit
 	switch *retriever {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -42,8 +43,8 @@ func TestRunUsageSummary(t *testing.T) {
 
 func TestRunUsageMissingDB(t *testing.T) {
 	var out bytes.Buffer
-	if code := runUsage([]string{"--db", filepath.Join(t.TempDir(), "nope.jsonl")}, &out); code != 2 {
-		t.Fatalf("missing db must exit 2, got %d", code)
+	if code := runUsage([]string{"--db", filepath.Join(t.TempDir(), "nope.jsonl")}, &out); code != 1 {
+		t.Fatalf("missing db is a runtime/IO error, must exit 1, got %d", code)
 	}
 }
 
@@ -69,13 +70,15 @@ func TestRunUsageWithEvolve(t *testing.T) {
 	if !strings.Contains(s, "evolve_tau_l2\t") {
 		t.Fatalf("evolve output missing tau:\n%s", s)
 	}
-	// State file persisted (0600).
-	st, err := os.Stat(filepath.Join(evolveDir, "params.json"))
-	if err != nil {
-		t.Fatalf("evolve state not persisted: %v", err)
-	}
-	if st.Mode().Perm() != 0o600 {
-		t.Fatalf("evolve state perms = %o, want 600", st.Mode().Perm())
+	// State file persisted (0600 on POSIX; Windows ignores the perm bits).
+	if runtime.GOOS != "windows" {
+		st, err := os.Stat(filepath.Join(evolveDir, "params.json"))
+		if err != nil {
+			t.Fatalf("evolve state not persisted: %v", err)
+		}
+		if st.Mode().Perm() != 0o600 {
+			t.Fatalf("evolve state perms = %o, want 600", st.Mode().Perm())
+		}
 	}
 	// Second run loads state (epoch advances).
 	var out2 bytes.Buffer
