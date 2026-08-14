@@ -175,7 +175,7 @@ func TestSliceMetaGatewayFieldsRoundTrip(t *testing.T) {
 	}
 
 	var legacy Slice
-	if err := json.Unmarshal([]byte(`{"id":"x","content":"y"}`), &legacy); err != nil {
+	if err := json.Unmarshal([]byte(`{"id":"x","content":"eQ=="}`), &legacy); err != nil {
 		t.Fatal(err)
 	}
 	if legacy.Meta.Model != "" || legacy.Meta.ContextHash != "" {
