@@ -13,6 +13,8 @@
 [![GitHub contributors](https://img.shields.io/github/contributors/Gnosil/semantix?style=flat-square\&logo=github)](https://github.com/Gnosil/semantix/graphs/contributors)
 [![Website](https://img.shields.io/badge/website-semantix.ensureok.ai-168b6d?style=flat-square)](https://semantix.ensureok.ai)
 
+**English** | [简体中文](./README.zh-CN.md)
+
 </div>
 
 <br/>
