@@ -63,8 +63,10 @@ func verifyVerdict(relevance, greyRatio, greyTarget float64) string {
 	return "pass"
 }
 
-// zoneIcon prefixes a zone with a human-readable glyph for the replay table.
-func zoneIcon(z zone.Zone) string {
+// verifyZoneIcon prefixes a zone with a human-readable glyph for the replay
+// table. Named verifyZoneIcon (not zoneIcon) to stay clear of hitviz.go's
+// zoneIcon(string) — both live in package main (U29 × U30).
+func verifyZoneIcon(z zone.Zone) string {
 	switch z {
 	case zone.Hit:
 		return "✅hit"
@@ -386,7 +388,7 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 				})
 			} else {
 				fmt.Fprintf(stdout, "%s\t%d\t%.4f\t%s\t%s\t%s\n",
-					tabSafe(t.Session), t.Turn, score, zoneIcon(z), tabSafe(top1), tabSafe(t.Query))
+					tabSafe(t.Session), t.Turn, score, verifyZoneIcon(z), tabSafe(top1), tabSafe(t.Query))
 			}
 		}
 	}

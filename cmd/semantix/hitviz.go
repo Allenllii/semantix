@@ -5,10 +5,10 @@ import (
 	"io"
 )
 
-// zoneIcon maps a grey-zone verdict to its vibe-coder readable icon (U30):
+// verdictIcon maps a grey-zone verdict to its vibe-coder readable icon (U30):
 // 🟢 clear hit, 🟡 grey (verify before reuse), ⚪ miss. Unknown verdicts
 // fall back to ⚪ (failure-safe, mirrors zone.Classify).
-func zoneIcon(z string) string {
+func verdictIcon(z string) string {
 	switch z {
 	case "hit":
 		return "🟢"

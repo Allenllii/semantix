@@ -164,7 +164,7 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	rows := make([]hitRow, len(results))
 	for i, result := range results {
 		content := stripESC(strings.Join(strings.Fields(result.Content), " "))
-		fmt.Fprintf(stdout, "%s\n   %s\n", formatHitLine(i+1, zoneIcon(result.Zone), fmt.Sprintf("%.6f", result.Score), result.Zone, result.ID, result.Scope, result.SourceSession), content)
+		fmt.Fprintf(stdout, "%s\n   %s\n", formatHitLine(i+1, verdictIcon(result.Zone), fmt.Sprintf("%.6f", result.Score), result.Zone, result.ID, result.Scope, result.SourceSession), content)
 		rows[i] = hitRow{Zone: result.Zone, SourceSession: result.SourceSession}
 	}
 	writeHitsSummary(stdout, rows)
