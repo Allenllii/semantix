@@ -43,9 +43,55 @@ type verifySummary struct {
 	ZonesMiss      int          `json:"zones_miss"`
 	GreyRatioPct   float64      `json:"grey_ratio_pct"`
 	GreyTargetPct  float64      `json:"grey_target_pct"`
+	RelevancePct   float64      `json:"relevance_pct"`
+	Icon           string       `json:"icon"`
 	WarnGrey       bool         `json:"warn_grey"`
 	Judge          *judge.Stats `json:"judge,omitempty"`
 	Rows           []verifyRow  `json:"rows"`
+}
+
+// verifyVerdict returns the one-line gate verdict icon (Issue #153 / U29):
+// "warn" when the grey-zone alarm fires, "fail" when relevance is under the
+// M0-Gate 70% bar, otherwise "pass".
+func verifyVerdict(relevance, greyRatio, greyTarget float64) string {
+	if greyTarget > 0 && greyRatio > greyTarget {
+		return "warn"
+	}
+	if relevance < 0.7 {
+		return "fail"
+	}
+	return "pass"
+}
+
+// verifyZoneIcon prefixes a zone with a human-readable glyph for the replay
+// table. Named verifyZoneIcon (not zoneIcon) to stay clear of hitviz.go's
+// zoneIcon(string) — both live in package main (U29 × U30).
+func verifyZoneIcon(z zone.Zone) string {
+	switch z {
+	case zone.Hit:
+		return "✅hit"
+	case zone.Grey:
+		return "🟡grey"
+	default:
+		return "❌miss"
+	}
+}
+
+// verifyBar renders an ASCII bar (█ filled, ░ empty) for a ratio in [0,1].
+// Kept local to verify so U29 stays file-disjoint from U28 (usage.go owns
+// its own barChart helper).
+func verifyBar(ratio float64, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 1 {
+		ratio = 1
+	}
+	filled := int(ratio*float64(width) + 0.5)
+	return strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
 }
 
 // verifyExit maps the grey-zone alarm to the exit code contract (3 = gate).
@@ -64,8 +110,11 @@ func verifyExit(greyTarget, greyRatio float64, strict bool) int {
 // (query → top-1 hit + score) for human relevance marking.
 //
 // Output columns (tab-separated, first line is a header):
-//   session turn score top1_content query
-// After marking each row ✅/❌, relevance rate = marked-correct / total.
+//   session turn score zone top1_content query
+// The zone cell is iconized (✅hit / 🟡grey / ❌miss) and the tail appends a
+// zone-distribution bar plus a gate verdict line. The verdict's relevance is
+// the AUTO-classified hit share (hit / replayed) — NOT the human-marked
+// relevance of #58, which requires offline labeling and is not computed here.
 // Target for M0-Gate: ≥70% of replayed turns find a "previously done similar"
 // top-1 hit.
 
@@ -339,20 +388,27 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 				})
 			} else {
 				fmt.Fprintf(stdout, "%s\t%d\t%.4f\t%s\t%s\t%s\n",
-					tabSafe(t.Session), t.Turn, score, z.String(), tabSafe(top1), tabSafe(t.Query))
+					tabSafe(t.Session), t.Turn, score, verifyZoneIcon(z), tabSafe(top1), tabSafe(t.Query))
 			}
 		}
 	}
 	greyRatio := 0.0
+	relevance := 0.0
 	if replayed > 0 {
 		greyRatio = 100 * float64(zoneCount[int(zone.Grey)]) / float64(replayed)
+		// relevance is the auto-classified hit share (hit / replayed), not the
+		// human-marked relevance of #58 — see the runVerify doc comment.
+		relevance = float64(zoneCount[int(zone.Hit)]) / float64(replayed)
 	}
+	icon := verifyVerdict(relevance, greyRatio, *greyTarget)
 	if *jsonOut {
 		summary := verifySummary{
 			Sessions: len(files), TrainedTurns: trained, ReplaySessions: len(replay), ReplayedTurns: replayed,
 			ZonesHit: zoneCount[int(zone.Hit)], ZonesGrey: zoneCount[int(zone.Grey)], ZonesMiss: zoneCount[int(zone.Miss)],
-			GreyRatioPct: greyRatio, GreyTargetPct: *greyTarget, WarnGrey: *greyTarget > 0 && greyRatio > *greyTarget,
-			Rows: rows,
+			GreyRatioPct: greyRatio, GreyTargetPct: *greyTarget,
+			RelevancePct: relevance * 100, Icon: icon,
+			WarnGrey: *greyTarget > 0 && greyRatio > *greyTarget,
+			Rows:     rows,
 		}
 		if *judgeProtocol != "" {
 			summary.Judge = &jstats
@@ -365,6 +421,22 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	}
 	fmt.Fprintf(stdout, "# done: %d replayed turns; zones hit=%d grey=%d miss=%d grey_ratio=%.1f%% (target %.1f%%)\n",
 		replayed, zoneCount[int(zone.Hit)], zoneCount[int(zone.Grey)], zoneCount[int(zone.Miss)], greyRatio, *greyTarget)
+	// zone distribution bar (Issue #153 / U29).
+	if replayed > 0 {
+		fmt.Fprintf(stdout, "# zones: hit %s grey %s miss %s\n",
+			verifyBar(float64(zoneCount[int(zone.Hit)])/float64(replayed), 8),
+			verifyBar(float64(zoneCount[int(zone.Grey)])/float64(replayed), 8),
+			verifyBar(float64(zoneCount[int(zone.Miss)])/float64(replayed), 8))
+	}
+	// gate verdict line (Issue #153 / U29).
+	switch icon {
+	case "pass":
+		fmt.Fprintf(stdout, "# ✅ PASS relevance=%.1f%% (≥70%%)\n", relevance*100)
+	case "fail":
+		fmt.Fprintf(stdout, "# ❌ FAIL relevance=%.1f%% (<70%%)\n", relevance*100)
+	default:
+		fmt.Fprintf(stdout, "# ⚠ WARN grey_ratio=%.1f%% exceeds target %.1f%%\n", greyRatio, *greyTarget)
+	}
 	if *judgeProtocol != "" {
 		fmt.Fprintf(stdout, "# judge: confirmed=%d rules_reject=%d fingerprint=%d judge_reject=%d judge_approved=%d waste=%d\n",
 			jstats.Confirmed, jstats.RulesReject, jstats.Fingerprint, jstats.JudgeReject, jstats.JudgeApproved,

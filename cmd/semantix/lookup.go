@@ -1,10 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"semantix/kernel/inject"
 	"semantix/kernel/lookup"
@@ -71,20 +71,28 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	out := make([]lookup.Result, 0, len(hits))
 	for _, h := range hits {
 		out = append(out, lookup.Result{
-			ID:      h.Slice.ID,
-			Type:    h.Slice.Type.String(),
-			Scope:   h.Slice.Scope.String(),
-			Score:   h.Score,
-			Zone:    zones.Classify(h.Score, top1).String(),
-			Content: string(h.Slice.Content),
+			ID:            h.Slice.ID,
+			Type:          h.Slice.Type.String(),
+			Scope:         h.Slice.Scope.String(),
+			Score:         h.Score,
+			Zone:          zones.Classify(h.Score, top1).String(),
+			Content:       string(h.Slice.Content),
+			SourceSession: h.Slice.Meta.SourceSession,
 		})
 	}
 	if *jsonOut {
 		return writeJSON(stdout, okEnvelope("lookup", out))
 	}
-	enc := json.NewEncoder(stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(out)
+	// 默认（无 --json）为 vibe-coder 可读文本（U30）：zone 图标 + 来源会话 +
+	// 命中摘要行。机器可读形态是 --json 信封（H1 协议入口）。
+	rows := make([]hitRow, len(out))
+	for i, r := range out {
+		content := stripESC(strings.Join(strings.Fields(r.Content), " "))
+		fmt.Fprintf(stdout, "%s\n   %s\n", formatHitLine(i+1, verdictIcon(r.Zone), fmt.Sprintf("%.6f", r.Score), r.Zone, r.ID, r.Scope, r.SourceSession), content)
+		rows[i] = hitRow{Zone: r.Zone, SourceSession: r.SourceSession}
+	}
+	writeHitsSummary(stdout, rows)
+	return nil
 }
 
 // runInject assembles an L2 injection block for a query (U8 compose side):

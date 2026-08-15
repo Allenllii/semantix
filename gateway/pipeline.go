@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -62,12 +63,14 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 
 	// L2: inject reuse context, then forward (design §3.3 steps 4-5).
 	var injectedTokens int64
+	var sliceHits int
 	inj, ierr := g.injector.Build(query)
 	if ierr != nil {
 		log.Printf("gateway: inject: %v", ierr) // never blocks the main path
 	}
 	if inj != nil {
 		injectedTokens = int64(inj.Bytes / 4)
+		sliceHits = len(inj.Slices)
 	}
 	body = g.rewriteOutgoing(body, req, up, inj)
 
@@ -80,10 +83,10 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	defer resp.Body.Close()
 
 	if req.Stream {
-		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens)
+		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits)
 		return
 	}
-	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens)
+	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits)
 }
 
 // l3Eligible applies the gateway-side TTL window on top of the kernel
@@ -119,38 +122,56 @@ func (g *Gateway) rewriteOutgoing(body []byte, req *chatRequest, up UpstreamConf
 	return out
 }
 
-// attachBlock appends block to the first string-content system message, or
-// prepends a system message when none exists (design §3.6 injection slot).
+// attachBlock appends block to the last string-content system message (the
+// system-prompt tail, design §3.6), or prepends a system message when none
+// exists. Earlier system messages stay untouched.
 func attachBlock(messages []chatMessage, block string) []chatMessage {
+	last := -1
 	for i := range messages {
-		if messages[i].Role != "system" {
-			continue
+		if messages[i].Role == "system" {
+			if _, ok := messages[i].Content.(string); ok {
+				last = i
+			}
 		}
-		if s, ok := messages[i].Content.(string); ok {
-			messages[i].Content = s + "\n\n" + block
-			return messages
-		}
+	}
+	if last >= 0 {
+		messages[last].Content = messages[last].Content.(string) + "\n\n" + block
+		return messages
 	}
 	return append([]chatMessage{{Role: "system", Content: block}}, messages...)
 }
 
 // forward posts the (rewritten) body to the upstream OpenAI-compatible
-// endpoint with the upstream API key.
+// endpoint with the upstream API key. Transport errors are retried once
+// (design §3.8: the gateway does a single best-effort retry; the body is
+// fully buffered so a resend is always safe); HTTP status errors are not
+// retried — they carry the upstream's own verdict.
 func (g *Gateway) forward(ctx context.Context, up UpstreamConfig, body []byte) (*http.Response, error) {
 	url := strings.TrimRight(up.BaseURL, "/") + "/chat/completions"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
+	do := func() (*http.Response, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+up.APIKey)
+		return g.client.Do(req)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+up.APIKey)
-	return g.client.Do(req)
+	resp, err := do()
+	if err != nil {
+		log.Printf("gateway: upstream %s: %v (retrying once)", up.Name, err)
+		resp, err = do()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return resp, nil
 }
 
 // passthrough relays a non-streaming upstream response, records usage and
 // writes the session sidecar (request turns + assistant reply) — only for
 // successful exchanges, so failed requests never enter the reuse library.
-func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64) {
+func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int) {
 	out, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		writeAPIError(w, http.StatusBadGateway, "upstream_error",
@@ -167,6 +188,9 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 	g.recordSession(sessionID, ctxHash, req.Model, turns(req, content))
 
 	for k, vs := range resp.Header {
+		if isHopByHopHeader(k) {
+			continue
+		}
 		for _, v := range vs {
 			w.Header().Add(k, v)
 		}
@@ -180,15 +204,18 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 		TokensIn:       int64(len(query)/4) + injectedTokens,
 		TokensOut:      int64(len(out) / 4),
 		InjectedTokens: injectedTokens,
+		SliceHits:      sliceHits,
 		At:             g.now().Unix(),
 	})
 }
 
 // streamThrough relays a streaming upstream response chunk by chunk (SSE),
 // preserving events verbatim (design §3.4: never reorder/rewrite the
-// upstream stream). Sidecar records the request turns only — parsing the
+// upstream stream). If the upstream ends without a [DONE] marker (abnormal
+// disconnect), the gateway appends one so the client never hangs on an
+// unterminated stream. Sidecar records the request turns only — parsing the
 // assistant content out of the SSE chunks is deferred (documented debt).
-func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64) {
+func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 		writeAPIError(w, resp.StatusCode, "upstream_error",
@@ -201,11 +228,18 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 	w.WriteHeader(resp.StatusCode)
 	flusher, _ := w.(http.Flusher)
 
-	buf := make([]byte, 32*1024)
+	// Scan lines rather than blind blocks: we must detect the [DONE]
+	// marker to guarantee stream termination even when the upstream
+	// disconnects early. Lines are still forwarded verbatim.
+	br := bufio.NewReader(resp.Body)
+	sawDone := false
 	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			_, _ = w.Write(buf[:n])
+		line, err := br.ReadBytes('\n')
+		if len(line) > 0 {
+			if bytes.HasPrefix(bytes.TrimSpace(line), []byte("data: [DONE]")) {
+				sawDone = true
+			}
+			_, _ = w.Write(line)
 			if flusher != nil {
 				flusher.Flush()
 			}
@@ -214,13 +248,33 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 			break
 		}
 	}
+	if !sawDone {
+		// Abnormal termination: close the stream ourselves so the client
+		// does not hang (design §3.4: [DONE] always terminates).
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
 	g.recordSession(sessionID, ctxHash, req.Model, turns(req, ""))
 	g.recordUsage(usage.Event{
 		SessionID:      sessionID,
 		TokensIn:       int64(len(query)/4) + injectedTokens,
 		InjectedTokens: injectedTokens,
+		SliceHits:      sliceHits,
 		At:             g.now().Unix(),
 	})
+}
+
+// isHopByHopHeader reports connection-scoped headers that must never be
+// relayed end-to-end (RFC 9110 §7.6.1): they describe the upstream hop.
+func isHopByHopHeader(name string) bool {
+	switch http.CanonicalHeaderKey(name) {
+	case "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization",
+		"Proxy-Connection", "Te", "Trailer", "Transfer-Encoding", "Upgrade":
+		return true
+	}
+	return false
 }
 
 // turns renders the request messages plus the assistant reply as the

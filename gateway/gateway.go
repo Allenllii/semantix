@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,6 +43,17 @@ type Gateway struct {
 	disabled   bool       // SEMANTIX_GATEWAY_DISABLE ablation switch
 
 	now func() time.Time
+}
+
+// disableEnv reports the ablation switch SEMANTIX_GATEWAY_DISABLE. Only
+// truthy values disable ("1", "true", "yes", "on") — "0"/"false" must keep
+// the cache enabled, otherwise the escape hatch silently breaks caching.
+func disableEnv() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("SEMANTIX_GATEWAY_DISABLE"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // New assembles the gateway from config: opens the slice store, rebuilds the
@@ -94,7 +106,7 @@ func New(cfg *Config) (*Gateway, error) {
 		injector: &inject.Injector{Index: idx, Store: store, Scope: scope, K: topK, Budget: budget, Zones: &z},
 		usageLog: rec,
 		client:   &http.Client{Timeout: 120 * time.Second},
-		disabled: os.Getenv("SEMANTIX_GATEWAY_DISABLE") != "",
+		disabled: disableEnv(),
 		now:      time.Now,
 	}
 	return g, nil

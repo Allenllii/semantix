@@ -13,8 +13,8 @@ func TestRecorderAppendAndSummarize(t *testing.T) {
 		t.Fatal(err)
 	}
 	evs := []Event{
-		{SessionID: "s1", Turn: 1, TokensIn: 1000, TokensOut: 200, CacheHitToken: 600},
-		{SessionID: "s1", Turn: 2, TokensIn: 1200, TokensOut: 250, CacheHitToken: 1000, InjectedTokens: 300},
+		{SessionID: "s1", Turn: 1, TokensIn: 1000, TokensOut: 200, CacheHitToken: 600, SliceHits: 2},
+		{SessionID: "s1", Turn: 2, TokensIn: 1200, TokensOut: 250, CacheHitToken: 1000, InjectedTokens: 300, SliceHits: 3},
 		{SessionID: "s2", Turn: 1, TokensIn: 800, TokensOut: 150, L3Reuse: true},
 	}
 	for _, e := range evs {
@@ -37,6 +37,9 @@ func TestRecorderAppendAndSummarize(t *testing.T) {
 	}
 	if s.L3Reuses != 1 || s.InjectedTokens != 300 {
 		t.Fatalf("L3=%d injected=%d", s.L3Reuses, s.InjectedTokens)
+	}
+	if s.SliceHits != 5 {
+		t.Fatalf("slice hits = %d, want 5 (2+3)", s.SliceHits)
 	}
 	// Billed: in 3000-1600-800=600 miss + 1600 hit + out 600-150=450 miss.
 	// L3 turn (800 in + 150 out) excluded entirely.
@@ -73,6 +76,9 @@ func TestSummarizeToleratesBadLines(t *testing.T) {
 	}
 	if s.TokensIn != 500 {
 		t.Fatalf("tokens_in = %d, want 500", s.TokensIn)
+	}
+	if s.SliceHits != 0 {
+		t.Fatalf("slice_hits = %d, want 0 (older log without the field)", s.SliceHits)
 	}
 }
 

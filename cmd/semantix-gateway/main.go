@@ -14,9 +14,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"semantix/gateway"
@@ -34,19 +39,41 @@ func main() {
 	if err != nil {
 		log.Fatalf("semantix-gateway: %v", err)
 	}
-	defer g.Close()
 
 	srv := &http.Server{
 		Addr:              cfg.Server.Addr,
 		Handler:           g,
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	log.Printf("semantix-gateway: listening on %s (%d upstream(s): %s)",
 		cfg.Server.Addr, len(cfg.Upstreams), upstreamNames(cfg))
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("semantix-gateway: %v", err)
+
+	// Graceful shutdown on SIGINT/SIGTERM: stop accepting, drain in-flight
+	// requests, then Close() waits for the async write-memory to land —
+	// without this, Ctrl+C would kill the process before sidecars extract.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.ListenAndServe() }()
+
+	select {
+	case err := <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("semantix-gateway: %v", err)
+		}
+	case <-ctx.Done():
+		log.Print("semantix-gateway: shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("semantix-gateway: shutdown: %v", err)
+		}
 	}
-	_ = srv.Shutdown(nil) // graceful: let in-flight handlers finish
+	if err := g.Close(); err != nil {
+		log.Printf("semantix-gateway: close: %v", err)
+	}
 }
 
 func upstreamNames(cfg *gateway.Config) string {

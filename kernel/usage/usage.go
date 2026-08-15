@@ -36,7 +36,11 @@ type Event struct {
 	L3Reuse bool `json:"l3_reuse,omitempty"`
 	// InjectedTokens is the L2 injection block size for this turn.
 	InjectedTokens int64 `json:"injected_tokens,omitempty"`
-	At             int64 `json:"at"` // unix seconds
+	// SliceHits is the number of semantic slices that hit and were injected
+	// this turn (L2 injected slice count). Omitted for older logs, which
+	// Summarize reads as 0.
+	SliceHits int `json:"slice_hits,omitempty"`
+	At        int64 `json:"at"` // unix seconds
 }
 
 // Recorder appends usage events to a JSONL file (0600, atomic rewrite via
@@ -84,6 +88,7 @@ type Summary struct {
 	CacheHitTokens  int64   // tokens served from the provider prefix cache
 	L3Reuses        int     // turns fully served by L3 reuse
 	InjectedTokens  int64   // total L2 injected tokens
+	SliceHits       int     // total slices hit and injected across turns
 	CostPaidUSD     float64 // what the user actually paid
 	CostNoCacheUSD  float64 // what it would cost without any cache
 	SavingsUSD      float64 // CostNoCache - CostPaid
@@ -121,6 +126,7 @@ func Summarize(path string, costMiss, costHit float64) (*Summary, error) {
 		s.TokensOut += e.TokensOut
 		s.CacheHitTokens += e.CacheHitToken
 		s.InjectedTokens += e.InjectedTokens
+		s.SliceHits += e.SliceHits
 		if e.L3Reuse {
 			s.L3Reuses++
 			l3In += e.TokensIn

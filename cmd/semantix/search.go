@@ -19,6 +19,9 @@ type searchResult struct {
 	Content string  `json:"content"`
 	Score   float64 `json:"score"`
 	Zone    string  `json:"zone"`
+	// SourceSession is provenance shown in the text output only (U30);
+	// json:"-" keeps search --json output byte-identical (backward compat).
+	SourceSession string `json:"-"`
 }
 
 func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error {
@@ -145,22 +148,26 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	zones := zf.zones()
 	for i, hit := range hits {
 		results[i] = searchResult{
-			ID:      hit.Slice.ID,
-			Type:    int(hit.Slice.Type),
-			Scope:   scopeName(hit.Slice.Scope),
-			Content: string(hit.Slice.Content),
-			Score:   hit.Score,
-			Zone:    zones.Classify(hit.Score, top1).String(),
+			ID:            hit.Slice.ID,
+			Type:          int(hit.Slice.Type),
+			Scope:         scopeName(hit.Slice.Scope),
+			Content:       string(hit.Slice.Content),
+			Score:         hit.Score,
+			Zone:          zones.Classify(hit.Score, top1).String(),
+			SourceSession: hit.Slice.Meta.SourceSession,
 		}
 	}
 
 	if *jsonOutput {
 		return writeJSON(stdout, okEnvelope("search", results))
 	}
+	rows := make([]hitRow, len(results))
 	for i, result := range results {
 		content := stripESC(strings.Join(strings.Fields(result.Content), " "))
-		fmt.Fprintf(stdout, "%d. score=%.6f zone=%s id=%s scope=%s\n   %s\n", i+1, result.Score, result.Zone, result.ID, result.Scope, content)
+		fmt.Fprintf(stdout, "%s\n   %s\n", formatHitLine(i+1, verdictIcon(result.Zone), fmt.Sprintf("%.6f", result.Score), result.Zone, result.ID, result.Scope, result.SourceSession), content)
+		rows[i] = hitRow{Zone: result.Zone, SourceSession: result.SourceSession}
 	}
+	writeHitsSummary(stdout, rows)
 	return nil
 }
 

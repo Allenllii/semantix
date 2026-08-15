@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"semantix/kernel/evolve"
 	"semantix/kernel/usage"
@@ -21,6 +22,7 @@ type usageJSON struct {
 	CacheHitTokens int64   `json:"cache_hit_tokens"`
 	L3Reuses       int     `json:"l3_reuses"`
 	InjectedTokens int64   `json:"injected_tokens"`
+	SliceHits      int     `json:"slice_hits"`
 	CostPaidUSD    float64 `json:"cost_paid_usd"`
 	CostNoCacheUSD float64 `json:"cost_no_cache_usd"`
 	SavingsUSD     float64 `json:"savings_usd"`
@@ -54,6 +56,7 @@ func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 		data := usageJSON{
 			Events: s.Events, TokensIn: s.TokensIn, TokensOut: s.TokensOut,
 			CacheHitTokens: s.CacheHitTokens, L3Reuses: s.L3Reuses, InjectedTokens: s.InjectedTokens,
+			SliceHits: s.SliceHits,
 			CostPaidUSD: s.CostPaidUSD, CostNoCacheUSD: s.CostNoCacheUSD,
 			SavingsUSD: s.SavingsUSD, SavingsRate: s.SavingsRate,
 		}
@@ -64,12 +67,22 @@ func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 		return 0
 	}
 
+	// Iconic summary for humans (Issue #152 / U28: vibe-coder readable).
+	savingsBar := barChart(s.SavingsRate, 10)
+	fmt.Fprintf(stdout, "💰 节省成本  %s  $%.6f\n", savingsBar, s.SavingsUSD)
+	fmt.Fprintf(stdout, "📈 节省率    %.1f%%\n", s.SavingsRate*100)
+	fmt.Fprintf(stdout, "🧠 L3 复用   %d\n", s.L3Reuses)
+	fmt.Fprintf(stdout, "📦 命中切片  %d\n", s.SliceHits)
+	fmt.Fprintln(stdout)
+
+	// Raw counters keep the machine-readable key\tvalue shape.
 	fmt.Fprintf(stdout, "events\t%d\n", s.Events)
 	fmt.Fprintf(stdout, "tokens_in\t%d\n", s.TokensIn)
 	fmt.Fprintf(stdout, "tokens_out\t%d\n", s.TokensOut)
 	fmt.Fprintf(stdout, "cache_hit_tokens\t%d\n", s.CacheHitTokens)
 	fmt.Fprintf(stdout, "l3_reuses\t%d\n", s.L3Reuses)
 	fmt.Fprintf(stdout, "injected_tokens\t%d\n", s.InjectedTokens)
+	fmt.Fprintf(stdout, "slice_hits\t%d\n", s.SliceHits)
 	fmt.Fprintf(stdout, "cost_paid_usd\t%.6f\n", s.CostPaidUSD)
 	fmt.Fprintf(stdout, "cost_no_cache_usd\t%.6f\n", s.CostNoCacheUSD)
 	fmt.Fprintf(stdout, "savings_usd\t%.6f\n", s.SavingsUSD)
@@ -130,4 +143,19 @@ func feedEvolve(dir string, s *usage.Summary, stdout io.Writer) error {
 type evolveState struct {
 	Params evolve.Params `json:"params"`
 	Epoch  uint64        `json:"epoch"`
+}
+
+// barChart renders an ASCII bar (█ filled, ░ empty) for a ratio in [0,1].
+func barChart(ratio float64, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 1 {
+		ratio = 1
+	}
+	filled := int(ratio*float64(width) + 0.5)
+	return strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
 }
