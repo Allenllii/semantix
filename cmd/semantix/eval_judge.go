@@ -25,6 +25,7 @@ import (
 // threshold.
 func runEvalJudge(args []string, stdout io.Writer) int {
 	fs := flag.NewFlagSet("eval-judge", flag.ContinueOnError)
+	jsonOut := fs.Bool("json", false, "write JSON envelope output (§4.2)")
 	auditPath := fs.String("audit", "testdata/judge-audit.tsv", "human-audited sample: query\tcached_answer\toracle(approve|reject)")
 	stub := fs.String("stub", "", "deterministic judge for CI: yes|no|error (overrides --judge-*)")
 	baseURL := fs.String("judge-base-url", "", "OpenAI/Anthropic compatible endpoint (with --stub empty)")
@@ -37,21 +38,33 @@ func runEvalJudge(args []string, stdout io.Writer) int {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0 // --help is a successful request
 		}
+		if wantsJSON(args) {
+			_ = writeErrorEnvelope(stdout, "eval-judge", 2, err.Error())
+		}
 		return 2
+	}
+	// fail emits the §4.2 failure envelope (ok:false, error.code per §4.3)
+	// when --json is on, keeps the stderr text otherwise, and returns the
+	// exit code — every path stays parseable for a JSON consumer (U35,
+	// Issue #166).
+	fail := func(code int, msg string) int {
+		if *jsonOut {
+			_ = writeErrorEnvelope(stdout, "eval-judge", code, msg)
+		} else {
+			fmt.Fprintln(os.Stderr, "eval-judge:", msg)
+		}
+		return code
 	}
 	if math.IsNaN(*pProm) || math.IsInf(*pProm, 0) || *pProm < 0 || *pProm > 1 {
-		fmt.Fprintln(os.Stderr, "eval-judge: invalid --p-prom (want 0 <= v <= 1)")
-		return 2
+		return fail(2, "invalid --p-prom (want 0 <= v <= 1)")
 	}
 	if math.IsNaN(*minConsistency) || math.IsInf(*minConsistency, 0) || *minConsistency < 0 || *minConsistency > 100 {
-		fmt.Fprintln(os.Stderr, "eval-judge: invalid --min-consistency (want 0 <= v <= 100)")
-		return 2
+		return fail(2, "invalid --min-consistency (want 0 <= v <= 100)")
 	}
 
 	f, err := os.Open(*auditPath)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "eval-judge:", err)
-		return 1 // runtime/IO error, not a usage mistake
+		return fail(1, err.Error()) // runtime/IO error, not a usage mistake
 	}
 	defer f.Close()
 
@@ -70,18 +83,15 @@ func runEvalJudge(args []string, stdout io.Writer) int {
 		}
 		parts := strings.SplitN(line, "\t", 3)
 		if len(parts) != 3 {
-			fmt.Fprintln(os.Stderr, "eval-judge: malformed audit line:", line)
-			return 2
+			return fail(2, "malformed audit line: "+line)
 		}
 		pairs = append(pairs, pair{q: parts[0], a: parts[1], oracle: parts[2] == "approve"})
 	}
 	if err := sc.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "eval-judge:", err)
-		return 1 // runtime/IO error
+		return fail(1, err.Error()) // runtime/IO error
 	}
 	if len(pairs) == 0 {
-		fmt.Fprintln(os.Stderr, "eval-judge: audit sample empty")
-		return 2
+		return fail(2, "audit sample empty")
 	}
 
 	var j judge.Judge
@@ -89,12 +99,10 @@ func runEvalJudge(args []string, stdout io.Writer) int {
 	case *stub != "":
 		var err error
 		if j, err = stubJudge(*stub); err != nil {
-			fmt.Fprintln(os.Stderr, "eval-judge:", err)
-			return 2
+			return fail(2, err.Error())
 		}
 	case *baseURL == "" || *model == "" || apiKey == "":
-		fmt.Fprintln(os.Stderr, "eval-judge: need --stub OR --judge-base-url+--judge-model+SEMANTIX_JUDGE_API_KEY")
-		return 2
+		return fail(2, "need --stub OR --judge-base-url+--judge-model+SEMANTIX_JUDGE_API_KEY")
 	default:
 		var err error
 		j, err = judge.NewLLMJudge(judge.LLMConfig{
@@ -104,8 +112,7 @@ func runEvalJudge(args []string, stdout io.Writer) int {
 			APIKey:   apiKey,
 		})
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "eval-judge:", err)
-			return 2
+			return fail(2, err.Error())
 		}
 	}
 
@@ -135,6 +142,32 @@ func runEvalJudge(args []string, stdout io.Writer) int {
 	deltaUpper := epsFA * (*pProm) / 100 // percent of promoted traffic
 	pass := consistency >= *minConsistency
 
+	if *jsonOut {
+		data := evalJudgeData{
+			Pairs:          len(pairs),
+			Stub:           *stub,
+			Protocol:       *protocol,
+			Model:          *model,
+			Consistency:    consistency,
+			FalseApprove:   epsFA,
+			DeltaUpper:     deltaUpper,
+			Pass:           pass,
+			MinConsistency: *minConsistency,
+			PProm:          *pProm,
+		}
+		// Gate not met (exit 3, U19 §4.3): the JSON consumer still gets a
+		// parseable failure envelope with error.code=3 (U35 acceptance).
+		if !pass {
+			_ = writeErrorEnvelope(stdout, "eval-judge", 3,
+				fmt.Sprintf("consistency %.1f%% < %.1f%%", consistency, *minConsistency))
+			return 3
+		}
+		if err := writeEnvelope(stdout, "eval-judge", data); err != nil {
+			return fail(1, err.Error())
+		}
+		return 0
+	}
+
 	fmt.Fprintf(stdout, "# eval-judge: %d pairs, stub=%q protocol=%s model=%s\n", len(pairs), *stub, *protocol, *model)
 	fmt.Fprintf(stdout, "consistency_%%\tfalse_approve_%%\tΔerr_upper_%%\tpass\n")
 	fmt.Fprintf(stdout, "%.1f\t%.1f\t%.3f\t%v\n", consistency, epsFA, deltaUpper, pass)
@@ -143,10 +176,24 @@ func runEvalJudge(args []string, stdout io.Writer) int {
 			truncRune(pairs[i].q, 40), truncRune(pairs[i].a, 40), pairs[i].oracle, pairs[i].verdict)
 	}
 	if !pass {
-		fmt.Fprintln(os.Stderr, fmt.Sprintf("eval-judge: consistency %.1f%% < %.1f%%", consistency, *minConsistency))
-		return 3
+		return fail(3, fmt.Sprintf("consistency %.1f%% < %.1f%%", consistency, *minConsistency))
 	}
 	return 0
+}
+
+// evalJudgeData is the --json payload for eval-judge (U35, §4.2): the
+// Issue #8 judge-authenticity metrics. Fields are additive.
+type evalJudgeData struct {
+	Pairs          int     `json:"pairs"`
+	Stub           string  `json:"stub,omitempty"`
+	Protocol       string  `json:"protocol"`
+	Model          string  `json:"model"`
+	Consistency    float64 `json:"consistency_pct"`
+	FalseApprove   float64 `json:"false_approve_pct"`
+	DeltaUpper     float64 `json:"delta_upper_pct"`
+	Pass           bool    `json:"pass"`
+	MinConsistency float64 `json:"min_consistency"`
+	PProm          float64 `json:"p_prom"`
 }
 
 // exitCodeError carries a non-zero process exit code.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -79,5 +80,59 @@ func TestRunEvalJudgeRejectsNaNThresholds(t *testing.T) {
 		if code := runEvalJudge(args, &out); code != 2 {
 			t.Errorf("runEvalJudge(%v) = %d, want usage error 2", args, code)
 		}
+	}
+}
+
+// TestEvalJudgeJSONEnvelopePass: eval-judge --json on the passing path emits
+// the §4.2 envelope with the authenticity metrics in data (U35 acceptance).
+func TestEvalJudgeJSONEnvelopePass(t *testing.T) {
+	var out bytes.Buffer
+	code := runEvalJudge([]string{"--stub", "error", "--audit", "testdata/judge-audit.tsv",
+		"--min-consistency", "0", "--json"}, &out)
+	if code != 0 {
+		t.Fatalf("stub=error --min-consistency 0 must pass, got code %d; out:\n%s", code, out.String())
+	}
+	var env envelope
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("envelope not JSON-parseable: %v\n%s", err, out.String())
+	}
+	if !env.OK || env.Command != "eval-judge" || env.Error != nil {
+		t.Fatalf("envelope = ok:%v command:%q error:%+v, want ok eval-judge", env.OK, env.Command, env.Error)
+	}
+	raw, err := json.Marshal(env.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data evalJudgeData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		t.Fatalf("data not parseable: %v\n%s", err, raw)
+	}
+	if data.Pairs != 14 || !data.Pass {
+		t.Fatalf("data = %+v, want pairs=14 pass=true", data)
+	}
+	if data.Consistency < 0 || data.FalseApprove < 0 || data.DeltaUpper < 0 {
+		t.Fatalf("metrics must be non-negative: %+v", data)
+	}
+}
+
+// TestEvalJudgeJSONGateFail: the consistency gate (exit 3) must still emit a
+// parseable ok:false envelope with error.code=3 — the CI JSON consumer always
+// gets valid JSON (U35 acceptance).
+func TestEvalJudgeJSONGateFail(t *testing.T) {
+	var out bytes.Buffer
+	code := runEvalJudge([]string{"--stub", "no", "--audit", "testdata/judge-audit.tsv",
+		"--min-consistency", "95", "--json"}, &out)
+	if code != 3 {
+		t.Fatalf("stub=no must fail the 95%% gate with code 3, got %d", code)
+	}
+	var env envelope
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("gate-failure envelope not JSON-parseable: %v\n%s", err, out.String())
+	}
+	if env.OK || env.Error == nil || env.Error.Code != 3 {
+		t.Fatalf("envelope = ok:%v error:%+v, want ok:false error.code=3", env.OK, env.Error)
+	}
+	if env.Error.Message == "" {
+		t.Fatalf("error message must not be empty: %+v", env.Error)
 	}
 }
