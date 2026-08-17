@@ -44,6 +44,40 @@ func TestTopSources(t *testing.T) {
 	}
 }
 
+func TestReuseSummaryLineTaskTime(t *testing.T) {
+	// Completed task: ⏱ + duration + (done).
+	got := (ReuseSummary{Hits: 1, TaskElapsedSeconds: 83.2, TaskComplete: true}).Line()
+	if !strings.Contains(got, "⏱ 1m23s (done)") {
+		t.Errorf("completed task Line() = %q, want ⏱ 1m23s (done)", got)
+	}
+	// In-progress task: ⏱ + duration, no (done).
+	got = (ReuseSummary{Hits: 1, TaskElapsedSeconds: 42}).Line()
+	if !strings.Contains(got, "⏱ 42s") || strings.Contains(got, "(done)") {
+		t.Errorf("in-progress task Line() = %q, want ⏱ 42s without (done)", got)
+	}
+	// Absent task time: no ⏱ segment.
+	got = (ReuseSummary{Hits: 1}).Line()
+	if strings.Contains(got, "⏱") {
+		t.Errorf("absent task time Line() = %q, want no ⏱", got)
+	}
+}
+
+func TestFormatTaskDuration(t *testing.T) {
+	cases := []struct{ in float64; want string }{
+		{42, "42s"},
+		{59.4, "59s"},
+		{60, "1m0s"},
+		{83.2, "1m23s"},
+		{3600, "1h0m"},
+		{3661, "1h1m"},
+	}
+	for _, c := range cases {
+		if got := formatTaskDuration(c.in); got != c.want {
+			t.Errorf("formatTaskDuration(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
 func TestFormatUSD(t *testing.T) {
 	cases := []struct{ in float64; want string }{
 		{0.0042, "0.0042"},

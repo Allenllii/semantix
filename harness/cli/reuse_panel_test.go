@@ -67,3 +67,44 @@ func TestFormatPanelUSD(t *testing.T) {
 		}
 	}
 }
+
+func TestReusePanelTaskTime(t *testing.T) {
+	// Completed task renders ✅ with the total elapsed time.
+	done := reusePanelLines(`{"hits":2,"task_elapsed_seconds":83.2,"task_complete":true}`, 100)
+	if len(done) != 1 || !strings.Contains(done[0], "✅ 1m23s") {
+		t.Errorf("completed task panel %v missing ✅ 1m23s", done)
+	}
+
+	// In-progress task renders ⏳ with the elapsed-so-far time.
+	prog := reusePanelLines(`{"hits":2,"task_elapsed_seconds":42,"task_complete":false}`, 100)
+	if len(prog) != 1 || !strings.Contains(prog[0], "⏳ 42s") {
+		t.Errorf("in-progress task panel %v missing ⏳ 42s", prog)
+	}
+}
+
+func TestReusePanelOmitsTaskTimeWhenAbsent(t *testing.T) {
+	// Legacy payload without task fields renders no ⏱ segment.
+	lines := reusePanelLines(`{"hits":2}`, 100)
+	if len(lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(lines))
+	}
+	if strings.Contains(lines[0], "⏳") || strings.Contains(lines[0], "✅") {
+		t.Errorf("panel %q must omit task time when absent", lines[0])
+	}
+}
+
+func TestFormatTaskDuration(t *testing.T) {
+	cases := []struct{ in float64; want string }{
+		{42, "42s"},
+		{59.4, "59s"},
+		{60, "1m0s"},
+		{83.2, "1m23s"},
+		{3600, "1h0m"},
+		{3661, "1h1m"},
+	}
+	for _, c := range cases {
+		if got := formatTaskDuration(c.in); got != c.want {
+			t.Errorf("formatTaskDuration(%v) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

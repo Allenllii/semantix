@@ -18,6 +18,14 @@ type ReuseSummary struct {
 	// frequent first, at most 3. Empty when the kernel does not expose
 	// source_session (soft degrade — the panel drops the 🗂 segment).
 	Sources []string `json:"sources,omitempty"`
+	// TaskElapsedSeconds is how long the current task has run, measured from
+	// the task's start to either its completion (TaskComplete) or the present
+	// moment (⏳ in-progress). Zero is omitted so pre-U38 consumers are
+	// unaffected and legacy payloads render no ⏱ segment.
+	TaskElapsedSeconds float64 `json:"task_elapsed_seconds,omitempty"`
+	// TaskComplete is true once the goal verdict reached "complete"; a false
+	// (or absent) value renders the in-progress ⏳ form (U38).
+	TaskComplete bool `json:"task_complete,omitempty"`
 }
 
 // Line renders the compact one-line notice text for non-panel sinks
@@ -42,6 +50,13 @@ func (s ReuseSummary) Line() string {
 	if len(s.Sources) > 0 {
 		b.WriteString(" · 🗂 from: ")
 		b.WriteString(strings.Join(s.Sources, ", "))
+	}
+	if s.TaskElapsedSeconds > 0 {
+		b.WriteString(" · ⏱ ")
+		b.WriteString(formatTaskDuration(s.TaskElapsedSeconds))
+		if s.TaskComplete {
+			b.WriteString(" (done)")
+		}
 	}
 	return b.String()
 }
@@ -106,6 +121,19 @@ func usdFixed(v float64) string {
 		out = "-" + out
 	}
 	return out
+}
+
+// formatTaskDuration renders a duration in seconds as a compact human form:
+// "<60 → 42s", "≥60 → 1m23s", "≥3600 → 1h02m". Rounds to whole seconds.
+func formatTaskDuration(seconds float64) string {
+	n := int64(seconds + 0.5)
+	if n < 60 {
+		return itoa64(n) + "s"
+	}
+	if n < 3600 {
+		return itoa64(n/60) + "m" + itoa64(n%60) + "s"
+	}
+	return itoa64(n/3600) + "h" + itoa64((n%3600)/60) + "m"
 }
 
 func itoa64(n int64) string {
