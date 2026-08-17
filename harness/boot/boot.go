@@ -295,11 +295,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// the hot path); a broken kernel degrades fail-open, never blocking the
 	// main loop.
 	semantixBridge := semantix.NewBridge(semantix.Config{
-		Enabled:     cfg.Semantix.Enabled,
-		Binary:      cfg.Semantix.Binary,
-		Inject:      cfg.Semantix.Inject,
-		Budget:      cfg.Semantix.Budget,
-		SessionsDir: cfg.Semantix.SessionsDir,
+		Enabled:      cfg.Semantix.Enabled,
+		Binary:       cfg.Semantix.Binary,
+		Inject:       cfg.Semantix.Inject,
+		Budget:       cfg.Semantix.Budget,
+		SessionsDir:  cfg.Semantix.SessionsDir,
+		CostMissUSD:  cfg.Semantix.CostInputPriceUSD,
+		CostHitUSD:   cfg.Semantix.CostCachePriceUSD,
 	})
 	sink = semantixBridge.Sink(sink)
 	defer semantixBridge.Close()

@@ -50,6 +50,10 @@ type cliThemeStyle struct {
 	name        string
 	mode        string
 	accent      cliColor
+	// success, when non-nil, overrides the palette success color. Only the
+	// Semantix Design style sets it (semantic green #2F967F, blueprint §4);
+	// other styles keep their palette default.
+	success     *cliColor
 	description string
 }
 
@@ -105,6 +109,11 @@ var (
 		{name: "porcelain", mode: "light", accent: cliColor{"#7d63c8", 104}, description: "soft violet light accent"},
 		{name: "linen", mode: "light", accent: cliColor{"#bd5d4d", 167}, description: "muted coral light accent"},
 		{name: "glacier", mode: "light", accent: cliColor{"#357fa8", 74}, description: "cool blue light accent"},
+		// Semantix Design (U39, blueprint §4): dark base + semantic green
+		// #2F967F accent, brand-consistent with the landing page. Select via
+		// REASONIX_THEME=semantix or the /theme slash command.
+		{name: "semantix", mode: "dark", accent: cliColor{"#2F967F", 79},
+			success: &cliColor{"#2F967F", 79}, description: "Semantix Design semantic green"},
 	}
 	activeCLITheme = applyCLIThemeStyle(cliDarkTheme, cliThemeStyles[0])
 	// activeBackgroundProbe stays inert unless a caller that owns stdin opts in
@@ -194,6 +203,9 @@ func applyCLIThemeStyle(base cliPalette, style cliThemeStyle) cliPalette {
 	base.style = style.name
 	base.accent = style.accent
 	base.selection = style.accent
+	if style.success != nil {
+		base.success = *style.success
+	}
 	return base
 }
 

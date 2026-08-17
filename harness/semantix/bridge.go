@@ -5,9 +5,16 @@ package semantix
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"semantix/harness/event"
+	"semantix/kernel/bm25"
+	"semantix/kernel/inject"
+	"semantix/kernel/slice"
+	"semantix/kernel/usage"
+	"semantix/kernel/zone"
 )
 
 // Config is the kernel wiring configuration for one build. It mirrors
@@ -17,6 +24,8 @@ type Config struct {
 	// Enabled mirrors session events to the kernel's session JSONL sink.
 	Enabled bool
 	// Binary is the kernel CLI path; empty defaults to "semantix" on PATH.
+	// Retained for the legacy semantix_lookup tool; the reuse panel and
+	// injection read the kernel in-process (U39) and never spawn the CLI.
 	Binary string
 	// Inject appends the [semantix-reuse] block to the system prompt region.
 	Inject bool
@@ -25,6 +34,15 @@ type Config struct {
 	// SessionsDir is where the session JSONL mirror is written; empty uses
 	// <controller session dir>/sessions.
 	SessionsDir string
+	// ProjectDir is the kernel project directory the slice store and usage
+	// log resolve against (kernel CLI semantics: <dir>/.semantix/...).
+	// Empty uses the process working directory.
+	ProjectDir string
+	// CostMissUSD / CostHitUSD are the usage cost model prices (USD per 1M
+	// tokens at cache miss / hit) for the reuse panel savings delta.
+	// Zero keeps the kernel defaults (usage.DefaultCost*PerMTok).
+	CostMissUSD float64
+	CostHitUSD  float64
 }
 
 // Bridge aggregates the kernel wiring for one harness build. It is optional:
@@ -79,59 +97,124 @@ func (b *Bridge) SetLabel(label string) {
 	}
 }
 
-// Inject runs the kernel's L2 injector for query and returns the
-// [semantix-reuse] block, or "" when unavailable/timed out (soft degrade).
+// Inject runs the kernel's L2 injector in-process for query and returns the
+// [semantix-reuse] block, or "" when the kernel store is unavailable (soft
+// degrade — the harness never blocks on the kernel). Semantics match the
+// kernel CLI `semantix inject` defaults (U39 in-process data source).
 func (b *Bridge) Inject(ctx context.Context, query string) string {
 	if !b.Enabled() || !b.cfg.Inject {
 		return ""
 	}
-	return Inject(ctx, b.cfg.Binary, query, b.cfg.Budget)
-}
-
-// Lookup runs the kernel's semantix_lookup tool over the subprocess CLI and
-// returns the raw tool output, or "" on any failure (soft degrade).
-func (b *Bridge) Lookup(ctx context.Context, query string, limit int, scope string) string {
-	if !b.Enabled() || query == "" {
-		return ""
-	}
-	if limit <= 0 {
-		limit = 5
-	}
-	if scope == "" {
-		scope = "project"
-	}
-	args := []string{"lookup", "--query", query, "--limit", itoa(limit), "--scope", scope}
-	out, err := runCLI(ctx, b.cfg.Binary, "", args)
+	idx, err := b.kernelIndex()
 	if err != nil {
 		return ""
 	}
-	return string(out)
+	z := zone.Default()
+	inj, err := (&inject.Injector{
+		Index:  idx,
+		Scope:  slice.Project,
+		K:      5,
+		Budget: b.cfg.Budget,
+		Zones:  &z,
+	}).Build(query)
+	if err != nil || inj == nil {
+		return ""
+	}
+	return inj.Text
 }
 
-// Reuse gathers the per-turn reuse panel data (U33/H4a): the hits for query
-// plus the incremental cost savings since the last snapshot, both through
-// the shared protocol client (protocol.go). Kernel unavailable/timed out
-// degrades to a zero summary — the panel hides and the agent main loop
-// never blocks on the kernel.
+// Reuse gathers the per-turn reuse panel data (U33/H4a) in-process: the
+// project-store hits for query (kernel/lookup semantics, limit 5) plus the
+// incremental cost savings since the last usage snapshot. Kernel store
+// unavailable degrades to a zero summary — the panel hides and the agent
+// main loop never blocks on the kernel.
 func (b *Bridge) Reuse(ctx context.Context, query string) ReuseSummary {
 	if !b.Enabled() || query == "" {
 		return ReuseSummary{}
 	}
-	hits, err := Lookup(ctx, b.cfg.Binary, "", query, 5, "project")
+	idx, err := b.kernelIndex()
 	if err != nil {
 		return ReuseSummary{}
 	}
-	sum := ReuseSummary{Hits: len(hits), Sources: topSources(hits)}
-	if usage, err := Usage(ctx, b.cfg.Binary, "", ""); err == nil {
+	hits, err := idx.Search(query, 5, slice.Project)
+	if err != nil {
+		return ReuseSummary{}
+	}
+	sessions := make([]string, 0, len(hits))
+	for _, h := range hits {
+		if h.Slice != nil {
+			sessions = append(sessions, h.Slice.Meta.SourceSession)
+		}
+	}
+	sum := ReuseSummary{Hits: len(hits), Sources: topSources(sessions)}
+	if s, err := usage.Summarize(b.usagePath(), b.costMiss(), b.costHit()); err == nil {
 		b.mu.Lock()
 		prev := b.lastSavings
-		b.lastSavings = usage.SavingsUSD
+		b.lastSavings = s.SavingsUSD
 		b.mu.Unlock()
-		if delta := usage.SavingsUSD - prev; delta > 0 {
+		if delta := s.SavingsUSD - prev; delta > 0 {
 			sum.SavingsUSD = delta
 		}
 	}
 	return sum
+}
+
+// kernelIndex opens the project slice store and rebuilds the in-memory index
+// covering every scope (kernel CLI lookup/inject parity). Rebuilt per call:
+// the store is a small JSONL file and indexing is millisecond-scale; caching
+// is deferred to the kernel wiring follow-up (U40).
+func (b *Bridge) kernelIndex() (slice.Index, error) {
+	store, err := slice.NewFileStore(filepath.Join(b.projectDir(), ".semantix", "project.db"))
+	if err != nil {
+		return nil, err
+	}
+	idx := bm25.New()
+	for _, scope := range []slice.Scope{slice.Session, slice.Project, slice.User} {
+		items, err := store.List(scope)
+		if err != nil {
+			return nil, err
+		}
+		for _, sl := range items {
+			if err := idx.Insert(sl); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return idx, nil
+}
+
+// projectDir resolves the kernel project directory for in-process store and
+// usage-log reads (kernel CLI semantics: <dir>/.semantix/...).
+func (b *Bridge) projectDir() string {
+	if b.cfg.ProjectDir != "" {
+		return b.cfg.ProjectDir
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return wd
+}
+
+// usagePath is the kernel usage log the reuse panel savings delta reads.
+func (b *Bridge) usagePath() string {
+	return filepath.Join(b.projectDir(), ".semantix", "usage.jsonl")
+}
+
+// costMiss / costHit resolve the usage cost model prices, falling back to the
+// kernel defaults when the build did not configure them.
+func (b *Bridge) costMiss() float64 {
+	if b.cfg.CostMissUSD > 0 {
+		return b.cfg.CostMissUSD
+	}
+	return usage.DefaultCostMissPerMTok
+}
+
+func (b *Bridge) costHit() float64 {
+	if b.cfg.CostHitUSD > 0 {
+		return b.cfg.CostHitUSD
+	}
+	return usage.DefaultCostHitPerMTok
 }
 
 // mirrorSink forwards every event to inner and mirrors the session-relevant

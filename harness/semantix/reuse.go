@@ -47,12 +47,13 @@ func (s ReuseSummary) Line() string {
 }
 
 // topSources returns the top-3 source sessions by hit frequency, most
-// frequent first. Sessions with an empty id are skipped.
-func topSources(hits []LookupHit) []string {
+// frequent first. Empty session ids are skipped (U30 fields may be absent on
+// legacy slices — the panel drops the 🗂 segment then).
+func topSources(sessions []string) []string {
 	order := make([]string, 0, 3)
 	counts := make(map[string]int, 3)
-	for _, h := range hits {
-		s := strings.TrimSpace(h.SourceSession)
+	for _, s := range sessions {
+		s = strings.TrimSpace(s)
 		if s == "" {
 			continue
 		}

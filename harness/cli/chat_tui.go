@@ -57,6 +57,11 @@ type chatTUI struct {
 	diagnostics      *tuiDiagnostics
 	firstFrameLogged bool
 
+	// gauge is the resource-dashboard side-pane mount point (U39 C5). The
+	// placeholder renders nothing; U40/U41 wire the real ResourceCatalog
+	// gauge here. Always non-nil.
+	gauge resourceGauge
+
 	width  int
 	height int
 	// themeSweep freezes the frame while a /theme switch wipes across it.
@@ -641,6 +646,7 @@ func newChatTUI(ctrl control.SessionAPI, missing string, eventCh chan event.Even
 		label:                ctrl.Label(),
 		modelRef:             ctrl.ModelRef(),
 		missing:              missing,
+		gauge:                nilGauge{}, // resource dashboard mount point (U39): no-op until U40/U41
 		nativeScrollback:     nativeScrollback,
 		legacyScrollClear:    useLegacyViewportScrollClear(runtime.GOOS, os.Environ()),
 		mouseCaptureOff:      mouseCaptureOffByDefault(),

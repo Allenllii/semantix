@@ -964,6 +964,12 @@ type SemantixConfig struct {
 	// SessionsDir is where the session JSONL mirror is written; empty uses
 	// <controller session dir>/sessions.
 	SessionsDir string `toml:"sessions_dir"`
+	// CostInputPriceUSD / CostCachePriceUSD override the usage cost model
+	// prices (USD per 1M tokens at cache miss / hit) used by the reuse panel
+	// savings delta. Zero keeps the kernel defaults — mirror semantix.toml
+	// [cost] keys here when they are customized.
+	CostInputPriceUSD float64 `toml:"cost_input_price_usd"`
+	CostCachePriceUSD  float64 `toml:"cost_cache_price_usd"`
 }
 
 // NetworkConfig controls ordinary outbound HTTP traffic such as model providers,
