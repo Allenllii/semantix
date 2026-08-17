@@ -40,7 +40,7 @@ type Gateway struct {
 	ingestWG   sync.WaitGroup
 	shutdownMu sync.Mutex // guards closing flag vs recordSession's Add
 	closing    bool
-	disabled   bool       // SEMANTIX_GATEWAY_DISABLE ablation switch
+	disabled   bool // SEMANTIX_GATEWAY_DISABLE ablation switch
 
 	now func() time.Time
 }
@@ -171,11 +171,12 @@ func (g *Gateway) resolveScope(r *http.Request) (slice.Scope, error) {
 	return parseScope(v)
 }
 
-// cacheFresh applies the configured TTL window over Slice.CreatedAt.
-// ttl_seconds<=0 or unknown age (CreatedAt==0) never expire (kernel gc
-// semantics); the kernel dep-fingerprint chain stays the staleness authority.
-func (g *Gateway) cacheFresh(s *slice.Slice) bool {
-	ttl := g.cfg.Cache.TTLSeconds
+// cacheFresh applies the vendor-aware TTL window over Slice.CreatedAt
+// (design §3.5: DeepSeek 24h / Anthropic 5m, resolved by Config.TTLFor).
+// ttl<=0 or unknown age (CreatedAt==0) never expire (kernel gc semantics);
+// the kernel dep-fingerprint chain stays the staleness authority.
+func (g *Gateway) cacheFresh(s *slice.Slice, vendor string) bool {
+	ttl := g.cfg.TTLFor(vendor)
 	if ttl <= 0 || s.CreatedAt == 0 {
 		return true
 	}
@@ -278,7 +279,7 @@ func (m metaStore) Put(s *slice.Slice) error {
 	return m.inner.Put(s)
 }
 
-func (m metaStore) Get(id string) (*slice.Slice, error)      { return m.inner.Get(id) }
+func (m metaStore) Get(id string) (*slice.Slice, error)            { return m.inner.Get(id) }
 func (m metaStore) List(scope slice.Scope) ([]*slice.Slice, error) { return m.inner.List(scope) }
 func (m metaStore) UpdateStats(id string, delta slice.SliceStats) error {
 	return m.inner.UpdateStats(id, delta)

@@ -275,6 +275,9 @@ POST /v1/chat/completions {model, messages, stream, ...}
 | GPT | `https://api.openai.com/v1` | 同上 | 同 OpenAI 兼容 |
 | Claude | `https://api.anthropic.com/v1` | `x-api-key` + `anthropic-version` | ① 需要把 messages 转 Anthropic 格式（或走官方 OpenAI 兼容端点）；② 注入块边界打 `cache_control:{type:"ephemeral"}`（≤2 断点：system 尾 + 最后消息尾） |
 
+> 转换规则与 cache_control 断点的具体设计见 §3.11（M2 上半，Issue #185）；§3.11 落地前
+> `vendor="anthropic"` 在配置层被显式拒绝，避免把 Anthropic 流量误发到 OpenAI 式端点。
+
 **模型映射**：`semantix-gateway.toml` 中定义 `upstreams[].model_alias`（New API 侧模型名 ↔ 上游模型名）；New API 渠道的模型名即网关的 model_alias，网关负责换成上游真实模型名。
 
 **超时与重试**：网关给上游设保守超时（connect 10s / 首字节 60s / 总时长继承 New API 配置）；重试逻辑**主要放 New API 渠道层**（New API 有重试/负载均衡），网关只做一次重试兜底（幂等 GET 类；chat 请求重试仅对网络错误）。
@@ -300,6 +303,7 @@ budget = 4096                             # L2 注入块字节预算
 
 [cache]
 ttl_seconds = 86400                       # 默认 TTL（vendor 差异化优先）
+vendor_ttl = { anthropic = 300 }          # 可选：按 vendor 覆盖 TTL（秒；内置默认 DeepSeek 24h / Anthropic 5m，§3.11.4）
 judge_api_key = "${SEMANTIX_JUDGE_API_KEY}"   # 可选：grey 区 LLM judge
 
 [ingest]
@@ -323,6 +327,82 @@ vendor = "deepseek"                       # deepseek | anthropic | openai | moon
 - 切片库 0600/0700 权限、原子写、防 symlink（沿用现有安全约定）；
 - 敏感内容：默认 `scope=project` 隔离；脱敏接入点预留（`sanitize` 已有，正式版按策略启用）；
 - 网关无公网暴露面：只允许 New API 所在网段访问（compose 内网即可，见 §5）。
+
+---
+
+## 3.11 M2 设计节：Claude / Anthropic 适配（Issue #185）
+
+> 本节是 §7 M2「多模型」的上半（Anthropic 一家），2026-08-17 起草，随 Issue #185 落地。
+> 覆盖：chat/completions ↔ Anthropic messages 双向转换、cache_control 断点注入、流式 SSE 事件映射、
+> TTL 按 vendor 差异化。Kimi / GPT（OpenAI 兼容系）与计费对账属 M2 下半，不在本节。
+
+**适配形态**：客户端（New API 侧）永远只看到 OpenAI 兼容协议；转换只发生在网关 → 上游这一跳。
+`vendor="anthropic"` 的上游走 `POST {base_url}/v1/messages`，鉴权头 `x-api-key` + `anthropic-version: 2023-06-01`
+（**不发** `Authorization`）。转换层独立文件 `gateway/anthropic.go`，不触碰 OpenAI 直通路径
+（非 anthropic vendor 的转发、透传、流式逻辑一律不变）。
+
+### 3.11.1 请求转换（chat/completions → /v1/messages）
+
+| OpenAI chat/completions | Anthropic /v1/messages | 规则 |
+|---|---|---|
+| `model`（客户端别名） | `model`（upstream_model） | 与 OpenAI 路径相同的三层模型映射（§4.2） |
+| `messages[].role=system` | 顶层 `system` | **system 提升**：全部 system 文本以 `\n\n` 合并到顶层；有注入块时升级为 block 数组 `[{type:"text",text,cache_control}]` |
+| `messages[].role=user` | `user`，content 为 block 数组 | 字符串 → `{type:"text"}`；part 数组：text → text block、image_url → image block（`data:` URI 转 base64 source，其余 url source） |
+| `messages[].role=assistant`（含 tool_calls） | `assistant`，content 含 text + `{type:"tool_use"}` | `tool_calls[].function.arguments`（JSON 字符串）→ `input`（object，解析失败置 `{}`） |
+| `messages[].role=tool` | 并入相邻 user 消息的 `{type:"tool_result",tool_use_id,content}` | Anthropic 无 tool role；连续 tool_result 合并进同一条 user 消息 |
+| 相邻同 role 消息 | 合并 | Anthropic 强制 user/assistant 交替，OpenAI 允许连续同角色 |
+| `max_tokens` / `max_completion_tokens` | `max_tokens`（**必填**） | OpenAI 未传时默认 4096 |
+| `temperature` / `top_p` / `stream` | 同名透传 | — |
+| `stop` | `stop_sequences` | string 或数组统一归一为数组 |
+| `tools[].function` | `tools[]{name,description,input_schema}` | `function.parameters` → `input_schema` |
+| `tool_choice` | `tool_choice` | auto→auto、none→none、required→any、`{function:{name}}`→`{type:"tool",name}` |
+
+**cache_control 断点注入（L2 注入块末尾，≤2 个）**：
+
+- 仅当本次请求真的注入了切片（`inject.Injection.Slices` 非空；空 marker block 不打断点，避免浪费 prompt-cache 预算）；
+- 断点 ① system 尾：注入块文本追加到合并后的 system 末尾，system 以 block 数组承载，最后一个 text block 带 `cache_control:{type:"ephemeral"}`；
+- 断点 ② 最后消息尾：最后一条消息的最后一个 text block 带 `cache_control:{type:"ephemeral"}`；
+- 与 §3.6「对 Claude 在注入块边界打 cache_control 断点（≤2 断点：system 尾 + 最后消息尾）」一致；断点让注入前缀按缓存价计费（§2.3 Claude 行：$3.00/M → $0.30/M）。
+
+### 3.11.2 响应转换（/v1/messages → chat.completion）
+
+| Anthropic | OpenAI | 规则 |
+|---|---|---|
+| `content[].type=text` | `choices[0].message.content` | 全部 text 块按序拼接 |
+| `content[].type=tool_use` | `choices[0].message.tool_calls[]` | `{id, type:"function", function:{name, arguments: JSON.stringify(input)}}` |
+| `stop_reason` | `finish_reason` | end_turn / stop_sequence → stop、max_tokens → length、tool_use → tool_calls |
+| `usage.input_tokens` | `usage.prompt_tokens` | — |
+| `usage.output_tokens` | `usage.completion_tokens` | — |
+| `usage.cache_read_input_tokens` | `usage.prompt_tokens_details.cached_tokens` | L3/计费口径：注入前缀按缓存价（§4.3 合成 usage 同源） |
+| `id` / `model` | `id` / `model`（客户端别名） | `created` 由网关生成 |
+
+### 3.11.3 流式 SSE 事件映射（Anthropic → OpenAI）
+
+| Anthropic 事件 | OpenAI 事件 | 规则 |
+|---|---|---|
+| `message_start` | `delta:{role:"assistant"}` 首块 | 客户端识别角色 |
+| `content_block_start`（tool_use） | `delta:{tool_calls:[{index,id,type:"function",function:{name,arguments:""}}]}` | tool index 独立编号 |
+| `content_block_delta`（text_delta） | `delta:{content}` | 文本增量原样透传 |
+| `content_block_delta`（input_json_delta） | `delta:{tool_calls:[{index,function:{arguments}}]}` | arguments 增量透传 |
+| `message_delta`（stop_reason） | `delta:{}, finish_reason` | 映射同非流式 |
+| `message_stop` | `data: [DONE]` | 终止 |
+| `event: ping` / 非 data 行 / thinking 块 | 丢弃 | 客户端只见 OpenAI 形状 |
+| 异常断流（无 message_stop） | 网关补 `finish_reason` + `[DONE]` | 客户端不挂死（同 §3.4 保证） |
+
+流式响应侧仍只写请求 turns 进旁路（assistant 内容解析属既有债务，与 OpenAI 流式路径一致）。
+
+### 3.11.4 TTL 按 vendor 差异化
+
+- 新增 `[cache] vendor_ttl`（`map[string]int64`，可选）；`Config.TTLFor(vendor)` 解析顺序：显式 `vendor_ttl` > 内置默认 > 通用 `ttl_seconds`；
+- 内置默认（§3.5）：DeepSeek 24h、**Anthropic 5m**；Kimi / GPT 用通用 `ttl_seconds`（上游文档确认后再配）；
+- L3 命中判定 `cacheFresh(slice, vendor)` 按上游 vendor 取 TTL（`l3Eligible` 传入 `up.Vendor`）。
+
+### 3.11.5 验收（e2e，假 Anthropic 上游）
+
+- 非流式全链路：客户端收到 OpenAI 格式响应（content / usage 映射正确），假上游收到 `x-api-key` + `anthropic-version`、`/v1/messages` 路径、system 提升后的 body，且**无** `Authorization` 头；
+- 流式全链路：客户端收到 OpenAI SSE（role 首块 → content 分块 → finish_reason → [DONE]），无 Anthropic 原始事件泄漏；
+- L2 注入断言：注入块出现在 system 尾且带 `cache_control:{type:"ephemeral"}`；
+- `go test ./gateway/... -race` 全绿。
 
 ---
 
@@ -427,7 +507,7 @@ docker-compose.yml
 |---|---|---|---|
 | **M0 网关 MVP** | `cmd/semantix-gateway`：OpenAI 兼容层（chat/completions + SSE 透传 + /healthz）+ 鉴权 + 上游 DeepSeek 适配 + 会话旁路入库 | 1–2 周 | 任意 OpenAI 兼容客户端 → New API → 网关 → DeepSeek 全链路跑通；会话入库后 `semantix search` 可检索到切片 |
 | **M1 缓存闭环** | L2 注入 + L3 缓存（指纹/RuleGate/promote/TTL）+ 流式命中回放 + usage 标记 | +1–2 周 | 重复任务第二次命中 `x-semantix-cache: hit` 且零上游调用；合成演示成本节省 ≥30%（复用 m0-cost-comparison 脚本） |
-| **M2 多模型 + 上线** | Claude（格式转换 + cache_control）/ Kimi / GPT 适配 + 模型映射表 + 计费对账 + 健康监控 | +1 周 | 四家模型渠道全通；命中率/节省率有周报数字；New API 侧对账一致 |
+| **M2 多模型 + 上线** | Claude（格式转换 + cache_control，**上半已落地，见 §3.11**）/ Kimi / GPT 适配 + 模型映射表 + 计费对账 + 健康监控 | +1 周 | 四家模型渠道全通；命中率/节省率有周报数字；New API 侧对账一致 |
 
 **M0 为决策门**：若网关形态下「请求级注入」收益显著低于预期（重复率低的场景），及时转向纯 L3 缓存策略或按会话聚合注入，控制投入在 2 周内。
 
@@ -467,5 +547,6 @@ docker-compose.yml
 
 Semantix Gateway 是 Semantix 从「agent kernel / CLI」走向「**API 网关形态**」的关键一步：
 把已验证的 79.8% 成本节省机制（L2 注入 + L3 复用 + L1 字节稳定）搬到 New API 后面，**零侵入任何客户端与 harness**，
-一条命令部署（`go build ./cmd/semantix-gateway`），天然服务 DeepSeek / Claude / Kimi / GPT 四家模型。
+一条命令部署（`go build ./cmd/semantix-gateway`），天然服务 DeepSeek / Claude / Kimi / GPT 四家模型
+（Claude 经 §3.11 的格式转换 + cache_control 断点接入，其余三家同为 OpenAI 兼容协议）。
 M0 决策门控制投入在 2 周内，收益不成立可随时退化为纯透传。
