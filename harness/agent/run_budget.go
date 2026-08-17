@@ -149,6 +149,16 @@ func (a *Agent) observeRunBudget(state *turnRuntime, usage *provider.Usage) {
 		Task:     a.task.budget.totals(),
 		Currency: currency,
 	})
+	// U41 C3: fold this round's billed cost into the window budget and refresh
+	// the catalog snapshot so the kernel scheduler sees the latest spend. The
+	// cost uses the same rate-card float path as runBudget (CostQuote amounts
+	// are numerically equivalent; the quote layer adds audit fields only).
+	if a.budgetCtrl != nil && usage != nil && a.svc.pricing != nil {
+		if cost := a.svc.pricing.Cost(usage); cost > 0 {
+			a.budgetCtrl.Observe(cost)
+			a.SetResourceBudget(a.budgetCtrl.Snapshot())
+		}
+	}
 }
 
 type taskBudgetContextKey struct{}
