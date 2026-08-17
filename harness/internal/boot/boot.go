@@ -58,6 +58,7 @@ import (
 	"semantix/harness/internal/recovery"
 	"semantix/harness/internal/sandbox"
 	"semantix/harness/internal/secrets"
+	"semantix/harness/internal/semantix"
 	"semantix/harness/internal/sessiontemp"
 	"semantix/harness/internal/skill"
 	"semantix/harness/internal/stats"
@@ -66,6 +67,7 @@ import (
 	"semantix/harness/internal/tool/builtin"
 	"semantix/harness/internal/tool/sessiontool"
 	"semantix/harness/internal/workspacelease"
+	kernelevent "semantix/kernel/event"
 )
 
 // ErrUnknownModel is returned by Build when the configured model can't be
@@ -287,6 +289,24 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// directly — wrapping only the controller's reference would leave the
 	// executor's per-chunk Text/Reasoning stream uncoalesced.
 	sink = control.NewGoalUsageTee(event.Coalesce(sink, event.DefaultStreamDeltaWindow))
+
+	// Semantix memory kernel wiring (U8/H1): build the optional bridge and
+	// mirror every event into the kernel session JSONL. When [semantix] is
+	// not enabled the bridge returns the sink unchanged (zero overhead on
+	// the hot path); a broken kernel degrades fail-open, never blocking the
+	// main loop.
+	semantixBridge := semantix.NewBridge(semantix.Config{
+		Enabled:     cfg.Semantix.Enabled,
+		Binary:      cfg.Semantix.Binary,
+		Inject:      cfg.Semantix.Inject,
+		Budget:      cfg.Semantix.Budget,
+		SessionsDir: cfg.Semantix.SessionsDir,
+		ProjectDir:  root,
+		CostMissUSD: cfg.Semantix.CostInputPriceUSD,
+		CostHitUSD:  cfg.Semantix.CostCachePriceUSD,
+	})
+	sink = semantixBridge.Sink(sink)
+	defer semantixBridge.Close()
 
 	// Extension preflight (stages 5b/7): start the installed, enabled v2 runtime
 	// packages ONCE, here, before model resolution, so plugin-namespaced refs
@@ -1662,6 +1682,23 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	})
 
 	execSess := newObservedSession(sysPrompt)
+	resourceModels := make([]kernelevent.ResourceModel, 0, 2)
+	for _, tier := range []string{"flash", "pro"} {
+		if tierEntry, ok := cfg.ResolveModel(tier); ok {
+			model := kernelevent.ResourceModel{ID: modelRefFromEntry(tierEntry), Tier: tier}
+			if tierEntry.Price != nil {
+				model.InputPrice = tierEntry.Price.Input
+				model.OutputPrice = tierEntry.Price.Output
+			}
+			resourceModels = append(resourceModels, model)
+		}
+	}
+	var tierResolver agent.TierResolver
+	if len(resourceModels) == 2 {
+		tierResolver = func(tier string) (provider.Provider, *provider.Pricing, int, error) {
+			return resolveSubagentProvider(tier, "")
+		}
+	}
 	executor := agent.New(execProv, reg, execSess, agent.Options{
 		MaxSteps:    maxSteps,
 		MaxStepsKey: opts.MaxStepsKey,
@@ -1697,6 +1734,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		SubagentDepth:                0,
 		MaxSubagentDepth:             maxSubagentDepth,
 		MissingReasoningWarnStateDir: config.MissingReasoningWarnStateDir(),
+		Semantix:                     semantixBridge,
+		TierResolver:                 tierResolver,
+		KernelEvents:                 semantixBridge.Events(),
+		ResourceModels:               resourceModels,
 	}, sink)
 
 	var runner agent.Runner = executor
@@ -1913,6 +1954,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}
 	}
 	ctrl := control.New(ctrlOpts)
+	semantixBridge.SetLabel(ctrl.Label())
 	// Publish the controller to the extension UI hub's indirection: from here
 	// on, host/ui/* publishes ride ctrl.EmitExtensionEvent and blocking prompts
 	// ride ctrl.Ask, exactly as if the hub had been built after control.New.

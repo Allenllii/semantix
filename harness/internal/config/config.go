@@ -67,6 +67,7 @@ type Config struct {
 	Serve            ServeConfig         `toml:"serve"`
 	Secrets          SecretsConfig       `toml:"secrets"`
 	Remote           RemoteConfig        `toml:"remote"`
+	Semantix         SemantixConfig      `toml:"semantix"`
 
 	systemPromptFileSource     promptFileSource
 	providerSources            map[string]providerSourceScope
@@ -973,6 +974,30 @@ type NetworkProxyConfig struct {
 	Port     int    `toml:"port"`
 	Username string `toml:"username"`
 	Password string `toml:"password"`
+}
+
+// SemantixConfig wires the semantix memory kernel into this agent (U8/H1).
+// Every field is optional: when the kernel binary is unavailable or the
+// subprocess calls time out, the harness degrades silently (fail-open — the
+// cache layer never blocks the agent main loop).
+type SemantixConfig struct {
+	// Enabled mirrors session events to the kernel's session JSONL sink.
+	Enabled bool `toml:"enabled"`
+	// Binary is the kernel CLI path; empty defaults to "semantix" on PATH.
+	Binary string `toml:"binary"`
+	// Inject appends the [semantix-reuse] block to the system prompt region.
+	Inject bool `toml:"inject"`
+	// Budget caps the L2 injection block size in bytes (default 4096).
+	Budget int `toml:"budget"`
+	// SessionsDir is where the session JSONL mirror is written; empty uses
+	// <controller session dir>/sessions.
+	SessionsDir string `toml:"sessions_dir"`
+	// CostInputPriceUSD / CostCachePriceUSD override the usage cost model
+	// prices (USD per 1M tokens at cache miss / hit) used by the reuse panel
+	// savings delta. Zero keeps the kernel defaults — mirror semantix.toml
+	// [cost] keys here when they are customized.
+	CostInputPriceUSD float64 `toml:"cost_input_price_usd"`
+	CostCachePriceUSD float64 `toml:"cost_cache_price_usd"`
 }
 
 // NetworkProxySpec returns the expanded proxy settings used by netclient.
