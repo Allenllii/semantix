@@ -317,9 +317,6 @@ type Agent struct {
 	sched sched.Decider
 	// resources owns the full catalog snapshot emitted to the kernel bus.
 	resources *resourceCatalogState
-	// budgetCtrl accumulates window financial spend and maps it to the
-	// laddered budget action (U41 C3). Nil when no limit is configured.
-	budgetCtrl *BudgetController
 	// prefetchedInject caches a warmed [semantix-reuse] block assembled
 	// during LLM wait time (N12); used as a fallback when the turn's
 	// synchronous injection produced nothing.
@@ -1157,9 +1154,6 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		strictAlternatingRoles: opts.StrictAlternatingRoles,
 	}
 	a.resources = newResourceCatalogState(opts.KernelEvents, tools, opts.ResourceModels, opts.ResourceBudget)
-	if opts.ResourceBudget.LimitUSD > 0 {
-		a.budgetCtrl = NewBudgetController(opts.ResourceBudget.LimitUSD, opts.ResourceBudget.Window)
-	}
 	a.sess.output.outputBudget = outputBudgetOf(prov)
 	if a.sess.path != "" {
 		a.LoadProjectionSidecar(a.sess.path)
@@ -2920,11 +2914,6 @@ func finishReasonMessage(u *provider.Usage) (string, bool) {
 // injection in beginRunTurn produced nothing (kernel timeout, cold cache).
 // The background goroutine never blocks the main loop.
 func (a *Agent) startInjectWarm(ctx context.Context) {
-	// U41 C3 halt_prefetch: once the window budget crosses 70% (or higher),
-	// stop the speculative warm-up — the first thing to cut (spec §5.1).
-	if a.budgetCtrl != nil && a.budgetCtrl.Action() != "" {
-		return
-	}
 	input := a.turn.input
 	if input == "" {
 		return
