@@ -5,7 +5,8 @@
 > `kernel/event/event.go`（12 种 Kind + `KindCount` 哨兵）、`patches/semantix-sched-prefetch.patch`（U13c 成果，本期作迁移素材）；
 > 架构基线：`docs/reports/harness-refactor-blueprint.md` §3/§4/§6、`docs/Agent-Infra-架构设计.md` §5。
 >
-> **状态（2026-08-17）**：v1 草案，**先审后写**——本文档获批准前，U38-U43 不开工实现。
+> **状态（2026-08-17 评审后）**：v1.1（U37 评审意见已回写，见 §10，正文修订标注 R#）。
+> **先审后写**——本文档获批准前，U38-U43 不开工实现。
 > 判级：Spec-Required（新顶层目录/包结构 + 事件契约扩展 + 新配置面，多条命中）。
 
 ## 0. 战略决策（2026-08-17，Song）
@@ -20,8 +21,10 @@
 - `patches/` 模式废弃（保留作历史与迁移素材，U13c 的接线成果按 §5 迁移）
 - 「跨仓库 wire 契约」降级为「单仓进程内接口」——控制通道不再需要 CLI 子进程与 3s 超时软降级
 - H4 视觉从「可并行的 UI 换肤」升级为集成分支的组成部分（#157 成果迁移、#158 重定位到本仓）
-- **集成分支**：`harness-integration`（从 main 切出；U38-U43 的实现 PR 全部以它为 base，
-  阶段验收后整体回合 main）
+- **集成分支**：`harness-integration`（从 main 切出；U38-U43 的实现 PR 全部以它为 base）。
+  **回合策略（R11）**：每个 U 的 PR 合入 `harness-integration` 后，即把该 U 增量回合 main
+  （小步合入，不攒大 PR）；U38（vendor）作为首个大 PR 单独回合评审；不做「阶段末一次性整体回合」
+  （避免大 diff 评审与长期漂移）。
 
 ## 1. 背景与缺口
 
@@ -74,6 +77,8 @@ semantix/
 - **模块路径**：全部改写为 `semantix/harness/...`（进本仓 module，不留 `reasonix` module）；
 - **裁剪原则**：只搬 agent 系统运行必需（memory/skills/权限门控/事件流按需保留），
   desktop/、ACP、serve 等前端本期不搬（#158 时再取）；搬运清单在 U38 实现 PR 中逐目录列出；
+  **判定标准（R1）**：agent 主循环直接 import 的包必搬，仅测试/工具链引用的不搬；
+  最小判据 = `cmd/semantix-agent` 冒烟可跑；搬运返工 ≥3 次即触发「先最小集再回补」策略；
 - **fork 里的 semantix 桥**（`internal/semantix/`）**不搬**——它是跨进程时代的产物，
   其职责由 §4 的进程内接线替代；U13c patch 中 agent 文件的改动点作为迁移对照表。
 
@@ -114,20 +119,25 @@ type RoundPlan struct {
     PrefetchIDs    []string
     // 新增：
     SuspendTools   []string `json:"suspendTools,omitempty"`   // 本轮应挂起的工具名（声明式全量）
-    MaxParallel    int      `json:"maxParallel,omitempty"`    // 0 = 不限（沿用 harness 配置）
-    BudgetAction   string   `json:"budgetAction,omitempty"`   // "" | "degrade_tier" | "halt_prefetch" | "hard_stop"
+    MaxParallel    int      `json:"maxParallel,omitempty"`    // 0 = 不覆盖（沿用 harness 默认，可能有限制）；>0 = 强制上限（R4）
+    BudgetAction   string   `json:"budgetAction,omitempty"`   // "" | "degrade_tier" | "halt_prefetch" | "hard_stop"；未知值按无动作（fail-safe，R7）
 }
 ```
 
 挂起语义：`SuspendTools` 是**声明式全量**（每轮下发当前应挂起集合），不是增量指令——
 harness 不维护指令历史，恢复 = 下一轮不在集合中。
 
+`BudgetAction` 语义（R5）：`degrade_tier` 表示本轮强制 `Tier = "flash"`——run_loop 读取时
+**BudgetAction 优先于 `Tier` 字段**（kernel 预算决策覆盖常规 tier 决策）；二者独立下发时以
+BudgetAction 为准。未知/非法 `BudgetAction` 值按**无动作**处理（fail-safe，R7），枚举值在
+`kernel/sched` 集中以常量定义，禁止魔法字符串散落。
+
 ### 4.3 执行点（harness/ 内，对照 U13c patch 迁移）
 
 | 指令 | 执行点 |
 |---|---|
 | `ParallelGroups`/`MaxParallel` | `harness/agent/execute_batch.go`（U13c 已验证的替换点） |
-| `SuspendTools` | `executeBatch` 前过滤：被挂起工具立即返回 tool error「suspended by scheduler」 |
+| `SuspendTools` | `executeBatch` 前过滤：被挂起工具先从本轮 `ParallelGroups` 剔除（不计入并发组，R6），调用立即返回 tool error「suspended by scheduler」 |
 | `Tier` | `harness/agent/run_loop.go` 工具轮末（U13c 记录 tier → 本期真正切模型） |
 | `BudgetAction` | BudgetController（§5） |
 | `InjectIDs`/预热 | `sampling_request.go` 注入块 + `startInjectWarm`（U13c 已验证，进程内化） |
@@ -137,14 +147,18 @@ harness 不维护指令历史，恢复 = 下一轮不在集合中。
 `harness/agent/budget.go`：从配置读 `limitUSD`，以 `Usage` 事件累计 `spentUSD`。
 **阶梯降级**（正确性 > 缓存 > 并发 > 预取，架构 §5.1 优先级反向裁剪）：
 
-| 阈值 | 行为 |
+| 阈值（触发 / 恢复） | 行为 |
 |---|---|
-| ≥ 70% | `halt_prefetch`：停止预取（赌博先停） |
-| ≥ 90% | `degrade_tier`：强制 flash |
-| ≥ 100% | `hard_stop`：拒绝新工具轮，向用户显式报错（不静默） |
+| ≥ 70% / < 65% | `halt_prefetch`：停止预取（赌博先停）；回落到 65% 以下恢复（R8 回滞带防抖动） |
+| ≥ 90% / < 85% | `degrade_tier`：强制 flash；回落到 85% 以下恢复原 tier（R8） |
+| ≥ 100% | `hard_stop`：拒绝**新**工具轮（在途轮完成收尾、响应照常返回，不中断，R9），向用户显式报错（不静默）；不设自动恢复，需用户处理/重置 |
 
 预算状态随 C1 目录进总线；`RuleDecider` 读到后可经 `BudgetAction` 提前下发
 （kernel 决策优先，harness 本地阈值兜底——两层同规则，谁先触发谁生效）。
+
+**双层 authority（R10）**：harness 本地以 `Usage` 事件实时累计的 `spentUSD` 为**权威**；
+C1 目录快照异步、可能滞后，kernel 经 `BudgetAction` 下发的是**预判/提前量**——
+落地一律以 harness 本地实时值为准，kernel 快照仅供提前决策，不作为复核依据。
 
 ## 6. C4 反馈闭环最小集
 
@@ -179,3 +193,29 @@ harness 不维护指令历史，恢复 = 下一轮不在集合中。
   重大上游修复按需手工 cherry-pick；
 - **集成分支长期漂移**：`harness-integration` 与 main 的偏差随时间增大 → 每完成一个 U 即回合一次
   main（小步合入，不攒大 PR）。
+
+
+## 10. U37 评审记录（2026-08-17）
+
+> 评审载体：Issue #188（Agile 2 开工门禁）。评审范围：C0 裁剪原则（§3）、`RoundPlan` 新字段
+> 语义（§4.2）、预算三阈值（§5）、`harness-integration` 分支策略（§0/§9）。
+> 处置口径：R# 已回写正文的，正文标注同号；「待办」项由对应 U 实现 PR 落实。
+
+| # | 评审项 | 发现 | 处置 |
+|---|---|---|---|
+| R1 | C0 裁剪 | 「按需保留」缺判定标准，裁剪面判断失误会拖长 U38 | 已修订 §3：判定标准 = 主循环直接 import 必搬；冒烟可跑为最小判据；返工 ≥3 次触发「先最小集再回补」 |
+| R2 | C0 裁剪 | ATTRIBUTION 需列明 vendored commit 与逐目录来源 | 待办（U38）：列出上游 main-v2 快照 sha + 逐目录来源 + 脱钩 commit |
+| R3 | C0 裁剪 | fork 桥不搬判定成立；U13c 迁移对照表需含每点迁移结果 | 待办（U38）：对照表两栏（改动点 + 迁移结果） |
+| R4 | RoundPlan | `MaxParallel=0` 语义二义（「不限」vs「沿用配置」） | 已修订 §4.2：0 = 不覆盖（沿用 harness 默认）；>0 = 强制上限 |
+| R5 | RoundPlan | `BudgetAction=degrade_tier` 与 `Tier` 字段交互未定义 | 已修订 §4.2：BudgetAction 优先于 Tier，degrade_tier 强制本轮 flash |
+| R6 | RoundPlan | `SuspendTools` 与 `ParallelGroups` 并发组计数交互未定义 | 已修订 §4.3：被挂起工具先从分组剔除（不计并发度） |
+| R7 | RoundPlan | `BudgetAction` 未知值无降级路径 | 已修订 §4.2：未知值按无动作（fail-safe）；枚举集中常量定义 |
+| R8 | 预算 | 70/90/100 无回滞，阈值边界抖动 | 已修订 §5：恢复阈值 65/85，hard_stop 不自动恢复 |
+| R9 | 预算 | `hard_stop` 对在途工具轮的处理未定义 | 已修订 §5：在途轮完成收尾不中断，仅拒绝新轮 |
+| R10 | 预算 | 双层触发 authority 未定（kernel 快照可能滞后） | 已修订 §5：harness 本地实时 spentUSD 为权威，kernel 下发为预判 |
+| R11 | 分支 | 「阶段末整体回合」与「每 U 回合」表述冲突 | 已修订 §0：每 U 合入即回合 main（小步）；U38 大 PR 单独评审；取消阶段末一次性回合 |
+| R12 | 分支 | 长期集成分支需 CI 保护 | 待办：`harness-integration` 设全量 CI（build + race）分支保护，回合 main 前必须绿 |
+
+**结论**：四项评审范围（C0 / RoundPlan / 预算 / 分支）未发现阻断性设计缺陷；R1-R11 为语义
+澄清与边界补全（已回写正文），R2/R3/R12 为 U38 实现 PR 待办。**本 spec 评审通过（v1.1），
+U38-U43 可解锁开工**——最终批准与 issue 关闭由 Song 执行（#188 闭环）。
