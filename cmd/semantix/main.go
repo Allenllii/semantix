@@ -234,6 +234,13 @@ func buildCommands() []commandSpec {
 			return runConfig(args, stdout, stderr)
 		},
 		completionFlags: []string{"--config", "--db", "--json"}},
+	{name: "intro", group: groupProduct,
+		usage:   "semantix intro [--no-animation]",
+		summary: "play the branded terminal startup animation",
+		run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
+			return runIntro(args, stdout)
+		},
+		completionFlags: []string{"--no-animation"}},
 	{name: "version", group: groupProduct,
 		usage:   "semantix version [--json]",
 		summary: "version + commit + build time",
