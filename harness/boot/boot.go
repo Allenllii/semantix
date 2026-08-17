@@ -67,6 +67,7 @@ import (
 	"semantix/harness/tool/builtin"
 	"semantix/harness/tool/sessiontool"
 	"semantix/harness/workspacelease"
+	kernelevent "semantix/kernel/event"
 )
 
 // ErrUnknownModel is returned by Build when the configured model can't be
@@ -295,13 +296,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// the hot path); a broken kernel degrades fail-open, never blocking the
 	// main loop.
 	semantixBridge := semantix.NewBridge(semantix.Config{
-		Enabled:      cfg.Semantix.Enabled,
-		Binary:       cfg.Semantix.Binary,
-		Inject:       cfg.Semantix.Inject,
-		Budget:       cfg.Semantix.Budget,
-		SessionsDir:  cfg.Semantix.SessionsDir,
-		CostMissUSD:  cfg.Semantix.CostInputPriceUSD,
-		CostHitUSD:   cfg.Semantix.CostCachePriceUSD,
+		Enabled:     cfg.Semantix.Enabled,
+		Binary:      cfg.Semantix.Binary,
+		Inject:      cfg.Semantix.Inject,
+		Budget:      cfg.Semantix.Budget,
+		SessionsDir: cfg.Semantix.SessionsDir,
+		CostMissUSD: cfg.Semantix.CostInputPriceUSD,
+		CostHitUSD:  cfg.Semantix.CostCachePriceUSD,
 	})
 	sink = semantixBridge.Sink(sink)
 	defer semantixBridge.Close()
@@ -1679,6 +1680,23 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	})
 
 	execSess := newObservedSession(sysPrompt)
+	resourceModels := make([]kernelevent.ResourceModel, 0, 2)
+	for _, tier := range []string{"flash", "pro"} {
+		if tierEntry, ok := cfg.ResolveModel(tier); ok {
+			model := kernelevent.ResourceModel{ID: modelRefFromEntry(tierEntry), Tier: tier}
+			if tierEntry.Price != nil {
+				model.InputPrice = tierEntry.Price.Input
+				model.OutputPrice = tierEntry.Price.Output
+			}
+			resourceModels = append(resourceModels, model)
+		}
+	}
+	var tierResolver agent.TierResolver
+	if len(resourceModels) == 2 {
+		tierResolver = func(tier string) (provider.Provider, *provider.Pricing, int, error) {
+			return resolveSubagentProvider(tier, "")
+		}
+	}
 	executor := agent.New(execProv, reg, execSess, agent.Options{
 		MaxSteps:    maxSteps,
 		MaxStepsKey: opts.MaxStepsKey,
@@ -1715,6 +1733,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		MaxSubagentDepth:             maxSubagentDepth,
 		MissingReasoningWarnStateDir: config.MissingReasoningWarnStateDir(),
 		Semantix:                     semantixBridge,
+		TierResolver:                 tierResolver,
+		KernelEvents:                 semantixBridge.Events(),
+		ResourceModels:               resourceModels,
 	}, sink)
 
 	var runner agent.Runner = executor

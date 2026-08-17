@@ -11,6 +11,7 @@ import (
 
 	"semantix/harness/event"
 	"semantix/kernel/bm25"
+	kernelevent "semantix/kernel/event"
 	"semantix/kernel/inject"
 	"semantix/kernel/slice"
 	"semantix/kernel/usage"
@@ -50,7 +51,8 @@ type Config struct {
 // without the kernel — every failure path degrades fail-open, never blocking
 // the agent main loop.
 type Bridge struct {
-	cfg Config
+	cfg    Config
+	events *kernelevent.SyncBus
 
 	mu    sync.Mutex
 	hs    *HarnessSink // lazily created once a session label is known
@@ -66,7 +68,21 @@ func NewBridge(cfg Config) *Bridge {
 	if cfg.Budget <= 0 {
 		cfg.Budget = 4096
 	}
-	return &Bridge{cfg: cfg}
+	return &Bridge{cfg: cfg, events: kernelevent.NewSyncBus()}
+}
+
+// Events is the in-process kernel event bus shared by the harness and kernel
+// services. ResourceCatalog uses it even when the legacy session mirror is off.
+func (b *Bridge) Events() kernelevent.Bus {
+	if b == nil {
+		return nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.events == nil {
+		b.events = kernelevent.NewSyncBus()
+	}
+	return b.events
 }
 
 // Enabled reports whether the kernel is wired in.

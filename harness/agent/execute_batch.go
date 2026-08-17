@@ -3,14 +3,15 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 
 	"semantix/harness/event"
 	"semantix/harness/evidence"
 	"semantix/harness/provider"
-	"semantix/harness/semantix"
 	"semantix/harness/tool"
+	"semantix/kernel/sched"
 )
 
 // mutationBarrierCause is an immutable, argument-free description of the
@@ -77,6 +78,7 @@ type batchExecution struct {
 	// Tier is the scheduler's model-tier decision for this round
 	// ("flash" | "pro"; empty when no scheduler is wired).
 	Tier               string
+	BudgetAction       string
 	outcomes           []toolOutcome
 	images             [][]string
 	executions         []*tool.ShellExecution
@@ -101,7 +103,8 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 	// P3 scheduler: decide parallel groups + tier once per round. The plan
 	// replaces the static partitionToolCalls grouping below; when no
 	// scheduler is wired (nil), the static grouping is used unchanged.
-	plan := a.decideRound(calls)
+	plan := a.decideRound(ctx, calls)
+	suspended := suspendedToolSet(plan.SuspendTools)
 
 	results := make([]string, len(calls))
 	outcomes := make([]toolOutcome, len(calls))
@@ -121,6 +124,12 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 	earlierWriterRan := false
 	surfaceWriters := make([]bool, len(calls))
 	run := func(i int) {
+		if _, blocked := suspended[calls[i].Name]; blocked {
+			const msg = "suspended by scheduler"
+			outcomes[i] = toolOutcome{output: msg, blocked: true, errMsg: msg}
+			results[i] = msg
+			return
+		}
 		t, _, ambiguous := a.svc.tools.ResolveCall(calls[i].Name)
 		known := t != nil && len(ambiguous) == 0
 		writer := known && !t.ReadOnly()
@@ -145,7 +154,6 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 			return
 		}
 		outcomes[i] = a.executeOne(ctx, turn, calls[i])
-		a.observeSched(calls[i], outcomes[i])
 		recordWorkspaceMutation(a.svc.sink, outcomes[i].workspaceMutation)
 		if outcomes[i].executed {
 			surfaceWriters[i] = outcomes[i].workspaceMutation != nil
@@ -161,6 +169,7 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 			completedStepInBatch = true
 		}
 		durations[i] = time.Since(start).Milliseconds()
+		a.observeSched(calls[i], outcomes[i], durations[i])
 		results[i] = outcomes[i].output
 	}
 	finalize := func(i int) {
@@ -279,7 +288,7 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		}
 		if batch.parallel && batch.end-batch.start > 1 {
 			// Parallel segments are read-only by construction; no mutation barrier.
-			ranUntil := runParallel(ctx, batch.start, batch.end, run)
+			ranUntil := runParallel(ctx, batch.start, batch.end, plan.MaxParallel, run)
 			for i := batch.start; i < ranUntil; i++ {
 				finalize(i)
 			}
@@ -412,6 +421,7 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 		results:            results,
 		outcomes:           outcomes,
 		Tier:               plan.Tier,
+		BudgetAction:       plan.BudgetAction,
 		images:             images,
 		executions:         executions,
 		recoveryStopTurn:   recoveryBatchStop,
@@ -530,8 +540,10 @@ func parallelisable(r *tool.Registry, name string) bool {
 	return t != nil && len(ambiguous) == 0 && t.ReadOnly()
 }
 
-func runParallel(ctx context.Context, start, end int, run func(int)) int {
-	const maxParallel = 8
+func runParallel(ctx context.Context, start, end, maxParallel int, run func(int)) int {
+	if maxParallel <= 0 {
+		maxParallel = 8
+	}
 	sem := make(chan struct{}, maxParallel)
 	var wg sync.WaitGroup
 	ranUntil := start
@@ -565,20 +577,35 @@ launch:
 // decideRound runs the P3 scheduler for one tool round. Returns the zero
 // RoundPlan when no scheduler is wired so callers degrade to the static
 // grouping (partitionToolCalls).
-func (a *Agent) decideRound(calls []provider.ToolCall) semantix.RoundPlan {
+func (a *Agent) decideRound(ctx context.Context, calls []provider.ToolCall) sched.RoundPlan {
 	if a.sched == nil {
-		return semantix.RoundPlan{}
+		return sched.RoundPlan{}
 	}
-	info := make([]semantix.ToolCallInfo, len(calls))
+	info := make([]sched.ToolCallInfo, len(calls))
 	for i, c := range calls {
 		t, _, ambiguous := a.svc.tools.ResolveCall(c.Name)
 		ro := false
 		if t != nil && len(ambiguous) == 0 {
 			ro = t.ReadOnly()
 		}
-		info[i] = semantix.ToolCallInfo{CallID: c.ID, Name: c.Name, ReadOnly: ro}
+		info[i] = sched.ToolCallInfo{CallID: c.ID, Name: c.Name, ReadOnly: ro}
 	}
-	return a.sched.DecideRound(info)
+	suspended, budget := a.resourceSchedulingState()
+	plan, err := a.sched.DecideRound(ctx, sched.RoundInput{
+		ToolCalls:      info,
+		SuspendedTools: suspended,
+		Budget:         sched.BudgetState{LimitUSD: budget.LimitUSD, SpentUSD: budget.SpentUSD, Window: budget.Window},
+	})
+	if err != nil {
+		if a.resources != nil {
+			a.resources.setSuspended(a.svc.tools, nil)
+		}
+		return sched.RoundPlan{}
+	}
+	if a.resources != nil {
+		a.resources.setSuspended(a.svc.tools, plan.SuspendTools)
+	}
+	return plan
 }
 
 // planBatches converts a scheduler plan into the same toolCallBatch shape
@@ -588,48 +615,118 @@ func (a *Agent) decideRound(calls []provider.ToolCall) semantix.RoundPlan {
 // not map back onto the calls list contiguously (duplicate or empty call ids,
 // a drifted scheduler) is dropped wholesale: executing a half-mapped plan
 // would skip calls, so the static grouping runs instead.
-func (a *Agent) planBatches(calls []provider.ToolCall, plan semantix.RoundPlan) []toolCallBatch {
+func (a *Agent) planBatches(calls []provider.ToolCall, plan sched.RoundPlan) []toolCallBatch {
+	suspended := suspendedToolSet(plan.SuspendTools)
 	if len(plan.ParallelGroups) == 0 {
-		return partitionToolCalls(a.svc.tools, calls)
+		return splitSuspendedBatches(calls, partitionToolCalls(a.svc.tools, calls), suspended)
 	}
 	idx := make(map[string]int, len(calls))
 	for i, c := range calls {
 		idx[c.ID] = i
 	}
-	batches := make([]toolCallBatch, 0, len(plan.ParallelGroups))
+	groupOf := make(map[string]int, len(calls))
 	broken := false
-	for _, g := range plan.ParallelGroups {
+	for gi, g := range plan.ParallelGroups {
 		if len(g) == 0 {
 			continue
 		}
-		start, ok := idx[g[0]]
-		if !ok || start+len(g) > len(calls) {
-			broken = true
-			break
-		}
-		for k, id := range g {
-			if idx[id] != start+k {
+		last := -1
+		for _, id := range g {
+			pos, ok := idx[id]
+			if !ok || last >= pos {
 				broken = true
 				break
 			}
+			if _, duplicate := groupOf[id]; duplicate {
+				broken = true
+				break
+			}
+			groupOf[id] = gi
+			last = pos
 		}
 		if broken {
 			break
 		}
-		batches = append(batches, toolCallBatch{start: start, end: start + len(g), parallel: len(g) > 1})
 	}
-	if broken || len(batches) == 0 {
-		return partitionToolCalls(a.svc.tools, calls)
+	for _, call := range calls {
+		if _, blocked := suspended[call.Name]; blocked {
+			continue
+		}
+		if _, ok := groupOf[call.ID]; !ok {
+			broken = true
+			break
+		}
+	}
+	if broken || len(groupOf) == 0 {
+		return splitSuspendedBatches(calls, partitionToolCalls(a.svc.tools, calls), suspended)
+	}
+	batches := make([]toolCallBatch, 0, len(calls))
+	for i := 0; i < len(calls); {
+		if _, blocked := suspended[calls[i].Name]; blocked {
+			batches = append(batches, toolCallBatch{start: i, end: i + 1})
+			i++
+			continue
+		}
+		gi := groupOf[calls[i].ID]
+		end := i + 1
+		for end < len(calls) {
+			if _, blocked := suspended[calls[end].Name]; blocked || groupOf[calls[end].ID] != gi {
+				break
+			}
+			end++
+		}
+		batches = append(batches, toolCallBatch{start: i, end: end, parallel: end-i > 1})
+		i = end
 	}
 	return batches
 }
 
+func suspendedToolSet(names []string) map[string]struct{} {
+	out := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if name = strings.TrimSpace(name); name != "" {
+			out[name] = struct{}{}
+		}
+	}
+	return out
+}
+
+func splitSuspendedBatches(calls []provider.ToolCall, batches []toolCallBatch, suspended map[string]struct{}) []toolCallBatch {
+	if len(suspended) == 0 {
+		return batches
+	}
+	out := make([]toolCallBatch, 0, len(batches))
+	for _, batch := range batches {
+		for i := batch.start; i < batch.end; {
+			if _, blocked := suspended[calls[i].Name]; blocked {
+				out = append(out, toolCallBatch{start: i, end: i + 1})
+				i++
+				continue
+			}
+			end := i + 1
+			for end < batch.end {
+				if _, blocked := suspended[calls[end].Name]; blocked {
+					break
+				}
+				end++
+			}
+			out = append(out, toolCallBatch{start: i, end: end, parallel: batch.parallel && end-i > 1})
+			i = end
+		}
+	}
+	return out
+}
+
 // observeSched feeds one executed tool back into the scheduler's behavior
 // statistics (success = clean execution, not blocked/cancelled).
-func (a *Agent) observeSched(call provider.ToolCall, o toolOutcome) {
+func (a *Agent) observeSched(call provider.ToolCall, o toolOutcome, durationMs int64) {
 	if a.sched == nil {
 		return
 	}
 	success := o.errMsg == "" && !o.blocked
-	a.sched.Observe(call.Name, success)
+	if observer, ok := a.sched.(interface {
+		Observe(string, bool, int64)
+	}); ok {
+		observer.Observe(call.Name, success, durationMs)
+	}
 }
