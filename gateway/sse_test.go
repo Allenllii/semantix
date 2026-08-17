@@ -142,3 +142,27 @@ func TestSSEAggregatorLineOverflow(t *testing.T) {
 		t.Error("Complete() = true after overflow, want false")
 	}
 }
+
+func TestSSEAggregatorSawUsage(t *testing.T) {
+	cases := []struct {
+		name   string
+		stream string
+		want   bool
+	}{
+		{"no usage", "data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\n\ndata: [DONE]\n\n", false},
+		{"usage block", "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":1}}\n\ndata: [DONE]\n\n", true},
+		{"usage with choices", "data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}],\"usage\":{\"prompt_tokens\":1}}\n\ndata: [DONE]\n\n", true},
+		{"null usage", "data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}],\"usage\":null}\n\ndata: [DONE]\n\n", false},
+		// a content fragment mentioning "usage" must never misfire
+		{"content mentions usage", "data: {\"choices\":[{\"delta\":{\"content\":\"about usage tracking\"}}]}\n\ndata: [DONE]\n\n", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a := newSSEAggregator(maxSSEAggregateBytes)
+			feedAll(a, c.stream)
+			if got := a.SawUsage(); got != c.want {
+				t.Errorf("SawUsage() = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
