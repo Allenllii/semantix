@@ -71,6 +71,8 @@ type agentServices struct {
 	// session, acquired lazily on the first mutation and held through the final
 	// participating run so verification stays isolated.
 	workspaceLease *workspacelease.Owner
+	// tierResolver swaps the provider runtime after a scheduled tool round.
+	tierResolver TierResolver
 	// memQueue lets the remember/forget tools fold a turn-tail note about a
 	// just-made memory change into the next turn, so it applies this session
 	// without touching the cache-stable prefix.
@@ -102,5 +104,6 @@ func newAgentServices(
 		workspaceLease:   opts.WorkspaceLease,
 		warnState:        missingReasoningWarnStateFor(opts.MissingReasoningWarnStateDir),
 		mutationObserver: opts.MutationObserver,
+		tierResolver:     opts.TierResolver,
 	}
 }

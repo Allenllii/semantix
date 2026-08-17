@@ -27,6 +27,11 @@ func TestRoundTripAllKinds(t *testing.T) {
 		{PrefetchWaste, PrefetchWastePayload{Targets: []string{"f2.go"}}},
 		{Compact, CompactPayload{Trigger: "prune", Before: 100000, After: 70000}},
 		{EvolutionTick, EvolutionTickPayload{ParamsJSON: json.RawMessage(`{"tau":0.8}`)}},
+		{ResourceCatalog, ResourceCatalogPayload{
+			Tools:  []ResourceTool{{Name: "read_file", ReadOnly: true}, {Name: "bash", Suspended: true}},
+			Models: []ResourceModel{{ID: "flash-model", Tier: "flash", InputPrice: 0.1, OutputPrice: 0.2}},
+			Budget: ResourceBudget{LimitUSD: 1, SpentUSD: 0.25, Window: "session"},
+		}},
 	}
 	for _, c := range cases {
 		data, err := json.Marshal(c.data)
@@ -53,6 +58,20 @@ func TestRoundTripAllKinds(t *testing.T) {
 		if string(got.Data) != string(gotData) {
 			t.Fatalf("kind %d: data mismatch: %s vs %s", c.kind, got.Data, gotData)
 		}
+	}
+}
+
+func TestResourceCatalogAppendedAfterEvolutionTick(t *testing.T) {
+	if ResourceCatalog != EvolutionTick+1 || KindCount != ResourceCatalog+1 {
+		t.Fatalf("event kinds must be append-only: evolution=%d catalog=%d count=%d", EvolutionTick, ResourceCatalog, KindCount)
+	}
+	// A wire event written before ResourceCatalog existed must retain its kind.
+	old, err := FromJSON([]byte(`{"kind":11,"session_id":"old","at":"2026-08-07T12:00:00Z"}`))
+	if err != nil {
+		t.Fatalf("old event replay: %v", err)
+	}
+	if old.Kind != EvolutionTick {
+		t.Fatalf("old kind 11 changed meaning: got %v", old.Kind)
 	}
 }
 

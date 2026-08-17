@@ -2,7 +2,9 @@ package sched
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
@@ -86,6 +88,27 @@ func TestPartitionMaxParallelSubsplit(t *testing.T) {
 	}
 	if len(plan.ParallelGroups[0]) != 2 || len(plan.ParallelGroups[2]) != 1 {
 		t.Fatalf("cap not applied: %v", plan.ParallelGroups)
+	}
+	if plan.MaxParallel != 2 {
+		t.Fatalf("want maxParallel 2, got %d", plan.MaxParallel)
+	}
+}
+
+func TestSuspendToolsAreDeclarativeAndExcludedFromGroups(t *testing.T) {
+	d := NewRuleDecider(Config{})
+	calls := []ToolCallInfo{call("a", "grep", true), call("b", "read_file", true)}
+	plan, _ := d.DecideRound(context.Background(), RoundInput{
+		ToolCalls: calls, SuspendedTools: []string{"read_file", "read_file", ""},
+	})
+	if !equalStrings(plan.SuspendTools, []string{"read_file"}) {
+		t.Fatalf("unexpected suspend set %v", plan.SuspendTools)
+	}
+	if got := flatten(plan.ParallelGroups); !equalStrings(got, []string{"a"}) {
+		t.Fatalf("suspended call remained in groups: %v", plan.ParallelGroups)
+	}
+	plan, _ = d.DecideRound(context.Background(), RoundInput{ToolCalls: calls})
+	if len(plan.SuspendTools) != 0 || !equalStrings(flatten(plan.ParallelGroups), []string{"a", "b"}) {
+		t.Fatalf("tool did not recover on next round: %+v", plan)
 	}
 }
 
@@ -191,6 +214,48 @@ func TestTierCustomNames(t *testing.T) {
 	}})
 	if plan.Tier != "strong" {
 		t.Fatalf("want strong, got %s", plan.Tier)
+	}
+}
+
+func TestBudgetActions(t *testing.T) {
+	d := NewRuleDecider(Config{})
+	tests := []struct {
+		spent  float64
+		action string
+		tier   string
+	}{
+		{0.69, "", "pro"},
+		{0.70, BudgetActionHaltPrefetch, "pro"},
+		{0.90, BudgetActionDegradeTier, "flash"},
+		{1.00, BudgetActionHardStop, "pro"},
+	}
+	for _, tt := range tests {
+		plan, err := d.DecideRound(context.Background(), RoundInput{
+			ToolCalls: []ToolCallInfo{call("w", "bash", false)},
+			Budget:    BudgetState{LimitUSD: 1, SpentUSD: tt.spent, Window: "session"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan.BudgetAction != tt.action || plan.Tier != tt.tier {
+			t.Fatalf("spent %.2f: got action=%q tier=%q", tt.spent, plan.BudgetAction, plan.Tier)
+		}
+	}
+}
+
+func TestRoundPlanJSONKeepsLegacyNamesAndOmitsZeroExtensions(t *testing.T) {
+	b, err := json.Marshal(RoundPlan{ParallelGroups: [][]string{{"a"}}, Tier: "flash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	if !strings.Contains(text, `"ParallelGroups"`) || !strings.Contains(text, `"Tier"`) {
+		t.Fatalf("legacy field names changed: %s", text)
+	}
+	for _, field := range []string{"suspendTools", "maxParallel", "budgetAction"} {
+		if strings.Contains(text, field) {
+			t.Fatalf("zero extension %q was not omitted: %s", field, text)
+		}
 	}
 }
 

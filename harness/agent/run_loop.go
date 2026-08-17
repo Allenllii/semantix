@@ -645,8 +645,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 	}
 	batch := a.executeBatch(ctx, state, calls)
 	if batch.Tier != "" {
-		// P3 observability: surface the scheduler's tier choice per round.
-		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Text: "sched tier=" + batch.Tier})
+		a.applyScheduledTier(batch.Tier, batch.BudgetAction)
 	}
 	results, images := batch.results, batch.images
 	for i, call := range calls {

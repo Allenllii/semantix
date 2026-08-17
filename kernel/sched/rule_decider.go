@@ -153,15 +153,79 @@ func (d *RuleDecider) DecideRound(ctx context.Context, in RoundInput) (RoundPlan
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
+	suspended := canonicalNames(in.SuspendedTools)
+	active := withoutSuspended(in.ToolCalls, suspended)
+	action := decideBudgetAction(in.Budget)
 	plan := RoundPlan{
-		ParallelGroups: d.partition(in.ToolCalls),
-		Tier:           decideTier(in.ToolCalls, d.cfg),
+		ParallelGroups: d.partition(active),
+		Tier:           decideTier(active, d.cfg),
 		InjectIDs:      canonicalInjectIDs(in.SliceHits, d.cfg.InjectMax),
+		SuspendTools:   suspended,
+		MaxParallel:    d.cfg.MaxParallel,
+		BudgetAction:   action,
 	}
 	if d.prefetchFn != nil {
-		plan.PrefetchIDs = d.prefetchFn(toolNames(in.ToolCalls))
+		plan.PrefetchIDs = d.prefetchFn(toolNames(active))
+	}
+	if action == BudgetActionHaltPrefetch || action == BudgetActionHardStop {
+		plan.PrefetchIDs = nil
+	}
+	if action == BudgetActionDegradeTier {
+		plan.Tier = d.cfg.DefaultTier
 	}
 	return plan, nil
+}
+
+func canonicalNames(names []string) []string {
+	seen := make(map[string]struct{}, len(names))
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func withoutSuspended(calls []ToolCallInfo, suspended []string) []ToolCallInfo {
+	if len(suspended) == 0 {
+		return calls
+	}
+	blocked := make(map[string]struct{}, len(suspended))
+	for _, name := range suspended {
+		blocked[name] = struct{}{}
+	}
+	out := make([]ToolCallInfo, 0, len(calls))
+	for _, call := range calls {
+		if _, ok := blocked[call.Name]; !ok {
+			out = append(out, call)
+		}
+	}
+	return out
+}
+
+func decideBudgetAction(b BudgetState) string {
+	if b.LimitUSD <= 0 || b.SpentUSD < 0 {
+		return ""
+	}
+	ratio := b.SpentUSD / b.LimitUSD
+	switch {
+	case ratio >= 1:
+		return BudgetActionHardStop
+	case ratio >= 0.9:
+		return BudgetActionDegradeTier
+	case ratio >= 0.7:
+		return BudgetActionHaltPrefetch
+	default:
+		return ""
+	}
 }
 
 // Observe feeds one completed tool round back into the behavior statistics.
