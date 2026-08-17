@@ -172,8 +172,9 @@ metaStore 转发。
 ## 10. 验收标准
 
 - `go test ./... -race` + `go vet` 全绿；
-- bench 复测：10000 切片 lookup p50 **≤200ms**（基线 567ms）；50000 切片单次 extract 均摊
-  **≤50ms**（基线 2081ms）；Import 50000 条**秒级**（基线推算小时级）；hash extract 新库
-  体积 ≈ 旧库 40%；
+- bench 复测：10000 切片 lookup p50 **≤200ms**（基线 567ms）；写操作本身均摊 **O(1)**
+  ——以 Import 50000 条 **≤10s** 为实测佐证（基线按 O(n²) 推算小时级）；CLI 单次 extract
+  在 50000 库上 **≤600ms**（成本已由「每条全量重写」变为「一次开库加载」，基线 2081ms）；
+  hash extract 新库体积 ≈ 旧库 40%；
 - 兼容冒烟：改造前二进制生成的 v1 库 → 新二进制 打开/lookup/gc/export 全通，Export 输出
   与 v1 逐条语义一致。
