@@ -67,6 +67,25 @@ type SliceStats struct {
 	Injected    uint64
 	Rejected    uint64
 	UserFeedback float64 // +1 keep / -1 reject / 0 none
+	// LastUsed is the unix-seconds time this slice last served a hit or an
+	// injection. 0 = never used (or legacy line without the field). Unlike
+	// the counters it merges by max, not by accumulation — see mergeStats.
+	LastUsed int64 `json:"last_used,omitempty"`
+}
+
+// mergeStats folds delta into cur. Counters accumulate; LastUsed max-merges.
+// Live UpdateStats and journal replay share this single rule — if they ever
+// disagreed, replaying a journal would compute different stats than the
+// process that wrote it.
+func mergeStats(cur *SliceStats, delta SliceStats) {
+	cur.Hits += delta.Hits
+	cur.Misses += delta.Misses
+	cur.Injected += delta.Injected
+	cur.Rejected += delta.Rejected
+	cur.UserFeedback += delta.UserFeedback
+	if delta.LastUsed > cur.LastUsed {
+		cur.LastUsed = delta.LastUsed
+	}
 }
 
 // SliceMeta records provenance.

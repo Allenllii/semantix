@@ -283,6 +283,12 @@ func (m metaStore) List(scope slice.Scope) ([]*slice.Slice, error) { return m.in
 func (m metaStore) UpdateStats(id string, delta slice.SliceStats) error {
 	return m.inner.UpdateStats(id, delta)
 }
+
+// UpdateStatsBatch forwards the batch capability so wrapping the store does
+// not silently degrade stats write-back to per-ID rewrites.
+func (m metaStore) UpdateStatsBatch(deltas map[string]slice.SliceStats) error {
+	return slice.ApplyStats(m.inner, deltas)
+}
 func (m metaStore) ListAll() ([]*slice.Slice, error) { return m.inner.ListAll() }
 func (m metaStore) Delete(id string) error           { return m.inner.Delete(id) }
 
