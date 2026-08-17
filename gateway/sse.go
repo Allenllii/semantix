@@ -33,6 +33,8 @@ type sseAggregator struct {
 	content  strings.Builder
 	overflow bool
 	done     bool
+	sawUsage bool // a data event carried a top-level "usage" field
+	eventID  string // id of the first chat.completion.chunk event
 	limit    int // content aggregation bound
 	lineMax  int // per-line buffer bound
 }
@@ -89,15 +91,30 @@ func (a *sseAggregator) flushEvent() {
 		return
 	}
 	var evt struct {
+		ID string `json:"id"`
 		Choices []struct {
 			Delta struct {
 				Content string `json:"content"`
 			} `json:"delta"`
 			FinishReason *string `json:"finish_reason"`
 		} `json:"choices"`
+		// Usage is detected structurally (not by string match) so a
+		// content fragment mentioning "usage" can never misfire. The
+		// raw bytes are enough: presence (non-null) is all the caller
+		// needs to decide whether to synthesize a usage chunk.
+		Usage json.RawMessage `json:"usage"`
 	}
-	if err := json.Unmarshal([]byte(payload), &evt); err != nil || len(evt.Choices) == 0 {
-		return // tolerant: skip malformed or empty events
+	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
+		return // tolerant: skip malformed events
+	}
+	if a.eventID == "" && evt.ID != "" {
+		a.eventID = evt.ID
+	}
+	if len(evt.Usage) > 0 && string(evt.Usage) != "null" {
+		a.sawUsage = true
+	}
+	if len(evt.Choices) == 0 {
+		return // usage-only (or empty) event
 	}
 	first := evt.Choices[0]
 	if first.FinishReason != nil && *first.FinishReason != "" {
@@ -122,6 +139,27 @@ func (a *sseAggregator) flushEvent() {
 // persist partial content when this is false (fail-closed).
 func (a *sseAggregator) Complete() bool {
 	return a.done && !a.overflow
+}
+
+// SawUsage reports whether any data event carried a top-level "usage"
+// field — the upstream already provided usage accounting, so the caller
+// must not synthesize a usage chunk.
+func (a *sseAggregator) SawUsage() bool {
+	return a.sawUsage
+}
+
+// Overflowed reports whether an aggregation bound was crossed. Callers
+// must not synthesize usage or persist content in that case (fail-closed).
+func (a *sseAggregator) Overflowed() bool {
+	return a.overflow
+}
+
+// EventID returns the id of the first chat.completion.chunk event, so a
+// synthesized usage chunk can reuse the stream id instead of minting a new
+// one (clients that track the stream by id must not see a foreign id).
+// Empty when the stream carried no id.
+func (a *sseAggregator) EventID() string {
+	return a.eventID
 }
 
 // Content returns the accumulated choices[0].delta.content.
