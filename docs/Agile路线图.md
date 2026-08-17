@@ -65,20 +65,25 @@
 - ✅ `kernel/prefetch`（Planner 离线转置矩阵 / MatrixPrefetcher 在线 hit-waste 学习 / Runner 串行只读执行 + 结果落 Result 切片）
 - ✅ `kernel/evolve` MVP（独立已实现）
 
-**fork 侧已有一截**（U13c/#123，`patches/semantix-sched-prefetch.patch`）：sched 的**本地移植版**已接线
-（并行分组生效、tier 记录、注入预热）——但决策不经 kernel，不构成「kernel 调配 harness」。
+**战略决策（2026-08-17，Song）**：停止在 DeepSeek-Reasonix fork 仓库改动。Reasonix agent 系统
+**vendor 进本仓 `harness/`**（MIT + attribution），在集成分支 `harness-integration` 上与 kernel
+**进程内**结合，换 Semantix Design 视觉。`patches/` 模式废弃（U13c 成果作迁移对照表）。
+这是蓝图 §6「停止跟随上游」风险项的正式落地；#158 桌面端随之重定位到本仓（等 U38 后续作）。
 
-**真正缺口**（issue 批次 U37-U43，契约 spec `docs/specs/h2h3-resource-orchestration.md` 先审后写）：
+**fork 侧已验证的能力**（U13c/#123，`patches/semantix-sched-prefetch.patch`）：sched 本地移植、
+并行分组、注入预热——按 spec §5 迁移进 `harness/`，移植副本删除（`kernel/sched` 成唯一实现）。
+
+**issue 批次 U37-U43**（合体路线，契约 spec `docs/specs/h2h3-resource-orchestration.md` 先审后写）：
 
 | U | 内容 | 阶段 |
 |---|---|---|
-| U37 | H2/H3 资源编排契约 spec 评审（ResourceCatalog 事件 + `sched decide --json` + RoundPlan 扩展） | 门禁 |
-| U38 | harness ToolRegistry 可调度化（SuspendTools 挂起/恢复执行点） | H2 |
-| U39 | harness BudgetController（阶梯降级）+ 资源目录上报 | H2 |
-| U40 | kernel `sched decide` CLI 面 + fork 改为先问 kernel 软降级本地 | H3 |
-| U41 | 调度演示 + 可量化收益报告（DoD 证据） | H3 |
-| U42 | prefetch 闭环接线（PrefetchHit/Waste 发射 + 等待期 Runner） | H5 |
-| U43 | evolve 闭环接线（EvolutionTick + 参数生效）+ 自进化曲线报告（DoD 证据） | H5 |
+| U37 | Harness 合体 + 资源编排契约 spec 评审（C0 vendor 方案 + ResourceCatalog + RoundPlan 扩展） | 门禁 |
+| U38 | C0：vendor Reasonix agent 系统进 `harness/`（模块改写 + 构建 + 冒烟） | 合体 |
+| U39 | C5：Semantix Design 视觉基线（主题 token + U33 复用面板迁移进程内化） | H4 |
+| U40 | C1/C2：kernel 进程内接线（Decider 直连 + ResourceCatalog + SuspendTools 执行点） | H2/H3 |
+| U41 | C3：BudgetController 阶梯降级（70/90/100 三阈值） | H2 |
+| U42 | 调度演示 + 可量化收益报告（DoD 证据） | H3 |
+| U43 | C4：prefetch/evolve 闭环接线 + 自进化曲线报告（DoD 证据） | H5 |
 
 ### 验收标准（蓝图 §5）
 
@@ -137,7 +142,7 @@
 | Agile | 目标 | 当前状态 | DoD 摘要 |
 |---|---|---|---|
 | 1 | 首个可下载品牌化 agent | M0 ✅ · M1 遗留 #58（唯一 P0 门禁）· CLI v2 ✅（U19-U36）· TUI 可视化 ✅（U33/#168）· 桌面端 #158 | v1.0 发布 + 命中率 ≥70% + 复用可视化 |
-| 2 | 自进化闭环（kernel 调配 harness） | 🚧 kernel 侧 MVP ✅（M1-U18b）· fork 侧本地移植 ✅（U13c）· 控制通道/预算/闭环未开工 → 批次 U37-U43 已建，spec 待审 | 调度演示 + 自进化曲线 |
+| 2 | 自进化闭环（kernel 调配 harness） | 🚧 kernel 侧 MVP ✅（M1-U18b）· 2026-08-17 转合体路线（harness vendor 进本仓，集成分支 `harness-integration`）→ 批次 U37-U43 已建，spec 待审 | 调度演示 + 自进化曲线 |
 | 3 | 多 harness 生态 | 路径已文档化；serve/watch ✅（U27/U36） | ≥3 harness 正式接入 |
 
 **网关线（套壳，GW 编号，独立于 Agile 主线）**：GW1 ✅（#133，主干可运行、29 测试绿）。
