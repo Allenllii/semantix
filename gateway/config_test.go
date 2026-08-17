@@ -93,6 +93,22 @@ func TestLoadValidation(t *testing.T) {
 			c.Upstreams[1].Name = "second"
 		}, "alias"},
 		{"missing api_key", func(c *Config) { c.Upstreams[0].APIKey = "" }, "api_key"},
+		{"bad retriever", func(c *Config) { c.Retrieval.Retriever = "rrf" }, "retriever"},
+		{"judge key missing base_url", func(c *Config) {
+			c.Cache.JudgeAPIKey = "k"
+			c.Cache.JudgeBaseURL = ""
+		}, "judge_base_url"},
+		{"judge key missing model", func(c *Config) {
+			c.Cache.JudgeAPIKey = "k"
+			c.Cache.JudgeBaseURL = "https://j/v1"
+			c.Cache.JudgeModel = ""
+		}, "judge_model"},
+		{"bad judge protocol", func(c *Config) {
+			c.Cache.JudgeAPIKey = "k"
+			c.Cache.JudgeBaseURL = "https://j/v1"
+			c.Cache.JudgeModel = "j"
+			c.Cache.JudgeProtocol = "gemini"
+		}, "judge_protocol"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -189,5 +205,34 @@ func TestTTLForVendorDifferentiation(t *testing.T) {
 	c.Cache.TTLSeconds = 0
 	if got := c.TTLFor("openai"); got != 0 {
 		t.Errorf("openai TTL with ttl_seconds=0 = %d, want 0 (disabled)", got)
+	}
+}
+
+func TestValidateAcceptsRetrieverKindsAndJudge(t *testing.T) {
+	for _, kind := range []string{"bm25", "vector", "hybrid"} {
+		c := DefaultConfig()
+		c.Server.GatewayKey = "k"
+		c.Store.DB = "x.jsonl"
+		c.Retrieval.Retriever = kind
+		c.Upstreams = []UpstreamConfig{{
+			Name: "ds", BaseURL: "https://u/v1", APIKey: "k",
+			ModelAlias: []string{"m"}, UpstreamModel: "m", Vendor: "deepseek",
+		}}
+		if err := c.validate(); err != nil {
+			t.Fatalf("retriever %q rejected: %v", kind, err)
+		}
+	}
+	c := DefaultConfig()
+	c.Server.GatewayKey = "k"
+	c.Store.DB = "x.jsonl"
+	c.Cache.JudgeAPIKey = "jk"
+	c.Cache.JudgeBaseURL = "https://judge/v1"
+	c.Cache.JudgeModel = "judge-model"
+	c.Upstreams = []UpstreamConfig{{
+		Name: "ds", BaseURL: "https://u/v1", APIKey: "k",
+		ModelAlias: []string{"m"}, UpstreamModel: "m", Vendor: "deepseek",
+	}}
+	if err := c.validate(); err != nil {
+		t.Fatalf("wired judge rejected: %v", err)
 	}
 }

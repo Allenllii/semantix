@@ -62,6 +62,8 @@
 | §4.3 | L3 命中返回合成 usage：`completion_tokens=0` + `prompt_tokens_details.cached_tokens` | `pipeline.go` `replyFromCache` |
 | §4.3 | 网关侧 `kernel/usage` 事件记录（L3 复用 / 注入 token / 切片命中数） | `gateway.go` `recordUsage` + `[ingest] usage_log` |
 | §9 D4 | 缓存库与切片库**合库**（同一 JSONL Store，L3 条目即 Result 切片） | `config.go` `[store] db` 单一路径 |
+| §3.5 | grey 区 LLM judge：`[cache] judge_api_key` 接线 `judge.RuleGate.Chain`（Issue #186 / GW6） | `kernel/cache` `L3Decider.Judge`（灰区候选 `judgeGrey`）+ `gateway.go` `New()` 构造 `judge.LLMJudge`；未配 key 时灰区保守 Reject |
+| §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` 接线（Issue #186 / GW6）：vector/hybrid 走 `kernel/embed` HashEmbedder/VectorIndex | `gateway/retriever.go` `newRetriever`（返回 `slice.Index`，L2/L3 无感知）；hybrid 双路归一化融合 |
 
 实现另外做了两件 spec 没要求、但属于同方向的收尾：上游异常断流时网关补发 `data: [DONE]`
 （客户端不会挂死）、以及转发时过滤 hop-by-hop 头（RFC 9110 §7.6.1）。
@@ -71,7 +73,7 @@
 | §  | spec 原文 | 实际实现 |
 |---|---|---|
 | §3.5 | `缓存键 = hash(scope \| 归一化 query \| 模型名 \| deps 指纹 \| messages 上下文指纹)` | **没有缓存键，也没有哈希查表**。实际是 kernel 既有的「检索 + 分层门禁」：BM25 检索 top-k → zone Hit 分类 → Result 类型 → `ContextHash`/`Model` 精确相等 → deps mtime + sha256 验证。scope / 模型名 / 上下文指纹是**过滤条件**，归一化 query 是**检索查询**，都不是键的组成部分。隔离效果与 spec 意图一致，机制不同 |
-| §3.5 | 验证走 `judge.RuleGate.Chain`，grey 区可配 `SEMANTIX_JUDGE_API_KEY` 走 LLM judge | 验证由 `cache.L3Decider` 的 `zone.Zones.Classify` 灰区分类 + 指纹链承担；**`kernel/judge` 包 gateway 与 `kernel/cache` 都未引用**（它目前只服务 `cmd/semantix` 的 verify/eval）。`[cache] judge_api_key` 配置键保留但 `New()` 从不消费（见 §0.3 死配置键） |
+| §3.5 | 验证走 `judge.RuleGate.Chain`，grey 区可配 `SEMANTIX_JUDGE_API_KEY` 走 LLM judge | **GW6 已接线**（Issue #186）：`cache.L3Decider` 新增 `Judge` 字段，灰区候选（`zone.Grey`）经 `judgeGrey` → `judge.RuleGate.Chain`（fingerprint 门 → LLM judge）确认后才复用；`[cache] judge_api_key` + `judge_base_url` + `judge_model`（+ 可选 `judge_protocol`，默认 openai）构造 `judge.LLMJudge`。未配 key → 灰区保守 Reject（fail-closed）。`verified` 的 deps 指纹校验仍在 judge 之后兜底 |
 | §3.5 | TTL 按 vendor 差异化（DeepSeek 24h / DashScope 5m / Anthropic 5m） | 单一 `[cache] ttl_seconds` 时间窗，作用在 `Slice.CreatedAt` 上；`0` 表示不设时间窗。无 vendor 分支（M2 未开始，多 vendor 尚无实际差异） |
 | §3.2 | `/v1/completions` 可选，MVP 默认返回 501 | 该路由未注册，落到默认分支返回 **404 `not_found`**（不是 501） |
 | §4.4 | 方案 B：渠道注入固定 `x-project` header，网关按 header **选 scope 库** | 实现的是 `x-semantix-scope` header，传的是 scope **枚举**（`session`/`project`/`user`）而非项目名；底层始终是**同一个 store 文件**，只切 kernel 的 scope 字段。是方案 B 的接入点，不是多库隔离 |
@@ -87,7 +89,7 @@
 |---|---|---|
 | §3.8 / §7 M2 | Claude / Anthropic 适配（messages 格式转换 + `cache_control` 断点） | **配置层显式拒绝**：`vendor="anthropic"` 在 `validate()` 直接报错，避免把 Anthropic 流量误发到 OpenAI 式端点。§3.6 对 Claude 打断点同理未做 |
 | §3.5 | `promote.CascadeInvalidate` 级联失效 | gateway 零引用 `kernel/promote`。上游内容版本变化时不会级联失效下游条目（deps 指纹仍能兜住文件类变更） |
-| §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` | **死配置键**：字段被解析和校验，但 `New()` 固定构造 `bm25.New()`，填 `hybrid`/`vector` 不报错也不生效。与 `[cache] judge_api_key` 同属「保留但未接线」（验收报告 §4 已列为 nit、§6 记为「预留字段」） |
+| §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` | **GW6 已接线**（Issue #186）：`gateway/retriever.go` `newRetriever` 按配置构造索引——`bm25` 保持 `kernel/bm25`；`vector` 用 `kernel/embed` HashEmbedder + VectorIndex（cosine）；`hybrid` 双路检索、分数归一化融合（[0,1] 尺度，与 zone 绝对阈值兼容）。`vector_dim` 键（默认 256）控制 HashEmbedder 维度；非法 retriever 值 `validate()` 报错 |
 | §3.4 | 未命中流式：上游不返回 usage 时，网关在 `[DONE]` 前补含注入统计的末块 | 未做。逐块原样透传，只在上游异常断流时补 `[DONE]` |
 | §3.7 | 流式路径的**响应侧**写记忆 | `streamThrough` 只把请求 turns 写进旁路文件，不解析 SSE 取 assistant 内容（代码内已标注为 documented debt，验收报告 §6 也记为债务）。后果：**流式请求的本次响应不会成为可复用的 Result 切片**——Result 提取取的是旁路文件里最后一条无 tool_calls 的 assistant 消息，流式路径下那只可能是请求里带的历史轮次。L3 的写入实际只来自非流式请求 |
 | §3.2 | `/healthz` 检查「切片库可打开 + **上游可达性**」 | 只回 `{"status":"ok"}`。切片库在 `New()` 阶段已打开（打不开进程起不来），上游探活未做 |
@@ -297,14 +299,18 @@ db = "~/.semantix/gateway.jsonl"          # 切片库 + L3 缓存库（JSONL 单
 scope = "project"                         # 默认切片作用域
 
 [retrieval]
-retriever = "hybrid"                      # bm25 | vector | hybrid
+retriever = "hybrid"                      # bm25 | vector | hybrid（GW6 接线：vector/hybrid 走 kernel/embed HashEmbedder，无需外部 embedding API）
 top_k = 5
 budget = 4096                             # L2 注入块字节预算
+vector_dim = 256                          # HashEmbedder 维度（<=0 取默认 256；模型级 Embedder 接入后忽略）
 
 [cache]
 ttl_seconds = 86400                       # 默认 TTL（vendor 差异化优先）
 vendor_ttl = { anthropic = 300 }          # 可选：按 vendor 覆盖 TTL（秒；内置默认 DeepSeek 24h / Anthropic 5m，§3.11.4）
-judge_api_key = "${SEMANTIX_JUDGE_API_KEY}"   # 可选：grey 区 LLM judge
+judge_api_key = "${SEMANTIX_JUDGE_API_KEY}"   # 可选：grey 区 LLM judge（GW6 接线，见下三键）
+judge_base_url = "https://api.openai.com/v1"  # judge 端点（judge_api_key 非空时必填）
+judge_model = "gpt-4o-mini"               # judge 模型（judge_api_key 非空时必填）
+judge_protocol = "openai"                 # openai | anthropic（默认 openai）
 
 [ingest]
 sessions_dir = "~/.semantix/sessions"     # 会话旁路落盘目录
