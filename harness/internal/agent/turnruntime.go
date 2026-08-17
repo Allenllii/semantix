@@ -2,6 +2,7 @@ package agent
 
 import (
 	"semantix/harness/internal/completion"
+	"semantix/harness/internal/semantix"
 	"semantix/harness/internal/taskpolicy"
 )
 
@@ -29,6 +30,18 @@ type turnRuntime struct {
 	executorHandoff bool
 	input           string
 	workDurationMs  func() int64
+
+	// injectBlock is the locked [semantix-reuse] block for this turn,
+	// assembled on the first user message and reused across tool rounds so
+	// the injected prefix stays byte-stable (L1 cache friendly). Empty
+	// disables injection for the turn.
+	injectBlock string
+
+	// reuse is this turn's semantix reuse panel data (U33/H4a): hit slices,
+	// incremental cost savings, and top source sessions, gathered on the
+	// first user message. The zero value hides the panel (no hits / kernel
+	// unavailable — zero noise).
+	reuse semantix.ReuseSummary
 
 	// budget is the turn's spend axis: tokens, money, wall clock.
 	budget runBudget

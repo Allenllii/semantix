@@ -30,6 +30,7 @@ import (
 	"semantix/harness/internal/planmode"
 	"semantix/harness/internal/provider"
 	"semantix/harness/internal/sandbox"
+	"semantix/harness/internal/semantix"
 	"semantix/harness/internal/shellparse"
 	"semantix/harness/internal/taskpolicy"
 	"semantix/harness/internal/tool"
@@ -307,6 +308,9 @@ type Agent struct {
 	// agents. Unlike planMode it is not a collaboration toggle: it remains on
 	// for the agent's lifetime and validates proxy calls after resolution.
 	readOnlyExecution bool
+
+	// semantix is the optional kernel bridge (nil = kernel disabled).
+	semantix *semantix.Bridge
 
 	// mutationDependencyBarrier records the first durable-state write that
 	// failed or was blocked in the current provider tool batch. executeOne
@@ -1022,6 +1026,10 @@ type Options struct {
 	// (or cloned for) sub-agents. nil disables v2 capture. Does not affect
 	// provider-visible tool schemas or prompts.
 	MutationObserver *checkpoint.MutationObserver
+
+	// Semantix is the optional kernel bridge (U8/H1). Nil disables the
+	// kernel wiring entirely (fail-open).
+	Semantix *semantix.Bridge
 }
 
 // New constructs an Agent. MaxSteps <= 0 means no cap — the run loop continues
@@ -1117,6 +1125,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		capabilityAudit:        opts.CapabilityAudit,
 		keepPolicy:             opts.KeepPolicy,
 		strictAlternatingRoles: opts.StrictAlternatingRoles,
+		semantix:               opts.Semantix,
 	}
 	a.sess.output.outputBudget = outputBudgetOf(prov)
 	if a.sess.path != "" {
