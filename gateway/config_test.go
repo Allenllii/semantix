@@ -166,6 +166,47 @@ func TestModelAliasEnvSubstitution(t *testing.T) {
 	}
 }
 
+// TestHealthTimeoutValidation: health_timeout_seconds must be >= 0
+// (0 disables the upstream probe, negatives are rejected).
+func TestHealthTimeoutValidation(t *testing.T) {
+	body := strings.Replace(validConfig, "gateway_key = \"${GW_KEY}\"",
+		"gateway_key = \"${GW_KEY}\"\nhealth_timeout_seconds = -1", 1)
+	t.Setenv("GW_KEY", "k1")
+	if _, err := Load(writeConfig(t, body)); err == nil {
+		t.Error("Load accepted health_timeout_seconds = -1, want error")
+	}
+}
+
+// TestDeployConfigExampleLoads (issue #183 acceptance): the shipped
+// deploy/semantix-gateway.toml.example must stay parseable by the loader —
+// every ${VAR} it references resolves, and the decoded values match the
+// documented contract. Guards the example against config drift.
+func TestDeployConfigExampleLoads(t *testing.T) {
+	path := filepath.Join("..", "deploy", "semantix-gateway.toml.example")
+	t.Setenv("SEMANTIX_GATEWAY_KEY", "test-channel-key")
+	t.Setenv("DEEPSEEK_API_KEY", "test-upstream-key")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load(%s): %v", path, err)
+	}
+	if cfg.Server.GatewayKey != "test-channel-key" {
+		t.Errorf("gateway_key = %q, want env-resolved value", cfg.Server.GatewayKey)
+	}
+	if cfg.Server.HealthTimeoutSeconds != 3 {
+		t.Errorf("health_timeout_seconds = %d, want 3", cfg.Server.HealthTimeoutSeconds)
+	}
+	if len(cfg.Upstreams) != 1 {
+		t.Fatalf("upstreams = %d, want 1", len(cfg.Upstreams))
+	}
+	up := cfg.Upstreams[0]
+	if up.Name != "deepseek" || up.APIKey != "test-upstream-key" || up.Vendor != "deepseek" {
+		t.Errorf("upstream = %#v, want deepseek with env-resolved key", up)
+	}
+	if cfg.Store.DB != "/data/gateway.jsonl" || cfg.Ingest.SessionsDir != "/data/sessions" {
+		t.Errorf("store/ingest paths not container-friendly: db=%q sessions=%q", cfg.Store.DB, cfg.Ingest.SessionsDir)
+	}
+}
+
 // TestAnthropicVendorAccepted: vendor="anthropic" must pass validation
 // (Issue #185 — the conversion layer makes it a first-class vendor).
 func TestAnthropicVendorAccepted(t *testing.T) {

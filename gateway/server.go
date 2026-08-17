@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"io"
@@ -29,7 +30,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, http.StatusMethodNotAllowed, "invalid_request_error", "method not allowed")
 			return
 		}
-		g.handleHealth(w)
+		g.handleHealth(w, r)
 		return
 	case "/v1/models":
 		if !g.authenticate(w, r) {
@@ -80,9 +81,22 @@ func (g *Gateway) authenticate(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// handleHealth answers the New API channel probe: the store is already open
-// by construction (New failed otherwise), so 200 means "ready".
-func (g *Gateway) handleHealth(w http.ResponseWriter) {
+// handleHealth answers the New API channel probe. The store is already open
+// by construction (New failed otherwise), so local readiness is implicit;
+// when health probing is configured (health_timeout_seconds > 0), every
+// upstream must answer 2xx to GET {base_url}/models, otherwise the gateway
+// reports 503 with the failing upstream (New API disables the channel).
+// The response never leaks upstream URLs or keys.
+func (g *Gateway) handleHealth(w http.ResponseWriter, r *http.Request) {
+	timeout := time.Duration(g.cfg.Server.HealthTimeoutSeconds) * time.Second
+	if timeout > 0 && g.healthProbe != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
+		defer cancel()
+		if err := g.healthProbe(ctx); err != nil {
+			writeAPIError(w, http.StatusServiceUnavailable, "upstream_error", err.Error())
+			return
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = io.WriteString(w, `{"status":"ok"}`)
 }

@@ -31,6 +31,9 @@ type Config struct {
 type ServerConfig struct {
 	Addr       string `toml:"addr"`
 	GatewayKey string `toml:"gateway_key"`
+	// HealthTimeoutSeconds bounds the /healthz upstream probe across all
+	// configured upstreams. 0 disables the probe (local readiness only).
+	HealthTimeoutSeconds int `toml:"health_timeout_seconds"`
 }
 
 // StoreConfig selects the slice store (which also holds L3 cache entries,
@@ -263,6 +266,9 @@ func (c *Config) validate() error {
 	if c.Cache.TTLSeconds < 0 {
 		return fmt.Errorf("gateway config: [cache] ttl_seconds must be >= 0 (0 disables the time window)")
 	}
+	if c.Server.HealthTimeoutSeconds < 0 {
+		return fmt.Errorf("gateway config: [server] health_timeout_seconds must be >= 0 (0 disables the upstream probe)")
+	}
 	if len(c.Upstreams) == 0 {
 		return fmt.Errorf("gateway config: at least one [[upstreams]] entry is required")
 	}
@@ -313,7 +319,7 @@ func validRetriever(s string) bool {
 // DefaultConfig returns the built-in defaults (for tests and docs).
 func DefaultConfig() *Config {
 	return &Config{
-		Server:    ServerConfig{Addr: ":8080", GatewayKey: "dev-key"},
+		Server:    ServerConfig{Addr: ":8080", GatewayKey: "dev-key", HealthTimeoutSeconds: 3},
 		Store:     StoreConfig{DB: ".semantix/gateway.jsonl", Scope: "project", DepsRoot: "."},
 		Retrieval: RetrievalConfig{Retriever: "bm25", TopK: 5, Budget: 4096},
 		Cache:     CacheConfig{TTLSeconds: 86400},
