@@ -57,6 +57,11 @@ type chatTUI struct {
 	diagnostics      *tuiDiagnostics
 	firstFrameLogged bool
 
+	// gauge is the resource-dashboard side-pane mount point (U39 C5). The
+	// placeholder renders nothing; U40/U41 wire the real ResourceCatalog
+	// gauge here. Always non-nil.
+	gauge resourceGauge
+
 	width  int
 	height int
 	// themeSweep freezes the frame while a /theme switch wipes across it.
@@ -641,6 +646,7 @@ func newChatTUI(ctrl control.SessionAPI, missing string, eventCh chan event.Even
 		label:                ctrl.Label(),
 		modelRef:             ctrl.ModelRef(),
 		missing:              missing,
+		gauge:                nilGauge{}, // resource dashboard mount point (U39): no-op until U40/U41
 		nativeScrollback:     nativeScrollback,
 		legacyScrollClear:    useLegacyViewportScrollClear(runtime.GOOS, os.Environ()),
 		mouseCaptureOff:      mouseCaptureOffByDefault(),
@@ -4595,6 +4601,16 @@ func (m *chatTUI) ingestEvent(e event.Event) {
 		}
 
 	case event.Notice:
+		if e.Code == event.NoticeCodeSemantixReuse {
+			// U33/H4a: the per-turn reuse panel (hit slices + savings +
+			// source sessions) renders as its own green line; an empty or
+			// malformed payload keeps it hidden.
+			m.finalizeStreamed()
+			for _, ln := range reusePanelLines(e.Detail, m.width) {
+				m.commitLine(ln)
+			}
+			break
+		}
 		glyph := "·"
 		if e.Level == event.LevelWarn {
 			glyph = "!"
