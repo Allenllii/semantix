@@ -99,6 +99,17 @@ func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (sampl
 	for i := range requestMessages {
 		requestMessages[i].CreatedAt = 0
 	}
+	// L2 semantic injection (U8): insert this turn's locked [semantix-reuse]
+	// block as a system message right after the system prompt, before any
+	// conversation history. The block is assembled once per turn and is
+	// byte-stable, so the provider prefix cache keeps hitting across rounds.
+	// When the synchronous injection missed (kernel timeout on turn start),
+	// fall back to the block warmed during LLM wait time (N12 prefetch).
+	if block := a.turn.injectBlock; block != "" {
+		requestMessages = prependSystemBlock(requestMessages, block)
+	} else if pb := a.prefetchedInject.Load(); pb != nil && *pb != "" {
+		requestMessages = prependSystemBlock(requestMessages, *pb)
+	}
 	// context.prepare: extensions may rewrite the message copy feeding THIS
 	// request. The session log is never touched — the replacement is
 	// ephemeral, so the next request starts from the unmodified history.
@@ -171,6 +182,25 @@ func freezeProviderRequest(req provider.Request) provider.Request {
 	if req.ResponseFormat != nil {
 		rf := *req.ResponseFormat
 		out.ResponseFormat = &rf
+	}
+	return out
+}
+
+// prependSystemBlock inserts block as a system message immediately after the
+// first system message (the system prompt); when the message list has no
+// system message the block is prepended. It never mutates the input slice.
+func prependSystemBlock(msgs []provider.Message, block string) []provider.Message {
+	out := make([]provider.Message, 0, len(msgs)+1)
+	inserted := false
+	for _, m := range msgs {
+		out = append(out, m)
+		if !inserted && m.Role == provider.RoleSystem {
+			out = append(out, provider.Message{Role: provider.RoleSystem, Content: block})
+			inserted = true
+		}
+	}
+	if !inserted {
+		out = append([]provider.Message{{Role: provider.RoleSystem, Content: block}}, out...)
 	}
 	return out
 }

@@ -255,6 +255,19 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
 			state.seenTodoProgress[sig] = struct{}{}
 		}
 	}
+	// L2 semantic injection (U8): assemble the [semantix-reuse] block for
+	// this turn's task on the first user message and lock it for the whole
+	// turn so the injected prefix stays byte-stable across tool rounds
+	// (DeepSeek prefix-cache friendly). Kernel unavailability degrades to
+	// an empty block — the harness never blocks on the kernel.
+	if a.semantix != nil && a.semantix.Enabled() {
+		state.injectBlock = a.semantix.Inject(ctx, input)
+		// U33/H4a reuse panel: capture the kernel's per-turn reuse summary
+		// (hit slices + incremental cost savings + top source sessions)
+		// alongside the injection block. Same soft-degrade contract: a zero
+		// summary hides the panel, never blocks the turn.
+		state.reuse = a.semantix.Reuse(ctx, input)
+	}
 	return rawInput, state
 }
 

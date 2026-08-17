@@ -311,6 +311,10 @@ type Agent struct {
 
 	// semantix is the optional kernel bridge (nil = kernel disabled).
 	semantix *semantix.Bridge
+	// prefetchedInject caches a warmed [semantix-reuse] block assembled
+	// during LLM wait time (N12); used as a fallback when the turn's
+	// synchronous injection produced nothing.
+	prefetchedInject atomic.Pointer[string]
 
 	// mutationDependencyBarrier records the first durable-state write that
 	// failed or was blocked in the current provider tool batch. executeOne
@@ -1789,6 +1793,14 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 		return streamedTurn{usage: provider.UsageWithRequestAttemptCount(ctx, nil), err: err}
 	}
 
+	// N12 speculative prefetch: while the LLM streams, warm the next
+	// injection block in the background so a timed-out or missing
+	// synchronous injection still gets a second chance without ever
+	// blocking the loop (fail-open).
+	if a.semantix != nil && a.semantix.InjectEnabled() {
+		a.startInjectWarm(ctx)
+	}
+
 	// A PostLLMCall hook rewrites the whole reasoning block, so when one is wired
 	// up we buffer reasoning silently and emit the transformed text once after the
 	// stream. With no such hook the reasoning streams live, chunk by chunk, as
@@ -2867,4 +2879,24 @@ func finishReasonMessage(u *provider.Usage) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+// startInjectWarm prefetches the [semantix-reuse] block for the current
+// turn during LLM wait time (N12). The result is stored atomically and
+// consumed by buildSamplingRequest as a fallback when the synchronous
+// injection in beginRunTurn produced nothing (kernel timeout, cold cache).
+// The background goroutine never blocks the main loop.
+func (a *Agent) startInjectWarm(ctx context.Context) {
+	input := a.turn.input
+	if input == "" {
+		return
+	}
+	go func() {
+		// Detach from the stream context so cancellation of the current
+		// request does not cancel the warm-up; Inject applies its own 3s cap.
+		warmCtx := context.WithoutCancel(ctx)
+		if block := a.semantix.Inject(warmCtx, input); block != "" {
+			a.prefetchedInject.Store(&block)
+		}
+	}()
 }
