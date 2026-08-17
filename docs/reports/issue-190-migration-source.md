@@ -2,7 +2,7 @@
 
 > 状态：2026-08-17 · 用途：U39 实施（spec `docs/specs/issue-190-u39-reuse-panel.md` §4）的逐文件迁移对照。
 > 素材源：`Allenllii/DeepSeek-Reasonix` 分支 `feat/u33-tui-reuse-panel`（U33 验证成果，PR #3，验收报告 `docs/reports/issue-157-acceptance.md`）。
-> 本表不执行迁移；U38（#189）vendor 合入 `harness-integration` 后按此表落点实施。
+> **执行状态（2026-08-17）**：U38 vendor 与 U39 进程内化已实施（分支 `feat/issue-189-u38-harness-vendor`），下表动作列均已执行；实施偏差见 spec §8。
 
 ## 1. fork 侧 U33 相关 commit（6 个）
 
@@ -46,5 +46,7 @@
 
 ## 5. 未闭合项
 
-- U38（#189）未开工：`harness-integration` 无 `harness/` 目录，本表落点（`harness/agent`、`harness/tui`）为 spec §3 的规划路径，最终以 U38 vendor 实际结构为准
-- fork `planBatches` 兜底修复（`2151326c`）属 u13c 基线，U38 vendor 时若带入 fork 的 run_loop 实现需核对（不属本 U39 范围）
+- ~~U38（#189）未开工~~：已实施（`60f25ab`），`harness/` 112 包闭包在仓；本表落点全部按规划执行（`harness/agent`、`harness/cli` 等）。
+- **semantix_lookup 工具（`harness/tool/semantix.go`）仍走 CLI 子进程**（U8 工具契约，自身 exec `semantix lookup`）：不在 U39 面，U40 工具接线时一并处理。
+- **index 重建策略**：`Bridge.kernelIndex` 每次调用重建（毫秒级）；缓存/增量索引随 U40 进程内接线优化。
+- fork `planBatches` 兜底修复（`2151326c`）属 u13c 基线，U38 vendor 时若带入 fork 的 run_loop 实现需核对（不属本 U39 范围）——vendor 基线 `79b94e45` 已含该修复，随代码整体带入。

@@ -8,6 +8,8 @@
 > 迁移素材：fork `Allenllii/DeepSeek-Reasonix` `feat/u33-tui-reuse-panel` @ `79b94e45`（U33 验证成果，PR #3）。
 >
 > **状态（2026-08-17）**：v1 实施 spec，先审后写。**前置：U38（#189）合入 `harness-integration`**（harness/ 代码在仓）——U38 未落地前本 U39 只做素材准备，不写 harness 代码。
+>
+> **实施记录（2026-08-17）**：U38（#189）与 U39 已串行实施并提交（分支 `feat/issue-189-u38-harness-vendor`，base `harness-integration`），本 spec 的 c1-c6 全部落地，见 §6 验收与 `docs/reports/issue-190-migration-source.md`。实施偏差记录于 §8。
 
 ## 1. 目标与范围
 
@@ -120,8 +122,17 @@ fork 侧 `Bridge.Reuse` 的两次子进程调用（`lookup --json` / `usage --js
 
 ## 7. 风险与边界
 
-- **U38 未开工是本 U39 的物理阻塞**：实施前需 U38（#189）最小 vendor 合入 `harness-integration`。对策：本 spec 先行评审 + 素材对照表（§4）先行产出；U38 合入后按 §4 落点逐文件迁移。
+- ~~**U38 未开工是本 U39 的物理阻塞**~~：已消除——U38（#189）最小 vendor（112 包闭包）已合入本分支，本 U39 在其上实施。后续 U40/U41 以同一 `harness-integration` base 推进。
 - **fork protocol.go 与 U34 共享**：U39 只迁 U33 面；U34（#158）桌面端后续直接从进程内 ReuseSummary 消费，不迁 CLI 协议。
 - **usage.jsonl 缺失**（直连 provider、无 gateway 回路）：💰 段自动省略（fork 已验证，两条数据通道独立软降级）。
 - **主题色值一致性**：以走查截图为准，TUI 与桌面端（#158/#176）共用同一 token 定义，不双轨。
 - **禁止回归**：#178 关注原生功能保留；本 U39 只改渲染层 + 新增数据面，不改 agent 主循环语义。
+
+## 8. 实施偏差（2026-08-17）
+
+| spec 原文 | 实施 | 原因 |
+|---|---|---|
+| `harness/tui/theme.go`（或等价落点） | 等价落点 `harness/cli/theme.go`：新增 `semantix` 主题风格（dark + #2F967F accent/success），`REASONIX_THEME=semantix` 切换 | vendor 后 TUI 主题层在 `harness/cli`（`cliPalette`/`cliThemeStyle` 已是完整 token 集，复用既有模式，不另起并行体系） |
+| 删 `--json` 子进程调用 | `Bridge.Inject`/`Bridge.Reuse` 已进程内化（kernel/slice + bm25 + inject + usage + zone 直读），删除 `protocol.go`/`inject.go`（envelope/runCLI/3s cap 全部移除）；`semantix_lookup` 工具保留自身 CLI exec（U8 工具契约，U40 处理） | #190 checklist "inject 返回值 + usage 直读" |
+| 资源仪表挂点 | `harness/cli/resource_gauge.go`：`resourceGauge` 接口 + `nilGauge` 空实现，挂入 `chatTUI.gauge` 字段 | 本期空实现 |
+| 成本价格来源 | `SemantixConfig` 新增 `cost_input_price_usd`/`cost_cache_price_usd`（镜像 semantix.toml `[cost]` 键），默认 kernel 价格 | 进程内无法让子进程 CLI 读 semantix.toml |
