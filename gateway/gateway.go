@@ -1,12 +1,15 @@
 package gateway
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -34,6 +37,11 @@ type Gateway struct {
 	injector *inject.Injector
 	usageLog *usage.Recorder
 	client   *http.Client
+
+	// healthProbe checks upstream reachability for /healthz (nil or a
+	// nil-config timeout disables probing). Injectable so tests can stub
+	// or slow it down without a real upstream.
+	healthProbe func(ctx context.Context) error
 
 	sessionsMu sync.Mutex // serializes sidecar JSONL appends
 	ingestMu   sync.Mutex // serializes the async ingest writes
@@ -109,7 +117,40 @@ func New(cfg *Config) (*Gateway, error) {
 		disabled: disableEnv(),
 		now:      time.Now,
 	}
+	g.healthProbe = g.probeUpstreams
 	return g, nil
+}
+
+// probeUpstreams is the default /healthz probe: every configured upstream
+// must answer 2xx to GET {base_url}/models within the caller-provided
+// timeout. Any non-2xx, network error or timeout marks the gateway
+// unhealthy (fail-closed), so New API disables the channel rather than
+// routing into a dead upstream.
+func (g *Gateway) probeUpstreams(ctx context.Context) error {
+	for _, up := range g.cfg.Upstreams {
+		endpoint := strings.TrimRight(up.BaseURL, "/") + "/models"
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return fmt.Errorf("upstream %s: %w", up.Name, err)
+		}
+		req.Header.Set("Authorization", "Bearer "+up.APIKey)
+		resp, err := g.client.Do(req)
+		if err != nil {
+			// Do not wrap the raw *url.Error: its text embeds the full
+			// base URL, which must never leak into the healthz response.
+			reason := err.Error()
+			var uerr *url.Error
+			if errors.As(err, &uerr) {
+				reason = uerr.Err.Error()
+			}
+			return fmt.Errorf("upstream %s unreachable: %s", up.Name, reason)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("upstream %s unhealthy: status %d", up.Name, resp.StatusCode)
+		}
+	}
+	return nil
 }
 
 // Close stops accepting new sidecar writes, waits for in-flight ingestion

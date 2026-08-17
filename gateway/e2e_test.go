@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -536,5 +537,148 @@ func TestE2EL3SafeFalseRejected(t *testing.T) {
 	}
 	if n := up.callCount(); n != 1 {
 		t.Errorf("upstream calls = %d, want 1", n)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GW3: /healthz upstream probe (Issue #183)
+// With health_timeout_seconds > 0 the gateway must probe every upstream
+// (GET {base_url}/models, 2xx = healthy); any failure → 503 + envelope.
+
+func TestE2EHealthProbeHealthy(t *testing.T) {
+	up := &testUpstream{plain: `{}`}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(out), `"status":"ok"`) {
+		t.Errorf("healthz: status=%d body=%s, want 200 ok", resp.StatusCode, out)
+	}
+	if n := up.callCount(); n != 1 {
+		t.Errorf("upstream calls = %d, want 1 (probe hit /models)", n)
+	}
+}
+
+func TestE2EHealthProbeUnreachable(t *testing.T) {
+	// upstream server already closed: the probe must fail closed with 503
+	upSrv := httptest.NewServer(http.NotFoundHandler())
+	deadURL := upSrv.URL
+	upSrv.Close()
+	g := newTestGateway(t, deadURL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("healthz: status=%d body=%s, want 503", resp.StatusCode, out)
+	}
+	if !strings.Contains(string(out), "upstream_error") || !strings.Contains(string(out), "unreachable") {
+		t.Errorf("healthz body missing upstream_error/unreachable: %s", out)
+	}
+	if strings.Contains(string(out), deadURL) {
+		t.Errorf("healthz body leaks the upstream URL: %s", out)
+	}
+}
+
+func TestE2EHealthProbeAnyUpstreamDown(t *testing.T) {
+	alive := &testUpstream{plain: `{}`}
+	aliveSrv := httptest.NewServer(alive.handler())
+	defer aliveSrv.Close()
+	g := newTestGateway(t, aliveSrv.URL)
+	// append a second, dead upstream: any failure marks the gateway down
+	deadSrv := httptest.NewServer(http.NotFoundHandler())
+	deadURL := deadSrv.URL
+	deadSrv.Close()
+	g.cfg.Upstreams = append(g.cfg.Upstreams, UpstreamConfig{
+		Name: "dead", BaseURL: deadURL, APIKey: "up-key",
+		ModelAlias: []string{"dead-model"}, UpstreamModel: "dead-model", Vendor: "openai",
+	})
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("healthz: status=%d body=%s, want 503 (one dead upstream)", resp.StatusCode, out)
+	}
+	if !strings.Contains(string(out), "dead") {
+		t.Errorf("healthz body should name the failing upstream: %s", out)
+	}
+}
+
+func TestE2EHealthProbeTimeout(t *testing.T) {
+	up := &testUpstream{plain: `{}`}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	g.cfg.Server.HealthTimeoutSeconds = 1
+	g.healthProbe = func(ctx context.Context) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+			return nil
+		}
+	}
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	start := time.Now()
+	resp, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("healthz: status=%d body=%s, want 503 on probe timeout", resp.StatusCode, out)
+	}
+	if !strings.Contains(string(out), "deadline exceeded") {
+		t.Errorf("healthz body should report the timeout cause: %s", out)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("healthz took %v, want bounded by health_timeout_seconds=1", elapsed)
+	}
+}
+
+func TestE2EHealthProbeDisabled(t *testing.T) {
+	// health_timeout_seconds = 0 keeps the old behavior: local readiness
+	// only, zero upstream traffic
+	up := &testUpstream{plain: `{}`}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	g.cfg.Server.HealthTimeoutSeconds = 0
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	out, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(out), `"status":"ok"`) {
+		t.Errorf("healthz with probe disabled: status=%d body=%s, want 200 ok", resp.StatusCode, out)
+	}
+	if n := up.callCount(); n != 0 {
+		t.Errorf("upstream calls = %d, want 0 (probe disabled must not touch upstream)", n)
 	}
 }

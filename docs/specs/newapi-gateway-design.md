@@ -41,7 +41,7 @@
 | §3.1 | 切片库用 `slice.NewFileStore`（JSONL），0600/0700 权限 | `gateway.go` `appendJSONLLines` / kernel store |
 | §3.2 | `GET /v1/models`（列出全部 model_alias） | `server.go` `handleModels` |
 | §3.2 | `POST /v1/chat/completions`（含 `stream=true`） | `server.go` → `pipeline.go` `handleChat` |
-| §3.2 | `GET /healthz`（New API 渠道探活） | `server.go` `handleHealth`（**仅本地就绪，不探上游**，见 §0.3） |
+| §3.2 | `GET /healthz`（New API 渠道探活） | `server.go` `handleHealth`（上游探活已实现，见 §0.3） |
 | §3.2 | 错误一律走 OpenAI 信封 `{"error":{message,type,code}}` | `server.go` `writeAPIError` |
 | §3.3 | 七步流水线：鉴权 → 归一化 → L3 → L2 → 转发 → 透传 usage → 异步写记忆 | `pipeline.go` `handleChat` |
 | §3.3 | 「缓存永不阻塞主链路」：注入失败只记日志继续转发 | `pipeline.go`（`inject` 错误不中断） |
@@ -90,8 +90,8 @@
 | §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` | **死配置键**：字段被解析和校验，但 `New()` 固定构造 `bm25.New()`，填 `hybrid`/`vector` 不报错也不生效。与 `[cache] judge_api_key` 同属「保留但未接线」（验收报告 §4 已列为 nit、§6 记为「预留字段」） |
 | §3.4 | 未命中流式：上游不返回 usage 时，网关在 `[DONE]` 前补含注入统计的末块 | 未做。逐块原样透传，只在上游异常断流时补 `[DONE]` |
 | §3.7 | 流式路径的**响应侧**写记忆 | `streamThrough` 只把请求 turns 写进旁路文件，不解析 SSE 取 assistant 内容（代码内已标注为 documented debt，验收报告 §6 也记为债务）。后果：**流式请求的本次响应不会成为可复用的 Result 切片**——Result 提取取的是旁路文件里最后一条无 tool_calls 的 assistant 消息，流式路径下那只可能是请求里带的历史轮次。L3 的写入实际只来自非流式请求 |
-| §3.2 | `/healthz` 检查「切片库可打开 + **上游可达性**」 | 只回 `{"status":"ok"}`。切片库在 `New()` 阶段已打开（打不开进程起不来），上游探活未做 |
-| §5 | 部署产物：`docker-compose.yml`、网关镜像 Dockerfile、`semantix-gateway.toml` 示例 | 仓库中**均不存在**。§5 目前仍是纯文字方案，照它部署需要自己写 compose 与配置文件（验收报告 §6 建议另开运维 issue） |
+| §3.2 | `/healthz` 检查「切片库可打开 + **上游可达性**」 | 切片库在 `New()` 阶段已打开（打不开进程起不来）；上游探活已实现（Issue #183）：`GET {base_url}/models` 逐个上游探测，2xx=健康，任一失败/超时返回 503 + OpenAI envelope；`[server] health_timeout_seconds` 可配（0=禁用探活） |
+| §5 | 部署产物：`docker-compose.yml`、网关镜像 Dockerfile、`semantix-gateway.toml` 示例 | 已存在 `deploy/`（Issue #183）：`semantix-gateway.toml.example`（全部小节 + `${VAR}` 示范）、多阶段 Dockerfile（alpine + CA 证书 + 非 root，取舍见 deploy/Dockerfile 注释）、`docker-compose.yml`（New API + 网关两服务 + healthcheck，named volume 持久化）；部署指引见 `docs/QUICKSTART.md`「网关部署」节 |
 | §4.3 | 与 New API 计费对账的 token 口径 | 合成 usage 已实现，但 token 数是 `len(bytes)/4` 的**字节估算**，不是真 tokenizer 计数。对账时须知道这个口径差 |
 | §7 M0 | 门：真实客户端 → New API → 网关 → DeepSeek 全链路跑通 **且** 会话入库后 `semantix search` 可检索到切片 | **合取门只满足后半**：入库可检索有 e2e 证据（`TestE2ESidecarWrittenAndIngested`，验收报告 §3「写记忆」✅），这半句本就不依赖真上游；**真实全链路无记录**——`gateway/e2e_test.go` 与验收报告 §3 的上游都是 `httptest` 假上游 |
 | §7 M1 | 门：重复任务第二次命中 `x-semantix-cache: hit` 且零上游调用；成本节省 ≥30% 实测 | 前半在 e2e 中以假上游验证（`TestE2EL3HitZeroUpstreamCalls`：命中且上游 0 调用），**真实环境与成本节省实测无记录**；验收报告 §6 明确「M1/M2 里程碑项未在本 issue 范围」 |

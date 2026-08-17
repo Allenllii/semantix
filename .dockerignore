@@ -1,0 +1,12 @@
+# Docker 构建上下文排除（deploy/Dockerfile 的 builder 阶段 COPY . .）
+.git
+.worktrees
+data
+.semantix
+tmp
+semantix
+semantix.exe
+*.db
+*.out
+*.test
+site/node_modules

@@ -1,0 +1,39 @@
+# Semantix Gateway 配置示例（设计文档 §3.9）
+# 用法：cp deploy/semantix-gateway.toml.example deploy/semantix-gateway.toml
+#       → 设置对应环境变量（或写入 .env）→ docker compose -f deploy/docker-compose.yml up -d --build
+#
+# 规则：所有 ${VAR} 在启动时由环境变量替换，未设置即启动失败（fail-closed，
+# 防止把字面量当凭据）；key 只走环境变量，绝不落配置文件。
+# 镜像内配置挂载于 /etc/semantix-gateway.toml，数据目录 /data（named volume）。
+
+[server]
+addr = ":8080"
+gateway_key = "${SEMANTIX_GATEWAY_KEY}"   # New API 渠道转发时携带的 key（渠道密钥字段）
+health_timeout_seconds = 3                # /healthz 上游探活总超时（秒）；0 = 禁用探活只回本地就绪
+
+[store]
+db = "/data/gateway.jsonl"                # 切片库 + L3 缓存库（JSONL 单文件，0600）
+scope = "project"                         # 默认切片作用域（session | project | user）
+deps_root = "/data"                       # deps 指纹根目录（缺失文件视为已变更 → 缓存失效）
+
+[retrieval]
+retriever = "bm25"                        # bm25 | vector | hybrid（当前仅 bm25 生效，hybrid/vector 未接线，见 GW6）
+top_k = 5
+budget = 4096                             # L2 注入块字节预算
+
+[cache]
+ttl_seconds = 86400                       # 默认 TTL（0 = 不设时间窗）
+judge_api_key = ""                        # 可选：grey 区 LLM judge（当前未接线，见 GW6）；留空即不启用
+
+[ingest]
+sessions_dir = "/data/sessions"           # 会话旁路落盘目录（0600）
+usage_log = "/data/gateway-usage.jsonl"   # usage 事件记录
+l3_safe_default = false                   # 无 deps 的网关结果默认不进 L3（true 需显式确认）
+
+[[upstreams]]                             # 每个 New API 渠道模型对应一段
+name = "deepseek"
+base_url = "https://api.deepseek.com/v1"
+api_key = "${DEEPSEEK_API_KEY}"           # 上游 key：只走环境变量
+model_alias = ["deepseek-chat"]           # 客户端可见模型名（New API 渠道模型名）
+upstream_model = "deepseek-chat"          # 上游真实模型名
+vendor = "deepseek"                       # deepseek | openai | moonshot（anthropic 需 M2 格式转换，未支持）
