@@ -68,6 +68,14 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gateway: open store %s: %w", cfg.Store.DB, err)
 	}
+	// Startup is a process boundary: fold any journal into the base before
+	// serving (freeze-window semantics — the library never shifts mid-flight).
+	// Best-effort: a failed fold still leaves a consistent store.
+	if c, ok := store.(interface{ Compact() error }); ok {
+		if err := c.Compact(); err != nil {
+			log.Printf("gateway: store compact: %v", err)
+		}
+	}
 	idx := bm25.New()
 	if err := loadIndex(store, idx); err != nil {
 		_ = closeStore(store)
@@ -283,6 +291,12 @@ func (m metaStore) Get(id string) (*slice.Slice, error)            { return m.in
 func (m metaStore) List(scope slice.Scope) ([]*slice.Slice, error) { return m.inner.List(scope) }
 func (m metaStore) UpdateStats(id string, delta slice.SliceStats) error {
 	return m.inner.UpdateStats(id, delta)
+}
+
+// UpdateStatsBatch forwards the batch capability so wrapping the store does
+// not silently degrade stats write-back to per-ID rewrites.
+func (m metaStore) UpdateStatsBatch(deltas map[string]slice.SliceStats) error {
+	return slice.ApplyStats(m.inner, deltas)
 }
 func (m metaStore) ListAll() ([]*slice.Slice, error) { return m.inner.ListAll() }
 func (m metaStore) Delete(id string) error           { return m.inner.Delete(id) }

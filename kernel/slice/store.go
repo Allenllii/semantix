@@ -20,3 +20,30 @@ type Index interface {
 	Insert(s *Slice) error
 	Remove(id string) error
 }
+
+// StatsBatcher is an optional Store capability: apply many stats deltas in
+// one call. The journaled file store implements it as k O(1) appends + one
+// flush; wrappers should forward it (see gateway metaStore) or callers fall
+// back to per-ID UpdateStats via ApplyStats.
+type StatsBatcher interface {
+	UpdateStatsBatch(deltas map[string]SliceStats) error
+}
+
+// ApplyStats records usage deltas best-effort: batch when the store supports
+// it, per-ID otherwise. Unlike UpdateStats, a missing ID is skipped rather
+// than an error — reuse accounting must never fail a read path over a slice
+// that was deleted between retrieval and write-back.
+func ApplyStats(s Store, deltas map[string]SliceStats) error {
+	if len(deltas) == 0 {
+		return nil
+	}
+	if b, ok := s.(StatsBatcher); ok {
+		return b.UpdateStatsBatch(deltas)
+	}
+	for id, d := range deltas {
+		if err := s.UpdateStats(id, d); err != nil && err != errNotFound {
+			return err
+		}
+	}
+	return nil
+}
