@@ -46,9 +46,10 @@ type StoreConfig struct {
 
 // RetrievalConfig tunes the L2 injector.
 type RetrievalConfig struct {
-	Retriever string `toml:"retriever"`
+	Retriever string `toml:"retriever"` // bm25 | vector | hybrid (Issue #186); vector/hybrid use kernel/embed HashEmbedder
 	TopK      int    `toml:"top_k"`
 	Budget    int    `toml:"budget"`
+	VectorDim int    `toml:"vector_dim"` // HashEmbedder dimension (<=0 -> 256)
 }
 
 // CacheConfig holds L3 policy. TTL is a gateway-side time window over
@@ -57,9 +58,12 @@ type RetrievalConfig struct {
 // window; VendorTTL overrides it per vendor (design §3.5: DeepSeek 24h /
 // Anthropic 5m) and wins over the built-in vendor defaults in TTLFor.
 type CacheConfig struct {
-	TTLSeconds  int64            `toml:"ttl_seconds"`
-	VendorTTL   map[string]int64 `toml:"vendor_ttl"`
-	JudgeAPIKey string           `toml:"judge_api_key"`
+	TTLSeconds    int64            `toml:"ttl_seconds"`
+	VendorTTL     map[string]int64 `toml:"vendor_ttl"`
+	JudgeAPIKey   string           `toml:"judge_api_key"`
+	JudgeBaseURL  string           `toml:"judge_base_url"`
+	JudgeModel    string           `toml:"judge_model"`
+	JudgeProtocol string           `toml:"judge_protocol"`
 }
 
 // IngestConfig controls the session-sidecar write path.
@@ -137,6 +141,9 @@ func (c *Config) expand() error {
 		&c.Store.DB, &c.Store.Scope, &c.Store.DepsRoot,
 		&c.Retrieval.Retriever,
 		&c.Cache.JudgeAPIKey,
+		&c.Cache.JudgeBaseURL,
+		&c.Cache.JudgeModel,
+		&c.Cache.JudgeProtocol,
 		&c.Ingest.SessionsDir, &c.Ingest.UsageLog,
 	}
 	for i := range c.Upstreams {
@@ -244,6 +251,15 @@ func (c *Config) validate() error {
 	if c.Store.Scope != "" && !validScope(c.Store.Scope) {
 		return fmt.Errorf("gateway config: [store] scope %q must be session, project, or user", c.Store.Scope)
 	}
+	if c.Retrieval.Retriever != "" && !validRetriever(c.Retrieval.Retriever) {
+		return fmt.Errorf("gateway config: [retrieval] retriever %q is not supported (supported: bm25, vector, hybrid)", c.Retrieval.Retriever)
+	}
+	if c.Cache.JudgeAPIKey != "" && (strings.TrimSpace(c.Cache.JudgeBaseURL) == "" || strings.TrimSpace(c.Cache.JudgeModel) == "") {
+		return fmt.Errorf("gateway config: [cache] judge_api_key requires judge_base_url and judge_model")
+	}
+	if c.Cache.JudgeProtocol != "" && c.Cache.JudgeProtocol != "openai" && c.Cache.JudgeProtocol != "anthropic" {
+		return fmt.Errorf("gateway config: [cache] judge_protocol %q must be openai or anthropic", c.Cache.JudgeProtocol)
+	}
 	if c.Cache.TTLSeconds < 0 {
 		return fmt.Errorf("gateway config: [cache] ttl_seconds must be >= 0 (0 disables the time window)")
 	}
@@ -281,6 +297,14 @@ func (c *Config) validate() error {
 func validScope(s string) bool {
 	switch s {
 	case "session", "project", "user":
+		return true
+	}
+	return false
+}
+
+func validRetriever(s string) bool {
+	switch s {
+	case "bm25", "vector", "hybrid":
 		return true
 	}
 	return false

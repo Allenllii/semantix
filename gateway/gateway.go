@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"semantix/kernel/bm25"
 	"semantix/kernel/cache"
 	"semantix/kernel/ingest"
 	"semantix/kernel/inject"
+	"semantix/kernel/judge"
 	"semantix/kernel/slice"
 	"semantix/kernel/usage"
 	"semantix/kernel/zone"
@@ -57,8 +57,10 @@ func disableEnv() bool {
 }
 
 // New assembles the gateway from config: opens the slice store, rebuilds the
-// in-memory BM25 index from it, and wires the L2 injector + L3 decider. It
-// never starts network listeners — the caller (cmd/semantix-gateway) does.
+// in-memory retrieval index (bm25 | vector | hybrid, Issue #186) from it,
+// wires the grey-zone LLM judge (spec §3.5, optional), and wires the L2
+// injector + L3 decider. It never starts network listeners — the caller
+// (cmd/semantix-gateway) does.
 func New(cfg *Config) (*Gateway, error) {
 	root := cfg.Store.DepsRoot
 	if root == "" {
@@ -76,10 +78,32 @@ func New(cfg *Config) (*Gateway, error) {
 			log.Printf("gateway: store compact: %v", err)
 		}
 	}
-	idx := bm25.New()
+	idx := newRetriever(cfg.Retrieval.Retriever, cfg.Retrieval.VectorDim)
 	if err := loadIndex(store, idx); err != nil {
 		_ = closeStore(store)
 		return nil, fmt.Errorf("gateway: rebuild index: %w", err)
+	}
+
+	// Grey-zone LLM judge (Issue #186 / GW6, spec §3.5): when a judge key is
+	// configured, ambiguous L3 candidates are confirmed by kernel/judge
+	// before reuse; without it the decider conservatively rejects grey.
+	var llmJudge judge.Judge
+	if cfg.Cache.JudgeAPIKey != "" {
+		protocol := cfg.Cache.JudgeProtocol
+		if protocol == "" {
+			protocol = "openai"
+		}
+		j, err := judge.NewLLMJudge(judge.LLMConfig{
+			Protocol: protocol,
+			BaseURL:  cfg.Cache.JudgeBaseURL,
+			Model:    cfg.Cache.JudgeModel,
+			APIKey:   cfg.Cache.JudgeAPIKey,
+		})
+		if err != nil {
+			_ = closeStore(store)
+			return nil, fmt.Errorf("gateway: judge: %w", err)
+		}
+		llmJudge = j
 	}
 
 	scope, err := parseScope(cfg.Store.Scope)
@@ -110,7 +134,7 @@ func New(cfg *Config) (*Gateway, error) {
 		cfg:      cfg,
 		store:    store,
 		index:    idx,
-		decider:  &cache.L3Decider{Index: idx, Store: store, Root: root, K: topK},
+		decider:  &cache.L3Decider{Index: idx, Store: store, Root: root, K: topK, Judge: llmJudge},
 		injector: &inject.Injector{Index: idx, Store: store, Scope: scope, K: topK, Budget: budget, Zones: &z},
 		usageLog: rec,
 		client:   &http.Client{Timeout: 120 * time.Second},
