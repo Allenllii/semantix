@@ -157,17 +157,18 @@ func storePath(override, scope string) string {
 }
 
 // indexFromStore rebuilds an in-memory index from the persistent store,
-// covering every scope (session/project/user).
+// covering every scope. One ListAll pass instead of a List per scope: each
+// List used to re-read and re-parse the whole file, tripling open cost; the
+// index buckets DF/avgdl by Slice.Scope itself, so mixed-order insertion is
+// equivalent.
 func indexFromStore(store slice.Store, idx slice.Index) error {
-	for _, scope := range []slice.Scope{slice.Session, slice.Project, slice.User} {
-		items, err := store.List(scope)
-		if err != nil {
+	items, err := store.ListAll()
+	if err != nil {
+		return err
+	}
+	for _, sl := range items {
+		if err := idx.Insert(sl); err != nil {
 			return err
-		}
-		for _, sl := range items {
-			if err := idx.Insert(sl); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
