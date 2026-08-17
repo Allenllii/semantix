@@ -19,12 +19,12 @@ import (
 
 // Config mirrors semantix-gateway.toml (design doc §3.9).
 type Config struct {
-	Server    ServerConfig      `toml:"server"`
-	Store     StoreConfig       `toml:"store"`
-	Retrieval RetrievalConfig   `toml:"retrieval"`
-	Cache     CacheConfig       `toml:"cache"`
-	Ingest    IngestConfig      `toml:"ingest"`
-	Upstreams []UpstreamConfig  `toml:"upstreams"`
+	Server    ServerConfig     `toml:"server"`
+	Store     StoreConfig      `toml:"store"`
+	Retrieval RetrievalConfig  `toml:"retrieval"`
+	Cache     CacheConfig      `toml:"cache"`
+	Ingest    IngestConfig     `toml:"ingest"`
+	Upstreams []UpstreamConfig `toml:"upstreams"`
 }
 
 // ServerConfig is the listener and gateway-key settings.
@@ -36,8 +36,8 @@ type ServerConfig struct {
 // StoreConfig selects the slice store (which also holds L3 cache entries,
 // per decision D4: one JSONL store).
 type StoreConfig struct {
-	DB       string `toml:"db"`
-	Scope    string `toml:"scope"`
+	DB    string `toml:"db"`
+	Scope string `toml:"scope"`
 	// DepsRoot is the project root that L3 dep fingerprints are verified
 	// against (design §3.5: "deps root provided by config"). Missing files
 	// fail closed → the cached entry is treated as stale.
@@ -51,12 +51,15 @@ type RetrievalConfig struct {
 	Budget    int    `toml:"budget"`
 }
 
-// CacheConfig holds L3 policy. MVP: TTL is a gateway-side time window over
+// CacheConfig holds L3 policy. TTL is a gateway-side time window over
 // Slice.CreatedAt (CreatedAt==0 never expires); the kernel dep-fingerprint
-// chain remains the authority for staleness.
+// chain remains the authority for staleness. TTLSeconds is the generic
+// window; VendorTTL overrides it per vendor (design §3.5: DeepSeek 24h /
+// Anthropic 5m) and wins over the built-in vendor defaults in TTLFor.
 type CacheConfig struct {
-	TTLSeconds int64  `toml:"ttl_seconds"`
-	JudgeAPIKey string `toml:"judge_api_key"`
+	TTLSeconds  int64            `toml:"ttl_seconds"`
+	VendorTTL   map[string]int64 `toml:"vendor_ttl"`
+	JudgeAPIKey string           `toml:"judge_api_key"`
 }
 
 // IngestConfig controls the session-sidecar write path.
@@ -70,25 +73,46 @@ type IngestConfig struct {
 
 // UpstreamConfig is one model channel (New API channel = one upstream).
 type UpstreamConfig struct {
-	Name           string   `toml:"name"`
-	BaseURL        string   `toml:"base_url"`
-	APIKey         string   `toml:"api_key"`
-	ModelAlias     []string `toml:"model_alias"`
-	UpstreamModel  string   `toml:"upstream_model"`
-	Vendor         string   `toml:"vendor"`
+	Name          string   `toml:"name"`
+	BaseURL       string   `toml:"base_url"`
+	APIKey        string   `toml:"api_key"`
+	ModelAlias    []string `toml:"model_alias"`
+	UpstreamModel string   `toml:"upstream_model"`
+	Vendor        string   `toml:"vendor"`
 }
 
-// vendor names accepted by the v1 gateway. anthropic is deliberately
-// rejected: it needs message-format conversion + cache_control breakpoints
-// (design §3.8), which is a later milestone — configuring it here would
-// silently send Anthropic-format traffic to an OpenAI-style endpoint.
+// vendor names accepted by the v1 gateway. anthropic needs message-format
+// conversion + cache_control breakpoints (design §0.5), handled by
+// gateway/anthropic.go on the upstream hop; the other three speak OpenAI
+// protocol natively.
 var supportedVendors = map[string]bool{
-	"deepseek": true,
-	"openai":   true,
-	"moonshot": true,
+	"deepseek":  true,
+	"openai":    true,
+	"moonshot":  true,
+	"anthropic": true,
 }
 
-// Load parses semantix-gateway.toml, expands ${VAR} environment references
+// defaultVendorTTLSeconds are the vendor-aware L3 TTL windows from design
+// §3.5 (DeepSeek 24h / Anthropic 5m). An explicit [cache] vendor_ttl entry
+// overrides these; anything else falls back to [cache] ttl_seconds.
+var defaultVendorTTLSeconds = map[string]int64{
+	"deepseek":  24 * 60 * 60,
+	"anthropic": 5 * 60,
+}
+
+// TTLFor resolves the cache freshness window for an upstream vendor:
+// explicit vendor_ttl config wins, then the built-in vendor default, then
+// the generic ttl_seconds (<=0 disables the time window entirely).
+func (c *Config) TTLFor(vendor string) int64 {
+	if v, ok := c.Cache.VendorTTL[vendor]; ok {
+		return v
+	}
+	if v, ok := defaultVendorTTLSeconds[vendor]; ok {
+		return v
+	}
+	return c.Cache.TTLSeconds
+}
+
 // and ~ paths, then validates. Any unresolved ${...} fails startup so a
 // literal placeholder can never be used as a credential.
 func Load(path string) (*Config, error) {
@@ -242,7 +266,7 @@ func (c *Config) validate() error {
 			return fmt.Errorf("gateway config: upstreams[%d] (%s): model_alias must list at least one alias", i, u.Name)
 		}
 		if !supportedVendors[u.Vendor] {
-			return fmt.Errorf("gateway config: upstreams[%d] (%s): vendor %q is not supported by gateway v1 (supported: deepseek, openai, moonshot; anthropic needs format conversion, later milestone)", i, u.Name, u.Vendor)
+			return fmt.Errorf("gateway config: upstreams[%d] (%s): vendor %q is not supported by gateway v1 (supported: deepseek, openai, moonshot, anthropic)", i, u.Name, u.Vendor)
 		}
 		for _, alias := range u.ModelAlias {
 			if prev, dup := seenModel[alias]; dup {
@@ -265,11 +289,11 @@ func validScope(s string) bool {
 // DefaultConfig returns the built-in defaults (for tests and docs).
 func DefaultConfig() *Config {
 	return &Config{
-		Server: ServerConfig{Addr: ":8080", GatewayKey: "dev-key"},
-		Store:  StoreConfig{DB: ".semantix/gateway.jsonl", Scope: "project", DepsRoot: "."},
+		Server:    ServerConfig{Addr: ":8080", GatewayKey: "dev-key"},
+		Store:     StoreConfig{DB: ".semantix/gateway.jsonl", Scope: "project", DepsRoot: "."},
 		Retrieval: RetrievalConfig{Retriever: "bm25", TopK: 5, Budget: 4096},
-		Cache:  CacheConfig{TTLSeconds: 86400},
-		Ingest: IngestConfig{SessionsDir: ".semantix/sessions", UsageLog: ".semantix/gateway-usage.jsonl"},
+		Cache:     CacheConfig{TTLSeconds: 86400},
+		Ingest:    IngestConfig{SessionsDir: ".semantix/sessions", UsageLog: ".semantix/gateway-usage.jsonl"},
 	}
 }
 

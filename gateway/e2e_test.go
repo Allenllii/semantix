@@ -137,7 +137,9 @@ func respContent(t *testing.T, body []byte) string {
 	t.Helper()
 	var r struct {
 		Choices []struct {
-			Message struct{ Content string `json:"content"` } `json:"message"`
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(body, &r); err != nil {
@@ -536,5 +538,218 @@ func TestE2EL3SafeFalseRejected(t *testing.T) {
 	}
 	if n := up.callCount(); n != 1 {
 		t.Errorf("upstream calls = %d, want 1", n)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Anthropic vendor e2e (Issue #185): a fake /v1/messages upstream behind the
+// full pipeline. The client surface must stay OpenAI-compatible while the
+// upstream hop speaks Anthropic protocol (headers + body + response shape).
+
+// testAnthropicUpstream simulates POST {base}/v1/messages: it records the
+// request (headers + body) and answers with canned Anthropic responses.
+type testAnthropicUpstream struct {
+	mu         sync.Mutex
+	calls      int
+	lastPath   string
+	lastBody   map[string]any
+	lastHeader http.Header
+	stream     string // canned Anthropic SSE body when stream=true
+	plain      string // canned /v1/messages JSON otherwise
+}
+
+func (u *testAnthropicUpstream) handler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var parsed map[string]any
+		_ = json.Unmarshal(body, &parsed)
+		u.mu.Lock()
+		u.calls++
+		u.lastPath = r.URL.Path
+		u.lastBody = parsed
+		u.lastHeader = r.Header.Clone()
+		u.mu.Unlock()
+		if stream, _ := parsed["stream"].(bool); stream {
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = io.WriteString(w, u.stream)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, u.plain)
+	}
+}
+
+func (u *testAnthropicUpstream) snapshot() (int, string, map[string]any, http.Header) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.calls, u.lastPath, u.lastBody, u.lastHeader
+}
+
+const anthropicPlainReply = `{"id":"msg_e2e","type":"message","role":"assistant","model":"claude-sonnet-4",
+	"content":[{"type":"text","text":"claude hello"}],
+	"stop_reason":"end_turn",
+	"usage":{"input_tokens":50,"output_tokens":10,"cache_read_input_tokens":20}}`
+
+// newAnthropicGateway wires a gateway whose only upstream is vendor=anthropic
+// (base_url points at the fake /v1/messages server).
+func newAnthropicGateway(t *testing.T, upURL string) *Gateway {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.Server.GatewayKey = "test-key"
+	cfg.Store.DB = filepath.Join(dir, "db.jsonl")
+	cfg.Store.DepsRoot = dir
+	cfg.Ingest.SessionsDir = filepath.Join(dir, "sessions")
+	cfg.Ingest.UsageLog = filepath.Join(dir, "usage.jsonl")
+	cfg.Upstreams = []UpstreamConfig{{
+		Name: "claude", BaseURL: upURL, APIKey: "claude-key",
+		ModelAlias: []string{"claude-sonnet"}, UpstreamModel: "claude-sonnet-4",
+		Vendor: "anthropic",
+	}}
+	g, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = g.Close() })
+	return g
+}
+
+func TestE2EAnthropicNonStreaming(t *testing.T) {
+	up := &testAnthropicUpstream{plain: anthropicPlainReply}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newAnthropicGateway(t, upSrv.URL+"/v1") // base_url carries /v1 like api.anthropic.com
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	resp, out := postChat(t, srv, "test-key", `{"model":"claude-sonnet","stream":false,"messages":[
+		{"role":"system","content":"you are helpful"},
+		{"role":"user","content":"hello claude"}
+	]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body %s", resp.StatusCode, out)
+	}
+	if got := respContent(t, out); got != "claude hello" {
+		t.Errorf("content = %q, want claude hello (translated response)", got)
+	}
+
+	calls, path, last, hdr := up.snapshot()
+	if calls != 1 {
+		t.Fatalf("upstream calls = %d, want 1", calls)
+	}
+	if path != "/v1/messages" {
+		t.Errorf("upstream path = %q, want /v1/messages", path)
+	}
+	if hdr.Get("x-api-key") != "claude-key" || hdr.Get("anthropic-version") == "" {
+		t.Errorf("anthropic auth headers wrong: x-api-key=%q version=%q", hdr.Get("x-api-key"), hdr.Get("anthropic-version"))
+	}
+	if hdr.Get("Authorization") != "" {
+		t.Errorf("anthropic upstream must not receive Authorization: %q", hdr.Get("Authorization"))
+	}
+	if model, _ := last["model"].(string); model != "claude-sonnet-4" {
+		t.Errorf("forwarded model = %q, want upstream model claude-sonnet-4", model)
+	}
+	// system lifted out of messages into the top-level field; user message
+	// carries the query
+	if sys, _ := last["system"].(string); sys != "you are helpful" {
+		t.Errorf("system = %#v, want lifted system string", last["system"])
+	}
+	msgs, _ := last["messages"].([]any)
+	if len(msgs) != 1 {
+		t.Fatalf("messages = %d, want 1 (system lifted): %v", len(msgs), msgs)
+	}
+}
+
+func TestE2EAnthropicStreaming(t *testing.T) {
+	up := &testAnthropicUpstream{stream: `event: message_start
+data: {"type":"message_start","message":{"id":"msg_s","type":"message","role":"assistant","model":"claude-sonnet-4"}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"stream "}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"reply"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":10}}
+
+event: message_stop
+data: {"type":"message_stop"}
+`}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newAnthropicGateway(t, upSrv.URL+"/v1")
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	resp, out := postChat(t, srv, "test-key", chatBody("claude-sonnet", "stream please", true))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body %s", resp.StatusCode, out)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Errorf("Content-Type = %q, want text/event-stream", ct)
+	}
+	body := string(out)
+	for _, want := range []string{`"role":"assistant"`, `"content":"stream "`, `"content":"reply"`, `"finish_reason":"stop"`, "data: [DONE]"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("stream missing %q:\n%s", want, body)
+		}
+	}
+	// no raw anthropic events may leak through
+	if strings.Contains(body, "message_start") || strings.Contains(body, "content_block") {
+		t.Errorf("raw anthropic events leaked to client:\n%s", body)
+	}
+}
+
+func TestE2EAnthropicL2Breakpoint(t *testing.T) {
+	up := &testAnthropicUpstream{plain: anthropicPlainReply}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newAnthropicGateway(t, upSrv.URL+"/v1")
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	// L2 injection material: seed the reuse slices so Build(query) returns a
+	// non-empty injection block (same distractor trick as the OpenAI e2e).
+	for i, content := range []string{"alpha", "bravo", "charlie", "delta", "widgets knowhow"} {
+		seed(t, g, &slice.Slice{
+			ID: fmt.Sprintf("an-th-%d", i), Type: slice.Prompt, Scope: slice.Project,
+			Content: []byte(content),
+		})
+	}
+
+	resp, out := postChat(t, srv, "test-key", chatBody("claude-sonnet", "widgets", false))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body %s", resp.StatusCode, out)
+	}
+	if resp.Header.Get("x-semantix-cache") != "miss" {
+		t.Errorf("x-semantix-cache = %q, want miss", resp.Header.Get("x-semantix-cache"))
+	}
+
+	calls, _, last, _ := up.snapshot()
+	if calls != 1 {
+		t.Fatalf("upstream calls = %d, want 1", calls)
+	}
+	sys, ok := last["system"].([]any)
+	if !ok || len(sys) != 1 {
+		t.Fatalf("system = %#v, want block array with one text block", last["system"])
+	}
+	block, ok := sys[0].(map[string]any)
+	if !ok || block["type"] != "text" {
+		t.Fatalf("system block = %#v, want text block", sys[0])
+	}
+	text, _ := block["text"].(string)
+	if !strings.Contains(text, "[semantix-reuse]") {
+		t.Errorf("injection block not appended to system: %q", text)
+	}
+	cc, _ := block["cache_control"].(map[string]any)
+	if cc == nil || cc["type"] != "ephemeral" {
+		t.Errorf("system tail missing cache_control breakpoint: %#v", block)
 	}
 }

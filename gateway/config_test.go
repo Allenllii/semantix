@@ -78,16 +78,16 @@ func TestLoadFailsOnUnresolvedEnv(t *testing.T) {
 
 func TestLoadValidation(t *testing.T) {
 	cases := []struct {
-		name  string
-		mut   func(*Config)
-		msg   string
+		name string
+		mut  func(*Config)
+		msg  string
 	}{
 		{"missing addr", func(c *Config) { c.Server.Addr = "" }, "addr"},
 		{"missing key", func(c *Config) { c.Server.GatewayKey = "" }, "gateway_key"},
 		{"missing db", func(c *Config) { c.Store.DB = "" }, "db"},
 		{"no upstreams", func(c *Config) { c.Upstreams = nil }, "upstreams"},
 		{"bad scope", func(c *Config) { c.Store.Scope = "all" }, "scope"},
-		{"anthropic vendor", func(c *Config) { c.Upstreams[0].Vendor = "anthropic" }, "vendor"},
+		{"unsupported vendor", func(c *Config) { c.Upstreams[0].Vendor = "bogus" }, "vendor"},
 		{"dup alias", func(c *Config) {
 			c.Upstreams = append(c.Upstreams, c.Upstreams[0])
 			c.Upstreams[1].Name = "second"
@@ -147,5 +147,47 @@ func TestModelAliasEnvSubstitution(t *testing.T) {
 	aliases := cfg.Upstreams[0].ModelAlias
 	if len(aliases) != 2 || aliases[1] != "ds-chat" {
 		t.Fatalf("model_alias env substitution failed: %v", aliases)
+	}
+}
+
+// TestAnthropicVendorAccepted: vendor="anthropic" must pass validation
+// (Issue #185 — the conversion layer makes it a first-class vendor).
+func TestAnthropicVendorAccepted(t *testing.T) {
+	c := DefaultConfig()
+	c.Server.GatewayKey = "k"
+	c.Store.DB = "x.jsonl"
+	c.Upstreams = []UpstreamConfig{{
+		Name: "claude", BaseURL: "https://api.anthropic.com/v1", APIKey: "k",
+		ModelAlias: []string{"claude-sonnet"}, UpstreamModel: "claude-sonnet-4",
+		Vendor: "anthropic",
+	}}
+	if err := c.validate(); err != nil {
+		t.Fatalf("anthropic vendor must be accepted, got %v", err)
+	}
+}
+
+// TestTTLForVendorDifferentiation: L3 freshness TTL is vendor-aware
+// (design §3.5: DeepSeek 24h / Anthropic 5m), config vendor_ttl wins,
+// generic ttl_seconds is the fallback.
+func TestTTLForVendorDifferentiation(t *testing.T) {
+	c := DefaultConfig() // ttl_seconds = 86400, no vendor_ttl
+	if got := c.TTLFor("anthropic"); got != 5*60 {
+		t.Errorf("anthropic TTL = %d, want %d (5m)", got, 5*60)
+	}
+	if got := c.TTLFor("deepseek"); got != 24*60*60 {
+		t.Errorf("deepseek TTL = %d, want %d (24h)", got, 24*60*60)
+	}
+	if got := c.TTLFor("openai"); got != 86400 {
+		t.Errorf("openai TTL = %d, want config default 86400", got)
+	}
+	// explicit vendor_ttl overrides the built-in default
+	c.Cache.VendorTTL = map[string]int64{"anthropic": 60}
+	if got := c.TTLFor("anthropic"); got != 60 {
+		t.Errorf("anthropic TTL with vendor_ttl = %d, want 60", got)
+	}
+	// ttl_seconds <= 0 disables the window for vendors without a default
+	c.Cache.TTLSeconds = 0
+	if got := c.TTLFor("openai"); got != 0 {
+		t.Errorf("openai TTL with ttl_seconds=0 = %d, want 0 (disabled)", got)
 	}
 }
