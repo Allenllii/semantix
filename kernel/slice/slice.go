@@ -130,7 +130,11 @@ type Slice struct {
 	Type      SliceType
 	Scope     Scope
 	Content   []byte      // normalized text (Prompt/Context/Result/Memory) or tool sequence (ToolPattern)
-	Embedding []float32   // nil until an embedder is available (MVP: BM25 only)
+	// Embedding is persisted only for model-produced vectors (hash vectors
+	// are recomputable from Content and are not stored). Store reads return
+	// nil by contract — nothing in the repo consumes persisted vectors; the
+	// raw bytes still round-trip through Export and compaction.
+	Embedding []float32 `json:",omitempty"`
 	Stats     SliceStats
 	Weight    float64     // value weight, updated by the evolution engine
 	Meta      SliceMeta
