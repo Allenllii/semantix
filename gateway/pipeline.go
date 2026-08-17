@@ -260,10 +260,14 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 
 // streamThrough relays a streaming upstream response chunk by chunk (SSE),
 // preserving events verbatim (design §3.4: never reorder/rewrite the
-// upstream stream). If the upstream ends without a [DONE] marker (abnormal
-// disconnect), the gateway appends one so the client never hangs on an
-// unterminated stream. Sidecar records the request turns only — parsing the
-// assistant content out of the SSE chunks is deferred (documented debt).
+// upstream stream). While relaying, the assistant content is aggregated out
+// of the SSE chunks (choices[0].delta.content); only a cleanly terminated
+// stream — finish_reason or [DONE], within the aggregation bound — is
+// written to the session sidecar. Partial/aborted streams fail closed and
+// never enter the reuse library, matching the non-streaming path where
+// failed exchanges are not recorded (design §0.3 documented debt, now paid).
+// If the upstream ends without a [DONE] marker (abnormal disconnect), the
+// gateway appends one so the client never hangs on an unterminated stream.
 func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
@@ -279,14 +283,29 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 
 	// Scan lines rather than blind blocks: we must detect the [DONE]
 	// marker to guarantee stream termination even when the upstream
-	// disconnects early. Lines are still forwarded verbatim.
+	// disconnects early. Lines are still forwarded verbatim, and fed to
+	// the aggregator for sidecar extraction.
+	agg := newSSEAggregator(maxSSEAggregateBytes)
 	br := bufio.NewReader(resp.Body)
 	sawDone := false
 	for {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
+			// Aggregate before relaying so a [DONE] line flips the
+			// completion state in time: the synthetic usage chunk must
+			// land before [DONE], not after it (design §3.4).
+			agg.Feed(line)
 			if bytes.HasPrefix(bytes.TrimSpace(line), []byte("data: [DONE]")) {
 				sawDone = true
+				if !agg.SawUsage() && !agg.Overflowed() {
+					// Upstream sent no usage accounting: synthesize one
+					// carrying the injection statistics (byte/4 flag).
+					// [DONE] itself is the termination signal here — the
+					// aggregator's done flag only flips on the trailing
+					// blank line, so trust sawDone, not Complete().
+					prompt := int64(len(query)/4) + injectedTokens
+					g.writeUsageChunk(w, flusher, req, agg.EventID(), prompt, int64(len(agg.Content())/4), injectedTokens)
+				}
 			}
 			_, _ = w.Write(line)
 			if flusher != nil {
@@ -299,16 +318,25 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 	}
 	if !sawDone {
 		// Abnormal termination: close the stream ourselves so the client
-		// does not hang (design §3.4: [DONE] always terminates).
+		// does not hang (design §3.4: [DONE] always terminates). Half
+		// streams never get a usage chunk — their meters are unreliable,
+		// fail closed.
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 		if flusher != nil {
 			flusher.Flush()
 		}
 	}
-	g.recordSession(sessionID, ctxHash, req.Model, turns(req, ""))
+	if agg.Complete() {
+		g.recordSession(sessionID, ctxHash, req.Model, turns(req, agg.Content()))
+	}
+	tokensOut := int64(0)
+	if agg.Complete() {
+		tokensOut = int64(len(agg.Content()) / 4)
+	}
 	g.recordUsage(usage.Event{
 		SessionID:      sessionID,
 		TokensIn:       int64(len(query)/4) + injectedTokens,
+		TokensOut:      tokensOut,
 		InjectedTokens: injectedTokens,
 		SliceHits:      sliceHits,
 		At:             g.now().Unix(),
@@ -396,6 +424,44 @@ type usagePayload struct {
 	PromptDetails    struct {
 		CachedTokens int `json:"cached_tokens"`
 	} `json:"prompt_tokens_details"`
+	// Estimator marks synthetic usage whose token counts are byte/4
+	// estimates rather than tokenizer counts — billing reconciliation
+	// must be able to tell them apart (design §0.3). Never set on usage
+	// relayed verbatim from an upstream.
+	Estimator string `json:"estimator,omitempty"`
+}
+
+// writeUsageChunk emits an OpenAI stream-usage event (empty choices +
+// usage) just before [DONE], used when the upstream stream carried no
+// usage accounting (design §3.4). Token counts are byte/4 estimates,
+// flagged with "estimator":"bytes/4" so reconciliation can identify them.
+// id reuses the stream's first chunk id (or falls back to a fresh one) so
+// clients tracking the stream by id never see a foreign id.
+func (g *Gateway) writeUsageChunk(w http.ResponseWriter, flusher http.Flusher, req *chatRequest, id string, prompt, completion, cached int64) {
+	if id == "" {
+		id = "chatcmpl-" + randomID()
+	}
+	evt := map[string]any{
+		"id":      id,
+		"object":  "chat.completion.chunk",
+		"created": g.now().Unix(),
+		"model":   req.Model,
+		"choices": []any{},
+		"usage": map[string]any{
+			"prompt_tokens":     prompt,
+			"completion_tokens": completion,
+			"total_tokens":      prompt + completion,
+			"prompt_tokens_details": map[string]any{
+				"cached_tokens": cached,
+			},
+			"estimator": "bytes/4",
+		},
+	}
+	raw, _ := json.Marshal(evt)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", raw)
+	if flusher != nil {
+		flusher.Flush()
+	}
 }
 
 // replyFromCache serves a verified L3 hit: a plain JSON response, or a
@@ -423,6 +489,7 @@ func (g *Gateway) replyFromCache(w http.ResponseWriter, r *http.Request, req *ch
 			PromptTokens:     prompt + cached,
 			CompletionTokens: 0,
 			TotalTokens:      prompt + cached,
+			Estimator:        "bytes/4",
 		},
 	}
 	body.Usage.PromptDetails.CachedTokens = cached
@@ -472,6 +539,12 @@ func (g *Gateway) replayStream(w http.ResponseWriter, r *http.Request, req *chat
 		content = content[n:]
 	}
 	writeChunk(map[string]any{}, "stop")
+	// Synthetic usage for the replayed stream: a streamed L3 hit must
+	// still carry billable usage (design §4.3), in the same byte/4
+	// estimate shape as the non-streaming synthetic response.
+	query, _ := lastUserText(req.Messages)
+	cached := int64(len(res.Response) / 4)
+	g.writeUsageChunk(w, flusher, req, base.ID, int64(len(query)/4)+cached, 0, cached)
 	_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	if flusher != nil {
 		flusher.Flush()

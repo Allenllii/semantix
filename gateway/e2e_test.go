@@ -24,11 +24,12 @@ import (
 // testUpstream simulates an OpenAI-compatible upstream LLM: it counts calls,
 // captures the last forwarded body, and answers with a canned response.
 type testUpstream struct {
-	mu       sync.Mutex
-	calls    int
-	lastBody map[string]any
-	stream   string // canned SSE body when the request asked for stream
-	plain    string // canned JSON body otherwise
+	mu         sync.Mutex
+	calls      int
+	lastBody   map[string]any
+	stream     string // canned SSE body when the request asked for stream
+	plain      string // canned JSON body otherwise
+	streamFunc func(w http.ResponseWriter) // optional; overrides stream
 }
 
 func (u *testUpstream) handler() http.HandlerFunc {
@@ -42,6 +43,10 @@ func (u *testUpstream) handler() http.HandlerFunc {
 		u.mu.Unlock()
 		if stream, _ := parsed["stream"].(bool); stream {
 			w.Header().Set("Content-Type", "text/event-stream")
+			if u.streamFunc != nil {
+				u.streamFunc(w)
+				return
+			}
 			_, _ = io.WriteString(w, u.stream)
 			return
 		}
@@ -117,12 +122,22 @@ func chatBody(model, user string, stream bool) string {
 
 func postChat(t *testing.T, srv *httptest.Server, key, body string) (*http.Response, []byte) {
 	t.Helper()
+	return postChatWithHeaders(t, srv, key, nil, body)
+}
+
+// postChatWithHeaders posts a chat completion with extra headers — e.g. a
+// fixed x-semantix-session id so the sidecar file is deterministic.
+func postChatWithHeaders(t *testing.T, srv *httptest.Server, key string, headers map[string]string, body string) (*http.Response, []byte) {
+	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/chat/completions", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -131,6 +146,24 @@ func postChat(t *testing.T, srv *httptest.Server, key, body string) (*http.Respo
 	defer resp.Body.Close()
 	out, _ := io.ReadAll(resp.Body)
 	return resp, out
+}
+
+// readSidecarLines parses the JSONL lines of a session sidecar file.
+func readSidecarLines(t *testing.T, g *Gateway, sessionID string) []map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(g.cfg.Ingest.SessionsDir, sessionID+".jsonl"))
+	if err != nil {
+		t.Fatalf("read sidecar %s: %v", sessionID, err)
+	}
+	var lines []map[string]any
+	for _, l := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(l), &m); err != nil {
+			t.Fatalf("bad sidecar line %q: %v", l, err)
+		}
+		lines = append(lines, m)
+	}
+	return lines
 }
 
 func respContent(t *testing.T, body []byte) string {
@@ -751,5 +784,377 @@ func TestE2EAnthropicL2Breakpoint(t *testing.T) {
 	cc, _ := block["cache_control"].(map[string]any)
 	if cc == nil || cc["type"] != "ephemeral" {
 		t.Errorf("system tail missing cache_control breakpoint: %#v", block)
+	}
+}
+
+// GW2: streaming sidecar memory (Issue #182)
+// streamThrough must aggregate choices[0].delta.content while relaying
+// verbatim, write the complete assistant reply into the sidecar (same shape
+// as the non-streaming path), and fail closed on aborted streams.
+
+func TestE2EStreamSidecarAggregatesContent(t *testing.T) {
+	// role-first chunk + three content chunks + finish_reason + [DONE]
+	up := &testUpstream{stream: "" +
+		"data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"hello \"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"streaming \"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"world\"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n\n" +
+		"data: [DONE]\n\n"}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	resp, out := postChatWithHeaders(t, srv, "test-key",
+		map[string]string{"x-semantix-session": "stream-sess-1"},
+		chatBody("deepseek-chat", "stream me", true))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body %s", resp.StatusCode, out)
+	}
+	// relay stays verbatim
+	if !strings.Contains(string(out), `"content":"world"`) || !strings.Contains(string(out), "[DONE]") {
+		t.Errorf("stream not relayed verbatim: %s", out)
+	}
+
+	// sidecar ends with the aggregated assistant reply (non-streaming shape)
+	lines := readSidecarLines(t, g, "stream-sess-1")
+	last := lines[len(lines)-1]
+	if last["role"] != "assistant" {
+		t.Fatalf("last sidecar line role = %v, want assistant: %#v", last["role"], lines)
+	}
+	if got := last["content"]; got != "hello streaming world" {
+		t.Errorf("aggregated content = %q, want %q", got, "hello streaming world")
+	}
+}
+
+func TestE2EStreamSidecarSkipsToolCalls(t *testing.T) {
+	// tool_calls delta chunks interleaved with content: only content is
+	// aggregated, matching the non-streaming extractAssistantContent shape
+	up := &testUpstream{stream: "" +
+		"data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"get_weather\",\"arguments\":\"\"}}]},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"Let me check the weather.\"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"city\\\":\\\"Berlin\\\"}\"}}]},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n\n" +
+		"data: [DONE]\n\n"}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	_, out := postChatWithHeaders(t, srv, "test-key",
+		map[string]string{"x-semantix-session": "tool-sess-1"},
+		chatBody("deepseek-chat", "weather", true))
+	if !strings.Contains(string(out), "[DONE]") {
+		t.Fatalf("stream not relayed: %s", out)
+	}
+
+	lines := readSidecarLines(t, g, "tool-sess-1")
+	last := lines[len(lines)-1]
+	if last["role"] != "assistant" || last["content"] != "Let me check the weather." {
+		t.Fatalf("last line = %#v, want assistant with plain content only", last)
+	}
+	if _, has := last["tool_calls"]; has {
+		t.Errorf("sidecar assistant line carries tool_calls, want skipped: %#v", last)
+	}
+}
+
+func TestE2EStreamAbortFailClosed(t *testing.T) {
+	// upstream dies mid-stream: the partially aggregated reply must never
+	// reach the sidecar (fail-closed, half replies are not reusable)
+	up := &testUpstream{streamFunc: func(w http.ResponseWriter) {
+		_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"half reply"}}]}`+"\n\n")
+		if fl, ok := w.(http.Flusher); ok {
+			fl.Flush()
+		}
+		if hj, ok := w.(http.Hijacker); ok {
+			if conn, _, err := hj.Hijack(); err == nil {
+				_ = conn.Close()
+			}
+		}
+	}}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	_, _ = postChatWithHeaders(t, srv, "test-key",
+		map[string]string{"x-semantix-session": "abort-sess-1"},
+		chatBody("deepseek-chat", "do it", true))
+
+	if _, err := os.Stat(filepath.Join(g.cfg.Ingest.SessionsDir, "abort-sess-1.jsonl")); err == nil {
+		t.Error("sidecar exists after aborted stream, want no write (fail-closed)")
+	}
+}
+
+func TestE2EStreamNoTerminatorFailClosed(t *testing.T) {
+	// upstream ends the stream cleanly but never sends [DONE] or a
+	// finish_reason: without a termination signal nothing is persisted
+	up := &testUpstream{streamFunc: func(w http.ResponseWriter) {
+		_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"no terminator"}}]}`+"\n\n")
+	}}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	_, _ = postChatWithHeaders(t, srv, "test-key",
+		map[string]string{"x-semantix-session": "noterm-sess-1"},
+		chatBody("deepseek-chat", "go on", true))
+
+	if _, err := os.Stat(filepath.Join(g.cfg.Ingest.SessionsDir, "noterm-sess-1.jsonl")); err == nil {
+		t.Error("sidecar exists without a termination signal, want no write (fail-closed)")
+	}
+}
+
+func TestE2EStreamAccumulatesL3(t *testing.T) {
+	// the full loop (issue #182 acceptance e2e): streaming request →
+	// sidecar with complete assistant → ingest → second identical request
+	// hits L3 with zero additional upstream calls.
+	// Query is multi-word on purpose: the ingest chain also lands a Prompt
+	// slice (a copy of the user message) that would otherwise top the BM25
+	// ranking below the zone absolute floor (AbsHigh 0.7), fail-closing L3.
+	up := &testUpstream{stream: "" +
+		"data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"weather widgets forecast today \"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"weather widgets forecast today streaming answer\"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n\n" +
+		"data: [DONE]\n\n"}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	g.cfg.Ingest.L3SafeDefault = true // gateway results enter L3 only when opted in
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	body := chatBody("deepseek-chat", "weather widgets forecast today", true)
+	resp, out := postChatWithHeaders(t, srv, "test-key",
+		map[string]string{"x-semantix-session": "l3-accum-1"}, body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(out), "[DONE]") {
+		t.Fatalf("first stream: status=%d body=%s", resp.StatusCode, out)
+	}
+
+	// async ingest must land a Result slice carrying the aggregated reply
+	deadline := time.Now().Add(3 * time.Second)
+	ingested := false
+	for time.Now().Before(deadline) {
+		items, err := g.store.ListAll()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range items {
+			if s.Type == slice.Result && bytes.Contains(s.Content, []byte("streaming answer")) {
+				ingested = true
+				break
+			}
+		}
+		if ingested {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !ingested {
+		t.Fatal("streamed assistant reply was not ingested as a Result slice within 3s")
+	}
+
+	// second identical request: L3 hit, zero additional upstream calls
+	resp2, out2 := postChatWithHeaders(t, srv, "test-key",
+		map[string]string{"x-semantix-session": "l3-accum-1"}, body)
+	if resp2.Header.Get("x-semantix-cache") != "hit" {
+		t.Errorf("second request cache = %q, want hit (%s)", resp2.Header.Get("x-semantix-cache"), out2)
+	}
+	if !strings.Contains(string(out2), "streaming answer") || !strings.Contains(string(out2), "[DONE]") {
+		t.Errorf("replayed stream missing content or terminator: %s", out2)
+	}
+	if n := up.callCount(); n != 1 {
+		t.Errorf("upstream calls = %d, want 1 (second request must not reach upstream)", n)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GW7: streaming usage accounting (Issue #187)
+// streamThrough must synthesize a usage chunk before [DONE] when the
+// upstream carried none (carrying injection stats, flagged bytes/4), leave
+// upstream-provided usage verbatim, and never meter half streams.
+
+func TestE2EStreamUsageChunkSynthesized(t *testing.T) {
+	up := &testUpstream{stream: "" +
+		"data: {\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"hello \"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"streaming world\"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}]}\n\n" +
+		"data: [DONE]\n\n"}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	// seed so L2 injection happens: the synthesized chunk must carry the
+	// injection statistics (cached_tokens > 0), not a flat zero
+	seed(t, g, &slice.Slice{
+		ID: "l2-gw7", Type: slice.Prompt, Scope: slice.Project,
+		Content: []byte("prior knowledge about widgets"),
+	})
+	for i, content := range []string{"alpha", "bravo", "charlie", "delta"} {
+		seed(t, g, &slice.Slice{
+			ID: fmt.Sprintf("gw7-distractor-%d", i), Type: slice.Prompt, Scope: slice.Project,
+			Content: []byte(content),
+		})
+	}
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "widgets", true))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body %s", resp.StatusCode, out)
+	}
+	body := string(out)
+	usageIdx := strings.Index(body, `"usage"`)
+	doneIdx := strings.Index(body, "data: [DONE]")
+	if usageIdx < 0 {
+		t.Fatalf("no synthesized usage chunk in stream: %s", body)
+	}
+	if doneIdx < 0 || usageIdx > doneIdx {
+		t.Errorf("usage chunk must precede [DONE] (usage@%d done@%d)", usageIdx, doneIdx)
+	}
+	if !strings.Contains(body, `"estimator":"bytes/4"`) {
+		t.Errorf("usage chunk missing estimator flag: %s", body)
+	}
+	if strings.Contains(body, `"cached_tokens":0`) {
+		t.Errorf("usage chunk missing injection stats (cached_tokens=0), want > 0: %s", body)
+	}
+}
+
+func TestE2EStreamUsageChunkNotDuplicated(t *testing.T) {
+	// upstream provides its own usage: relay verbatim, no synthesis
+	up := &testUpstream{stream: "" +
+		"data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"index\":0}]}\n\n" +
+		"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}\n\n" +
+		"data: [DONE]\n\n"}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	_, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "hi", true))
+	body := string(out)
+	if !strings.Contains(body, `"prompt_tokens":10`) {
+		t.Errorf("upstream usage not relayed: %s", body)
+	}
+	if strings.Contains(body, "estimator") {
+		t.Errorf("upstream usage must not gain the estimator flag: %s", body)
+	}
+	if n := strings.Count(body, `"usage"`); n != 1 {
+		t.Errorf("usage field count = %d, want exactly 1 (no synthesized duplicate): %s", n, body)
+	}
+}
+
+func TestE2EStreamUsageChunkSkippedOnAbort(t *testing.T) {
+	// upstream dies mid-stream: [DONE] is appended for the client (U28)
+	// but no usage chunk — half streams must not be metered
+	up := &testUpstream{streamFunc: func(w http.ResponseWriter) {
+		_, _ = io.WriteString(w, `data: {"choices":[{"delta":{"content":"half reply"}}]}`+"\n\n")
+		if fl, ok := w.(http.Flusher); ok {
+			fl.Flush()
+		}
+		if hj, ok := w.(http.Hijacker); ok {
+			if conn, _, err := hj.Hijack(); err == nil {
+				_ = conn.Close()
+			}
+		}
+	}}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	_, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "do it", true))
+	body := string(out)
+	if !strings.Contains(body, "data: [DONE]") {
+		t.Errorf("aborted stream missing appended [DONE]: %s", body)
+	}
+	if strings.Contains(body, `"usage"`) {
+		t.Errorf("aborted stream must not carry a usage chunk: %s", body)
+	}
+}
+
+func TestE2EL3StreamingReplayHasUsage(t *testing.T) {
+	up := &testUpstream{stream: "data: [DONE]\n\n"}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	chash, _ := contextHash([]chatMessage{msg("user", "widgets cached")})
+	seed(t, g, &slice.Slice{
+		ID: "l3-gw7", Type: slice.Result, Scope: slice.Project,
+		Content: []byte("widgets cached widgets cached stream answer"),
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+	})
+
+	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "widgets cached", true))
+	if resp.Header.Get("x-semantix-cache") != "hit" {
+		t.Fatalf("cache = %q, want hit", resp.Header.Get("x-semantix-cache"))
+	}
+	body := string(out)
+	if !strings.Contains(body, `"estimator":"bytes/4"`) || !strings.Contains(body, `"cached_tokens"`) {
+		t.Errorf("replayed stream missing synthetic usage: %s", body)
+	}
+	if usageIdx, doneIdx := strings.Index(body, `"usage"`), strings.Index(body, "data: [DONE]"); usageIdx < 0 || doneIdx < 0 || usageIdx > doneIdx {
+		t.Errorf("usage chunk must precede [DONE] (usage@%d done@%d)", usageIdx, doneIdx)
+	}
+}
+
+func TestE2EL3HitSyntheticUsageEstimator(t *testing.T) {
+	up := &testUpstream{plain: `{}`}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	chash, _ := contextHash([]chatMessage{msg("user", "hello world")})
+	seed(t, g, &slice.Slice{
+		ID: "l3-gw7b", Type: slice.Result, Scope: slice.Project,
+		Content: []byte("hello world hello world cached answer"),
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+	})
+
+	_, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "hello world", false))
+	if !strings.Contains(string(out), `"estimator":"bytes/4"`) {
+		t.Errorf("synthetic L3 usage missing estimator: %s", out)
+	}
+}
+
+func TestE2EStreamUsageChunkNoFinishReason(t *testing.T) {
+	// upstream ends with content chunks then bare [DONE] (no finish_reason
+	// chunk): the usage chunk must still be synthesized before [DONE]
+	up := &testUpstream{stream: "" +
+		"data: {\"id\":\"chatcmpl-abc\",\"choices\":[{\"delta\":{\"content\":\"plain \"},\"index\":0}]}\n\n" +
+		"data: {\"id\":\"chatcmpl-abc\",\"choices\":[{\"delta\":{\"content\":\"done\"},\"index\":0}]}\n\n" +
+		"data: [DONE]\n\n"}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	_, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "go", true))
+	body := string(out)
+	usageIdx := strings.Index(body, `"usage"`)
+	doneIdx := strings.Index(body, "data: [DONE]")
+	if usageIdx < 0 || doneIdx < 0 {
+		t.Fatalf("usage or [DONE] missing: %s", body)
+	}
+	if usageIdx > doneIdx {
+		t.Errorf("usage chunk must precede [DONE] (usage@%d done@%d)", usageIdx, doneIdx)
+	}
+	if !strings.Contains(body, `"id":"chatcmpl-abc"`) {
+		t.Errorf("usage chunk should reuse the stream id: %s", body)
 	}
 }
