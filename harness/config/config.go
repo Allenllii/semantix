@@ -970,10 +970,6 @@ type SemantixConfig struct {
 	// [cost] keys here when they are customized.
 	CostInputPriceUSD float64 `toml:"cost_input_price_usd"`
 	CostCachePriceUSD  float64 `toml:"cost_cache_price_usd"`
-	// LimitUSD caps the window's total financial spend (U41 C3). 0 = unlimited.
-	LimitUSD float64 `toml:"limit_usd"`
-	// Window is the reset window for LimitUSD: "session" | "day". Empty = "session".
-	Window string `toml:"window"`
 }
 
 // NetworkConfig controls ordinary outbound HTTP traffic such as model providers,
