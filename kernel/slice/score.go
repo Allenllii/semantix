@@ -36,7 +36,7 @@ func (p ScoreParams) withDefaults() ScoreParams {
 		p.HalfLifeDays = d.HalfLifeDays
 	}
 	if p.GraceDays < 0 {
-		p.GraceDays = d.GraceDays
+		p.GraceDays = 0 // grace is opt-in: zero disables, defaults come from config
 	}
 	if p.FreqPseudo <= 0 {
 		p.FreqPseudo = d.FreqPseudo
