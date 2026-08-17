@@ -553,6 +553,10 @@ const (
 	NoticeCodeSessionRecoveryDepthCap                           = "session_recovery_depth_cap"
 	NoticeCodeSessionShutdownRecoveryForked                     = "session_shutdown_recovery_forked"
 	NoticeCodeDecisionReceipt, NoticeCodeContextEditingFallback = "decision_receipt", "context_editing_fallback"
+
+	// NoticeCodeSemantixReuse marks the per-turn semantix reuse-panel notice
+	// whose Detail is a JSON semantix.ReuseSummary.
+	NoticeCodeSemantixReuse = "semantix_reuse"
 )
 
 type Event struct {
