@@ -116,6 +116,11 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
 	// values are computed below. Cross-turn state (checkpoint, scope, failure
 	// budgets) lives in taskRuntime and is reconciled there.
 	a.turn = turnRuntime{}
+	// A fresh turn must not inherit a previous turn's warmed [semantix-reuse]
+	// block: prefetchedInject lives on Agent (not turnRuntime), so clearing it
+	// here keeps buildSamplingRequest's fallback (sampling_request.go) scoped
+	// to same-turn use only.
+	a.prefetchedInject.Store(nil)
 	a.resetStructuralRunGuards()
 	scope, scoped := DeliveryExecutionScopeFromContext(ctx)
 	preserveEvidence := a.pending.preserveEvidence

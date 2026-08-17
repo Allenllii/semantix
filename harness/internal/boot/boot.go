@@ -306,7 +306,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		CostHitUSD:  cfg.Semantix.CostCachePriceUSD,
 	})
 	sink = semantixBridge.Sink(sink)
-	defer semantixBridge.Close()
+	// Close is NOT deferred here: build() returns long before the interactive
+	// session ends, so a defer on this stack would flush/close the sink before
+	// any real turn runs. It is chained into the cleanup closure below instead,
+	// so it fires at session teardown (Controller.Close / BuildResult.Cleanup).
 
 	// Extension preflight (stages 5b/7): start the installed, enabled v2 runtime
 	// packages ONCE, here, before model resolution, so plugin-namespaced refs
@@ -934,6 +937,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// close it. A no-op cleanup keeps Controller.Close happy without
 		// shutting down MCP processes that other controllers still use.
 		cleanup = func() {}
+	}
+	// The semantix bridge is session-scoped regardless of shared-host status
+	// (it is not part of the MCP process pool), so chain its Close into
+	// cleanup unconditionally: this makes the shutdown flush run at session
+	// teardown instead of at build() return (see the bridge construction
+	// above for why a bare defer there was wrong).
+	{
+		prev := cleanup
+		cleanup = func() { prev(); semantixBridge.Close() }
 	}
 
 	// addTools registers tools on reg and returns the names that were added.
