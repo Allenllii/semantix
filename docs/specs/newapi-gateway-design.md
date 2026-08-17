@@ -1,6 +1,7 @@
 # New API 网关集成设计 —— Semantix Gateway（v1）
 
-> 日期：2026-08-13 · 状态：规划（v1 草案）· 对应：Semantix 对外形态扩展
+> 日期：2026-08-13（起草）· 状态：**M0 已实现、M1 主干已实现（RuleGate / promote 未接线）、
+> §7 验收门未记录；M2 未开始**（2026-08-15 回写，见 §0）· 对应：Semantix 对外形态扩展
 > 一句话目标：以 **New API 做 OpenAI 兼容中转站**，在它后面挂一个 **Semantix Gateway**
 > （新组件，复用 kernel 三层缓存），让任意 OpenAI 兼容客户端（Claude Code / chatbox / IDE 插件等）
 > 的请求在到达上游 LLM 之前先过语义缓存——**L3 命中零上游调用、L2 注入跳过重复探索**，
@@ -9,6 +10,104 @@
 > 与既有集成方式的关系：LangChain 中间件是「消息级」读/写记忆，Reasonix fork 是「事件级」，
 > 本设计是**「请求级」的 HTTP 网关形态**——同一个「读记忆（inject/lookup）+ 写记忆（extract）」模型，
 > 只是挂在 API 网关上，零侵入任何 agent harness，天然适配所有 OpenAI 兼容客户端。
+
+---
+
+## 0. 交付状态（2026-08-15 回写）
+
+本文档 §1–§10 是 2026-08-13 的 **v1 规划原文**，除本节外未作改动。实现已于 Issue #133 落地
+（`gateway/` 五个实现文件 + `cmd/semantix-gateway/main.go`，约 1400 行实现 + 1000 行测试），
+验收记录见 [`docs/reports/issue-133-acceptance.md`](../reports/issue-133-acceptance.md)。
+本节按 §范围逐条对账，供读规划的人先看清「哪些已经是代码、哪些换了方案、哪些还没有」。
+
+**一句话**：§3 规格的主干（OpenAI 兼容层 / 七步流水线 / L2 注入 / L3 复用 / 流式双向 / 会话旁路写记忆 /
+配置与安全）已经是可运行的代码，`go test ./... -race` 全绿（2026-08-15 复核：gateway 包 29 个测试函数）。
+注意 §7 给 M1 划的范围里点名了 `RuleGate` 与 `promote`，这两项**都没有接线**（§0.2 / §0.3），
+所以 M1 只能说「主干已实现」，不是整条完成。
+验收口径同样要分清：Issue #133 的验收报告核对的是**该 issue 自己的 checklist**（结论：验收通过，
+2026-08-14），**不是 §7 的 M0 / M1 Gate**——报告中所有端到端证据的上游都是 `httptest` 假上游，
+「真实客户端 → New API → DeepSeek 全链路」与「第二次命中 + 成本节省 ≥30% 实测」至今没有记录。
+**M2（Claude 多模型 + 计费对账）未开始**，配置层显式拒绝 `vendor="anthropic"`。
+
+> **两套 M 编号别混**：Issue #133 的标题是「**M2-GW1**: Semantix Gateway v1」，那是**路线图**的阶段编号；
+> 本文档 §7 的 M0 / M1 / M2 是**网关自己的**实施阶段。「M2-GW1 验收通过」说的是路线图任务交付，
+> 不等于本文档 §7 的 M2 完成——§7 的 M2 未开始。
+
+### 0.1 已实现（§范围内）
+
+| §  | 条目 | 落点 |
+|---|---|---|
+| §3.1 | 独立 Go 进程、复用 kernel、不侵入 New API | `cmd/semantix-gateway/main.go`、`gateway/`（kernel 无反向依赖） |
+| §3.1 | 切片库用 `slice.NewFileStore`（JSONL），0600/0700 权限 | `gateway.go` `appendJSONLLines` / kernel store |
+| §3.2 | `GET /v1/models`（列出全部 model_alias） | `server.go` `handleModels` |
+| §3.2 | `POST /v1/chat/completions`（含 `stream=true`） | `server.go` → `pipeline.go` `handleChat` |
+| §3.2 | `GET /healthz`（New API 渠道探活） | `server.go` `handleHealth`（**仅本地就绪，不探上游**，见 §0.3） |
+| §3.2 | 错误一律走 OpenAI 信封 `{"error":{message,type,code}}` | `server.go` `writeAPIError` |
+| §3.3 | 七步流水线：鉴权 → 归一化 → L3 → L2 → 转发 → 透传 usage → 异步写记忆 | `pipeline.go` `handleChat` |
+| §3.3 | 「缓存永不阻塞主链路」：注入失败只记日志继续转发 | `pipeline.go`（`inject` 错误不中断） |
+| §3.3 | L3 命中可观测：`x-semantix-cache: hit` / `miss` 响应头 | `pipeline.go` `replyFromCache` / `passthrough` |
+| §3.3 | ablation 开关 `SEMANTIX_GATEWAY_DISABLE` 一键退化纯透传 | `gateway.go` `disableEnv`（只认 1/true/yes/on，`0`/`false` 保持缓存开启） |
+| §3.4 | 未命中流式逐块透传，不重排不重写 | `pipeline.go` `streamThrough` |
+| §3.4 | 命中流式：按 SSE 协议重建回放（role 首块 → content 分块 → finish_reason → `[DONE]`） | `pipeline.go` `replayStream`（分块 256B） |
+| §3.5 | Result 类型 + zone Hit + deps mtime 快速失败 + sha256 指纹权威，fail-closed | `kernel/cache` `L3Decider.DecideL3/verified`（U16/#59 既有能力） |
+| §3.5 | 上下文 / 模型隔离：同 query 不同历史或不同模型绝不互相复用 | `normalize.go` `contextHash` + `cache.Query{ContextHash,Model}`，未打标的旧切片一律 fail closed |
+| §3.5 | 无 deps 的网关结果默认不进 L3（`l3_safe_default = false`） | `gateway.go` `l3SafeExtractor` + `cache` 侧 `Meta.L3Safe` 判定 |
+| §3.6 | `inject.Injector{K,Budget,Zones}` 检索并拼注入块，位置在 **system 提示末尾**（字节稳定） | `pipeline.go` `rewriteOutgoing` / `attachBlock`（无 system 消息则前置一条） |
+| §3.7 | 请求/响应对旁路落盘 `sessions_dir/<id>.jsonl`（0600，`ingest.JSONLSource` 兼容） | `gateway.go` `recordSession`（session id 正则白名单，防路径穿越）。**流式路径只写请求侧**，见 §0.3 |
+| §3.7 | 异步 `ingest.Pipeline.Run` 提取入库，失败只记日志不影响主链路 | `gateway.go` `ingestSession`；关停时 `Close()` drain 在途提取 |
+| §3.8 | 模型映射三层：New API 模型名 = `model_alias` → `upstream_model` | `config.go` `UpstreamFor` + `pipeline.go` `rewriteOutgoing` |
+| §3.8 | 上游超时 + 单次重试兜底（仅网络错误重试，HTTP 状态错误不重试） | `pipeline.go` `forward`（client timeout 120s） |
+| §3.9 | `semantix-gateway.toml` 全部小节；`${VAR}` 替换与 `~` 展开，未解析即启动失败 | `config.go` `Load/expand/expandField/validate` |
+| §3.10 | 网关 Key 常量时间比较；上游 key 只来自环境变量 | `server.go` `authenticate`；`config.go`（配置文件只写 `${VAR}` 引用） |
+| §4.3 | L3 命中返回合成 usage：`completion_tokens=0` + `prompt_tokens_details.cached_tokens` | `pipeline.go` `replyFromCache` |
+| §4.3 | 网关侧 `kernel/usage` 事件记录（L3 复用 / 注入 token / 切片命中数） | `gateway.go` `recordUsage` + `[ingest] usage_log` |
+| §9 D4 | 缓存库与切片库**合库**（同一 JSONL Store，L3 条目即 Result 切片） | `config.go` `[store] db` 单一路径 |
+
+实现另外做了两件 spec 没要求、但属于同方向的收尾：上游异常断流时网关补发 `data: [DONE]`
+（客户端不会挂死）、以及转发时过滤 hop-by-hop 头（RFC 9110 §7.6.1）。
+
+### 0.2 改变了方案（spec 写法与实现不一致，以实现为准）
+
+| §  | spec 原文 | 实际实现 |
+|---|---|---|
+| §3.5 | `缓存键 = hash(scope \| 归一化 query \| 模型名 \| deps 指纹 \| messages 上下文指纹)` | **没有缓存键，也没有哈希查表**。实际是 kernel 既有的「检索 + 分层门禁」：BM25 检索 top-k → zone Hit 分类 → Result 类型 → `ContextHash`/`Model` 精确相等 → deps mtime + sha256 验证。scope / 模型名 / 上下文指纹是**过滤条件**，归一化 query 是**检索查询**，都不是键的组成部分。隔离效果与 spec 意图一致，机制不同 |
+| §3.5 | 验证走 `judge.RuleGate.Chain`，grey 区可配 `SEMANTIX_JUDGE_API_KEY` 走 LLM judge | 验证由 `cache.L3Decider` 的 `zone.Zones.Classify` 灰区分类 + 指纹链承担；**`kernel/judge` 包 gateway 与 `kernel/cache` 都未引用**（它目前只服务 `cmd/semantix` 的 verify/eval）。`[cache] judge_api_key` 配置键保留但 `New()` 从不消费（见 §0.3 死配置键） |
+| §3.5 | TTL 按 vendor 差异化（DeepSeek 24h / DashScope 5m / Anthropic 5m） | 单一 `[cache] ttl_seconds` 时间窗，作用在 `Slice.CreatedAt` 上；`0` 表示不设时间窗。无 vendor 分支（M2 未开始，多 vendor 尚无实际差异） |
+| §3.2 | `/v1/completions` 可选，MVP 默认返回 501 | 该路由未注册，落到默认分支返回 **404 `not_found`**（不是 501） |
+| §4.4 | 方案 B：渠道注入固定 `x-project` header，网关按 header **选 scope 库** | 实现的是 `x-semantix-scope` header，传的是 scope **枚举**（`session`/`project`/`user`）而非项目名；底层始终是**同一个 store 文件**，只切 kernel 的 scope 字段。是方案 B 的接入点，不是多库隔离 |
+| §5 | 「零第三方依赖——`go.mod` 无外部包」 | `go.mod` 有 `github.com/BurntSushi/toml v1.6.0`（早于本设计，由 `kernel/config` 引入，网关沿用它解析 TOML）。§3.1 的「零第三方 **HTTP** 依赖」仍然成立：传输层是标准库 `net/http` + `http.Flusher` |
+| §3.9 | 配置草案的键 | 实现多两个键：`[store] deps_root`（§3.5 所说「deps root 由配置提供」的落点）、`[ingest] usage_log`（§4.3 usage 记录的落点） |
+
+### 0.3 未实现
+
+下列多数条目在 Issue #133 验收时就是**已知债务**（验收报告 §4 分级 nit、§6「未闭合风险与后续边界」），
+不是被遗忘的；列在这里是为了让只读本设计文档的人不会误以为它们能用。
+
+| §  | 条目 | 现状 |
+|---|---|---|
+| §3.8 / §7 M2 | Claude / Anthropic 适配（messages 格式转换 + `cache_control` 断点） | **配置层显式拒绝**：`vendor="anthropic"` 在 `validate()` 直接报错，避免把 Anthropic 流量误发到 OpenAI 式端点。§3.6 对 Claude 打断点同理未做 |
+| §3.5 | `promote.CascadeInvalidate` 级联失效 | gateway 零引用 `kernel/promote`。上游内容版本变化时不会级联失效下游条目（deps 指纹仍能兜住文件类变更） |
+| §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` | **死配置键**：字段被解析和校验，但 `New()` 固定构造 `bm25.New()`，填 `hybrid`/`vector` 不报错也不生效。与 `[cache] judge_api_key` 同属「保留但未接线」（验收报告 §4 已列为 nit、§6 记为「预留字段」） |
+| §3.4 | 未命中流式：上游不返回 usage 时，网关在 `[DONE]` 前补含注入统计的末块 | 未做。逐块原样透传，只在上游异常断流时补 `[DONE]` |
+| §3.7 | 流式路径的**响应侧**写记忆 | `streamThrough` 只把请求 turns 写进旁路文件，不解析 SSE 取 assistant 内容（代码内已标注为 documented debt，验收报告 §6 也记为债务）。后果：**流式请求的本次响应不会成为可复用的 Result 切片**——Result 提取取的是旁路文件里最后一条无 tool_calls 的 assistant 消息，流式路径下那只可能是请求里带的历史轮次。L3 的写入实际只来自非流式请求 |
+| §3.2 | `/healthz` 检查「切片库可打开 + **上游可达性**」 | 只回 `{"status":"ok"}`。切片库在 `New()` 阶段已打开（打不开进程起不来），上游探活未做 |
+| §5 | 部署产物：`docker-compose.yml`、网关镜像 Dockerfile、`semantix-gateway.toml` 示例 | 仓库中**均不存在**。§5 目前仍是纯文字方案，照它部署需要自己写 compose 与配置文件（验收报告 §6 建议另开运维 issue） |
+| §4.3 | 与 New API 计费对账的 token 口径 | 合成 usage 已实现，但 token 数是 `len(bytes)/4` 的**字节估算**，不是真 tokenizer 计数。对账时须知道这个口径差 |
+| §7 M0 | 门：真实客户端 → New API → 网关 → DeepSeek 全链路跑通 **且** 会话入库后 `semantix search` 可检索到切片 | **合取门只满足后半**：入库可检索有 e2e 证据（`TestE2ESidecarWrittenAndIngested`，验收报告 §3「写记忆」✅），这半句本就不依赖真上游；**真实全链路无记录**——`gateway/e2e_test.go` 与验收报告 §3 的上游都是 `httptest` 假上游 |
+| §7 M1 | 门：重复任务第二次命中 `x-semantix-cache: hit` 且零上游调用；成本节省 ≥30% 实测 | 前半在 e2e 中以假上游验证（`TestE2EL3HitZeroUpstreamCalls`：命中且上游 0 调用），**真实环境与成本节省实测无记录**；验收报告 §6 明确「M1/M2 里程碑项未在本 issue 范围」 |
+| §7 M2 | 四家模型全通 + 命中率周报 + New API 对账一致 | 未开始 |
+| §9 D1 | L3 命中是否对客户端降价（计费倍率） | **仍未决**。网关侧的合成 usage 已就位，New API 侧的倍率是部署决策，未在仓库中体现 |
+| §9 D2 | `/v1/embeddings` 透传 | 未做（与 spec 建议一致：MVP 不支持） |
+
+### 0.4 读这份规划时的注意事项
+
+- §2 的收益模型、§6 的时序图、§8 的风险表描述的是**设计意图**，不是实测结论。79.8% 来自
+  `docs/reports/m0-cost-comparison.md` 的合成演示，**不是网关链路的实测数字**；网关场景的 30%–80%
+  预期区间至今没有实测数据支撑（§7 M1 门未记录）。
+- §9 的 D1–D4 中，只有 D4（合库）在实现里有确定答案，D3 按建议用了方案 A，D1 仍是待决策项。
+- §10 结论里「天然服务 DeepSeek / Claude / Kimi / GPT 四家模型」是 v1 规划的终局描述。当前实现
+  接受的 vendor 只有 `deepseek` / `openai` / `moonshot`（同为 OpenAI 兼容协议），Claude 需要
+  M2 的格式转换才能接入（§0.3）。
 
 ---
 
