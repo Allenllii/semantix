@@ -34,6 +34,15 @@ func reusePanelLines(detail string, width int) []string {
 		b.WriteString(" · 🗂 from: ")
 		b.WriteString(strings.Join(s.Sources, ", "))
 	}
+	if s.TaskElapsedSeconds > 0 {
+		if s.TaskComplete {
+			b.WriteString(" · ✅ ")
+			b.WriteString(formatTaskDuration(s.TaskElapsedSeconds))
+		} else {
+			b.WriteString(" · ⏳ ")
+			b.WriteString(formatTaskDuration(s.TaskElapsedSeconds))
+		}
+	}
 	return []string{wrapForViewport(b.String(), width, activeCLITheme.success)}
 }
 
@@ -45,4 +54,18 @@ func formatPanelUSD(v float64) string {
 		return "0"
 	}
 	return s
+}
+
+// formatTaskDuration renders the U38 task elapsed seconds as a compact
+// human form: "<60 → 42s", "≥60 → 1m23s", "≥3600 → 1h01m".
+func formatTaskDuration(seconds float64) string {
+	n := int64(seconds + 0.5)
+	switch {
+	case n < 60:
+		return fmt.Sprintf("%ds", n)
+	case n < 3600:
+		return fmt.Sprintf("%dm%ds", n/60, n%60)
+	default:
+		return fmt.Sprintf("%dh%dm", n/3600, (n%3600)/60)
+	}
 }

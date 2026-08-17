@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"time"
+
 	"semantix/harness/event"
 	"semantix/harness/taskcontract"
 	"semantix/harness/taskpolicy"
@@ -85,6 +87,12 @@ func (a *Agent) emitCompletionSummary(c *taskcontract.Contract) {
 	switch verdict {
 	case taskcontract.VerdictComplete:
 		summaryVerdict = "complete"
+		// U38 task completion time: stamp the goal as finished so the reuse
+		// panel can report the total elapsed time instead of ⏳ in-progress.
+		if a.task.taskCompletedAt == nil {
+			now := time.Now()
+			a.task.taskCompletedAt = &now
+		}
 	case taskcontract.VerdictPartial:
 		summaryVerdict = "partial"
 	case taskcontract.VerdictBlocked:

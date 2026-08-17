@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"time"
 
 	"semantix/harness/event"
 	"semantix/harness/semantix"
@@ -35,6 +36,17 @@ func reuseNotice(reuse semantix.ReuseSummary) (event.Event, bool) {
 func (a *Agent) emitReuse(state *turnRuntime) {
 	if state == nil {
 		return
+	}
+	// U38 task completion time: attach the current task's elapsed/completed
+	// time to the panel payload before it is rendered. No task clock yet (the
+	// first run started without a scoped task) degrades to an omitted segment.
+	if !a.task.taskStartedAt.IsZero() {
+		if a.task.taskCompletedAt != nil {
+			state.reuse.TaskElapsedSeconds = a.task.taskCompletedAt.Sub(a.task.taskStartedAt).Seconds()
+			state.reuse.TaskComplete = true
+		} else {
+			state.reuse.TaskElapsedSeconds = time.Since(a.task.taskStartedAt).Seconds()
+		}
 	}
 	if notice, ok := reuseNotice(state.reuse); ok {
 		a.svc.sink.Emit(notice)
