@@ -498,7 +498,14 @@ func tabSafe(s string) string {
 // stringListFlag collects repeated --session flags.
 type stringListFlag struct{ p *[]string }
 
-func (f stringListFlag) String() string { return strings.Join(*f.p, ",") }
+func (f stringListFlag) String() string {
+	if f.p == nil {
+		// Go's flag package calls String on a zero value to decide
+		// whether to print "(default ...)"; a nil target must not panic.
+		return ""
+	}
+	return strings.Join(*f.p, ",")
+}
 func (f stringListFlag) Set(v string) error {
 	*f.p = append(*f.p, v)
 	return nil

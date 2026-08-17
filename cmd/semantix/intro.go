@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -45,6 +46,9 @@ func runIntro(args []string, stdout io.Writer) int {
 	fs.SetOutput(stdout)
 	noAnimation := fs.Bool("no-animation", false, "render the final frame without animation")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0 // --help is a successful request (U19 contract)
+		}
 		return 2
 	}
 

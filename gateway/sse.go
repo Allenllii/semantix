@@ -1,0 +1,130 @@
+package gateway
+
+import (
+	"bytes"
+	"encoding/json"
+	"strings"
+)
+
+// maxSSEAggregateBytes bounds the assistant content accumulated out of a
+// relayed SSE stream. Past this limit the aggregator stops accumulating
+// (the relay continues untouched) and Complete() reports false so the
+// caller fails closed — a hostile or broken upstream cannot grow memory
+// without bound.
+const maxSSEAggregateBytes = 1 << 20 // 1 MiB
+
+// maxSSELineBytes bounds a single buffered SSE line. A pathological
+// upstream emitting one endless line (no newline) would otherwise grow
+// lineBuf without bound; crossing the bound also fails closed.
+const maxSSELineBytes = 64 * 1024
+
+// sseAggregator parses an OpenAI chat.completion.chunk SSE stream while it
+// is being relayed verbatim (design §3.4: never reorder/rewrite the
+// upstream stream). It accumulates choices[0].delta.content and tracks a
+// clean termination: a "data: [DONE]" event or a non-null finish_reason on
+// the first choice.
+//
+// Tolerant by design: malformed lines and events are skipped without
+// affecting the relay. Only two facts matter to the caller — Complete()
+// (clean termination AND no overflow) and Content().
+type sseAggregator struct {
+	lineBuf  bytes.Buffer // partial line carried across Feed calls
+	pending  []string     // data payload lines of the event being assembled
+	content  strings.Builder
+	overflow bool
+	done     bool
+	limit    int // content aggregation bound
+	lineMax  int // per-line buffer bound
+}
+
+func newSSEAggregator(limit int) *sseAggregator {
+	return &sseAggregator{limit: limit, lineMax: maxSSELineBytes}
+}
+
+// Feed processes the exact bytes being relayed. Calls may split events and
+// lines arbitrarily (the relay reads in 32 KiB chunks). Once a bound is
+// crossed the aggregator stops parsing entirely: the stream still relays,
+// but Complete() stays false so nothing is persisted.
+func (a *sseAggregator) Feed(p []byte) {
+	if a.overflow {
+		return
+	}
+	if a.lineBuf.Len()+len(p) > a.lineMax {
+		a.overflow = true
+		a.lineBuf.Reset()
+		return
+	}
+	a.lineBuf.Write(p)
+	for {
+		line, err := a.lineBuf.ReadString('\n')
+		if err != nil {
+			// Partial trailing line: keep it buffered for the next call.
+			a.lineBuf.Reset()
+			a.lineBuf.WriteString(line)
+			return
+		}
+		a.handleLine(strings.TrimRight(line, "\r\n"))
+	}
+}
+
+func (a *sseAggregator) handleLine(line string) {
+	switch {
+	case strings.TrimSpace(line) == "":
+		a.flushEvent()
+	case strings.HasPrefix(line, "data:"):
+		payload := strings.TrimPrefix(line, "data:")
+		a.pending = append(a.pending, strings.TrimPrefix(payload, " "))
+	}
+	// event:/id:/retry: lines carry no payload; ignored.
+}
+
+func (a *sseAggregator) flushEvent() {
+	if len(a.pending) == 0 {
+		return
+	}
+	payload := strings.Join(a.pending, "\n") // SSE joins multi-line data with \n
+	a.pending = nil
+	if payload == "[DONE]" {
+		a.done = true
+		return
+	}
+	var evt struct {
+		Choices []struct {
+			Delta struct {
+				Content string `json:"content"`
+			} `json:"delta"`
+			FinishReason *string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal([]byte(payload), &evt); err != nil || len(evt.Choices) == 0 {
+		return // tolerant: skip malformed or empty events
+	}
+	first := evt.Choices[0]
+	if first.FinishReason != nil && *first.FinishReason != "" {
+		a.done = true
+	}
+	if a.overflow {
+		return
+	}
+	delta := first.Delta.Content
+	if delta == "" {
+		return
+	}
+	if a.content.Len()+len(delta) > a.limit {
+		a.overflow = true
+		return
+	}
+	a.content.WriteString(delta)
+}
+
+// Complete reports whether the stream terminated cleanly ([DONE] or
+// finish_reason) without exceeding the aggregation bound. Callers must not
+// persist partial content when this is false (fail-closed).
+func (a *sseAggregator) Complete() bool {
+	return a.done && !a.overflow
+}
+
+// Content returns the accumulated choices[0].delta.content.
+func (a *sseAggregator) Content() string {
+	return a.content.String()
+}
