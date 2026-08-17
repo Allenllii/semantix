@@ -35,6 +35,8 @@ import (
 	"semantix/harness/internal/taskpolicy"
 	"semantix/harness/internal/tool"
 	"semantix/harness/internal/workspacelease"
+	kernelevent "semantix/kernel/event"
+	"semantix/kernel/sched"
 )
 
 // maxToolOutputBytes caps a single tool result before it goes into the model's
@@ -309,8 +311,20 @@ type Agent struct {
 	// for the agent's lifetime and validates proxy calls after resolution.
 	readOnlyExecution bool
 
+	// modelRef names the canonical "provider/model" ref backing the current
+	// provider instance. New sets it from Options.ModelRef; a scheduled tier
+	// switch (applyScheduledTier) is the only other writer.
+	modelRef string
+	// contextWindow bounds compaction; New sets it from Options.ContextWindow,
+	// and a scheduled tier switch may update it alongside modelRef.
+	contextWindow int
+
 	// semantix is the optional kernel bridge (nil = kernel disabled).
 	semantix *semantix.Bridge
+	// sched is the kernel's authoritative round decider; always present.
+	sched sched.Decider
+	// resources owns the full catalog snapshot emitted to the kernel bus.
+	resources *resourceCatalogState
 	// prefetchedInject caches a warmed [semantix-reuse] block assembled
 	// during LLM wait time (N12); used as a fallback when the turn's
 	// synchronous injection produced nothing.
@@ -1034,6 +1048,17 @@ type Options struct {
 	// Semantix is the optional kernel bridge (U8/H1). Nil disables the
 	// kernel wiring entirely (fail-open).
 	Semantix *semantix.Bridge
+	// Decider plans every tool round. Nil installs kernel/sched.RuleDecider.
+	Decider sched.Decider
+	// TierResolver resolves a scheduler tier (for example "flash" or "pro")
+	// to the provider runtime used by the next model round. Nil keeps the
+	// current provider while retaining scheduling observability.
+	TierResolver TierResolver
+	// KernelEvents receives full ResourceCatalog snapshots. Nil disables only
+	// catalog observability; scheduling remains active.
+	KernelEvents   kernelevent.Bus
+	ResourceModels []kernelevent.ResourceModel
+	ResourceBudget kernelevent.ResourceBudget
 }
 
 // New constructs an Agent. MaxSteps <= 0 means no cap — the run loop continues
@@ -1085,6 +1110,10 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 	if reasoningByteLimit == 0 {
 		reasoningByteLimit = defaultReasoningByteLimit
 	}
+	decider := opts.Decider
+	if decider == nil {
+		decider = sched.NewRuleDecider(sched.Config{})
+	}
 	a := &Agent{
 		svc: newAgentServices(prov, tools, sink, gate, planModeReadOnlyTrust,
 			sandboxEscapeApprover, configWriteApprover, hooks, opts),
@@ -1095,17 +1124,17 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			maxOutputTokens:    opts.MaxOutputTokens,
 			temperature:        opts.Temperature,
 			usageSource:        usageSourceOrDefault(opts.UsageSource, event.UsageSourceExecutor),
-			modelRef:           strings.TrimSpace(opts.ModelRef),
 			workspaceID:        strings.TrimSpace(opts.WorkspaceID),
 			classifierTaskText: opts.ClassifierTaskText,
 			writeWorkspaceRoot: strings.TrimSpace(opts.WriteWorkspaceRoot),
 			subagentDepth:      subagentDepth,
 			maxSubagentDepth:   maxSubagentDepth,
-			contextWindow:      opts.ContextWindow,
 			compactRatio:       opts.CompactRatio,
 			recentKeep:         opts.RecentKeep,
 			archiveDir:         opts.ArchiveDir,
 		},
+		modelRef:      strings.TrimSpace(opts.ModelRef),
+		contextWindow: opts.ContextWindow,
 		sess: sessionRuntime{
 			conversation: session,
 			path:         strings.TrimSpace(opts.SessionPath),
@@ -1130,7 +1159,9 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		keepPolicy:             opts.KeepPolicy,
 		strictAlternatingRoles: opts.StrictAlternatingRoles,
 		semantix:               opts.Semantix,
+		sched:                  decider,
 	}
+	a.resources = newResourceCatalogState(opts.KernelEvents, tools, opts.ResourceModels, opts.ResourceBudget)
 	a.sess.output.outputBudget = outputBudgetOf(prov)
 	if a.sess.path != "" {
 		a.LoadProjectionSidecar(a.sess.path)

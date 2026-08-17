@@ -6,9 +6,10 @@ import "testing"
 // sole compact_ratio trigger. Output is clipped only at send time.
 func TestCompactTriggerIndependentOfOutputBudget(t *testing.T) {
 	a := &Agent{
-		svc:         agentServices{prov: &sharedWindowTestProvider{budget: 131_072, shared: true}},
-		agentConfig: agentConfig{contextWindow: 128_000, compactRatio: defaultCompactRatio},
-		sess:        sessionRuntime{output: outputBudgetState{outputBudget: 131_072}},
+		svc:           agentServices{prov: &sharedWindowTestProvider{budget: 131_072, shared: true}},
+		agentConfig:   agentConfig{compactRatio: defaultCompactRatio},
+		contextWindow: 128_000,
+		sess:          sessionRuntime{output: outputBudgetState{outputBudget: 131_072}},
 	}
 	trigger := a.compactTrigger()
 	want := int(float64(128_000) * defaultCompactRatio)
@@ -37,7 +38,7 @@ func TestRecentTailBudgetClamp(t *testing.T) {
 		{2_000_000, maxRecentTailTokens}, // still 96K
 	}
 	for _, tc := range cases {
-		a := &Agent{agentConfig: agentConfig{contextWindow: tc.window, compactRatio: defaultCompactRatio}}
+		a := &Agent{agentConfig: agentConfig{compactRatio: defaultCompactRatio}, contextWindow: tc.window}
 		if got := a.recentTailBudget(); got != tc.want {
 			t.Fatalf("window %d: recentTailBudget = %d, want %d", tc.window, got, tc.want)
 		}
@@ -45,7 +46,7 @@ func TestRecentTailBudgetClamp(t *testing.T) {
 }
 
 func TestCheckpointCeilingAndExceptionalSavings(t *testing.T) {
-	a := &Agent{agentConfig: agentConfig{contextWindow: 1_000_000, compactRatio: 0.85}}
+	a := &Agent{agentConfig: agentConfig{compactRatio: 0.85}, contextWindow: 1_000_000}
 	if got := a.checkpointCeiling(); got != 500_000 {
 		t.Fatalf("checkpointCeiling = %d, want 500000", got)
 	}
@@ -58,7 +59,7 @@ func TestCheckpointCeilingAndExceptionalSavings(t *testing.T) {
 }
 
 func TestAcceptCheckpointCandidateRules(t *testing.T) {
-	a := &Agent{agentConfig: agentConfig{contextWindow: 1_000_000, compactRatio: 0.85}}
+	a := &Agent{agentConfig: agentConfig{compactRatio: 0.85}, contextWindow: 1_000_000}
 	// 20% candidate under normal path: accept.
 	if err := a.acceptCheckpointCandidate(CompactionTriggerPressure, false, 850_000, 180_000, 50_000); err != nil {
 		t.Fatalf("20%% candidate: %v", err)

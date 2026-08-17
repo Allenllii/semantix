@@ -644,6 +644,9 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 		receiptMark = a.task.ledger.Len()
 	}
 	batch := a.executeBatch(ctx, state, calls)
+	if batch.Tier != "" {
+		a.applyScheduledTier(batch.Tier, batch.BudgetAction)
+	}
 	results, images := batch.results, batch.images
 	for i, call := range calls {
 		msg := provider.Message{

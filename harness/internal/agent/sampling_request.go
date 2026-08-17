@@ -117,6 +117,10 @@ func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (sampl
 	if err != nil {
 		return samplingRequest{}, err
 	}
+	// Dynamic MCP/tool registration changes the resource inventory without
+	// rebuilding the Agent. Publish the full replacement snapshot before the
+	// provider sees that revised tool surface.
+	a.syncResourceCatalog()
 	req := provider.Request{
 		Messages:       requestMessages,
 		Tools:          a.svc.tools.Schemas(),
