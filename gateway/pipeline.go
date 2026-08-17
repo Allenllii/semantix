@@ -260,10 +260,14 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 
 // streamThrough relays a streaming upstream response chunk by chunk (SSE),
 // preserving events verbatim (design §3.4: never reorder/rewrite the
-// upstream stream). If the upstream ends without a [DONE] marker (abnormal
-// disconnect), the gateway appends one so the client never hangs on an
-// unterminated stream. Sidecar records the request turns only — parsing the
-// assistant content out of the SSE chunks is deferred (documented debt).
+// upstream stream). While relaying, the assistant content is aggregated out
+// of the SSE chunks (choices[0].delta.content); only a cleanly terminated
+// stream — finish_reason or [DONE], within the aggregation bound — is
+// written to the session sidecar. Partial/aborted streams fail closed and
+// never enter the reuse library, matching the non-streaming path where
+// failed exchanges are not recorded (design §0.3 documented debt, now paid).
+// If the upstream ends without a [DONE] marker (abnormal disconnect), the
+// gateway appends one so the client never hangs on an unterminated stream.
 func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
@@ -279,7 +283,9 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 
 	// Scan lines rather than blind blocks: we must detect the [DONE]
 	// marker to guarantee stream termination even when the upstream
-	// disconnects early. Lines are still forwarded verbatim.
+	// disconnects early. Lines are still forwarded verbatim, and fed to
+	// the aggregator for sidecar extraction.
+	agg := newSSEAggregator(maxSSEAggregateBytes)
 	br := bufio.NewReader(resp.Body)
 	sawDone := false
 	for {
@@ -292,6 +298,7 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 			if flusher != nil {
 				flusher.Flush()
 			}
+			agg.Feed(line)
 		}
 		if err != nil {
 			break
@@ -305,7 +312,9 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 			flusher.Flush()
 		}
 	}
-	g.recordSession(sessionID, ctxHash, req.Model, turns(req, ""))
+	if agg.Complete() {
+		g.recordSession(sessionID, ctxHash, req.Model, turns(req, agg.Content()))
+	}
 	g.recordUsage(usage.Event{
 		SessionID:      sessionID,
 		TokensIn:       int64(len(query)/4) + injectedTokens,
