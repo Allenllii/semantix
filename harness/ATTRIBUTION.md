@@ -37,3 +37,22 @@
 
 **品牌与视觉**：本次 vendor 保持上游原样（二进制自报 `reasonix`）；
 Semantix 品牌换皮由已验证的 H4 patch 在 U39 套用（`git apply --directory=harness`）。
+
+## 集成层再移植（U38/U39/#177/#191，本 PR，2026-08-17）
+
+本 PR 以 `harness-integration` 为基（保留其增强版 `kernel/sched` + `kernel/event`
+ResourceCatalog），将 `harness/` 换成 #206 的 `internal/` 布局 vendor，并把原先叠在
+扁平 vendor 之上、#206 未含的 semantix 集成层**再移植**到 internal/ 布局：
+
+| 集成块 | 落点 | 来源（`upstream/harness-integration`） |
+|---|---|---|
+| semantix↔kernel 桥（**进程内**，非已删的 CLI 子进程版 protocol.go/inject.go/sched.go） | `harness/internal/semantix/{bridge,reuse,sink}.go` | `60f25ab`（in-process 版，含 `aa10a6f`/`f038c2f` 改写） |
+| U39 reuse panel + semantix 主题 + resource-gauge 座 | `harness/internal/cli/{reuse_panel,resource_gauge,theme}.go` | `aa10a6f`（Issue #190） |
+| U38 task-time（任务计时） | `harness/internal/agent/{reuse,taskstate,turn_phase}.go` | `5102353`（Issue #177） |
+| 资源编排（Decider/资源目录/tier） | `harness/internal/agent/{resources,tier,execute_batch}.go` + `kernel/sched` | `f038c2f`（Issue #191） |
+| bridge/agent/orchestration 的 boot 接线 | `harness/internal/boot/boot.go` | `60f25ab`/`f038c2f` |
+
+模块路径统一改写 `semantix/harness/<pkg>` → `semantix/harness/internal/<pkg>`。
+已删的三文件（protocol.go/inject.go/sched.go）**不复活**——reuse/inject 为进程内
+kernel 读取，编排走 `kernel/sched`。本 PR 取代 #206（采纳其 vendor），并保留
+U39/#177/#191 的既有功能。
