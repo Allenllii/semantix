@@ -525,10 +525,159 @@ func (s *fileStore) exportLines() ([][]byte, int, error) {
 	return lines, s.baseSkipped + s.journalSkipped, nil
 }
 
-// maybeCompactLocked is the geometric compaction trigger (implemented with
-// compaction itself in the follow-up commit; the journal only grows until
-// then, semantics already complete).
+// compaction trigger thresholds (geometric): fold when the journal has at
+// least as many records as there are live entries (and a floor so tiny
+// stores don't fold constantly), or when its bytes reach the base size.
+// Between two folds at least liveCount appends happen, so each record pays
+// O(1) amortized and n writes cost O(n) total. Hardcoded on purpose — a
+// config knob here would be another retrieval.vector_dim-style dead key.
+const (
+	compactMinOps   = 1024
+	compactMinBytes = 4 << 20
+)
+
+// maybeCompactLocked runs the geometric trigger inline on the write path
+// (never from a background goroutine: the freeze-window contract wants the
+// store's visible state to change only at op boundaries, and an identity
+// fold does not change visible state at all).
 func (s *fileStore) maybeCompactLocked() error {
+	opsTrig := s.jOps >= compactMinOps && s.jOps >= len(s.entries)
+	byteTrig := s.jBytes >= compactMinBytes && s.jBytes >= s.baseSize
+	if !opsTrig && !byteTrig {
+		return nil
+	}
+	return s.compactLocked(nil)
+}
+
+// Compact folds the journal into the base (identity: logical state is
+// unchanged; corrupt base lines are dropped for good). No-op when there is
+// nothing to fold, no corrupt lines to shed and no journal file to retire —
+// so callers can run it unconditionally at process boundaries (gc, gateway
+// startup) without write amplification on clean stores.
+func (s *fileStore) Compact() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.jOps == 0 && s.baseSkipped == 0 && s.journalSkipped == 0 && s.jw == nil {
+		if _, err := os.Stat(s.journalPath()); os.IsNotExist(err) {
+			return nil
+		}
+	}
+	return s.compactLocked(nil)
+}
+
+// CompactWith folds like Compact but passes the live slices through rescore
+// first: the callback may mutate them (Weight) and drop entries (eviction)
+// by returning the kept subset. It runs under the store lock — the callback
+// must not call back into the store. Raw embedding bytes are preserved for
+// kept IDs even though the callback sees Embedding=nil clones.
+func (s *fileStore) CompactWith(rescore func([]*Slice) []*Slice) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.compactLocked(rescore)
+}
+
+func (s *fileStore) compactLocked(rescore func([]*Slice) []*Slice) error {
+	lives := make([]*storedEntry, 0, len(s.entries))
+	for _, e := range s.order {
+		if !e.dead {
+			lives = append(lives, e)
+		}
+	}
+	kept := lives
+	if rescore != nil {
+		clones := make([]*Slice, len(lives))
+		for i, e := range lives {
+			clones[i] = cloneStored(e)
+		}
+		rawByID := make(map[string]json.RawMessage, len(lives))
+		for _, e := range lives {
+			rawByID[e.s.ID] = e.embRaw
+		}
+		kept = make([]*storedEntry, 0, len(lives))
+		for _, sl := range rescore(clones) {
+			if sl == nil || sl.ID == "" {
+				continue
+			}
+			e := entryFromSlice(sl)
+			e.embRaw = rawByID[sl.ID]
+			kept = append(kept, e)
+		}
+	}
+
+	// New base bytes; hash while building so the fresh header binds to the
+	// exact bytes on disk.
+	var buf bytes.Buffer
+	h := sha256.New()
+	w := io.MultiWriter(&buf, h)
+	for _, e := range kept {
+		b, err := json.Marshal(dtoFromEntry(e))
+		if err != nil {
+			return err
+		}
+		if _, err := w.Write(append(b, '\n')); err != nil {
+			return err
+		}
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(s.path), filepath.Base(s.path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+
+	// Retire the current journal fd before swapping files. Crash between the
+	// base rename and the fresh-header rename leaves new base + old journal:
+	// the next open sees the generation mismatch and stashes a journal whose
+	// content is already folded in — zero loss by construction.
+	if s.jw != nil {
+		if err := s.jw.Flush(); err != nil {
+			return err
+		}
+		if err := s.jf.Close(); err != nil {
+			return err
+		}
+		s.jf, s.jw = nil, nil
+	}
+	if err := os.Rename(tmpName, s.path); err != nil {
+		return err
+	}
+	st, err := os.Stat(s.path)
+	if err != nil {
+		return err
+	}
+	s.baseSize = st.Size()
+	s.baseMtime = st.ModTime().UnixNano()
+	s.baseSha = hex.EncodeToString(h.Sum(nil))
+	if err := os.Remove(s.journalPath()); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := s.ensureJournalLocked(); err != nil {
+		return err
+	}
+
+	s.opsSinceSync, s.bytesSinceSync = 0, 0
+	s.baseSkipped, s.journalSkipped = 0, 0
+	s.entries = make(map[string]*storedEntry, len(kept))
+	s.order = append([]*storedEntry(nil), kept...)
+	for _, e := range kept {
+		s.entries[e.s.ID] = e
+	}
+	s.compactions++
 	return nil
 }
 

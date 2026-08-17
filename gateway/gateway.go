@@ -68,6 +68,14 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gateway: open store %s: %w", cfg.Store.DB, err)
 	}
+	// Startup is a process boundary: fold any journal into the base before
+	// serving (freeze-window semantics — the library never shifts mid-flight).
+	// Best-effort: a failed fold still leaves a consistent store.
+	if c, ok := store.(interface{ Compact() error }); ok {
+		if err := c.Compact(); err != nil {
+			log.Printf("gateway: store compact: %v", err)
+		}
+	}
 	idx := bm25.New()
 	if err := loadIndex(store, idx); err != nil {
 		_ = closeStore(store)
