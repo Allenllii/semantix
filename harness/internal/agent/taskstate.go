@@ -1,6 +1,10 @@
 package agent
 
-import "semantix/harness/internal/evidence"
+import (
+	"time"
+
+	"semantix/harness/internal/evidence"
+)
 
 // taskRuntime is the host state shared by every Agent.Run continuing one
 // delivery scope: one ledger, one bill, one set of failure budgets. Its
@@ -20,6 +24,12 @@ type taskRuntime struct {
 	// restart — decides what survives a scope-stable continuation.
 	repeatFailures map[string]repeatFailureRecord
 	repeatScope    string
+	// taskStartedAt marks the wall-clock start of the current delivery scope
+	// (U38 task completion time). Zero before the first task begins.
+	taskStartedAt time.Time
+	// taskCompletedAt is non-nil once the goal verdict reached "complete"
+	// (U38). Nil means the task is still in progress (⏳).
+	taskCompletedAt *time.Time
 }
 
 // restartLedger begins a new task's accounting. It is written as one assignment
@@ -34,6 +44,9 @@ func (t *taskRuntime) restartLedger() {
 		ledger:         t.ledger,
 		outcome:        evidence.NewOutcomeTracker(),
 		budget:         runBudget{limit: t.budget.limit},
+		// A fresh ledger is a new task (U38): start the completion clock.
+		taskStartedAt:   time.Now(),
+		taskCompletedAt: nil,
 	}
 	t.ledger.Reset()
 }

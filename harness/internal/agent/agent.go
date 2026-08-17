@@ -1289,6 +1289,10 @@ func (a *Agent) Run(ctx context.Context, input string) (runErr error) {
 	}
 
 	_, state := a.beginRunTurn(ctx, input)
+	// U33/H4a: publish this turn's reuse panel (hit slices + savings + source
+	// sessions) after the turn settles, before the controller's TurnDone.
+	// No-op when the kernel reported nothing reusable — zero noise.
+	defer a.emitReuse(state)
 	if a.pending.forkRestore != nil {
 		a.pending.forkRestore(state)
 	}

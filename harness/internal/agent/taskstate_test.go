@@ -55,16 +55,24 @@ func TestTaskRuntimeRestartCarriesScopeAndResetsAccounting(t *testing.T) {
 	if after.outcome == nil || after.outcome == before.outcome {
 		t.Error("outcome tracker not replaced; the shadow scorer must not span tasks")
 	}
+	if after.taskStartedAt.IsZero() {
+		t.Error("taskStartedAt not stamped; the new task's completion clock never starts")
+	}
+	if after.taskCompletedAt != nil {
+		t.Error("taskCompletedAt carried over; a new task must start uncompleted")
+	}
 }
 
 // taskRestarted names the fields the test above asserts a new task starts
 // from. Together with taskCarryOver it must cover taskRuntime exactly, so a
 // field added to the type fails here until someone states which side it is on.
 var taskRestarted = map[string]bool{
-	"outcome":  true,
-	"budget":   true,
-	"ebm":      true,
-	"governor": true,
+	"outcome":         true,
+	"budget":          true,
+	"ebm":             true,
+	"governor":        true,
+	"taskStartedAt":   true, // U38: a fresh task starts its own completion clock
+	"taskCompletedAt": true, // U38: a fresh task starts uncompleted
 }
 
 // restartLedger is one assignment, so an unlisted field resets by default —
