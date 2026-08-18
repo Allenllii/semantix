@@ -84,13 +84,13 @@
 | U39 | C5：Semantix Design 视觉基线（主题 token + U33 复用面板迁移进程内化） | H4 |
 | U40 | C1/C2：kernel 进程内接线（Decider 直连 + ResourceCatalog + SuspendTools 执行点） | H2/H3 |
 | U41 | C3：BudgetController 阶梯降级（70/90/100 三阈值） | H2 |
-| U42 | 调度演示 + 可量化收益报告（DoD 证据） | H3 |
+| U42 | 调度演示 + 可量化收益报告（DoD 证据）✅ `docs/reports/agile2-scheduling-demo.md`（#193） | H3 |
 | U43 | C4：prefetch/evolve 闭环接线 + 自进化曲线报告（DoD 证据） | H5 |
 
 ### 验收标准（蓝图 §5）
 
 - [ ] 工具可挂起/恢复 + 预算配额生效（H2）
-- [ ] 调度演示：kernel 决策改变 harness 行为 + 可量化收益（H3）
+- [x] 调度演示：kernel 决策改变 harness 行为 + 可量化收益（H3）— 5 场景 on/off 对照，聚合节省 61.0%，见 `docs/reports/agile2-scheduling-demo.md`（U42/#193）
 - [ ] 命中率/成本随使用提升曲线（H5，自进化证据）
 
 ### 前置依赖
