@@ -102,6 +102,7 @@ func TestFileStoreKeepsPerm0600(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	if err := st.Put(&Slice{ID: "a", Type: Prompt, Scope: Project, Content: []byte("x")}); err != nil {
 		t.Fatal(err)
 	}
@@ -123,6 +124,7 @@ func TestFileStorePutGetList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	a := &Slice{ID: "a", Type: Prompt, Scope: Project, Content: []byte("x")}
 	b := &Slice{ID: "b", Type: Result, Scope: User, Content: []byte("y")}
 	if err := st.Put(a); err != nil {
@@ -154,6 +156,7 @@ func TestFileStoreReplaceSameID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	if err := st.Put(&Slice{ID: "a", Type: Prompt, Scope: Project, Content: []byte("v1")}); err != nil {
 		t.Fatal(err)
 	}
@@ -174,6 +177,7 @@ func TestFileStoreUpdateStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	if err := st.Put(&Slice{ID: "a", Type: Prompt, Scope: Project}); err != nil {
 		t.Fatal(err)
 	}
@@ -198,6 +202,7 @@ func TestFileStoreConcurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	const goroutines = 10
 	const perG = 20
 	var wg sync.WaitGroup
@@ -279,6 +284,7 @@ func TestFileStoreCorruptLine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	got, err := st.Get("ok")
 	if err != nil || got == nil {
 		t.Fatalf("Get(ok) = %v, %v", got, err)

@@ -18,6 +18,7 @@ func TestFileStoreListAllAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	a := &Slice{ID: "a", Type: Prompt, Scope: Project, Content: []byte("x")}
 	b := &Slice{ID: "b", Type: Result, Scope: User, Content: []byte("y")}
 	c := &Slice{ID: "c", Type: Context, Scope: Session, Content: []byte("z")}
@@ -75,6 +76,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	now := time.Now().Unix()
 	in := []*Slice{
 		{ID: "a", Type: Prompt, Scope: Project, Content: []byte("alpha"), Weight: 0.9, CreatedAt: now - 100, Meta: SliceMeta{SourceSession: "s1", Language: "zh-CN"}},
@@ -115,6 +117,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(dst) })
 	imported, skipped, err := Import(dst, &buf)
 	if err != nil {
 		t.Fatal(err)
@@ -153,6 +156,7 @@ func TestImportIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(src) })
 	if err := src.Put(&Slice{ID: "a", Type: Prompt, Scope: Project, Content: []byte("x")}); err != nil {
 		t.Fatal(err)
 	}
@@ -165,6 +169,7 @@ func TestImportIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(dst) })
 	for i := 0; i < 2; i++ {
 		if _, _, err := Import(dst, bytes.NewReader(buf.Bytes())); err != nil {
 			t.Fatal(err)
@@ -183,6 +188,7 @@ func TestImportTolerantSkip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(dst) })
 	imported, skipped, err := Import(dst, strings.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
@@ -203,6 +209,7 @@ func mustStore(t *testing.T, path string, items ...*Slice) Store {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	for _, s := range items {
 		if err := st.Put(s); err != nil {
 			t.Fatal(err)
@@ -332,6 +339,7 @@ func TestExportReportsCorruptStoreLines(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	var buf bytes.Buffer
 	n, skipped, err := Export(st, &buf)
 	if err != nil {
@@ -361,6 +369,7 @@ func TestFileStoreToleratesOversizedLine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	all, err := st.ListAll()
 	if err != nil {
 		t.Fatalf("store unreadable after oversized line: %v", err)
@@ -397,6 +406,7 @@ func TestImportOversizedLineSkipped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(dst) })
 	imported, skipped, err := Import(dst, strings.NewReader(data))
 	if err != nil {
 		t.Fatalf("import aborted on oversized line: %v", err)
