@@ -4,7 +4,7 @@
 
 - Protocol ID: `reasonix.extension.v2`
 - Protocol major: `2`
-- Schema: `internal/extension/protocol/schema.generated.json`
+- Schema: `harness/extension/protocol/schema.generated.json`
 - Schema hash: `sha256:3a713e254fa6df3f1eee91fe402de3b2bd2723672086374c3899b1e3e9c975de`
 
 Within major v2 only optional fields, new enum values, and new methods may

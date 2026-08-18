@@ -285,6 +285,11 @@ type ToolHooks interface {
 // into the main loop.
 type Agent struct {
 	agentConfig
+	// modelRef and contextWindow start from Options but are runtime-mutable:
+	// the scheduler tier switch (tier.go) retargets them mid-run, so they live
+	// on Agent, not on the immutable agentConfig.
+	modelRef      string
+	contextWindow int
 	// svc are the collaborators this agent talks to; see services.go.
 	svc agentServices
 	// sess is the state one conversation owns; SetSession restarts it. See
@@ -1116,18 +1121,18 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 			maxOutputTokens:    opts.MaxOutputTokens,
 			temperature:        opts.Temperature,
 			usageSource:        usageSourceOrDefault(opts.UsageSource, event.UsageSourceExecutor),
-			modelRef:           strings.TrimSpace(opts.ModelRef),
 			workspaceID:        strings.TrimSpace(opts.WorkspaceID),
 			classifierTaskText: opts.ClassifierTaskText,
 			writeWorkspaceRoot: strings.TrimSpace(opts.WriteWorkspaceRoot),
 			subagentDepth:      subagentDepth,
 			maxSubagentDepth:   maxSubagentDepth,
-			contextWindow:      opts.ContextWindow,
 			compactRatio:       opts.CompactRatio,
 			recentKeep:         opts.RecentKeep,
 			archiveDir:         opts.ArchiveDir,
 		},
-		semantix: opts.Semantix,
+		modelRef:      strings.TrimSpace(opts.ModelRef),
+		contextWindow: opts.ContextWindow,
+		semantix:      opts.Semantix,
 		sched:    decider,
 		sess: sessionRuntime{
 			conversation: session,
