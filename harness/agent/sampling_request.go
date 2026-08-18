@@ -106,9 +106,10 @@ func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (sampl
 	// When the synchronous injection missed (kernel timeout on turn start),
 	// fall back to the block warmed during LLM wait time (N12 prefetch).
 	if block := a.turn.injectBlock; block != "" {
+		a.wastePrefetch()
 		requestMessages = prependSystemBlock(requestMessages, block)
-	} else if pb := a.prefetchedInject.Load(); pb != nil && *pb != "" {
-		requestMessages = prependSystemBlock(requestMessages, *pb)
+	} else if pb := a.takePrefetch(a.semantixTurn.Load()); pb != nil && pb.Text != "" {
+		requestMessages = prependSystemBlock(requestMessages, pb.Text)
 	}
 	// context.prepare: extensions may rewrite the message copy feeding THIS
 	// request. The session log is never touched — the replacement is

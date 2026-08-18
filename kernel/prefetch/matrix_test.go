@@ -1,9 +1,34 @@
 package prefetch
 
 import (
+	"math"
 	"sync"
 	"testing"
 )
+
+func TestApplyEvolutionChangesNextPlanConfidence(t *testing.T) {
+	m := NewMatrixPrefetcher(Config{MinConf: 0.8})
+	m.Observe("grep", "read_file", true)
+	m.Observe("grep", "glob", true)
+	m.Observe("grep", "glob", true)
+	before, _ := m.Plan([]string{"grep"})
+	if len(before) != 0 {
+		t.Fatalf("before tuning: want no candidates, got %v", before)
+	}
+	if err := m.ApplyEvolution(0.3); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := m.Plan([]string{"grep"})
+	if len(after) != 2 {
+		t.Fatalf("after tuning: want both next-round candidates, got %v", after)
+	}
+}
+
+func TestApplyEvolutionRejectsNonFiniteConfidence(t *testing.T) {
+	if err := NewMatrixPrefetcher(Config{}).ApplyEvolution(math.Inf(1)); err == nil {
+		t.Fatal("want infinity rejected")
+	}
+}
 
 // --- transition learning ---
 

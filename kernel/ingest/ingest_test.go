@@ -98,6 +98,36 @@ func TestJSONLSourceToleratesCorruptLines(t *testing.T) {
 	}
 }
 
+func TestJSONLSourcePreservesAndProjectsClosedLoopEvents(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "closed-loop.jsonl")
+	lines := []string{
+		`{"kind":8,"session_id":"closed-loop","turn":1,"at":"2026-08-18T00:00:00Z","data":{"targets":["slice-a"]}}`,
+		`{"kind":9,"session_id":"closed-loop","turn":2,"at":"2026-08-18T00:00:01Z","data":{"targets":["slice-b"]}}`,
+		`{"kind":11,"session_id":"closed-loop","turn":2,"at":"2026-08-18T00:00:02Z","data":{"params":{"tau_l2":0.55,"prefetch_conf":0.6}}}`,
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src, err := NewJSONLSource(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	se, err := src.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(se.Events) != 3 {
+		t.Fatalf("events=%d, want 3", len(se.Events))
+	}
+	text := string(se.Transcript)
+	for _, phrase := range []string{"prefetch hit", "prefetch waste", "evolution tick"} {
+		if !strings.Contains(text, phrase) {
+			t.Fatalf("transcript missing %q:\n%s", phrase, text)
+		}
+	}
+}
+
 func TestPipelineExtractsAndPersists(t *testing.T) {
 	dir := t.TempDir()
 	writeSample(t, dir, "sess-a.jsonl")
