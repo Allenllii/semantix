@@ -9,6 +9,23 @@ import (
 	"semantix/kernel/slice"
 )
 
+// newTestStore opens a file store and registers a cleanup that closes it, so
+// the .journal handle is released and t.TempDir() teardown works on Windows
+// (same fix as kernel/slice and kernel/inject tests).
+func newTestStore(t *testing.T, path string) slice.Store {
+	t.Helper()
+	st, err := slice.NewFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if c, ok := st.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	})
+	return st
+}
+
 // demoStore builds a deterministic ToolPattern slice library:
 //
 //	tp0: grep readFile editFile test
@@ -22,10 +39,7 @@ import (
 //	P(test|readFile)     = 1/3
 func demoStore(t *testing.T) slice.Store {
 	t.Helper()
-	st, err := slice.NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
 	patterns := []string{
 		"grep readFile editFile test",
 		"grep readFile test",
@@ -104,10 +118,7 @@ func TestPlanPredictsTopK(t *testing.T) {
 
 // Probability-descending order: lookup (2/3) precedes readFile (1/3).
 func TestPlanOrderProbabilityDesc(t *testing.T) {
-	st, err := slice.NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
 	for i, p := range []string{"grep readFile editFile test", "grep lookup search", "grep lookup search"} {
 		if err := st.Put(&slice.Slice{ID: fmt.Sprintf("tp%d", i), Type: slice.ToolPattern, Scope: slice.Project, Content: []byte(p)}); err != nil {
 			t.Fatal(err)
@@ -127,10 +138,7 @@ func TestPlanOrderProbabilityDesc(t *testing.T) {
 }
 
 func TestPlanBudgetTruncation(t *testing.T) {
-	st, err := slice.NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
 	for i, p := range []string{"grep readFile editFile test", "grep lookup search", "grep lookup search"} {
 		if err := st.Put(&slice.Slice{ID: fmt.Sprintf("tp%d", i), Type: slice.ToolPattern, Scope: slice.Project, Content: []byte(p)}); err != nil {
 			t.Fatal(err)
@@ -167,10 +175,7 @@ func TestPlanBudgetTruncation(t *testing.T) {
 
 // Issue 62 acceptance: non-read-only tools never enter the plan (fail-closed).
 func TestPlanWhiteListFailClosed(t *testing.T) {
-	st, err := slice.NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
 	// writeFile/editFile are write tools; the learned successor of grep is writeFile.
 	for i, p := range []string{"grep writeFile editFile", "grep writeFile editFile"} {
 		if err := st.Put(&slice.Slice{ID: fmt.Sprintf("tp%d", i), Type: slice.ToolPattern, Scope: slice.Project, Content: []byte(p)}); err != nil {

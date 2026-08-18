@@ -39,10 +39,7 @@ func seedIndexedSlice(t *testing.T, st slice.Store, ix slice.Index, id, content 
 }
 
 func TestRunnerStoresResultSlice(t *testing.T) {
-	st, err := slice.NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
 	ix := bm25.New()
 	seedIndexedSlice(t, st, ix, "s1", "readFile usage documentation")
 
@@ -75,10 +72,7 @@ func TestRunnerStoresResultSlice(t *testing.T) {
 
 // Default scope: zero-value Scope is stored as Project.
 func TestRunnerDefaultScopeIsProject(t *testing.T) {
-	st, err := slice.NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
 	r := &Runner{Store: st, Executor: &fakeExecutor{results: map[string][]byte{"k": []byte("c")}}}
 	if _, err := r.Run(context.Background(), []PrefetchTask{{Key: "k"}}); err != nil {
 		t.Fatal(err)
@@ -91,10 +85,7 @@ func TestRunnerDefaultScopeIsProject(t *testing.T) {
 
 // One failing task must not abort the others; the failure is surfaced.
 func TestRunnerFailureContinues(t *testing.T) {
-	st, err := slice.NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
 	r := &Runner{
 		Store: st,
 		Executor: &fakeExecutor{
@@ -124,10 +115,7 @@ func TestRunnerRequiresFields(t *testing.T) {
 
 // SliceAssembler output is canonical (ID-sorted) regardless of index order.
 func TestSliceAssemblerCanonicalOrder(t *testing.T) {
-	st, err := slice.NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
 	ix := bm25.New()
 	seedIndexedSlice(t, st, ix, "bbb", "banana docs")
 	seedIndexedSlice(t, st, ix, "aaa", "apple docs")
@@ -156,10 +144,7 @@ func TestSliceAssemblerEmptyHits(t *testing.T) {
 
 // Deterministic dedup: assembling the same source twice stores one slice.
 func TestRunnerStoresDedupByContent(t *testing.T) {
-	st, err := slice.NewFileStore(filepath.Join(t.TempDir(), "slices.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
 	ix := bm25.New()
 	seedIndexedSlice(t, st, ix, "s1", "stable candidate content")
 
