@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	kernelevent "semantix/kernel/event"
 )
 
 // Extractor turns session transcripts into slices.
@@ -92,6 +94,21 @@ func parseTranscript(data []byte) ([]transcriptLine, error) {
 		var tl transcriptLine
 		if err := json.Unmarshal(line, &tl); err != nil {
 			continue // tolerant: skip malformed lines
+		}
+		if tl.Role == "" {
+			if e, err := kernelevent.FromJSON(line); err == nil {
+				switch e.Kind {
+				case kernelevent.PrefetchHit:
+					tl = transcriptLine{Role: "user", Content: "prefetch hit targets " + string(e.Data)}
+				case kernelevent.PrefetchWaste:
+					tl = transcriptLine{Role: "user", Content: "prefetch waste targets " + string(e.Data)}
+				case kernelevent.EvolutionTick:
+					tl = transcriptLine{Role: "user", Content: "evolution tick params " + string(e.Data)}
+				}
+			}
+		}
+		if tl.Role == "" {
+			continue
 		}
 		out = append(out, tl)
 	}

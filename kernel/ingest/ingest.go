@@ -30,8 +30,8 @@ import (
 // SessionEvents is one source batch: the kernel events observed for one
 // session plus its raw transcript (the extractor consumes the transcript).
 type SessionEvents struct {
-	SessionID string
-	Events    []event.Event
+	SessionID  string
+	Events     []event.Event
 	Transcript []byte // raw JSONL, Reasonix-style
 }
 
@@ -103,6 +103,7 @@ func (s *JSONLSource) Next() (*SessionEvents, error) {
 		SessionID:  strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)),
 		Transcript: raw,
 	}
+	var projections bytes.Buffer
 	lineNo := 0
 	turn := 0
 	var round []event.Event // ToolResult batch for ToolRoundEnd
@@ -130,6 +131,21 @@ func (s *JSONLSource) Next() (*SessionEvents, error) {
 		lineNo++
 		line := bytes.TrimSpace(sc.Bytes())
 		if len(line) == 0 {
+			continue
+		}
+		if ke, err := event.FromJSON(line); err == nil && isClosedLoopEvent(ke.Kind) {
+			if ke.SessionID == "" {
+				ke.SessionID = se.SessionID
+			}
+			se.Events = append(se.Events, ke)
+			if text := projectClosedLoopEvent(ke); text != "" {
+				projected, _ := json.Marshal(struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				}{Role: "user", Content: text})
+				projections.Write(projected)
+				projections.WriteByte('\n')
+			}
 			continue
 		}
 		var l struct {
@@ -167,7 +183,25 @@ func (s *JSONLSource) Next() (*SessionEvents, error) {
 		}
 	}
 	flushRound()
+	se.Transcript = append(append([]byte(nil), raw...), projections.Bytes()...)
 	return se, sc.Err()
+}
+
+func isClosedLoopEvent(k event.Kind) bool {
+	return k == event.PrefetchHit || k == event.PrefetchWaste || k == event.EvolutionTick
+}
+
+func projectClosedLoopEvent(e event.Event) string {
+	switch e.Kind {
+	case event.PrefetchHit:
+		return "prefetch hit targets " + string(e.Data)
+	case event.PrefetchWaste:
+		return "prefetch waste targets " + string(e.Data)
+	case event.EvolutionTick:
+		return "evolution tick params " + string(e.Data)
+	default:
+		return ""
+	}
 }
 
 // IsEOF reports whether err signals source exhaustion (errors.Is-compatible).

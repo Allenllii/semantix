@@ -36,6 +36,7 @@ import (
 	"semantix/harness/tool"
 	"semantix/harness/workspacelease"
 	kernelevent "semantix/kernel/event"
+	"semantix/kernel/prefetch"
 	"semantix/kernel/sched"
 )
 
@@ -319,7 +320,10 @@ type Agent struct {
 	// semantix is the optional kernel bridge (nil = kernel disabled).
 	semantix *semantix.Bridge
 	// sched is the kernel's authoritative round decider; always present.
-	sched sched.Decider
+	sched        sched.Decider
+	prefetcher   *prefetch.MatrixPrefetcher
+	prefetchMu   sync.Mutex
+	prefetchLast string
 	// resources owns the full catalog snapshot emitted to the kernel bus.
 	resources *resourceCatalogState
 	// budgetCtrl accumulates window financial spend and maps it to the
@@ -328,7 +332,8 @@ type Agent struct {
 	// prefetchedInject caches a warmed [semantix-reuse] block assembled
 	// during LLM wait time (N12); used as a fallback when the turn's
 	// synchronous injection produced nothing.
-	prefetchedInject atomic.Pointer[string]
+	prefetchedInject atomic.Pointer[prefetchedInjectResult]
+	semantixTurn     atomic.Int64
 
 	// mutationDependencyBarrier records the first durable-state write that
 	// failed or was blocked in the current provider tool batch. executeOne
@@ -1111,8 +1116,15 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		reasoningByteLimit = defaultReasoningByteLimit
 	}
 	decider := opts.Decider
+	var matrix *prefetch.MatrixPrefetcher
 	if decider == nil {
-		decider = sched.NewRuleDecider(sched.Config{})
+		rule := sched.NewRuleDecider(sched.Config{})
+		matrix = prefetch.NewMatrixPrefetcher(prefetch.Config{})
+		rule.SetPrefetchPlanFunc(prefetch.AsPlanFunc(matrix))
+		if opts.Semantix != nil {
+			opts.Semantix.AttachEvolution(rule, matrix)
+		}
+		decider = rule
 	}
 	a := &Agent{
 		svc: newAgentServices(prov, tools, sink, gate, planModeReadOnlyTrust,
@@ -1136,7 +1148,8 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		modelRef:      strings.TrimSpace(opts.ModelRef),
 		contextWindow: opts.ContextWindow,
 		semantix:      opts.Semantix,
-		sched:    decider,
+		sched:         decider,
+		prefetcher:    matrix,
 		sess: sessionRuntime{
 			conversation: session,
 			path:         strings.TrimSpace(opts.SessionPath),
@@ -2938,8 +2951,8 @@ func (a *Agent) startInjectWarm(ctx context.Context) {
 		// Detach from the stream context so cancellation of the current
 		// request does not cancel the warm-up; Inject applies its own 3s cap.
 		warmCtx := context.WithoutCancel(ctx)
-		if block := a.semantix.Inject(warmCtx, input); block != "" {
-			a.prefetchedInject.Store(&block)
+		if result := a.semantix.InjectDetailed(warmCtx, input); result.Text != "" {
+			a.storePrefetch(&prefetchedInjectResult{Text: result.Text, Targets: result.Targets, Turn: a.semantixTurn.Load()})
 		}
 	}()
 }

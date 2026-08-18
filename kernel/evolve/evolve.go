@@ -18,6 +18,7 @@ const (
 	DefaultMinTau      = 0.30 // floor for tau tuning (never below)
 	DefaultMaxTau      = 0.80 // ceiling for tau tuning (never above)
 	TauStep            = 0.05 // per adjustment step
+	PrefetchStep       = 0.05 // per adjustment step for planner confidence
 	PollutionRiseAt    = 0.30 // pollution EWMA above this → tighten tau
 	HitTarget          = 0.70 // hit EWMA above this (and pollution low) → relax tau
 	PollutionLow       = 0.10 // pollution below this to allow relaxation
@@ -45,11 +46,11 @@ type Signal struct {
 // Params is the tunable parameter snapshot (frozen semantics: injected set
 // must not change within the freeze window — see architecture spec §6.2).
 type Params struct {
-	TauL2        float64
-	TauL3        float64
-	InjectCap    float64
-	PrefetchConf float64
-	FreezeEpochs uint64 // injection-set freeze duration
+	TauL2        float64 `json:"tau_l2"`
+	TauL3        float64 `json:"tau_l3"`
+	InjectCap    float64 `json:"inject_cap"`
+	PrefetchConf float64 `json:"prefetch_conf"`
+	FreezeEpochs uint64  `json:"freeze_epochs"` // injection-set freeze duration
 }
 
 // Engine runs online EWMA tuning and offline retraining (MVP in M1).
@@ -73,10 +74,12 @@ type ewmaEngine struct {
 	firstAdjustAt uint64 // cold-start observation window (no auto-adjust before this epoch)
 	params        Params
 
-	hitEWMA     float64
-	polEWMA     float64
-	sampleCount uint64
-	adjustments uint64
+	hitEWMA           float64
+	polEWMA           float64
+	prefetchHitEWMA   float64
+	prefetchWasteEWMA float64
+	sampleCount       uint64
+	adjustments       uint64
 }
 
 // New returns a ready MVP engine with default tuning constants.
@@ -154,8 +157,14 @@ func (e *ewmaEngine) RecordSignal(s Signal) error {
 	switch s.Name {
 	case "cache_hit", "success":
 		e.hitEWMA = e.alpha*v + (1-e.alpha)*e.hitEWMA
-	case "inject_pollution", "prefetch_waste":
+	case "inject_pollution":
 		e.polEWMA = e.alpha*v + (1-e.alpha)*e.polEWMA
+	case "prefetch_hit":
+		e.prefetchHitEWMA = e.alpha*v + (1-e.alpha)*e.prefetchHitEWMA
+		e.prefetchWasteEWMA = (1 - e.alpha) * e.prefetchWasteEWMA
+	case "prefetch_waste":
+		e.prefetchWasteEWMA = e.alpha*v + (1-e.alpha)*e.prefetchWasteEWMA
+		e.prefetchHitEWMA = (1 - e.alpha) * e.prefetchHitEWMA
 	default:
 		// Unknown signal names are tolerated but ignored (forward compat).
 		return nil
@@ -212,7 +221,8 @@ func (e *ewmaEngine) maybeAdjustLocked() {
 	if e.epoch < e.freezeUntil {
 		return
 	}
-	old := e.params.TauL2
+	oldTau := e.params.TauL2
+	oldPrefetch := e.params.PrefetchConf
 	// TauL2 is a relative-confidence floor (zone.TauLow semantics): raising
 	// it admits fewer slices (tighten), lowering it admits more (relax).
 	switch {
@@ -220,8 +230,6 @@ func (e *ewmaEngine) maybeAdjustLocked() {
 		e.params.TauL2 = e.params.TauL2 + TauStep // tighten: raise the floor
 	case e.hitEWMA >= HitTarget && e.polEWMA <= PollutionLow:
 		e.params.TauL2 = e.params.TauL2 - TauStep // relax: admit more reuse
-	default:
-		return
 	}
 	if e.params.TauL2 < e.minTau {
 		e.params.TauL2 = e.minTau
@@ -229,7 +237,18 @@ func (e *ewmaEngine) maybeAdjustLocked() {
 	if e.params.TauL2 > e.maxTau {
 		e.params.TauL2 = e.maxTau
 	}
-	if e.params.TauL2 != old {
+	if e.prefetchWasteEWMA > e.prefetchHitEWMA {
+		e.params.PrefetchConf += PrefetchStep
+	} else if e.prefetchHitEWMA > e.prefetchWasteEWMA {
+		e.params.PrefetchConf -= PrefetchStep
+	}
+	if e.params.PrefetchConf < 0.05 {
+		e.params.PrefetchConf = 0.05
+	}
+	if e.params.PrefetchConf > 0.95 {
+		e.params.PrefetchConf = 0.95
+	}
+	if e.params.TauL2 != oldTau || e.params.PrefetchConf != oldPrefetch {
 		e.adjustments++
 		// Freeze after every real change: protects the byte cache AND gives
 		// the new threshold a full window to accumulate evidence.

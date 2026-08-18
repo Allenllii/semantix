@@ -12,17 +12,36 @@ import (
 	"sync"
 
 	"semantix/harness/event"
+	kernelevent "semantix/kernel/event"
 )
 
 // sessionLine is one line of the kernel session JSONL consumed by
 // `semantix extract --input`. Fields mirror the extractor contract.
 type sessionLine struct {
-	Role      string          `json:"role,omitempty"`
-	Content   string          `json:"content,omitempty"`
-	ToolCalls []toolCallLine  `json:"tool_calls,omitempty"`
-	Type      string          `json:"type,omitempty"`
-	ToolCall  string          `json:"tool_call_id,omitempty"`
-	Name      string          `json:"name,omitempty"`
+	Role      string         `json:"role,omitempty"`
+	Content   string         `json:"content,omitempty"`
+	ToolCalls []toolCallLine `json:"tool_calls,omitempty"`
+	Type      string         `json:"type,omitempty"`
+	ToolCall  string         `json:"tool_call_id,omitempty"`
+	Name      string         `json:"name,omitempty"`
+}
+
+// EmitKernel appends the original kernel event wire object to the same real
+// session JSONL as the harness transcript.
+func (s *HarnessSink) EmitKernel(e kernelevent.Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b, err := kernelevent.ToJSON(e)
+	if err != nil {
+		return
+	}
+	if _, err := s.file.Write(append(b, '\n')); err != nil {
+		s.err = err
+		return
+	}
+	if s.err == nil {
+		s.err = s.file.Sync()
+	}
 }
 
 type toolCallLine struct {
