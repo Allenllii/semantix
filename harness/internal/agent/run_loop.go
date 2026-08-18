@@ -16,6 +16,7 @@ import (
 	"semantix/harness/internal/taskintent"
 	"semantix/harness/internal/taskpolicy"
 	"semantix/harness/internal/tool"
+	"semantix/kernel/sched"
 )
 
 // streamedTurn is one provider completion collected by stream. Keeping the
@@ -642,6 +643,14 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 
 	if boundaryErr, stop := a.stopUnexecutedBoundaryCalls(state, calls, usage); stop {
 		return false, boundaryErr
+	}
+
+	// U41 C3 hard_stop: the window budget is exhausted — refuse the new tool
+	// round and surface a user-visible error (never swallowed silently). The
+	// local controller is the fallback; the kernel scheduler may have already
+	// issued the same action via DecideRound (whoever fires first wins).
+	if a.budgetCtrl != nil && a.budgetCtrl.Action() == sched.BudgetActionHardStop {
+		return false, a.budgetHardStopError()
 	}
 
 	receiptMark := 0

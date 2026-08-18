@@ -1750,6 +1750,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		TierResolver:                 tierResolver,
 		KernelEvents:                 semantixBridge.Events(),
 		ResourceModels:               resourceModels,
+		ResourceBudget:               kernelevent.ResourceBudget{LimitUSD: cfg.Semantix.LimitUSD, Window: cfg.Semantix.Window},
 	}, sink)
 
 	var runner agent.Runner = executor
