@@ -17,7 +17,7 @@ func runImport(args []string, stdout, stderr io.Writer, deps dependencies) error
 	flags := flag.NewFlagSet("import", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	input := flags.String("input", "-", "backup file path, or - for stdin")
-	dbOverride := flags.String("db", "", "database path override")
+	dbOverride := flags.String("db", cfgString(deps.resolved, "store.db", ""), "database path override")
 	jsonOutput := flags.Bool("json", false, "write JSON envelope output")
 	if err := flags.Parse(args); err != nil {
 		// Parse failures (unknown flag, bad value) are usage errors: exit 2

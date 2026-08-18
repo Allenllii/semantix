@@ -24,7 +24,7 @@ func runGC(args []string, stdout, stderr io.Writer, deps dependencies) error {
 	retentionDays := flags.Int("retention-days", 0, "remove slices older than N days (0 disables)")
 	minWeight := flags.Float64("min-weight", 0, "remove slices with weight below W (0 disables)")
 	dryRun := flags.Bool("dry-run", false, "report candidates without deleting")
-	dbOverride := flags.String("db", "", "database path override")
+	dbOverride := flags.String("db", cfgString(deps.resolved, "store.db", ""), "database path override")
 	jsonOutput := flags.Bool("json", false, "write JSON envelope output")
 	if err := flags.Parse(args); err != nil {
 		// Parse failures (unknown flag, bad value) are usage errors: exit 2
