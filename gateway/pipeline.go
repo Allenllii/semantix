@@ -111,7 +111,11 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 // closed.
 func (g *Gateway) l3Eligible(id, vendor string) bool {
 	s, err := g.store.Get(id)
-	if err != nil {
+	if err != nil || s == nil {
+		// s == nil: the candidate slice left the store (concurrent
+		// eviction/compact, or an index entry whose persistence was rolled
+		// back) after DecideL3 retrieved it. Fail closed rather than
+		// dereference nil in cacheFresh.
 		return false
 	}
 	return g.cacheFresh(s, vendor)
