@@ -140,3 +140,14 @@ reader and writer calls use the same Permissions/Sandbox path as Standard mode.
 `todo_write`; `complete_step` joins on a fresh `workflow` connect after plan
 approval. Use `bash` for listing and search until the dedicated `search` source
 is needed.
+
+## Unified Boot Surface (all execution settings)
+
+The boot surface is unified across execution settings: every tool listed under
+[Default Full Boot Surface](#default-full-boot-surface) and
+[Token Economy Boot Surface](#token-economy-boot-surface) is registered through
+the same boot path (`internal/boot`), regardless of token profile. Profiles only
+select which subset is exposed to the model; they never register additional
+tools outside the surfaces documented above. Any new built-in tool must appear
+in both profile sections (or be explicitly profile-gated there) to keep this
+contract complete.

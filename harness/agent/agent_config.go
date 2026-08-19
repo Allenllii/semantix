@@ -12,7 +12,6 @@ type agentConfig struct {
 	maxOutputTokens    int
 	temperature        float64
 	usageSource        string
-	modelRef           string
 	// workspaceID is a prompt-cache lineage component, so it must not move
 	// while an agent lives — a change would silently rekey the cache.
 	workspaceID string
@@ -26,10 +25,10 @@ type agentConfig struct {
 	// agent/skill tools are excluded.
 	subagentDepth    int
 	maxSubagentDepth int
-	// contextWindow and compactRatio decide when at most one provider-visible
-	// checkpoint is installed; recentKeep and archiveDir shape what it keeps.
-	contextWindow int
-	compactRatio  float64
+	// compactRatio (with Agent.contextWindow) decides when at most one
+	// provider-visible checkpoint is installed; recentKeep and archiveDir
+	// shape what it keeps.
+	compactRatio float64
 	recentKeep    int
 	archiveDir    string
 }
