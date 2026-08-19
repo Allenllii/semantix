@@ -76,7 +76,7 @@ func parseCLIReleaseChannel(value string) (cliReleaseChannel, error) {
 	case "", string(cliReleaseStable), "preview", "canary", "beta", "next":
 		return cliReleaseStable, nil
 	default:
-		return "", fmt.Errorf("release channel %q is unsupported; Reasonix now uses the official release", value)
+		return "", fmt.Errorf("release channel %q is unsupported; Semantix now uses the official release", value)
 	}
 }
 

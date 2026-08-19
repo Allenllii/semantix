@@ -1461,22 +1461,22 @@ func TestUnsendDiscardsBufferedEvents(t *testing.T) {
 
 func TestRecoveryPauseTurnDoneIsInformational(t *testing.T) {
 	t.Cleanup(func() { i18n.DetectLanguage("en") })
-	const backendFallback = "Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send \"continue\" to start a fresh attempt, or add instructions to change direction."
+	const backendFallback = "Automatic retries paused. Semantix stopped repeated attempts and kept completed work. Send \"continue\" to start a fresh attempt, or add instructions to change direction."
 	tests := []struct {
 		lang string
 		want string
 	}{
 		{
 			lang: "en",
-			want: "Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.",
+			want: "Automatic retries paused. Semantix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.",
 		},
 		{
 			lang: "zh",
-			want: "已暂停自动重试。Reasonix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。",
+			want: "已暂停自动重试。Semantix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。",
 		},
 		{
 			lang: "zh-TW",
-			want: "已暫停自動重試。Reasonix 已停止重複嘗試，並保留已完成的工作。傳送「繼續」即可開始新一輪，也可以補充要求來調整方向。",
+			want: "已暫停自動重試。Semantix 已停止重複嘗試，並保留已完成的工作。傳送「繼續」即可開始新一輪，也可以補充要求來調整方向。",
 		},
 	}
 	for _, tt := range tests {
@@ -3803,7 +3803,7 @@ func TestSlashMigrateShowsProgress(t *testing.T) {
 
 func TestSlashMigrateFromImportsExplicitSessions(t *testing.T) {
 	home := isolateCLIConfigHome(t)
-	legacySessions := filepath.Join(home, "Old Reasonix", "sessions")
+	legacySessions := filepath.Join(home, "Old Semantix", "sessions")
 	if err := os.MkdirAll(legacySessions, 0o755); err != nil {
 		t.Fatal(err)
 	}

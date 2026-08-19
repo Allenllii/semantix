@@ -133,7 +133,7 @@ type webInstanceRegistration struct {
 
 func registerWebInstance(reasonixHome, addr string) (*webInstanceRegistration, error) {
 	if strings.TrimSpace(reasonixHome) == "" {
-		return nil, errors.New("cannot register Web instance: Reasonix home is empty")
+		return nil, errors.New("cannot register Web instance: Semantix home is empty")
 	}
 	registry := &webInstanceRegistry{
 		dir:               filepath.Join(reasonixHome, "server", webInstanceDirectoryName),
@@ -146,7 +146,7 @@ func registerWebInstance(reasonixHome, addr string) (*webInstanceRegistration, e
 
 func (r *webInstanceRegistry) register(addr string, pid int) (*webInstanceRegistration, error) {
 	if strings.TrimSpace(r.dir) == "" {
-		return nil, errors.New("cannot register Web instance: Reasonix home is empty")
+		return nil, errors.New("cannot register Web instance: Semantix home is empty")
 	}
 	host, rawPort, err := net.SplitHostPort(addr)
 	if err != nil {

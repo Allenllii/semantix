@@ -11,7 +11,7 @@ var English = Messages{
 	ChatTip:             "Context is kept across turns. Type 'exit' or Ctrl-D to quit.",
 	TurnCancelled:       "cancelled — back to prompt",
 	InterruptedRecovery: "This turn was interrupted. Partial output is kept for reference; only completed tool pairs and a bounded recovery summary enter the next model turn. Inspect the workspace before continuing or reverting changes.",
-	RecoveryPaused:      "Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.",
+	RecoveryPaused:      "Automatic retries paused. Semantix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.",
 	ReceiptVerified:     "nothing left unverified",
 	ReceiptGapsHeader:   "not verified:",
 	ReceiptRisksHeader:  "declared risks:",
@@ -125,17 +125,17 @@ var English = Messages{
 	MemoryApprovalBodyLabel:                "body",
 	MemoryApprovalArchiveFmt:               "Archive memory %q",
 	PlanModeBashTrustSubjectFmt:            "Trust %q as a read-only command prefix while planning\nCommand: %s",
-	PlanModeBashTrustReason:                "This bash command is not in Reasonix's built-in read-only set. Confirm only if this exact prefix is read-only for planning and research. Auto/YOLO approval cannot answer this trust prompt.",
+	PlanModeBashTrustReason:                "This bash command is not in Semantix's built-in read-only set. Confirm only if this exact prefix is read-only for planning and research. Auto/YOLO approval cannot answer this trust prompt.",
 	PlanModeBashTrustDeclined:              "the user declined to trust this bash command as read-only for plan mode - do not retry it; continue with other trusted read-only tools or ask how to proceed.",
 	SandboxEscapeSubjectFallback:           "run shell command unconfined once",
 	SandboxEscapeSubjectPrefix:             "run unconfined once: ",
 	SandboxEscapeWrapReason:                "Windows does not provide an OS-level Bash sandbox for this command. Run it unconfined one time? This bypasses OS isolation for this command only.",
 	SandboxEscapeRuntimeReason:             "The OS sandbox could not start this command. Run it unconfined one time? This bypasses OS isolation for this command only.",
 	SandboxEscapeDeclined:                  "the user declined to run this command without the OS sandbox - do not retry it unconfined; ask how they would like to proceed.",
-	ApprovalToolLabelConfigWrite:           "Reasonix config write",
-	ConfigWriteSubjectPrefix:               "write Reasonix config: ",
-	ConfigWriteReason:                      "This write targets a Reasonix-managed configuration file outside the workspace. It can change providers, sandbox rules, permissions, and MCP servers for future sessions, so it needs your explicit approval.",
-	ConfigWriteDeclined:                    "the user declined this Reasonix config write - do not retry it; ask how they would like to proceed.",
+	ApprovalToolLabelConfigWrite:           "Semantix config write",
+	ConfigWriteSubjectPrefix:               "write Semantix config: ",
+	ConfigWriteReason:                      "This write targets a Semantix-managed configuration file outside the workspace. It can change providers, sandbox rules, permissions, and MCP servers for future sessions, so it needs your explicit approval.",
+	ConfigWriteDeclined:                    "the user declined this Semantix config write - do not retry it; ask how they would like to proceed.",
 	ConfigWriteApprovalChoices:             "1. Allow once\n2. Allow for this session\n3. Deny\nChoose [1/2/3] (y/a/n also work)",
 	PermissionSavedFmt:                     "permission saved to %s: %s",
 	PermissionAlreadyAllowedFmt:            "permission already covered in %s: %s",
@@ -319,7 +319,7 @@ var English = Messages{
 	ListSkillsHeaderFmt: "skills (%d)",
 	ListSkillsNone:      "skills: none defined — invoke a built-in like /init, or author one with install_skill",
 	ListHooksHeaderFmt:  "hooks (%d active)",
-	ListHooksNone:       "hooks: none active — configure in .semantix-agent/settings.json (project) or <Reasonix home>/settings.json (global)",
+	ListHooksNone:       "hooks: none active — configure in .reasonix/settings.json (project) or <Semantix home>/settings.json (global)",
 	ListMcpHeader:       "mcp servers",
 	ListMcpNone:         "mcp: no servers connected — add one in reasonix.toml ([[plugins]]) or a project .mcp.json",
 
@@ -547,7 +547,7 @@ var English = Messages{
   semantix-agent report send [ID]       send a reviewed report and delete it after success
   semantix-agent report delete [ID]     delete a local report without sending`,
 
-	CLITelemetryConsentNotice:           "Reasonix can send anonymous, content-free CLI usage statistics to crash.reasonix.io: a random install ID, version, OS, and fixed quality buckets. It never sends prompts, answers, code, paths, model or tool content, or environment variables. You can disable this later with `semantix-agent config telemetry off`.",
+	CLITelemetryConsentNotice:           "Semantix can send anonymous, content-free CLI usage statistics to crash.reasonix.io: a random install ID, version, OS, and fixed quality buckets. It never sends prompts, answers, code, paths, model or tool content, or environment variables. You can disable this later with `semantix-agent config telemetry off`.",
 	CLITelemetryConsentPrompt:           "Allow anonymous CLI usage statistics?",
 	CLITelemetryConsentInvalid:          "Please answer y or n.",
 	CLITelemetryConsentSaveFailedFmt:    "CLI telemetry remains disabled because the preference could not be saved: %v",
@@ -599,7 +599,7 @@ Examples:
   echo "explain this code" | semantix-agent run
 
 Configuration:
-  Resolution: flag > ./reasonix.toml > <Reasonix home>/config.toml > built-in defaults
+  Resolution: flag > ./reasonix.toml > <Semantix home>/config.toml > built-in defaults
   Secrets come from the environment via api_key_env (e.g. DEEPSEEK_API_KEY).
   Run 'semantix-agent setup' to scaffold a config; see docs/SPEC.md.
 `,

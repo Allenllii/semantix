@@ -65,7 +65,7 @@ func doctorCatalogsCommand(args []string) int {
 		}
 		return 0
 	}
-	fmt.Println("Reasonix disposable catalogs")
+	fmt.Println("Semantix disposable catalogs")
 	for _, item := range items {
 		state := "missing"
 		if item.Info.Exists && item.Info.Error == "" {

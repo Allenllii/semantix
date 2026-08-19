@@ -22,8 +22,8 @@ func TestAssistantMarkdownHasIdentityAndIndentedBody(t *testing.T) {
 	if len(lines) < 4 {
 		t.Fatalf("assistant block should contain a header, gap, and wrapped body:\n%s", rendered)
 	}
-	if lines[0] != "  ◆ Reasonix" {
-		t.Fatalf("assistant header = %q, want %q", lines[0], "  ◆ Reasonix")
+	if lines[0] != "  ◆ Semantix" {
+		t.Fatalf("assistant header = %q, want %q", lines[0], "  ◆ Semantix")
 	}
 	if lines[1] != "" {
 		t.Fatalf("assistant header/body separator = %q, want blank row", lines[1])
@@ -50,7 +50,7 @@ func TestReplaySectionsKeepAssistantIdentity(t *testing.T) {
 	if len(sections) != 2 {
 		t.Fatalf("replay sections = %d, want user and assistant", len(sections))
 	}
-	if plain := ansi.Strip(sections[1]); !strings.HasPrefix(plain, "  ◆ Reasonix\n\n  Version 1.2.3") {
+	if plain := ansi.Strip(sections[1]); !strings.HasPrefix(plain, "  ◆ Semantix\n\n  Version 1.2.3") {
 		t.Fatalf("replayed assistant answer lost its identity: %q", plain)
 	}
 }
