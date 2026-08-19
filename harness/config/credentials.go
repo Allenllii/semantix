@@ -264,7 +264,7 @@ func loadCredentialStoreForRoot(root string) {
 		return
 	}
 	if p := UserCredentialsPath(); p != "" {
-		loadDotEnvFileAs(p, CredentialSource{Kind: CredentialSourceCredentials, Path: p, Label: "Reasonix credentials (.env)"})
+		loadDotEnvFileAs(p, CredentialSource{Kind: CredentialSourceCredentials, Path: p, Label: "Semantix credentials (.env)"})
 	}
 }
 
@@ -490,7 +490,7 @@ func parseCredentialLines(lines []string) map[string]string {
 func pinCredentialAssignments(assignments map[string]string) {
 	for key, value := range assignments {
 		_ = os.Setenv(key, value)
-		recordCredentialSource(key, value, CredentialSource{Kind: CredentialSourceCredentials, Path: UserCredentialsPath(), Label: "Reasonix credentials (.env)"})
+		recordCredentialSource(key, value, CredentialSource{Kind: CredentialSourceCredentials, Path: UserCredentialsPath(), Label: "Semantix credentials (.env)"})
 	}
 }
 
@@ -543,7 +543,7 @@ func credentialSourceLabel(source CredentialSource) string {
 	case CredentialSourceProjectEnv:
 		return "project .env"
 	case CredentialSourceCredentials:
-		return "Reasonix credentials"
+		return "Semantix credentials"
 	case CredentialSourceHomeEnv:
 		return "home .env"
 	case CredentialSourceLegacy:
@@ -608,7 +608,7 @@ func resolveCredentialForRootGlobalFirst(root, key string) CredentialResolution 
 func storedCredentialValue(key string) (string, CredentialSource, bool) {
 	if p := UserCredentialsPath(); p != "" {
 		if value, ok := envFileValue(p, key); ok && value != "" {
-			return value, CredentialSource{Kind: CredentialSourceCredentials, Path: p, Label: "Reasonix credentials (.env)"}, true
+			return value, CredentialSource{Kind: CredentialSourceCredentials, Path: p, Label: "Semantix credentials (.env)"}, true
 		}
 	}
 	return "", CredentialSource{}, false

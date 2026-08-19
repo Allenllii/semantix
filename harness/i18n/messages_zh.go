@@ -12,7 +12,7 @@ var Chinese = Messages{
 	ChatTip:             "对话上下文将跨轮保留。输入 'exit' 或按 Ctrl-D 退出。",
 	TurnCancelled:       "已取消 — 回到提示符",
 	InterruptedRecovery: "本轮已中断。部分输出会永久保留供查看；只有完整工具调用及结果和有界恢复摘要会进入模型下一轮。继续或回滚前请先检查当前工作区。",
-	RecoveryPaused:      "已暂停自动重试。Reasonix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。",
+	RecoveryPaused:      "已暂停自动重试。Semantix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。",
 	ReceiptVerified:     "没有未经验证的部分",
 	ReceiptGapsHeader:   "未验证:",
 	ReceiptRisksHeader:  "已申报的风险:",
@@ -126,17 +126,17 @@ var Chinese = Messages{
 	MemoryApprovalBodyLabel:                "正文",
 	MemoryApprovalArchiveFmt:               "归档记忆 %q",
 	PlanModeBashTrustSubjectFmt:            "在计划模式中信任 %q 为只读命令前缀\n命令：%s",
-	PlanModeBashTrustReason:                "这条 bash 命令不在 Reasonix 内置只读集合中。只有在确认这个精确前缀用于计划和研究时是只读的，才应批准。自动/YOLO 审批不能回答这个信任提示。",
+	PlanModeBashTrustReason:                "这条 bash 命令不在 Semantix 内置只读集合中。只有在确认这个精确前缀用于计划和研究时是只读的，才应批准。自动/YOLO 审批不能回答这个信任提示。",
 	PlanModeBashTrustDeclined:              "用户拒绝将这条 bash 命令信任为计划模式只读命令；不要重试它，请继续使用其它已信任的只读工具，或询问用户希望如何继续。",
 	SandboxEscapeSubjectFallback:           "仅本次不进沙箱运行 shell 命令",
 	SandboxEscapeSubjectPrefix:             "仅本次不进沙箱运行：",
 	SandboxEscapeWrapReason:                "Windows 不提供这条命令所需的 OS 级 Bash 沙箱。是否仅本次不受限运行？这只会对此命令绕过 OS 隔离。",
 	SandboxEscapeRuntimeReason:             "OS 沙箱无法启动这条命令。是否仅本次不受限运行？这只会对此命令绕过 OS 隔离。",
 	SandboxEscapeDeclined:                  "用户拒绝在没有 OS 沙箱的情况下运行这条命令；不要不进沙箱重试，请询问用户希望如何继续。",
-	ApprovalToolLabelConfigWrite:           "Reasonix 配置写入审批",
-	ConfigWriteSubjectPrefix:               "写入 Reasonix 配置：",
-	ConfigWriteReason:                      "这次写入的目标是工作区之外的 Reasonix 托管配置文件。它可以改变后续会话的模型服务商、沙箱规则、权限和 MCP 服务器，因此需要你的明确批准。",
-	ConfigWriteDeclined:                    "用户拒绝了这次 Reasonix 配置写入；不要重试，请询问用户希望如何继续。",
+	ApprovalToolLabelConfigWrite:           "Semantix 配置写入审批",
+	ConfigWriteSubjectPrefix:               "写入 Semantix 配置：",
+	ConfigWriteReason:                      "这次写入的目标是工作区之外的 Semantix 托管配置文件。它可以改变后续会话的模型服务商、沙箱规则、权限和 MCP 服务器，因此需要你的明确批准。",
+	ConfigWriteDeclined:                    "用户拒绝了这次 Semantix 配置写入；不要重试，请询问用户希望如何继续。",
 	ConfigWriteApprovalChoices:             "1. 允许一次\n2. 本会话允许\n3. 拒绝\n选择 [1/2/3]（兼容 y/a/n）",
 	PermissionSavedFmt:                     "授权已保存到 %s：%s",
 	PermissionAlreadyAllowedFmt:            "授权已由 %s 中的规则覆盖：%s",
@@ -320,7 +320,7 @@ var Chinese = Messages{
 	ListSkillsHeaderFmt: "skills（%d 个）",
 	ListSkillsNone:      "暂无 skill — 调用内置的（如 /init），或用 install_skill 创建一个",
 	ListHooksHeaderFmt:  "hooks（生效 %d 个）",
-	ListHooksNone:       "无生效 hooks — 在 .semantix-agent/settings.json（项目）或 <Reasonix home>/settings.json（全局）配置",
+	ListHooksNone:       "无生效 hooks — 在 .reasonix/settings.json（项目）或 <Semantix home>/settings.json（全局）配置",
 	ListMcpHeader:       "MCP 服务器",
 	ListMcpNone:         "未连接 MCP 服务器 — 在 reasonix.toml（[[plugins]]）或项目 .mcp.json 中添加",
 
@@ -548,7 +548,7 @@ var Chinese = Messages{
   semantix-agent report send [ID]       发送已审阅报告，成功后删除本地副本
   semantix-agent report delete [ID]     不发送，直接删除本地报告`,
 
-	CLITelemetryConsentNotice:           "Reasonix 可以向 crash.reasonix.io 发送匿名、完全不含内容的 CLI 使用统计：随机安装 ID、版本、操作系统和固定质量分桶。绝不会发送 prompt、回答、代码、路径、模型或工具内容、环境变量。之后可运行 `semantix-agent config telemetry off` 关闭。",
+	CLITelemetryConsentNotice:           "Semantix 可以向 crash.reasonix.io 发送匿名、完全不含内容的 CLI 使用统计：随机安装 ID、版本、操作系统和固定质量分桶。绝不会发送 prompt、回答、代码、路径、模型或工具内容、环境变量。之后可运行 `semantix-agent config telemetry off` 关闭。",
 	CLITelemetryConsentPrompt:           "允许发送匿名 CLI 使用统计吗？",
 	CLITelemetryConsentInvalid:          "请输入 y 或 n。",
 	CLITelemetryConsentSaveFailedFmt:    "由于无法保存偏好设置，CLI 使用统计仍保持关闭：%v",
@@ -600,7 +600,7 @@ var Chinese = Messages{
   echo "解释这段代码" | semantix-agent run
 
 配置：
-  优先级：flag > ./reasonix.toml > <Reasonix home>/config.toml > 内置默认值
+  优先级：flag > ./reasonix.toml > <Semantix home>/config.toml > 内置默认值
   密钥通过 api_key_env 从环境变量注入（如 DEEPSEEK_API_KEY）。
   运行 'semantix-agent setup' 生成配置；详见 docs/SPEC.md。
 `,
