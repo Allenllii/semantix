@@ -8,10 +8,12 @@ import (
 	"time"
 )
 
-// skippedLister is implemented by fileStore (counts corrupt store lines);
-// other Store implementations simply report zero.
-type skippedLister interface {
-	readAllSkipped() ([]*Slice, int, error)
+// rawExporter is implemented by fileStore: full-fidelity v1 JSONL lines (raw
+// embedding bytes preserved even though reads return Embedding=nil) plus the
+// corrupt-line count. Other Store implementations fall back to ListAll and
+// report zero skipped.
+type rawExporter interface {
+	exportLines() ([][]byte, int, error)
 }
 
 // Export writes every slice in the store to w as JSONL — one full Slice JSON
@@ -21,30 +23,36 @@ type skippedLister interface {
 // were corrupt and dropped (so a "lossless backup" is never silently
 // incomplete).
 func Export(store Store, w io.Writer) (count, skipped int, err error) {
-	var all []*Slice
-	if ls, ok := store.(skippedLister); ok {
-		all, skipped, err = ls.readAllSkipped()
+	if re, ok := store.(rawExporter); ok {
+		lines, skipped, err := re.exportLines()
 		if err != nil {
 			return 0, skipped, err
 		}
-	} else {
-		all, err = store.ListAll()
-		if err != nil {
-			return 0, skipped, err
+		n := 0
+		for _, line := range lines {
+			if _, err := w.Write(append(line, '\n')); err != nil {
+				return n, skipped, err
+			}
+			n++
 		}
+		return n, skipped, nil
+	}
+	all, err := store.ListAll()
+	if err != nil {
+		return 0, 0, err
 	}
 	n := 0
 	for _, sl := range all {
 		b, err := json.Marshal(sl)
 		if err != nil {
-			return n, skipped, err
+			return n, 0, err
 		}
 		if _, err := w.Write(append(b, '\n')); err != nil {
-			return n, skipped, err
+			return n, 0, err
 		}
 		n++
 	}
-	return n, skipped, nil
+	return n, 0, nil
 }
 
 // maxImportLine bounds a single accepted JSONL line; longer lines are treated

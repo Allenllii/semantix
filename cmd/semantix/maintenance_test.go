@@ -246,6 +246,13 @@ func TestGCCLI(t *testing.T) {
 	if !strings.Contains(stdout.String(), "removed=2") {
 		t.Fatalf("gc stdout = %q", stdout.String())
 	}
+	// Re-open: a store handle is a snapshot of open time (freeze-window
+	// semantics); the gc ran in its own handle, so observe like a fresh
+	// process would.
+	store, err = slice.NewFileStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
 	items, err := store.ListAll()
 	if err != nil {
 		t.Fatal(err)

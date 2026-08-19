@@ -18,7 +18,15 @@ const embedBatch = 64
 // (model + dimension) in Slice.Meta. A remote failure inside ModelEmbedder
 // degrades to hash vectors (fail-soft), so this only errors when the
 // fallback itself fails.
+//
+// Hash vectors are not persisted at all: they are deterministic functions of
+// Content (recomputable any time — search's vector/hybrid retrievers already
+// re-embed per query and never read the stored field), so writing them only
+// inflated every library line with 256 floats nothing ever read.
 func embedItems(emb embed.Embedder, items []*slice.Slice, kind string) error {
+	if kind == "hash" {
+		return nil
+	}
 	for start := 0; start < len(items); start += embedBatch {
 		end := min(start+embedBatch, len(items))
 		texts := make([]string, 0, end-start)

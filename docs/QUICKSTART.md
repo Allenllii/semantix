@@ -135,6 +135,39 @@ semantix completion fish | source
 
 复制 `semantix.example.toml` 为 `semantix.toml` 并按需修改（当前 CLI 参数优先）。
 
+## 网关部署（Docker）
+
+[Semantix Gateway](cmd/semantix-gateway)（`cmd/semantix-gateway`）是 OpenAI 兼容网关：
+给任意支持自定义 `base_url` 的客户端（Claude Code / chatbox / IDE 插件）透明加上
+L1/L2/L3 语义缓存。与 New API（API 中转面板）搭配部署，三条命令起步：
+
+```bash
+# 1. 生成配置（编辑其中的 ${VAR} 对应环境变量，或写入 .env）
+cp deploy/semantix-gateway.toml.example deploy/semantix-gateway.toml
+
+# 2. 设置密钥（只走环境变量，不落配置文件）
+export SEMANTIX_GATEWAY_KEY=change-me        # New API 渠道密钥字段的值
+export DEEPSEEK_API_KEY=change-me            # 上游 LLM 的 key
+
+# 3. 起服务（New API 面板 + 网关两容器；网关 8080 仅内网）
+docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+验证：
+
+```bash
+docker compose -f deploy/docker-compose.yml ps          # 两服务均 healthy
+curl http://127.0.0.1:3000/                             # New API 面板
+curl http://127.0.0.1:3000/v1/models -H "Authorization: Bearer <New API token>"
+```
+
+然后在 New API 管理后台建渠道：类型「自定义」，代理地址 `http://semantix-gateway:8080`，
+密钥填 `SEMANTIX_GATEWAY_KEY` 的值，模型填 `deepseek-chat`；渠道可用性检测用
+`GET /healthz`（网关探活失败会返回 503，New API 自动禁用该渠道）。
+
+完整设计见 `docs/specs/newapi-gateway-design.md`；非 Docker 直跑（systemd/launchd）
+见该文档 §5.1。
+
 ## 安全约定
 
 - 切片库文件权限 `0600`、目录 `0700`（原子写 + 防 symlink）

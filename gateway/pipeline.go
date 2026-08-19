@@ -48,9 +48,9 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 
 	// L3: verified reuse — zero upstream calls (design §3.3 step 3). The
 	// kernel gate enforces context/model isolation (fail closed) on top of
-	// the dep-fingerprint chain.
+	// the dep-fingerprint chain. TTL is vendor-aware (design §3.5).
 	if !g.disabled {
-		if res, lerr := g.decider.DecideL3(ctx, q); lerr == nil && res != nil && g.l3Eligible(res.SliceID) {
+		if res, lerr := g.decider.DecideL3(ctx, q); lerr == nil && res != nil && g.l3Eligible(res.SliceID, up.Vendor) {
 			g.recordUsage(usage.Event{
 				SessionID: sessionID, TokensIn: int64(len(query)/4) + int64(len(res.Response)/4),
 				TokensOut: 0, CacheHitToken: int64(len(res.Response) / 4),
@@ -72,7 +72,20 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 		injectedTokens = int64(inj.Bytes / 4)
 		sliceHits = len(inj.Slices)
 	}
-	body = g.rewriteOutgoing(body, req, up, inj)
+	if up.Vendor == "anthropic" {
+		// Anthropic hop (design §0.5): translate the OpenAI body to the
+		// /v1/messages shape, applying the L2 injection block with
+		// cache_control breakpoints. OpenAI passthrough is untouched.
+		abody, aerr := toAnthropicRequest(body, up, inj)
+		if aerr != nil {
+			writeAPIError(w, http.StatusBadRequest, "invalid_request_error",
+				"anthropic conversion: "+aerr.Error())
+			return
+		}
+		body = abody
+	} else {
+		body = g.rewriteOutgoing(body, req, up, inj)
+	}
 
 	resp, ferr := g.forward(ctx, up, body)
 	if ferr != nil {
@@ -83,21 +96,25 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	defer resp.Body.Close()
 
 	if req.Stream {
+		if up.Vendor == "anthropic" {
+			g.streamThroughAnthropic(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits)
+			return
+		}
 		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits)
 		return
 	}
-	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits)
+	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up.Vendor)
 }
 
 // l3Eligible applies the gateway-side TTL window on top of the kernel
 // verification chain. A slice that disappeared from the store also fails
 // closed.
-func (g *Gateway) l3Eligible(id string) bool {
+func (g *Gateway) l3Eligible(id, vendor string) bool {
 	s, err := g.store.Get(id)
 	if err != nil {
 		return false
 	}
-	return g.cacheFresh(s)
+	return g.cacheFresh(s, vendor)
 }
 
 // rewriteOutgoing rewrites the outgoing body in place: the client model
@@ -141,20 +158,31 @@ func attachBlock(messages []chatMessage, block string) []chatMessage {
 	return append([]chatMessage{{Role: "system", Content: block}}, messages...)
 }
 
-// forward posts the (rewritten) body to the upstream OpenAI-compatible
-// endpoint with the upstream API key. Transport errors are retried once
-// (design §3.8: the gateway does a single best-effort retry; the body is
-// fully buffered so a resend is always safe); HTTP status errors are not
-// retried — they carry the upstream's own verdict.
+// forward posts the (rewritten) body to the upstream endpoint with the
+// upstream API key. vendor="anthropic" hits POST {base}/v1/messages with the
+// x-api-key + anthropic-version headers (design §0.5); every other vendor
+// hits /chat/completions with Authorization: Bearer. Transport errors are
+// retried once (design §3.8: the gateway does a single best-effort retry;
+// the body is fully buffered so a resend is always safe); HTTP status errors
+// are not retried — they carry the upstream's own verdict.
 func (g *Gateway) forward(ctx context.Context, up UpstreamConfig, body []byte) (*http.Response, error) {
-	url := strings.TrimRight(up.BaseURL, "/") + "/chat/completions"
+	path := "/chat/completions"
+	if up.Vendor == "anthropic" {
+		path = "/messages"
+	}
+	url := strings.TrimRight(up.BaseURL, "/") + path
 	do := func() (*http.Response, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 		if err != nil {
 			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+up.APIKey)
+		if up.Vendor == "anthropic" {
+			req.Header.Set("x-api-key", up.APIKey)
+			req.Header.Set("anthropic-version", anthropicVersion)
+		} else {
+			req.Header.Set("Authorization", "Bearer "+up.APIKey)
+		}
 		return g.client.Do(req)
 	}
 	resp, err := do()
@@ -171,7 +199,9 @@ func (g *Gateway) forward(ctx context.Context, up UpstreamConfig, body []byte) (
 // passthrough relays a non-streaming upstream response, records usage and
 // writes the session sidecar (request turns + assistant reply) — only for
 // successful exchanges, so failed requests never enter the reuse library.
-func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int) {
+// Anthropic responses are translated to OpenAI chat.completion shape first
+// (the client surface is always OpenAI-compatible).
+func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, vendor string) {
 	out, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		writeAPIError(w, http.StatusBadGateway, "upstream_error",
@@ -180,15 +210,34 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 	}
 	if resp.StatusCode >= 400 {
 		// upstream error: relay the OpenAI error envelope, nothing reusable
+		msg := strings.TrimSpace(string(out))
+		if vendor == "anthropic" {
+			msg = anthropicError(out) // Anthropic errors use {error:{message}}
+		}
 		writeAPIError(w, resp.StatusCode, "upstream_error",
-			fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(out))))
+			fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, msg))
 		return
+	}
+	if vendor == "anthropic" {
+		out, err = anthropicToOpenAIResponse(out, req.Model)
+		if err != nil {
+			writeAPIError(w, http.StatusBadGateway, "upstream_error",
+				fmt.Sprintf("translate anthropic response: %v", err))
+			return
+		}
 	}
 	content := extractAssistantContent(out)
 	g.recordSession(sessionID, ctxHash, req.Model, turns(req, content))
 
 	for k, vs := range resp.Header {
 		if isHopByHopHeader(k) {
+			continue
+		}
+		if vendor == "anthropic" && http.CanonicalHeaderKey(k) == "Content-Length" {
+			// Only the translated hop may differ from the upstream body
+			// length; net/http recomputes Content-Length, so a copied value
+			// would truncate or stall the reply. The OpenAI passthrough path
+			// relays verbatim and keeps the upstream framing byte-identical.
 			continue
 		}
 		for _, v := range vs {
@@ -211,10 +260,14 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 
 // streamThrough relays a streaming upstream response chunk by chunk (SSE),
 // preserving events verbatim (design §3.4: never reorder/rewrite the
-// upstream stream). If the upstream ends without a [DONE] marker (abnormal
-// disconnect), the gateway appends one so the client never hangs on an
-// unterminated stream. Sidecar records the request turns only — parsing the
-// assistant content out of the SSE chunks is deferred (documented debt).
+// upstream stream). While relaying, the assistant content is aggregated out
+// of the SSE chunks (choices[0].delta.content); only a cleanly terminated
+// stream — finish_reason or [DONE], within the aggregation bound — is
+// written to the session sidecar. Partial/aborted streams fail closed and
+// never enter the reuse library, matching the non-streaming path where
+// failed exchanges are not recorded (design §0.3 documented debt, now paid).
+// If the upstream ends without a [DONE] marker (abnormal disconnect), the
+// gateway appends one so the client never hangs on an unterminated stream.
 func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
@@ -230,14 +283,29 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 
 	// Scan lines rather than blind blocks: we must detect the [DONE]
 	// marker to guarantee stream termination even when the upstream
-	// disconnects early. Lines are still forwarded verbatim.
+	// disconnects early. Lines are still forwarded verbatim, and fed to
+	// the aggregator for sidecar extraction.
+	agg := newSSEAggregator(maxSSEAggregateBytes)
 	br := bufio.NewReader(resp.Body)
 	sawDone := false
 	for {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
+			// Aggregate before relaying so a [DONE] line flips the
+			// completion state in time: the synthetic usage chunk must
+			// land before [DONE], not after it (design §3.4).
+			agg.Feed(line)
 			if bytes.HasPrefix(bytes.TrimSpace(line), []byte("data: [DONE]")) {
 				sawDone = true
+				if !agg.SawUsage() && !agg.Overflowed() {
+					// Upstream sent no usage accounting: synthesize one
+					// carrying the injection statistics (byte/4 flag).
+					// [DONE] itself is the termination signal here — the
+					// aggregator's done flag only flips on the trailing
+					// blank line, so trust sawDone, not Complete().
+					prompt := int64(len(query)/4) + injectedTokens
+					g.writeUsageChunk(w, flusher, req, agg.EventID(), prompt, int64(len(agg.Content())/4), injectedTokens)
+				}
 			}
 			_, _ = w.Write(line)
 			if flusher != nil {
@@ -250,16 +318,25 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 	}
 	if !sawDone {
 		// Abnormal termination: close the stream ourselves so the client
-		// does not hang (design §3.4: [DONE] always terminates).
+		// does not hang (design §3.4: [DONE] always terminates). Half
+		// streams never get a usage chunk — their meters are unreliable,
+		// fail closed.
 		_, _ = io.WriteString(w, "data: [DONE]\n\n")
 		if flusher != nil {
 			flusher.Flush()
 		}
 	}
-	g.recordSession(sessionID, ctxHash, req.Model, turns(req, ""))
+	if agg.Complete() {
+		g.recordSession(sessionID, ctxHash, req.Model, turns(req, agg.Content()))
+	}
+	tokensOut := int64(0)
+	if agg.Complete() {
+		tokensOut = int64(len(agg.Content()) / 4)
+	}
 	g.recordUsage(usage.Event{
 		SessionID:      sessionID,
 		TokensIn:       int64(len(query)/4) + injectedTokens,
+		TokensOut:      tokensOut,
 		InjectedTokens: injectedTokens,
 		SliceHits:      sliceHits,
 		At:             g.now().Unix(),
@@ -330,9 +407,9 @@ type chatCompletion struct {
 }
 
 type choicePayload struct {
-	Index        int           `json:"index"`
+	Index        int            `json:"index"`
 	Message      messagePayload `json:"message"`
-	FinishReason string        `json:"finish_reason"`
+	FinishReason string         `json:"finish_reason"`
 }
 
 type messagePayload struct {
@@ -347,6 +424,44 @@ type usagePayload struct {
 	PromptDetails    struct {
 		CachedTokens int `json:"cached_tokens"`
 	} `json:"prompt_tokens_details"`
+	// Estimator marks synthetic usage whose token counts are byte/4
+	// estimates rather than tokenizer counts — billing reconciliation
+	// must be able to tell them apart (design §0.3). Never set on usage
+	// relayed verbatim from an upstream.
+	Estimator string `json:"estimator,omitempty"`
+}
+
+// writeUsageChunk emits an OpenAI stream-usage event (empty choices +
+// usage) just before [DONE], used when the upstream stream carried no
+// usage accounting (design §3.4). Token counts are byte/4 estimates,
+// flagged with "estimator":"bytes/4" so reconciliation can identify them.
+// id reuses the stream's first chunk id (or falls back to a fresh one) so
+// clients tracking the stream by id never see a foreign id.
+func (g *Gateway) writeUsageChunk(w http.ResponseWriter, flusher http.Flusher, req *chatRequest, id string, prompt, completion, cached int64) {
+	if id == "" {
+		id = "chatcmpl-" + randomID()
+	}
+	evt := map[string]any{
+		"id":      id,
+		"object":  "chat.completion.chunk",
+		"created": g.now().Unix(),
+		"model":   req.Model,
+		"choices": []any{},
+		"usage": map[string]any{
+			"prompt_tokens":     prompt,
+			"completion_tokens": completion,
+			"total_tokens":      prompt + completion,
+			"prompt_tokens_details": map[string]any{
+				"cached_tokens": cached,
+			},
+			"estimator": "bytes/4",
+		},
+	}
+	raw, _ := json.Marshal(evt)
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", raw)
+	if flusher != nil {
+		flusher.Flush()
+	}
 }
 
 // replyFromCache serves a verified L3 hit: a plain JSON response, or a
@@ -374,6 +489,7 @@ func (g *Gateway) replyFromCache(w http.ResponseWriter, r *http.Request, req *ch
 			PromptTokens:     prompt + cached,
 			CompletionTokens: 0,
 			TotalTokens:      prompt + cached,
+			Estimator:        "bytes/4",
 		},
 	}
 	body.Usage.PromptDetails.CachedTokens = cached
@@ -423,6 +539,12 @@ func (g *Gateway) replayStream(w http.ResponseWriter, r *http.Request, req *chat
 		content = content[n:]
 	}
 	writeChunk(map[string]any{}, "stop")
+	// Synthetic usage for the replayed stream: a streamed L3 hit must
+	// still carry billable usage (design §4.3), in the same byte/4
+	// estimate shape as the non-streaming synthetic response.
+	query, _ := lastUserText(req.Messages)
+	cached := int64(len(res.Response) / 4)
+	g.writeUsageChunk(w, flusher, req, base.ID, int64(len(query)/4)+cached, 0, cached)
 	_, _ = io.WriteString(w, "data: [DONE]\n\n")
 	if flusher != nil {
 		flusher.Flush()
