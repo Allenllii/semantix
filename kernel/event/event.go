@@ -38,6 +38,8 @@ const (
 	Compact
 	// EvolutionTick reports an evolution parameter update snapshot.
 	EvolutionTick
+	// ResourceCatalog reports the harness resource inventory.
+	ResourceCatalog
 
 	// KindCount is the sentinel for validation and tests.
 	KindCount
@@ -127,4 +129,31 @@ type CompactPayload struct {
 // EvolutionTickPayload carries the evolution parameter snapshot.
 type EvolutionTickPayload struct {
 	ParamsJSON json.RawMessage `json:"params"`
+}
+
+// ResourceCatalogPayload is a full, idempotent snapshot. Consumers replace
+// their previous catalog rather than applying it as a delta.
+type ResourceCatalogPayload struct {
+	Tools  []ResourceTool  `json:"tools"`
+	Models []ResourceModel `json:"models"`
+	Budget ResourceBudget  `json:"budget"`
+}
+
+type ResourceTool struct {
+	Name      string `json:"name"`
+	ReadOnly  bool   `json:"readOnly"`
+	Suspended bool   `json:"suspended"`
+}
+
+type ResourceModel struct {
+	ID          string  `json:"id"`
+	Tier        string  `json:"tier"`
+	InputPrice  float64 `json:"inputPrice"`
+	OutputPrice float64 `json:"outputPrice"`
+}
+
+type ResourceBudget struct {
+	LimitUSD float64 `json:"limitUSD"`
+	SpentUSD float64 `json:"spentUSD"`
+	Window   string  `json:"window"`
 }
