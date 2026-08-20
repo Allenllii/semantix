@@ -12,9 +12,9 @@
 
 | Spike | 状态 | 一句话结论 |
 |---|---|---|
-| 1 TTL/命中率曲线 | ⏸ 待 key | 脚本就绪：8 个独立前缀×间隔（0.5–20 min）各测一次，避免探测刷新效应 |
-| 2 Anthropic 兼容端点 | ⏸ 待 key | 脚本就绪：4 请求测 usage 字段形态 + cache_control 容忍度（system 块/消息块两位置） |
-| 3 「高度相似」边界 | ⏸ 待 key | 脚本就绪：6 请求（种缓存/同前缀/中段差异/首 token 扰动/空格级差异/全量重发） |
+| 1 TTL/命中率曲线 | 🧪 网关预实验完成；直连待 key | AtomClub→GLM-5.2 在 0–120s 命中 96%–98%，301s 降至 28%；Z.AI 直连仍待验证 |
+| 2 Anthropic 兼容端点 | 🧪 网关预实验完成；直连待 key | AtomClub /v1/messages 返回 Anthropic cache 字段，system/message cache_control 均接受 |
+| 3 「高度相似」边界 | 🧪 网关预实验完成；直连待 key | 中段或空格改动只命中改动点前，首 token 改动零命中，表现为严格前缀缓存 |
 | 4 国内价目核对 | ✅ 完成 | **传闻口径两列颠倒**：官方页为「缓存存储＝限时免费、缓存命中＝¥2/M」；GLM-5.3 **非阶梯计价**（¥8/¥28，1M ctx） |
 | 5 免费档数据条款 | ✅ 完成 | **国际 api.z.ai API 默认不训练（无免费档例外）→ judge 可行；国内 bigmodel 保留匿名化训练权利 → 不建议** |
 
@@ -72,6 +72,65 @@
 | r4 | 中段多一个空格 + 尾B | 官方「细微格式差异可能影响缓存」的空格级敏感度实测 |
 | r5 | 与 r1 完全相同重发 | 全量命中上界（含尾部） |
 
+## 3A. AtomClub gateway 预实验：Spike-1/2/3（2026-08-20）
+
+> **证据边界**：本节测量的是 `api.atomclub.cn` → `glm-5.2` 路由，不能替代
+> `api.z.ai` 官方直连实验。代理层可能改变路由、缓存和 usage 字段；因此 §1–§3 的 Z.AI
+> 状态仍为待 key。本节用于提前验证实验方法，并为实际使用 AtomClub gateway 的部署提供端点级证据。
+
+**实验设置**：合成长前缀（约 6,396 prompt tokens，唯一 run id 隔离历史缓存），
+`max_tokens=1`、`temperature=0`；只记录脱敏 usage 和状态码，不发送用户代码、不落盘 API key。
+运行窗口：2026-08-20 05:31–05:39 UTC。每个 TTL 间隔使用独立前缀且只探测一次，避免探测刷新。
+
+### 3A.1 TTL / 命中比例
+
+| 目标间隔 | 实际间隔 | prompt_tokens | cached_tokens | cached / prompt |
+|---:|---:|---:|---:|---:|
+| 0s | 0.0s | 6,396 | 6,272 | 98.06% |
+| 30s | 31.0s | 6,396 | 6,144 | 96.06% |
+| 60s | 60.8s | 6,396 | 6,272 | 98.06% |
+| 120s | 120.3s | 6,396 | 6,272 | 98.06% |
+| 300s | 301.0s | 6,396 | 1,792 | 28.02% |
+
+**预实验判断**：0–120 秒保持 96%–98% 前缀命中；约 5 分钟时只剩 28%，
+已触发 §1 的「5 分钟点 <50%」提前考虑 TTL 对策条件。该曲线每点仅一个样本，足以形成
+端点级工程预警，但不足以估计统计命中率；Z.AI 直连时仍按 §1 设计补齐 8/12/20 分钟点和重复样本。
+
+### 3A.2 Anthropic Messages 兼容行为
+
+AtomClub 的有效兼容入口为 `POST https://api.atomclub.cn/v1/messages`。响应 `type=message`，
+usage 含 `input_tokens`、`cache_creation_input_tokens`、`cache_read_input_tokens`、
+`output_tokens`、`claude_cache_creation_5_m_tokens`、`claude_cache_creation_1_h_tokens`。
+
+| 请求 | HTTP | input_tokens | cache_read_input_tokens | cache_creation_input_tokens |
+|---|---:|---:|---:|---:|
+| 长前缀基线 | 200 | 6,394 | 0 | 0 |
+| 同前缀、尾部变化 | 200 | 6,394 | 6,272 | 0 |
+| system 块带 `cache_control: ephemeral` | 200 | 6,394 | 6,272 | 0 |
+| message 块带 `cache_control: ephemeral` | 200 | 6,394 | 6,144 | 0 |
+
+**预实验判断**：两处 `cache_control` 均被接受，不需要为 AtomClub 路由强制剥离；但
+`cache_creation_input_tokens` 始终为 0，观测到的是 GLM 隐式缓存，而不是 Anthropic 显式缓存创建。
+AtomClub usage 适配器应在 OpenAI 路由解析 `prompt_tokens_details.cached_tokens`，在 Messages
+路由解析 `cache_read_input_tokens`。此结论不外推到 `api.z.ai/api/anthropic`。
+
+### 3A.3 「高度相似」边界
+
+| 变体 | prompt_tokens | cached_tokens | cached / prompt |
+|---|---:|---:|---:|
+| 首次种缓存 | 6,392 | 0 | 0% |
+| 前缀相同、只改尾部 | 6,392 | 6,272 | 98.12% |
+| 320 段中第 160 段改单词 | 6,392 | 3,072 | 48.06% |
+| 第一个 token 前增加字符 | 6,393 | 0 | 0% |
+| 第 160 段增加一个空格（复测） | 6,396 | 3,072 | 48.03% |
+| 完全重放 | 6,392 | 6,272 | 98.12% |
+
+**预实验判断**：行为符合严格前缀缓存——中段差异只保留差异点之前的缓存，首 token 差异
+完全失配，单个空格同样截断后续缓存；未观察到跨差异点的「语义高度相似」命中。因此实现仍应
+优先保证字节/token 稳定，不把官方「高度相似」措辞当作可依赖的非前缀缓存能力。
+
+**成本与安全**：本轮约 16.6 万输入 tokens，输出上限极低；实际账单以 AtomClub 控制台为准。
+实验密钥只存在于交互式进程内，报告与脚本均不包含密钥。由于凭据曾通过会话提供，实验后应轮换。
 ## 4. Spike-4 国内 bigmodel 价目核对（完成）
 
 **方法**：headless Chromium 渲染 https://bigmodel.cn/pricing 后读取正文与表格（2026-08-20），
