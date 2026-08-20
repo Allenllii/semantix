@@ -17,12 +17,12 @@ import (
 )
 
 const (
-	SchemaArtifactPath   = "harness/extension/protocol/schema.generated.json"
-	HashArtifactPath     = "harness/extension/protocol/schema_hash.generated.go"
-	MarkdownArtifactPath = "harness/docs/EXTENSION_PROTOCOL.generated.md"
+	SchemaArtifactPath   = "internal/extension/protocol/schema.generated.json"
+	HashArtifactPath     = "internal/extension/protocol/schema_hash.generated.go"
+	MarkdownArtifactPath = "docs/EXTENSION_PROTOCOL.generated.md"
 	// SDKTypesArtifactPath is the Go DTO mirror compiled into the stdlib-only
 	// extension SDK module.
-	SDKTypesArtifactPath = "harness/sdk/go/types_generated.go"
+	SDKTypesArtifactPath = "sdk/go/types_generated.go"
 )
 
 // Artifact is one deterministic generated file, relative to the repository
