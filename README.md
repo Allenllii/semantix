@@ -706,6 +706,7 @@ This map follows the current repository layout. It describes observable responsi
 | Retrieval zones | [`kernel/zone`](./kernel/zone) | Three-region hit, grey and miss classifier shared by retrieval, verification and evolution. | `go test ./kernel/zone -race` |
 | L3 cache | [`kernel/cache`](./kernel/cache) | Conservative result-reuse decision interface and L3 decider; uncertain candidates fall back to normal execution. | `go test ./kernel/cache -race` |
 | Dependency fingerprints | [`kernel/fingerprint`](./kernel/fingerprint) | Captures and verifies file dependencies so stale project state invalidates otherwise reusable results. | `go test ./kernel/fingerprint -race` |
+| Reuse judge | [`kernel/judge`](./kernel/judge) | Rule gate plus optional LLM judge, prompt sanitization and verdict statistics for risky L3 candidates. | `go test ./kernel/judge -race` |
 <!-- repository-module-guide:end -->
 
 ---

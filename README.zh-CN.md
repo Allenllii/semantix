@@ -223,6 +223,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 检索分区 | [`kernel/zone`](./kernel/zone) | 检索、验证和演化共用的 hit、grey、miss 三区分类器。 | `go test ./kernel/zone -race` |
 | L3 缓存 | [`kernel/cache`](./kernel/cache) | 保守的结果复用判定接口与 L3 decider；无法证明安全时回退正常执行。 | `go test ./kernel/cache -race` |
 | 依赖指纹 | [`kernel/fingerprint`](./kernel/fingerprint) | 捕获并验证文件依赖；项目状态变化时使原本可复用的结果失效。 | `go test ./kernel/fingerprint -race` |
+| 复用 Judge | [`kernel/judge`](./kernel/judge) | 规则门、可选 LLM judge、提示清洗和判定统计，用于高风险 L3 候选。 | `go test ./kernel/judge -race` |
 <!-- repository-module-guide:end -->
 
 ---
