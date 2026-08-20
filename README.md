@@ -721,6 +721,7 @@ This map follows the current repository layout. It describes observable responsi
 | Specs and evidence | [`docs`](./docs) | Architecture, security, roadmap, specifications and acceptance reports that separate design targets from measured results. | Review the linked acceptance report for each shipped unit. |
 | Integration patches | [`patches`](./patches) | Versioned delivery patches for external Reasonix forks, with drift notes and explicit preflight instructions. | `git apply --check patches/semantix-sched-prefetch.patch` |
 | Blog sources | [`blog`](./blog) | Versioned Markdown sources for technical articles; site content tests validate metadata, links and encoding. | `cd site && npm run test:content` |
+| Website | [`site`](./site) | Next.js product site, documentation, blog renderer, structured data, generated `llms-full.txt` and content-quality tests. | `cd site && npm run check` |
 <!-- repository-module-guide:end -->
 
 ---
