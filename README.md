@@ -1113,10 +1113,6 @@ Detailed architecture documents are available in [`docs/`](./docs).
 
 [`site/`](./site) — marketing site and product docs (Next.js), including the blog on semantic caching and cross-session reuse.
 
-### Provider Cache Experiments
-
-[`docs/reports/glm-spike-week.md`](./docs/reports/glm-spike-week.md) — controlled GLM cache observations, including an AtomClub→GLM-5.2 gateway pilot. The pilot observed 96–98% cached input at 0–120 seconds and 28% at about five minutes, Anthropic Messages usage-field mapping, and strict-prefix invalidation. These measurements are gateway-specific and do not claim direct Z.AI behavior.
-
 ### Architecture
 
 [`docs/Agent-Infra-架构设计.md`](./docs/Agent-Infra-架构设计.md)
