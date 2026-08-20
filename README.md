@@ -686,6 +686,16 @@ It can then return optimization decisions without owning the agent's primary rea
 
 This allows Semantix to remain portable across different agent runtimes.
 
+<!-- repository-module-guide:start -->
+# Repository Module Guide
+
+This map follows the current repository layout. It describes observable responsibilities and focused checks; it does not turn design targets into production-performance claims.
+
+| Module | Path | Responsibility | Focused verification |
+|---|---|---|---|
+
+<!-- repository-module-guide:end -->
+
 ---
 
 # How a Request Flows

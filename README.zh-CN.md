@@ -203,6 +203,16 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 
 另有 **Semantix Gateway**（`cmd/semantix-gateway`）：OpenAI 兼容网关，为任意支持自定义 base URL 的客户端透明加上跨会话复用层。
 
+<!-- repository-module-guide:start -->
+## 仓库模块地图
+
+下表按当前仓库结构说明可观察职责与聚焦验证方式；设计目标不会在这里被写成已经验证的生产性能。
+
+| 模块 | 路径 | 职责 | 聚焦验证 |
+|---|---|---|---|
+
+<!-- repository-module-guide:end -->
+
 ---
 
 ## 项目状态
