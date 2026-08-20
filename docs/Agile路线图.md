@@ -144,8 +144,12 @@
 | Agile | 目标 | 当前状态 | DoD 摘要 |
 |---|---|---|---|
 | 1 | 首个可下载品牌化 agent | M0 ✅ · M1 遗留 #58（唯一 P0 门禁）· CLI v2 ✅（U19-U36）· TUI 可视化 ✅（U33/#168）· 桌面端 #158 | v1.0 发布 + 命中率 ≥70% + 复用可视化 |
-| 2 | 自进化闭环（kernel 调配 harness） | 🚧 kernel 侧 MVP ✅（M1-U18b）· 2026-08-17 转合体路线（harness vendor 进本仓，集成分支 `harness-integration`）→ 批次 U37-U43 已建，spec 待审 | 调度演示 + 自进化曲线 |
+| 2 | 自进化闭环（kernel 调配 harness） | 🚧 **v0.5.0 已发布（2026-08-20，合体首发）**：U37 spec ✅ · U38 vendor ✅ · U39 测试面+H4 ✅（#227/#230）· U40 编排 ✅（#213）· U41 预算 ✅（#223）——全部随 #231 回合 main；剩 U42 调度演示报告 + U43 自进化曲线（DoD 证据两件） | 调度演示 + 自进化曲线 |
 | 3 | 多 harness 生态 | 路径已文档化；serve/watch ✅（U27/U36） | ≥3 harness 正式接入 |
+
+**v0.5.0（2026-08-20，合体首发）**：semantix-agent（harness+kernel 单进程）+ semantix + semantix-gateway，
+四平台资产 + SHA256SUMS，https://github.com/Gnosil/semantix/releases/tag/v0.5.0 。
+发布决策：Song 在 v0.4.1-alpha.2 测试包人工验收后拍板（2026-08-20）。#58 命中率实测仍为 v1.0 门禁不变。
 
 **网关线（套壳，GW 编号，独立于 Agile 主线）**：GW1 ✅（#133，主干可运行、29 测试绿）。
 剩余按 `docs/specs/newapi-gateway-design.md` §0 对账（2026-08-15 回写）：流式响应侧写记忆（GW2，
