@@ -1,0 +1,12 @@
+[
+ {"id":"t01","stream":false,"q":"请解释 Go 语言中 defer 语句的执行顺序以及它与 panic recover 的配合方式"},
+ {"id":"t02","stream":false,"q":"Python 的 GIL 全局解释器锁对多线程性能有什么影响，什么场景下应该改用多进程"},
+ {"id":"t03","stream":false,"q":"PostgreSQL 里 B-tree 索引和 GIN 索引的适用场景差异，什么时候该建联合索引"},
+ {"id":"t04","stream":false,"q":"Docker 多阶段构建如何显著减小最终镜像体积，写一个 Go 项目的完整示例"},
+ {"id":"t05","stream":false,"q":"git rebase 和 git merge 在协作分支上的取舍，什么情况下绝对不能 rebase"},
+ {"id":"t06","stream":false,"q":"HTTP 缓存里 ETag 与 Last-Modified 的协商机制差异，Cache-Control 各指令怎么组合"},
+ {"id":"t07","stream":false,"q":"Redis 持久化 RDB 与 AOF 的取舍，混合持久化在崩溃恢复时的具体行为"},
+ {"id":"t08","stream":false,"q":"Kubernetes 中 readinessProbe 与 livenessProbe 的区别，配置不当会引发什么故障"},
+ {"id":"t09","stream":true,"q":"正则表达式中的贪婪匹配与懒惰匹配区别，回溯灾难是怎么产生的以及如何避免"},
+ {"id":"t10","stream":true,"q":"TLS 握手过程中证书链验证的完整步骤，中间证书缺失会导致什么样的错误"}
+]
