@@ -231,6 +231,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 事件契约 | [`kernel/event`](./kernel/event) | 类型化 kernel 事件、payload、wire format 与同步进程内总线。 | `go test ./kernel/event -race` |
 | 用量核算 | [`kernel/usage`](./kernel/usage) | 记录逐轮 token/cache 事件，汇总基线成本、实际成本与估算节省。 | `go test ./kernel/usage -race` |
 | Reasonix harness | [`harness`](./harness) | 随仓 Agent runtime：provider、工具、权限、扩展、会话、恢复、远程执行和 UI 契约。 | `go test ./harness/... -race` |
+| Harness 桥接 | [`harness/semantix`](./harness/semantix) | 将 harness 事件镜像为会话 JSONL，并输出复用摘要，同时保持 Semantix fail-open。 | `go test ./harness/semantix -race` |
 <!-- repository-module-guide:end -->
 
 ---

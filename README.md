@@ -714,6 +714,7 @@ This map follows the current repository layout. It describes observable responsi
 | Event contract | [`kernel/event`](./kernel/event) | Typed kernel event kinds, payloads, wire format and synchronous in-process bus. | `go test ./kernel/event -race` |
 | Usage accounting | [`kernel/usage`](./kernel/usage) | Records per-turn token/cache events and summarizes baseline cost, paid cost and estimated savings. | `go test ./kernel/usage -race` |
 | Reasonix harness | [`harness`](./harness) | Bundled agent runtime: providers, tools, permissions, extensions, sessions, recovery, remote execution and UI-facing contracts. | `go test ./harness/... -race` |
+| Harness bridge | [`harness/semantix`](./harness/semantix) | Mirrors harness events into session JSONL and surfaces reuse summaries while keeping Semantix fail-open. | `go test ./harness/semantix -race` |
 <!-- repository-module-guide:end -->
 
 ---
