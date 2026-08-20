@@ -8,6 +8,7 @@ import (
 	"semantix/harness/internal/agent"
 	"semantix/harness/internal/agent/testutil"
 	"semantix/harness/internal/event"
+	"semantix/harness/internal/provider"
 	"semantix/harness/internal/tool"
 	kernelevent "semantix/kernel/event"
 	"semantix/kernel/sched"
@@ -22,6 +23,59 @@ type offDecider struct{}
 func (offDecider) DecideRound(context.Context, sched.RoundInput) (sched.RoundPlan, error) {
 	return sched.RoundPlan{}, nil
 }
+
+// tierProvider is the provider the harness actually runs on after the scheduler
+// applies a tier decision. It delegates every call to the arm's underlying mock
+// so the scripted turn sequence survives the swap, and carries the tier name so
+// a swap is observable rather than inferred.
+//
+// Why this exists: without a TierResolver, agent.applyScheduledTier takes the
+// nil-resolver branch (harness/internal/agent/tier.go), emits a "sched tier=..."
+// notice and RETURNS WITHOUT SWAPPING THE PROVIDER. The tier decision would then
+// be priced but never enforced — the demo would be charging for a decision it
+// never demonstrated. Wiring a real resolver is what makes the tier column in
+// the report an *applied* tier rather than a proposed one.
+type tierProvider struct {
+	inner provider.Provider
+	tier  string
+}
+
+func (p tierProvider) Name() string { return p.tier }
+
+func (p tierProvider) Stream(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	return p.inner.Stream(ctx, req)
+}
+
+// tierRecorder captures every tier the resolver was actually asked to install.
+// A recorded entry is proof the swap happened: agent.applyScheduledTier only
+// reaches the resolver after the "same tier as current" short-circuit, and the
+// returned provider is installed unless it is nil (it never is here).
+type tierRecorder struct {
+	mu      sync.Mutex
+	applied []string
+}
+
+func (r *tierRecorder) record(tier string) {
+	r.mu.Lock()
+	r.applied = append(r.applied, tier)
+	r.mu.Unlock()
+}
+
+func (r *tierRecorder) list() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string(nil), r.applied...)
+}
+
+// baselineTier is the arm's starting model. The OFF baseline is "an operator
+// statically provisions the capable model", so both arms start on pro and a
+// scheduler decision to run flash is a real change the resolver must apply.
+const baselineTier = "pro"
+
+// defaultContextWindow is the fixture context window handed back with every
+// resolved tier; the demo never approaches it, it only has to be non-zero so
+// the agent rebuilds its admission estimates after a swap.
+const defaultContextWindow = 128000
 
 // suspendPolicyDecider models the ON arm's tool-suspension decision (Issue #193
 // case "工具挂起"). It delegates parallel grouping, tier, and budget to the real
@@ -155,6 +209,9 @@ type Result struct {
 	WallClock       time.Duration `json:"wallClockNs"`
 	CostUSD         float64       `json:"costUSD"`
 	TierSequence    []string      `json:"tierSequence"`
+	// TierApplied lists the tiers the harness actually installed on the
+	// provider, in order. Empty on the OFF arm (no tier decisions at all).
+	TierApplied     []string      `json:"tierApplied,omitempty"`
 	BudgetActions   []string      `json:"budgetActions,omitempty"`
 }
 
@@ -177,16 +234,31 @@ func RunScenario(ctx context.Context, sc Scenario, kernelOn bool) Result {
 		Decider:        dec,
 		KernelEvents:   kernelevent.NewSyncBus(),
 		ResourceModels: sc.models,
-		ResourceBudget: sc.budget,
+	}
+	// The budget belongs to the ON arm only. Issue #193 defines OFF as "no
+	// budget action", and the U41 hard_stop guard lives in run_loop.go — it
+	// reads a.budgetCtrl directly, NOT the decider's plan. Handing OFF the same
+	// budget would make OFF hard-stop too and collapse the comparison.
+	if kernelOn {
+		opts.ResourceBudget = sc.budget
 	}
 	mp := testutil.NewMock("scheddemo", sc.turns...)
+	tiers := &tierRecorder{}
+	opts.ModelRef = baselineTier
+	opts.TierResolver = func(tier string) (provider.Provider, *provider.Pricing, int, error) {
+		price := TierPrices[tier]
+		tiers.record(tier)
+		return tierProvider{inner: mp, tier: tier},
+			&provider.Pricing{Input: price.InputPerM, Output: price.OutputPerM, Currency: "USD"},
+			defaultContextWindow, nil
+	}
 	a := agent.New(mp, reg, agent.NewSession(""), opts, sink)
 
 	start := time.Now()
 	_ = a.Run(ctx, "run scenario "+sc.Name)
 	wall := time.Since(start)
 
-	return assembleResult(sc, kernelOn, dec.records(), sink.events(), probe.Peak(), wall)
+	return assembleResult(sc, kernelOn, dec.records(), sink.events(), probe.Peak(), wall, tiers.list())
 }
 
 // Comparison holds both arms of one scenario for side-by-side reporting.
@@ -224,7 +296,7 @@ func RunAll(ctx context.Context) []Comparison {
 	return out
 }
 
-func assembleResult(sc Scenario, kernelOn bool, rounds []RoundRecord, tools []ToolEvent, peak int, wall time.Duration) Result {
+func assembleResult(sc Scenario, kernelOn bool, rounds []RoundRecord, tools []ToolEvent, peak int, wall time.Duration, tierApplied []string) Result {
 	tiers := make([]string, 0, len(rounds))
 	actions := make([]string, 0, len(rounds))
 	var cost float64
@@ -249,6 +321,7 @@ func assembleResult(sc Scenario, kernelOn bool, rounds []RoundRecord, tools []To
 		WallClock:       wall,
 		CostUSD:         cost,
 		TierSequence:    tiers,
+		TierApplied:     tierApplied,
 		BudgetActions:   actions,
 	}
 }

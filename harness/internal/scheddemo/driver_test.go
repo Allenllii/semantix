@@ -83,6 +83,7 @@ func TestRunAllCoversEveryScenario(t *testing.T) {
 	}
 }
 
+
 // With spend past the 90% rung, the kernel degrades a would-be-pro (writer) round
 // to flash to contain cost; OFF ignores the budget and bills at pro. This is the
 // "预算降级" case — a budget signal changing the tier the harness runs.
@@ -97,5 +98,34 @@ func TestBudgetDowngradeForcesFlash(t *testing.T) {
 	}
 	if on.CostUSD >= off.CostUSD {
 		t.Fatalf("budget downgrade must cost less than the pro baseline: on=%.6f off=%.6f", on.CostUSD, off.CostUSD)
+	}
+}
+
+// TestTierDecisionIsAppliedToProvider is the guard that was missing when the
+// demo first shipped. The report prices every round by the tier the scheduler
+// CHOSE, so that price is only honest if the choice is actually installed on the
+// provider. Before the TierResolver was wired, agent.applyScheduledTier took the
+// nil-resolver branch: it emitted a "sched tier=flash" notice and returned
+// without swapping anything, so the tier column was a proposal, not an applied
+// state — and the report's cost delta was charging for it anyway.
+func TestTierDecisionIsAppliedToProvider(t *testing.T) {
+	sc := TierSwitchScenario()
+	on := RunScenario(context.Background(), sc, true)
+
+	if len(on.TierSequence) == 0 || on.TierSequence[0] != "flash" {
+		t.Fatalf("ON arm should DECIDE flash, got tierSequence %v", on.TierSequence)
+	}
+	if len(on.TierApplied) == 0 {
+		t.Fatal("ON arm decided a tier but never applied it to the provider: " +
+			"TierResolver was not invoked, so the harness kept the baseline model " +
+			"while the report priced the round at the decided tier")
+	}
+	if on.TierApplied[0] != "flash" {
+		t.Fatalf("applied tier = %q, want flash (the decided tier)", on.TierApplied[0])
+	}
+
+	off := RunScenario(context.Background(), sc, false)
+	if len(off.TierApplied) != 0 {
+		t.Fatalf("OFF arm must make no tier decision, so nothing may be applied; got %v", off.TierApplied)
 	}
 }
