@@ -720,6 +720,7 @@ This map follows the current repository layout. It describes observable responsi
 | Automation scripts | [`scripts`](./scripts) | Cross-session demo, release builders and Go bootstrap helper used by local and release workflows. | Run the relevant demo or release script in a clean workspace. |
 | Specs and evidence | [`docs`](./docs) | Architecture, security, roadmap, specifications and acceptance reports that separate design targets from measured results. | Review the linked acceptance report for each shipped unit. |
 | Integration patches | [`patches`](./patches) | Versioned delivery patches for external Reasonix forks, with drift notes and explicit preflight instructions. | `git apply --check patches/semantix-sched-prefetch.patch` |
+| Blog sources | [`blog`](./blog) | Versioned Markdown sources for technical articles; site content tests validate metadata, links and encoding. | `cd site && npm run test:content` |
 <!-- repository-module-guide:end -->
 
 ---
