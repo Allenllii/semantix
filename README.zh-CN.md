@@ -230,6 +230,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 参数演化 | [`kernel/evolve`](./kernel/evolve) | 使用 EWMA 调整检索阈值和注入预算，参数变化有边界且可检查。 | `go test ./kernel/evolve -race` |
 | 事件契约 | [`kernel/event`](./kernel/event) | 类型化 kernel 事件、payload、wire format 与同步进程内总线。 | `go test ./kernel/event -race` |
 | 用量核算 | [`kernel/usage`](./kernel/usage) | 记录逐轮 token/cache 事件，汇总基线成本、实际成本与估算节省。 | `go test ./kernel/usage -race` |
+| Reasonix harness | [`harness`](./harness) | 随仓 Agent runtime：provider、工具、权限、扩展、会话、恢复、远程执行和 UI 契约。 | `go test ./harness/... -race` |
 <!-- repository-module-guide:end -->
 
 ---
