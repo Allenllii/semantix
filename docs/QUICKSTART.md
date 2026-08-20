@@ -168,6 +168,27 @@ curl http://127.0.0.1:3000/v1/models -H "Authorization: Bearer <New API token>"
 完整设计见 `docs/specs/newapi-gateway-design.md`；非 Docker 直跑（systemd/launchd）
 见该文档 §5.1。
 
+### 客户端怎么判断「这次命中了没有」
+
+- **非流式**：直接读响应头 `x-semantix-cache: hit | miss`；
+- **流式（`stream:true`）：不要读响应头**。网关**有**发这个头（直连网关 `curl -D -` 能看到），
+  但 New API 中继 SSE 时会把它剥掉——它的流式路径只复制一个写死的白名单
+  （`X-Reasoning-Included` / `X-Codex-Turn-State`），其余上游响应头一律丢弃，且**没有配置项可以放行**
+  ——白名单写死在代码里（读 New API v1.0.0-rc.25 源码确认，剥头本身是 GW4 实机实测）。
+  这是 New API 的行为，不是网关缺陷。
+
+  流式场景以**网关 usage 日志为准**（`[ingest] usage_log` 指向的 JSONL，`"l3_reuse":true` 即 L3 命中）：
+
+  ```bash
+  tail -n 5 .semantix/gateway-usage.jsonl        # 路径见 semantix-gateway.toml
+  semantix usage --db .semantix/gateway-usage.jsonl
+  ```
+
+  配了灰区 judge（`[cache] judge_api_key`）且该轮确实有候选落进灰区时，这一行还会带
+  `"judge":[{…}]`，写明是 judge 判了不可复用（`"verdict":"declined"`）、调用失败降级
+  （`"verdict":"fail_closed"`）、还是指纹门在 judge 之前就拒了（`"verdict":"skipped"`，不产生
+  judge 费用）——排障时先看这个字段，别去猜。细节见设计文档 §3.4.1 与 §4.3。
+
 ## 安全约定
 
 - 切片库文件权限 `0600`、目录 `0700`（原子写 + 防 symlink）

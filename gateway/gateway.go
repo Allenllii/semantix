@@ -149,6 +149,10 @@ func New(cfg *Config) (*Gateway, error) {
 		disabled: disableEnv(),
 		now:      time.Now,
 	}
+	// Grey-zone judge decisions become durable here (Issue #242 gap 1):
+	// one structured log line plus a field on the turn's usage event, so a
+	// non-hit can be explained and the judge's own model call can be costed.
+	g.decider.OnJudge = g.observeJudge
 	g.healthProbe = g.probeUpstreams
 	return g, nil
 }

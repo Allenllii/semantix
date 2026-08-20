@@ -237,6 +237,39 @@ POST /v1/chat/completions {model, messages, stream, ...}
 - **命中流式**：缓存存的是完整响应；网关按 OpenAI SSE 协议把缓存内容切成 `choices[0].delta.content` 分块回放（每块 ≤ 4KB 或按原缓存分块）。注意这是**重建流**：`id`/`created`、工具调用首块（`index`/`id` 必须在第一个 delta）、`finish_reason` 位置、token 边界都与上游原始流不同；M1 落地时用真实客户端回归验证（见 §8）；
 - **字节稳定注意**：透传不重排、不重写上游事件，避免破坏客户端兼容性；注入块只在请求侧生效，不触碰响应流。
 
+#### 3.4.1 流式场景不要依赖 `x-semantix-cache` 响应头（Issue #242）
+
+**结论先行：流式请求判断是否命中，以网关 usage 日志为准，不要读响应头。**
+
+网关在流式路径**确实设置了** `x-semantix-cache`（`gateway/pipeline.go` `streamThrough` /
+`streamThroughAnthropic` / `replyFromCache`）。直连网关可以看到：
+
+```
+$ curl -D - http://semantix-gateway:8080/v1/chat/completions -d '{…,"stream":true}'
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+X-Semantix-Cache: miss
+```
+
+但同一个请求经 New API 中继后，这个头**不见了**（GW4 验收 §8.2 实测，New API v1.0.0-rc.25）。
+**这不是网关缺陷，是 New API 中继 SSE 的行为**，两条路径的差异在其源码里可以直接读出
+（仓库 `QuantumNous/new-api`，v1.0.0-rc.25 与 main 一致）：
+
+| 路径 | 代码 | 对上游自定义响应头的处理 |
+|---|---|---|
+| 非流式 | `service.IOCopyBytesGracefully`（`service/http.go`） | 遍历上游全部响应头，只排除 `Content-Length` 与 request-id → **自定义头透传**，所以非流式能看到 `x-semantix-cache` |
+| 流式 | `relay/helper.StreamScannerHandler` → `copyCodexSSEHeaders`（`relay/helper/stream_scanner.go`） | 只复制**硬编码白名单** `X-Reasoning-Included` / `X-Codex-Turn-State`，随后 `SetEventStreamHeaders` 写自己的 SSE 头 → **其余上游头全部丢弃** |
+
+即：**New API 没有「透传自定义响应头」的配置项**，白名单写死在代码里；要放行 `x-semantix-cache`
+只能给上游提 PR 把白名单做成可配置。在那之前，客户端侧的正确做法是：
+
+- **权威口径**：网关 usage 日志（`kernel/usage`，`l3_reuse:true` 即 L3 命中）。这条日志无论流式
+  与否、无论中间过了几层中继都存在；
+- **客户端侧启发式**（非协议保证，仅供无法读日志的场景参考）：L3 命中的回放流末块 usage 满足
+  `completion_tokens=0` 且 `prompt_tokens_details.cached_tokens>0`，且 `id` 为 `chatcmpl-<sliceID>`；
+- **已否决的方案**：在首个 SSE chunk 里塞命中标记——那会改动 wire 格式，与本节「透传不重排、
+  不重写上游事件」的约束直接冲突，为一个观测性便利去动协议不划算。
+
 ### 3.5 L3 语义缓存设计
 
 ```
@@ -447,6 +480,24 @@ gpt-4o                          →  gpt-4o             →  gpt-4o
   - **L3 命中返回合成 usage**：`completion_tokens=0`、`prompt_tokens=缓存前缀量`并标记 `prompt_tokens_details.cached_tokens` 全部为缓存——否则缓存里的 completion tokens 仍会按全价计费，「≈0 成本」不成立；
   - New API 侧给网关渠道配**近零价格倍率**（如 0.001x）落 L3 命中的费用——**这是商业决策，见 §9 待决策项 D1**；
 - 网关 `usage` 记录（`kernel/usage.Recorder/Summarize`）用于 Semantix 侧成本统计与验证报告，与 New API 侧计费对账用。
+
+**灰区 judge 的成本口径（Issue #242）**：grey 区 judge 是网关**自己发起的另一次上游模型调用**，
+不走 New API 渠道，因此 New API 侧永远看不到它，只能由网关自己记账。落地方式是「日志 + usage 字段」两份：
+
+- **结构化日志**（`gateway: l3 judge slice=… rel=… verdict=… called=… fail_closed=… latency_ms=… reason=… err=…`）
+  给排障用：一条 grep 就能回答「这次为什么没命中」，且不依赖是否配了 usage 日志；
+- **usage 事件字段** `judge[]`（`kernel/usage.JudgeDecision`）给算账用：`usage.Summarize` 是本项目
+  唯一把日志变成节省率的地方，**一条日志行是没法被求和的**，所以要进成本口径就必须是这里的字段。
+
+`verdict` 四态严格区分「判了」和「没判成」：`approved` / `declined` 是真裁决；`fail_closed` 是
+调用失败或超时后的保守拒绝（**GW4 §8.3 无法区分的就是这一态**）；`skipped` 是指纹门在 judge
+之前就拒了、根本没发生调用。只有 `called=true` 的决策才计入 `Summary.JudgeCalls` 与
+`JudgePromptTokens`（`bytes/4` 估算，同 §0.3 的 estimator 口径）。
+
+`Summary.SavingsUSD` / `SavingsRate` **仍是不含 judge 开销的毛口径**——judge 用的是独立配置的模型
+（`[cache] judge_model`），单价不在这份日志里，硬折进去只会得到一个用错价格的数。净口径由调用方
+自己算：`SavingsUSD - Summary.JudgeCostUSD(judge 模型输入单价)`。GW4 报告 §6 的 52.7% 是毛口径，
+这个字段补上后该缺口才**可测**（此前是完全测不出来）。
 
 ### 4.4 多用户 / 多项目隔离（可选）
 
