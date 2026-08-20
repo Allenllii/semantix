@@ -217,6 +217,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 事件摄取 | [`kernel/ingest`](./kernel/ingest) | 读取 harness JSONL 事件流，将规范化会话送入提取流程，无需依赖在线 harness。 | `go test ./kernel/ingest -race` |
 | 语义切片 | [`kernel/slice`](./kernel/slice) | 切片类型、作用域、元数据、提取、文件存储、追加日志、压缩与维护。 | `go test ./kernel/slice -race` |
 | BM25 检索 | [`kernel/bm25`](./kernel/bm25) | 本地搜索与混合检索使用的词法索引和 CJK 感知分词器。 | `go test ./kernel/bm25 -race` |
+| 向量嵌入 | [`kernel/embed`](./kernel/embed) | Embedder 契约、确定性 hash embedder、模型嵌入与内存余弦向量索引。 | `go test ./kernel/embed -race` |
 <!-- repository-module-guide:end -->
 
 ---
