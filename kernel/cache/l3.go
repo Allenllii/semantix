@@ -50,7 +50,8 @@ func (d *L3Decider) DecideL2(ctx context.Context, q Query) ([]slice.Hit, error) 
 // DecideL3 returns a verified reusable result, or nil when any gate fails
 // (fail-closed). Verification chain, cheapest first:
 //
-//	1. retrieval: Result-typed slice, zone Hit
+//	1. retrieval: Result-typed slice, zone Hit — classified against the
+//	   best Result-typed candidate, not the raw top-1 hit (Issue #241)
 //	2. mtime fast-fail: every captured dep's mtime unchanged
 //	3. fingerprint authority: Verify reports zero changed paths
 //
@@ -63,16 +64,37 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(hits) == 0 {
-		return nil, nil // no candidate → no reuse
-	}
-	top1 := hits[0].Score
-
+	// Type filter FIRST, then the denominator (Issue #241). zone.Classify
+	// measures a candidate's relative confidence against the best candidate
+	// in the same comparison set, so the set must be the one L3 actually
+	// considers: Result-typed slices. Taking top1 from the raw hit list made
+	// every Result compete against the byte-identical Prompt twin the
+	// gateway stores for the same query — under BM25 that twin always ranks
+	// first (measured 43–79 vs the Results' 26–47), which depressed every
+	// Result's score/top1 for a reason unrelated to whether it is reusable
+	// (GW4 acceptance §5.2: 8 of 10 repeated tasks landed in grey, 2 in
+	// miss). The absolute floors (AbsHigh/AbsLow) still apply, and because
+	// top1(Result) <= top1(all) they now bind SOONER, not later: on a
+	// bounded (cosine) scale this change can only make the absolute guard
+	// stricter. Candidate membership is unchanged — the same Search, the
+	// same k, the same hits — only the denominator moves.
+	cands := make([]slice.Hit, 0, len(hits))
+	top1 := 0.0
 	for _, h := range hits {
-		s := h.Slice
-		if s.Type != slice.Result {
+		if h.Slice == nil || h.Slice.Type != slice.Result {
 			continue // only Result slices carry reusable outcomes
 		}
+		cands = append(cands, h)
+		if h.Score > top1 {
+			top1 = h.Score // max, not cands[0]: never assume Search sorted
+		}
+	}
+	if len(cands) == 0 {
+		return nil, nil // no reusable candidate → no reuse
+	}
+
+	for _, h := range cands {
+		s := h.Slice
 		switch z.Classify(h.Score, top1) {
 		case zone.Hit:
 			// clear hit: reuse after the remaining gates below
