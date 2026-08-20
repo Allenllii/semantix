@@ -1,0 +1,224 @@
+[
+ {
+  "scenario": "S1-parallel-baseline",
+  "arm": "on",
+  "wall_ms": 41.704,
+  "peak_concurrency": 5,
+  "results": [
+   "read_a: ok",
+   "read_b: ok",
+   "read_c: ok",
+   "read_d: ok",
+   "flaky_probe: ok"
+  ],
+  "tool_runs": {
+   "flaky_probe": 1,
+   "read_a": 1,
+   "read_b": 1,
+   "read_c": 1,
+   "read_d": 1
+  },
+  "tier_resolved": "pro"
+ },
+ {
+  "scenario": "S1-parallel-baseline",
+  "arm": "off",
+  "wall_ms": 41.154,
+  "peak_concurrency": 5,
+  "results": [
+   "read_a: ok",
+   "read_b: ok",
+   "read_c: ok",
+   "read_d: ok",
+   "flaky_probe: ok"
+  ],
+  "tool_runs": {
+   "flaky_probe": 1,
+   "read_a": 1,
+   "read_b": 1,
+   "read_c": 1,
+   "read_d": 1
+  }
+ },
+ {
+  "scenario": "S2-behavior-gate",
+  "arm": "on",
+  "wall_ms": 82.472,
+  "peak_concurrency": 4,
+  "results": [
+   "read_a: ok",
+   "read_b: ok",
+   "read_c: ok",
+   "read_d: ok",
+   "flaky_probe: ok"
+  ],
+  "tool_runs": {
+   "flaky_probe": 1,
+   "read_a": 1,
+   "read_b": 1,
+   "read_c": 1,
+   "read_d": 1
+  },
+  "tier_resolved": "pro"
+ },
+ {
+  "scenario": "S2-behavior-gate",
+  "arm": "off",
+  "wall_ms": 41.115,
+  "peak_concurrency": 5,
+  "results": [
+   "read_a: ok",
+   "read_b: ok",
+   "read_c: ok",
+   "read_d: ok",
+   "flaky_probe: ok"
+  ],
+  "tool_runs": {
+   "flaky_probe": 1,
+   "read_a": 1,
+   "read_b": 1,
+   "read_c": 1,
+   "read_d": 1
+  }
+ },
+ {
+  "scenario": "S3-suspend",
+  "arm": "on",
+  "wall_ms": 41.315,
+  "peak_concurrency": 2,
+  "results": [
+   "read_a: ok\n\n[progress guard] the last 2 tool rounds repeated earlier reads or commands without new results. Narrow the investigation or adjust the plan before continuing.",
+   "read_b: ok",
+   "suspended by scheduler"
+  ],
+  "tool_runs": {
+   "read_a": 1,
+   "read_b": 1
+  },
+  "tier_resolved": "flash"
+ },
+ {
+  "scenario": "S3-suspend",
+  "arm": "off",
+  "wall_ms": 200.98,
+  "peak_concurrency": 3,
+  "results": [
+   "read_a: ok",
+   "read_b: ok",
+   "noisy_scan: ok"
+  ],
+  "tool_runs": {
+   "noisy_scan": 1,
+   "read_a": 1,
+   "read_b": 1
+  }
+ },
+ {
+  "scenario": "S4a-halt-prefetch",
+  "arm": "on",
+  "wall_ms": 40.525,
+  "peak_concurrency": 2,
+  "results": [
+   "read_a: ok",
+   "read_b: ok"
+  ],
+  "tool_runs": {
+   "read_a": 1,
+   "read_b": 1
+  },
+  "budget_action": "halt_prefetch"
+ },
+ {
+  "scenario": "S4b-degrade-tier",
+  "arm": "on",
+  "wall_ms": 40.392,
+  "peak_concurrency": 1,
+  "results": [
+   "read_c: ok\n\n[progress guard] still no new evidence after 4 rounds. Change strategy now: take a different angle or tool, delegate a focused sub-task, or reduce the scope of what you are verifying."
+  ],
+  "tool_runs": {
+   "read_c": 1
+  },
+  "budget_action": "degrade_tier"
+ },
+ {
+  "scenario": "S4c-hard-stop",
+  "arm": "on",
+  "wall_ms": 0,
+  "peak_concurrency": 0,
+  "results": null,
+  "tool_runs": {},
+  "budget_action": "hard_stop",
+  "hard_stopped": true,
+  "hard_stop_msg": "budget exhausted: spent $1.0500 of the $1.0000 session limit; no further tool calls will be issued"
+ },
+ {
+  "scenario": "S4a-halt-prefetch",
+  "arm": "off",
+  "wall_ms": 40.213,
+  "peak_concurrency": 2,
+  "results": [
+   "read_a: ok",
+   "read_b: ok"
+  ],
+  "tool_runs": {
+   "read_a": 1,
+   "read_b": 1
+  }
+ },
+ {
+  "scenario": "S4b-degrade-tier",
+  "arm": "off",
+  "wall_ms": 40.748,
+  "peak_concurrency": 1,
+  "results": [
+   "read_c: ok\n\n[progress guard] the last 2 tool rounds repeated earlier reads or commands without new results. Narrow the investigation or adjust the plan before continuing."
+  ],
+  "tool_runs": {
+   "read_c": 1
+  }
+ },
+ {
+  "scenario": "S4c-hard-stop",
+  "arm": "off",
+  "wall_ms": 41.206,
+  "peak_concurrency": 1,
+  "results": [
+   "read_d: ok"
+  ],
+  "tool_runs": {
+   "read_d": 1
+  }
+ },
+ {
+  "scenario": "S5-composite",
+  "arm": "on",
+  "wall_ms": 0,
+  "peak_concurrency": 0,
+  "results": null,
+  "tool_runs": {},
+  "budget_action": "hard_stop",
+  "hard_stopped": true,
+  "hard_stop_msg": "budget exhausted: spent $1.0500 of the $1.0000 session limit; no further tool calls will be issued"
+ },
+ {
+  "scenario": "S5-composite",
+  "arm": "off",
+  "wall_ms": 201.339,
+  "peak_concurrency": 5,
+  "results": [
+   "read_a: ok\n\n[progress guard] still no new evidence after 4 rounds. Change strategy now: take a different angle or tool, delegate a focused sub-task, or reduce the scope of what you are verifying.",
+   "read_b: ok",
+   "read_c: ok",
+   "flaky_probe: ok",
+   "noisy_scan: ok"
+  ],
+  "tool_runs": {
+   "flaky_probe": 1,
+   "noisy_scan": 1,
+   "read_a": 1,
+   "read_b": 1,
+   "read_c": 1
+  }
+ }
+]
