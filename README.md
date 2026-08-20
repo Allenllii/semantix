@@ -722,6 +722,7 @@ This map follows the current repository layout. It describes observable responsi
 | Integration patches | [`patches`](./patches) | Versioned delivery patches for external Reasonix forks, with drift notes and explicit preflight instructions. | `git apply --check patches/semantix-sched-prefetch.patch` |
 | Blog sources | [`blog`](./blog) | Versioned Markdown sources for technical articles; site content tests validate metadata, links and encoding. | `cd site && npm run test:content` |
 | Website | [`site`](./site) | Next.js product site, documentation, blog renderer, structured data, generated `llms-full.txt` and content-quality tests. | `cd site && npm run check` |
+| CI and workflows | [`.github/workflows`](./.github/workflows) | Runs Go vet/race tests, full website checks and the site deployment workflow with concurrency control. | Required GitHub checks: `Go checks` and `Website checks`. |
 <!-- repository-module-guide:end -->
 
 ---

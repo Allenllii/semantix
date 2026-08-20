@@ -239,6 +239,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 集成补丁 | [`patches`](./patches) | 面向外部 Reasonix fork 的版本化交付补丁，包含漂移说明和明确预检步骤。 | `git apply --check patches/semantix-sched-prefetch.patch` |
 | 博客源文件 | [`blog`](./blog) | 技术文章的版本化 Markdown 源；网站内容测试校验元数据、链接和编码。 | `cd site && npm run test:content` |
 | 官网 | [`site`](./site) | Next.js 产品站、文档、博客渲染、结构化数据、生成的 `llms-full.txt` 与内容质量测试。 | `cd site && npm run check` |
+| CI 与工作流 | [`.github/workflows`](./.github/workflows) | 运行 Go vet/race 测试、完整网站检查和站点部署流程，并配置并发控制。 | GitHub 必需检查：`Go checks` 与 `Website checks`。 |
 <!-- repository-module-guide:end -->
 
 ---
