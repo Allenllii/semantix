@@ -694,6 +694,7 @@ This map follows the current repository layout. It describes observable responsi
 | Module | Path | Responsibility | Focused verification |
 |---|---|---|---|
 | CLI | [`cmd/semantix`](./cmd/semantix) | Command registry, stable JSON envelope, exit-code contract, maintenance and evaluation commands. | `go test ./cmd/semantix -race` |
+| Agent executable | [`cmd/semantix-agent`](./cmd/semantix-agent) | Packaged Reasonix-derived agent entry point with crash capture and build-version wiring. | `go test ./cmd/semantix-agent` |
 <!-- repository-module-guide:end -->
 
 ---

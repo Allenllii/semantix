@@ -211,6 +211,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 模块 | 路径 | 职责 | 聚焦验证 |
 |---|---|---|---|
 | CLI | [`cmd/semantix`](./cmd/semantix) | 命令注册、统一 JSON 信封、退出码契约、维护与评估命令。 | `go test ./cmd/semantix -race` |
+| Agent 可执行入口 | [`cmd/semantix-agent`](./cmd/semantix-agent) | 打包后的 Reasonix 衍生 Agent 入口，包含崩溃捕获与构建版本接线。 | `go test ./cmd/semantix-agent` |
 <!-- repository-module-guide:end -->
 
 ---
