@@ -939,16 +939,20 @@ func TestE2EStreamAccumulatesL3(t *testing.T) {
 		t.Fatalf("first stream: status=%d body=%s", resp.StatusCode, out)
 	}
 
-	// async ingest must land a Result slice carrying the aggregated reply
+	// async ingest must land a Result slice carrying the aggregated reply.
+	// Poll the INDEX, not the store: ingest.Pipeline persists (Store.Put)
+	// before indexing (Index.Insert), and the second request's L3 lookup
+	// only sees indexed slices — polling the store can pass inside that
+	// gap and race the lookup (flaked on CI, see PR #234 run 32330979045).
 	deadline := time.Now().Add(3 * time.Second)
 	ingested := false
 	for time.Now().Before(deadline) {
-		items, err := g.store.ListAll()
+		hits, err := g.index.Search("weather widgets forecast today", 5, g.injector.Scope)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, s := range items {
-			if s.Type == slice.Result && bytes.Contains(s.Content, []byte("streaming answer")) {
+		for _, h := range hits {
+			if h.Slice.Type == slice.Result && bytes.Contains(h.Slice.Content, []byte("streaming answer")) {
 				ingested = true
 				break
 			}
@@ -959,7 +963,7 @@ func TestE2EStreamAccumulatesL3(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if !ingested {
-		t.Fatal("streamed assistant reply was not ingested as a Result slice within 3s")
+		t.Fatal("streamed assistant reply was not indexed as a Result slice within 3s")
 	}
 
 	// second identical request: L3 hit, zero additional upstream calls
