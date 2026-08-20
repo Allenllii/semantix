@@ -719,6 +719,7 @@ This map follows the current repository layout. It describes observable responsi
 | Deployment | [`deploy`](./deploy) | Gateway Docker image, Compose topology and environment-expandable example configuration. | `docker compose -f deploy/docker-compose.yml config` |
 | Automation scripts | [`scripts`](./scripts) | Cross-session demo, release builders and Go bootstrap helper used by local and release workflows. | Run the relevant demo or release script in a clean workspace. |
 | Specs and evidence | [`docs`](./docs) | Architecture, security, roadmap, specifications and acceptance reports that separate design targets from measured results. | Review the linked acceptance report for each shipped unit. |
+| Integration patches | [`patches`](./patches) | Versioned delivery patches for external Reasonix forks, with drift notes and explicit preflight instructions. | `git apply --check patches/semantix-sched-prefetch.patch` |
 <!-- repository-module-guide:end -->
 
 ---

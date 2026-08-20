@@ -236,6 +236,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 部署 | [`deploy`](./deploy) | Gateway Docker 镜像、Compose 拓扑与支持环境变量展开的示例配置。 | `docker compose -f deploy/docker-compose.yml config` |
 | 自动化脚本 | [`scripts`](./scripts) | 跨会话 demo、发布构建器和 Go 引导工具，供本地与发布流程使用。 | 在干净工作区运行对应 demo 或发布脚本。 |
 | 规范与证据 | [`docs`](./docs) | 架构、安全、路线图、规格与验收报告，用于区分设计目标和实测结果。 | 每个已交付单元均核对对应验收报告。 |
+| 集成补丁 | [`patches`](./patches) | 面向外部 Reasonix fork 的版本化交付补丁，包含漂移说明和明确预检步骤。 | `git apply --check patches/semantix-sched-prefetch.patch` |
 <!-- repository-module-guide:end -->
 
 ---
