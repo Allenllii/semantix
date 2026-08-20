@@ -228,6 +228,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 调度器 | [`kernel/sched`](./kernel/sched) | 为每轮生成并行分组、预算动作、模型层级提示、注入 ID 与预取提示。 | `go test ./kernel/sched -race` |
 | 预取 | [`kernel/prefetch`](./kernel/prefetch) | 离线规划器、转移矩阵学习、浪费感知在线预测与只读执行 runner。 | `go test ./kernel/prefetch -race` |
 | 参数演化 | [`kernel/evolve`](./kernel/evolve) | 使用 EWMA 调整检索阈值和注入预算，参数变化有边界且可检查。 | `go test ./kernel/evolve -race` |
+| 事件契约 | [`kernel/event`](./kernel/event) | 类型化 kernel 事件、payload、wire format 与同步进程内总线。 | `go test ./kernel/event -race` |
 <!-- repository-module-guide:end -->
 
 ---
