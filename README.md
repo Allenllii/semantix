@@ -703,6 +703,7 @@ This map follows the current repository layout. It describes observable responsi
 | Embeddings | [`kernel/embed`](./kernel/embed) | Embedder contract, deterministic hash embedder, model-backed embedding and in-memory cosine vector index. | `go test ./kernel/embed -race` |
 | Lookup tool | [`kernel/lookup`](./kernel/lookup) | Read-only `semantix_lookup` schema and executor that exposes ranked slice hits to agent harnesses. | `go test ./kernel/lookup` |
 | L2 injection | [`kernel/inject`](./kernel/inject) | Selects whole slices under a budget and emits a deterministic, marker-escaped reuse block. | `go test ./kernel/inject -race` |
+| Retrieval zones | [`kernel/zone`](./kernel/zone) | Three-region hit, grey and miss classifier shared by retrieval, verification and evolution. | `go test ./kernel/zone -race` |
 <!-- repository-module-guide:end -->
 
 ---
