@@ -24,9 +24,13 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	// `semantix lookup --json`): the envelope is the machine-readable form.
 	// Without --json the legacy bare-array output is kept for compat.
 	jsonOut := flags.Bool("json", false, "output as JSON envelope (H1 protocol)")
+	evolveDB := flags.String("evolve-db", "", "optional evolve state dir; its tuned tau_l2 sets the grey-zone floor unless --tau-low is given (Issue #220)")
 	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
 		return usageWrap(err)
+	}
+	if err := zf.applyEvolveParams(flags, *evolveDB); err != nil {
+		return usagef("%v", err)
 	}
 	if err := zf.validate(); err != nil {
 		return usagef("%v", err)
@@ -105,9 +109,13 @@ func runInject(args []string, stdout, stderr io.Writer, deps dependencies) error
 	k := flags.Int("k", cfgInt(deps.resolved, "retrieval.limit", 5), "top-k slices to consider")
 	budget := flags.Int("budget", cfgInt(deps.resolved, "inject.budget", inject.DefaultBudget), "max injection block bytes")
 	dbOverride := flags.String("db", cfgString(deps.resolved, "store.db", ""), "database path override")
+	evolveDB := flags.String("evolve-db", "", "optional evolve state dir; its tuned tau_l2 sets the grey-zone floor unless --tau-low is given (Issue #220)")
 	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
 		return usageWrap(err)
+	}
+	if err := zf.applyEvolveParams(flags, *evolveDB); err != nil {
+		return usagef("%v", err)
 	}
 	if err := zf.validate(); err != nil {
 		return usagef("%v", err)

@@ -11,33 +11,33 @@ import (
 // prefix for ~24h (DeepSeek policy) — we never change params inside the
 // window (Reasonix lesson, cache_policy.go:21-45).
 const (
-	DefaultAlpha       = 0.1   // EWMA smoothing (10% weight on newest sample)
-	DefaultTauL2       = 0.55  // relative-confidence threshold for L2 hit
-	DefaultInjectCap   = 0.3   // max injected budget as fraction of context
-	DefaultFreezeEpoch = 60    // epochs a param change stays frozen
-	DefaultMinTau      = 0.30  // floor for tau tuning (never below)
-	DefaultMaxTau      = 0.80  // ceiling for tau tuning (never above)
-	TauStep            = 0.05  // per adjustment step
-	PollutionRiseAt    = 0.30  // pollution EWMA above this → tighten tau
-	HitTarget          = 0.70  // hit EWMA above this (and pollution low) → relax tau
-	PollutionLow       = 0.10  // pollution below this to allow relaxation
-	MinSamples         = 20    // signals required before the first adjustment
+	DefaultAlpha       = 0.1  // EWMA smoothing (10% weight on newest sample)
+	DefaultTauL2       = 0.55 // relative-confidence threshold for L2 hit
+	DefaultInjectCap   = 0.3  // max injected budget as fraction of context
+	DefaultFreezeEpoch = 60   // epochs a param change stays frozen
+	DefaultMinTau      = 0.30 // floor for tau tuning (never below)
+	DefaultMaxTau      = 0.80 // ceiling for tau tuning (never above)
+	TauStep            = 0.05 // per adjustment step
+	PollutionRiseAt    = 0.30 // pollution EWMA above this → tighten tau
+	HitTarget          = 0.70 // hit EWMA above this (and pollution low) → relax tau
+	PollutionLow       = 0.10 // pollution below this to allow relaxation
+	MinSamples         = 20   // signals required before the first adjustment
 )
 
 // Config carries operator-provided tuning constants (zero values → defaults).
 type Config struct {
-	Alpha          float64
-	TauL2          float64
-	InjectCap      float64
-	FreezeEpochs   uint64
-	MinTau         float64
-	MaxTau         float64
-	MinSamples     uint64
+	Alpha        float64
+	TauL2        float64
+	InjectCap    float64
+	FreezeEpochs uint64
+	MinTau       float64
+	MaxTau       float64
+	MinSamples   uint64
 }
 
 // Signal is one feedback sample consumed by the evolution engine.
 type Signal struct {
-	Name  string // "cache_hit" | "inject_pollution" | "prefetch_waste" | "latency" | "cost" | "success"
+	Name  string // "cache_hit" | "success" (hit EWMA) | "inject_pollution" | "prefetch_waste" (pollution EWMA); unknown names are ignored
 	Value float64
 	Epoch uint64
 }
@@ -63,20 +63,20 @@ type Engine interface {
 // estimates of hit rate and pollution rate, and adjusts TauL2 in small
 // steps inside a freeze window (epoch-based).
 type ewmaEngine struct {
-	mu          sync.Mutex
-	alpha       float64
-	minTau      float64
-	maxTau      float64
-	minSamples  uint64
-	epoch       uint64
-	freezeUntil uint64 // freeze opened by Apply or an auto-adjustment
+	mu            sync.Mutex
+	alpha         float64
+	minTau        float64
+	maxTau        float64
+	minSamples    uint64
+	epoch         uint64
+	freezeUntil   uint64 // freeze opened by Apply or an auto-adjustment
 	firstAdjustAt uint64 // cold-start observation window (no auto-adjust before this epoch)
-	params      Params
+	params        Params
 
-	hitEWMA      float64
-	polEWMA      float64
-	sampleCount  uint64
-	adjustments  uint64
+	hitEWMA     float64
+	polEWMA     float64
+	sampleCount uint64
+	adjustments uint64
 }
 
 // New returns a ready MVP engine with default tuning constants.

@@ -75,8 +75,8 @@ semantix verify --session <会话目录> --project demo > eval.tsv
 | `eval` | 检索策略比较（单阈值 vs 三段） | `--set` `--train-frac` `--tau-*` |
 | `eval-judge` | LLM judge 真实性评估（门禁） | `--stub` `--audit` `--min-consistency` |
 | `usage` | 成本节省统计 | `--db` `--evolve-db` |
-| `lookup` | semantix_lookup 工具（JSON） | `--query` `--limit` `--scope` |
-| `inject` | L2 注入块（规范序/预算截断） | `--query` `--budget` `--k` |
+| `lookup` | semantix_lookup 工具（JSON） | `--query` `--limit` `--scope` `--evolve-db` |
+| `inject` | L2 注入块（规范序/预算截断） | `--query` `--budget` `--k` `--evolve-db` |
 
 **产品与管理**：`doctor` 健康检查（db / config / embedder / judge，任一 FAIL 退出码 3）、
 `install` 一键安装、`completion` 生成 shell 补全脚本（bash / zsh / fish，加载方式见下文）、

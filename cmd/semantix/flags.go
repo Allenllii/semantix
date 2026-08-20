@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"semantix/kernel/evolve"
 	"semantix/kernel/slice"
 	"semantix/kernel/zone"
 )
@@ -37,6 +38,43 @@ func (zf *zoneFlagSet) zones() zone.Zones {
 		AbsHigh: *zf.absHigh,
 		AbsLow:  *zf.absLow,
 	}
+}
+
+// applyEvolveParams lets the evolved TauL2 drive the grey-zone floor
+// (Issue #220: params.json gains its first consumer). An explicit
+// --tau-low always wins over the evolved value; the evolved value is
+// clamped to the engine's own tuning band so a hand-edited or stale file
+// cannot push the classifier outside what evolve itself could produce.
+// Call between flag.Parse and validate.
+func (zf *zoneFlagSet) applyEvolveParams(fs *flag.FlagSet, dir string) error {
+	if dir == "" {
+		return nil
+	}
+	explicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "tau-low" {
+			explicit = true
+		}
+	})
+	if explicit {
+		return nil
+	}
+	st, err := loadEvolveState(dir)
+	if err != nil || st == nil {
+		return err
+	}
+	tau := st.Params.TauL2
+	if math.IsNaN(tau) || math.IsInf(tau, 0) {
+		return nil
+	}
+	if tau < evolve.DefaultMinTau {
+		tau = evolve.DefaultMinTau
+	}
+	if tau > evolve.DefaultMaxTau {
+		tau = evolve.DefaultMaxTau
+	}
+	*zf.tauLow = tau
+	return nil
 }
 
 // validate checks the parsed thresholds: NaN/Inf/out-of-range values would

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -30,14 +31,14 @@ type usageJSON struct {
 }
 
 // runUsage summarizes the usage log and reports cost savings (Issue #60 /
-// U17). With --evolve-db it also feeds cost/latency signals into the
-// evolution engine and prints the adjusted params.
+// U17). With --evolve-db it also replays the log as cache_hit signals into
+// the evolution engine and prints the adjusted params (Issue #220).
 func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 	fs := flag.NewFlagSet("usage", flag.ContinueOnError)
 	db := fs.String("db", filepath.Join(".semantix", "usage.jsonl"), "usage log path (default .semantix/usage.jsonl)")
 	costMiss := fs.Float64("cost-miss", cfgFloat(deps.resolved, "cost.input_price_usd", usage.DefaultCostMissPerMTok), "USD per 1M tokens at cache miss")
 	costHit := fs.Float64("cost-hit", cfgFloat(deps.resolved, "cost.cache_price_usd", usage.DefaultCostHitPerMTok), "USD per 1M tokens at cache hit")
-	evolveDB := fs.String("evolve-db", "", "optional evolve engine state dir (feeds cost signals and prints adjusted params)")
+	evolveDB := fs.String("evolve-db", "", "optional evolve state dir (replays the log as cache_hit signals; params consumed by lookup/inject --evolve-db)")
 	jsonOut := fs.Bool("json", false, "output as JSON envelope")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -56,7 +57,7 @@ func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 		data := usageJSON{
 			Events: s.Events, TokensIn: s.TokensIn, TokensOut: s.TokensOut,
 			CacheHitTokens: s.CacheHitTokens, L3Reuses: s.L3Reuses, InjectedTokens: s.InjectedTokens,
-			SliceHits: s.SliceHits,
+			SliceHits:   s.SliceHits,
 			CostPaidUSD: s.CostPaidUSD, CostNoCacheUSD: s.CostNoCacheUSD,
 			SavingsUSD: s.SavingsUSD, SavingsRate: s.SavingsRate,
 		}
@@ -89,7 +90,7 @@ func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 	fmt.Fprintf(stdout, "savings_rate\t%.4f\n", s.SavingsRate)
 
 	if *evolveDB != "" {
-		if err := feedEvolve(*evolveDB, s, stdout); err != nil {
+		if err := feedEvolve(*evolveDB, *db, stdout); err != nil {
 			fmt.Fprintln(os.Stderr, "usage: evolve:", err)
 			return 1 // runtime error
 		}
@@ -97,41 +98,56 @@ func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 	return 0
 }
 
-// feedEvolve loads (or creates) an evolution engine and records cost/latency
-// signals derived from the summary, then prints the current params. The
-// persisted state carries the epoch so repeated runs advance it.
-func feedEvolve(dir string, s *usage.Summary, stdout io.Writer) error {
+// feedEvolve deterministically replays the usage log through a fresh
+// evolution engine — one "cache_hit" signal per recorded turn (L3 reuse
+// counts as a full hit), epoch = turn ordinal — then persists the resulting
+// parameter snapshot for consumers (lookup/inject --evolve-db). Because the
+// log is append-only, replaying from scratch on every run reproduces the
+// same cumulative EWMA state, so params.json is a pure output: no engine
+// internals need to survive between runs, and reruns are idempotent.
+func feedEvolve(dir, logPath string, stdout io.Writer) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	statePath := filepath.Join(dir, "params.json")
+	f, err := os.Open(logPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
 	e := evolve.New(evolve.Config{})
-	epoch := uint64(1)
-	if b, err := os.ReadFile(statePath); err == nil && len(b) > 0 {
-		var st evolveState
-		if err := json.Unmarshal(b, &st); err == nil {
-			_ = e.Apply(st.Params) // ignore freeze errors on load; defaults remain
-			if st.Epoch > 0 {
-				epoch = st.Epoch + 1
-			}
+	epoch := uint64(0)
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for sc.Scan() {
+		var ev usage.Event
+		// Malformed lines are skipped, matching usage.Summarize tolerance.
+		if err := json.Unmarshal(sc.Bytes(), &ev); err != nil {
+			continue
 		}
+		var v float64
+		switch {
+		case ev.L3Reuse:
+			v = 1 // turn fully served from the library: strongest hit signal
+		case ev.TokensIn > 0:
+			v = float64(ev.CacheHitToken) / float64(ev.TokensIn)
+		default:
+			continue // no usable signal in this turn
+		}
+		epoch++
+		_ = e.RecordSignal(evolve.Signal{Name: "cache_hit", Value: v, Epoch: epoch})
 	}
-	// cost signal: 1 - savings rate (higher savings → lower cost signal)
-	costVal := 1 - s.SavingsRate
-	if costVal < 0 {
-		costVal = 0
+	if err := sc.Err(); err != nil {
+		return err
 	}
-	if costVal > 1 {
-		costVal = 1
-	}
-	_ = e.RecordSignal(evolve.Signal{Name: "cost", Value: costVal, Epoch: epoch})
-	_ = e.RecordSignal(evolve.Signal{Name: "latency", Value: costVal, Epoch: epoch})
 
 	p := e.Params()
-	if b, err := json.Marshal(evolveState{Params: p, Epoch: epoch}); err == nil {
-		if err := os.WriteFile(statePath, b, 0o600); err != nil {
-			return err
-		}
+	b, err := json.Marshal(evolveState{Params: p, Epoch: epoch})
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "params.json"), b, 0o600); err != nil {
+		return err
 	}
 	fmt.Fprintf(stdout, "evolve_epoch\t%d\n", epoch)
 	fmt.Fprintf(stdout, "evolve_tau_l2\t%.3f\n", p.TauL2)
@@ -139,10 +155,30 @@ func feedEvolve(dir string, s *usage.Summary, stdout io.Writer) error {
 	return nil
 }
 
-// evolveState is the persisted evolution state (params + last epoch).
+// evolveState is the persisted parameter snapshot (params + turns consumed).
+// It is written by `usage --evolve-db` and read by `lookup`/`inject`
+// --evolve-db; the file is derived state, never an input to the engine.
 type evolveState struct {
 	Params evolve.Params `json:"params"`
 	Epoch  uint64        `json:"epoch"`
+}
+
+// loadEvolveState reads the persisted snapshot; a missing file is a silent
+// no-op (fail-open, matching the kernel's degradation philosophy) while a
+// corrupt file is a real error the operator should see.
+func loadEvolveState(dir string) (*evolveState, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "params.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var st evolveState
+	if err := json.Unmarshal(b, &st); err != nil {
+		return nil, fmt.Errorf("evolve state %s: %w", filepath.Join(dir, "params.json"), err)
+	}
+	return &st, nil
 }
 
 // barChart renders an ASCII bar (█ filled, ░ empty) for a ratio in [0,1].
