@@ -232,6 +232,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 用量核算 | [`kernel/usage`](./kernel/usage) | 记录逐轮 token/cache 事件，汇总基线成本、实际成本与估算节省。 | `go test ./kernel/usage -race` |
 | Reasonix harness | [`harness`](./harness) | 随仓 Agent runtime：provider、工具、权限、扩展、会话、恢复、远程执行和 UI 契约。 | `go test ./harness/... -race` |
 | Harness 桥接 | [`harness/semantix`](./harness/semantix) | 将 harness 事件镜像为会话 JSONL，并输出复用摘要，同时保持 Semantix fail-open。 | `go test ./harness/semantix -race` |
+| Agent Skill | [`agent-skill`](./agent-skill) | 面向外部 harness 的自助安装、工具 schema、会话绕行 hook 与自测。 | `bash agent-skill/scripts/selftest.sh` |
 <!-- repository-module-guide:end -->
 
 ---

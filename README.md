@@ -715,6 +715,7 @@ This map follows the current repository layout. It describes observable responsi
 | Usage accounting | [`kernel/usage`](./kernel/usage) | Records per-turn token/cache events and summarizes baseline cost, paid cost and estimated savings. | `go test ./kernel/usage -race` |
 | Reasonix harness | [`harness`](./harness) | Bundled agent runtime: providers, tools, permissions, extensions, sessions, recovery, remote execution and UI-facing contracts. | `go test ./harness/... -race` |
 | Harness bridge | [`harness/semantix`](./harness/semantix) | Mirrors harness events into session JSONL and surfaces reuse summaries while keeping Semantix fail-open. | `go test ./harness/semantix -race` |
+| Agent Skill | [`agent-skill`](./agent-skill) | Self-serve install, tool schema, session-bypass hook and self-test for external harness integration. | `bash agent-skill/scripts/selftest.sh` |
 <!-- repository-module-guide:end -->
 
 ---
