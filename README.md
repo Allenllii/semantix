@@ -686,6 +686,45 @@ It can then return optimization decisions without owning the agent's primary rea
 
 This allows Semantix to remain portable across different agent runtimes.
 
+<!-- repository-module-guide:start -->
+# Repository Module Guide
+
+This map follows the current repository layout. It describes observable responsibilities and focused checks; it does not turn design targets into production-performance claims.
+
+| Module | Path | Responsibility | Focused verification |
+|---|---|---|---|
+| CLI | [`cmd/semantix`](./cmd/semantix) | Command registry, stable JSON envelope, exit-code contract, maintenance and evaluation commands. | `go test ./cmd/semantix -race` |
+| Agent executable | [`cmd/semantix-agent`](./cmd/semantix-agent) | Packaged Reasonix-derived agent entry point with crash capture and build-version wiring. | `go test ./cmd/semantix-agent` |
+| Gateway | [`gateway`](./gateway), [`cmd/semantix-gateway`](./cmd/semantix-gateway) | OpenAI-compatible proxy, Anthropic conversion, SSE relay, retrieval/injection and fail-open upstream routing. | `go test ./gateway ./cmd/semantix-gateway -race` |
+| Configuration | [`kernel/config`](./kernel/config) | Resolves built-ins, TOML, environment variables and CLI overrides with source tracking and typed errors. | `go test ./kernel/config -race` |
+| Event ingestion | [`kernel/ingest`](./kernel/ingest) | Reads harness JSONL event streams and feeds normalized sessions into extraction without requiring a live harness. | `go test ./kernel/ingest -race` |
+| Semantic slices | [`kernel/slice`](./kernel/slice) | Slice types, scopes, metadata, extraction, file-backed storage, append journal, compaction and maintenance. | `go test ./kernel/slice -race` |
+| BM25 retrieval | [`kernel/bm25`](./kernel/bm25) | Lexical index and CJK-aware tokenizer used by local search and hybrid retrieval. | `go test ./kernel/bm25 -race` |
+| Embeddings | [`kernel/embed`](./kernel/embed) | Embedder contract, deterministic hash embedder, model-backed embedding and in-memory cosine vector index. | `go test ./kernel/embed -race` |
+| Lookup tool | [`kernel/lookup`](./kernel/lookup) | Read-only `semantix_lookup` schema and executor that exposes ranked slice hits to agent harnesses. | `go test ./kernel/lookup` |
+| L2 injection | [`kernel/inject`](./kernel/inject) | Selects whole slices under a budget and emits a deterministic, marker-escaped reuse block. | `go test ./kernel/inject -race` |
+| Retrieval zones | [`kernel/zone`](./kernel/zone) | Three-region hit, grey and miss classifier shared by retrieval, verification and evolution. | `go test ./kernel/zone -race` |
+| L3 cache | [`kernel/cache`](./kernel/cache) | Conservative result-reuse decision interface and L3 decider; uncertain candidates fall back to normal execution. | `go test ./kernel/cache -race` |
+| Dependency fingerprints | [`kernel/fingerprint`](./kernel/fingerprint) | Captures and verifies file dependencies so stale project state invalidates otherwise reusable results. | `go test ./kernel/fingerprint -race` |
+| Reuse judge | [`kernel/judge`](./kernel/judge) | Rule gate plus optional LLM judge, prompt sanitization and verdict statistics for risky L3 candidates. | `go test ./kernel/judge -race` |
+| Result promotion | [`kernel/promote`](./kernel/promote) | Stores judge-approved reusable results with content versions and cascade invalidation by source slice. | `go test ./kernel/promote -race` |
+| Scheduler | [`kernel/sched`](./kernel/sched) | Produces per-round parallel groups, budget actions, model-tier hints, injection IDs and prefetch hints. | `go test ./kernel/sched -race` |
+| Prefetch | [`kernel/prefetch`](./kernel/prefetch) | Offline planner, transition-matrix learner, waste-aware online predictor and read-only execution runner. | `go test ./kernel/prefetch -race` |
+| Evolution | [`kernel/evolve`](./kernel/evolve) | EWMA-driven tuning for retrieval thresholds and injection budget with bounded, inspectable parameters. | `go test ./kernel/evolve -race` |
+| Event contract | [`kernel/event`](./kernel/event) | Typed kernel event kinds, payloads, wire format and synchronous in-process bus. | `go test ./kernel/event -race` |
+| Usage accounting | [`kernel/usage`](./kernel/usage) | Records per-turn token/cache events and summarizes baseline cost, paid cost and estimated savings. | `go test ./kernel/usage -race` |
+| Reasonix harness | [`harness`](./harness) | Bundled agent runtime: providers, tools, permissions, extensions, sessions, recovery, remote execution and UI-facing contracts. | `go test ./harness/... -race` |
+| Harness bridge | [`harness/semantix`](./harness/semantix) | Mirrors harness events into session JSONL and surfaces reuse summaries while keeping Semantix fail-open. | `go test ./harness/semantix -race` |
+| Agent Skill | [`agent-skill`](./agent-skill) | Self-serve install, tool schema, session-bypass hook and self-test for external harness integration. | `bash agent-skill/scripts/selftest.sh` |
+| Deployment | [`deploy`](./deploy) | Gateway Docker image, Compose topology and environment-expandable example configuration. | `docker compose -f deploy/docker-compose.yml config` |
+| Automation scripts | [`scripts`](./scripts) | Cross-session demo, release builders and Go bootstrap helper used by local and release workflows. | Run the relevant demo or release script in a clean workspace. |
+| Specs and evidence | [`docs`](./docs) | Architecture, security, roadmap, specifications and acceptance reports that separate design targets from measured results. | Review the linked acceptance report for each shipped unit. |
+| Integration patches | [`patches`](./patches) | Versioned delivery patches for external Reasonix forks, with drift notes and explicit preflight instructions. | `git apply --check patches/semantix-sched-prefetch.patch` |
+| Blog sources | [`blog`](./blog) | Versioned Markdown sources for technical articles; site content tests validate metadata, links and encoding. | `cd site && npm run test:content` |
+| Website | [`site`](./site) | Next.js product site, documentation, blog renderer, structured data, generated `llms-full.txt` and content-quality tests. | `cd site && npm run check` |
+| CI and workflows | [`.github/workflows`](./.github/workflows) | Runs Go vet/race tests, full website checks and the site deployment workflow with concurrency control. | Required GitHub checks: `Go checks` and `Website checks`. |
+<!-- repository-module-guide:end -->
+
 ---
 
 # How a Request Flows
