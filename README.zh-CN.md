@@ -244,6 +244,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | [docs/Agile路线图.md](./docs/Agile路线图.md) | Agile 1–3 路线图与 DoD |
 | [docs/GEO.md](./docs/GEO.md) / [GEO-guide.md](./docs/GEO-guide.md) | 面向 AI 引擎的项目语义档案与深度解读 |
 | [docs/Security-安全设计.md](./docs/Security-安全设计.md) | 威胁模型与安全机制 |
+| [docs/reports/glm-spike-week.md](./docs/reports/glm-spike-week.md) | GLM 缓存事实核验与 AtomClub→GLM-5.2 网关预实验（不外推为 Z.AI 直连结论） |
 
 官网：[semantix.ensureok.ai](https://semantix.ensureok.ai)
 
