@@ -710,6 +710,7 @@ This map follows the current repository layout. It describes observable responsi
 | Result promotion | [`kernel/promote`](./kernel/promote) | Stores judge-approved reusable results with content versions and cascade invalidation by source slice. | `go test ./kernel/promote -race` |
 | Scheduler | [`kernel/sched`](./kernel/sched) | Produces per-round parallel groups, budget actions, model-tier hints, injection IDs and prefetch hints. | `go test ./kernel/sched -race` |
 | Prefetch | [`kernel/prefetch`](./kernel/prefetch) | Offline planner, transition-matrix learner, waste-aware online predictor and read-only execution runner. | `go test ./kernel/prefetch -race` |
+| Evolution | [`kernel/evolve`](./kernel/evolve) | EWMA-driven tuning for retrieval thresholds and injection budget with bounded, inspectable parameters. | `go test ./kernel/evolve -race` |
 <!-- repository-module-guide:end -->
 
 ---
