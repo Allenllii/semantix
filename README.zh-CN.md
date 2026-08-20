@@ -219,6 +219,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | BM25 检索 | [`kernel/bm25`](./kernel/bm25) | 本地搜索与混合检索使用的词法索引和 CJK 感知分词器。 | `go test ./kernel/bm25 -race` |
 | 向量嵌入 | [`kernel/embed`](./kernel/embed) | Embedder 契约、确定性 hash embedder、模型嵌入与内存余弦向量索引。 | `go test ./kernel/embed -race` |
 | Lookup 工具 | [`kernel/lookup`](./kernel/lookup) | 只读 `semantix_lookup` schema 与执行器，向 Agent harness 暴露排序后的切片命中。 | `go test ./kernel/lookup` |
+| L2 注入 | [`kernel/inject`](./kernel/inject) | 在预算内选择完整切片，输出确定、经过 marker 转义的复用块。 | `go test ./kernel/inject -race` |
 <!-- repository-module-guide:end -->
 
 ---
