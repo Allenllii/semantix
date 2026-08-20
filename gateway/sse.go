@@ -13,6 +13,12 @@ import (
 // without bound.
 const maxSSEAggregateBytes = 1 << 20 // 1 MiB
 
+// maxSSEPendingBytes bounds the data payload lines collected for one SSE
+// event before its terminating blank line. Without this separate bound, an
+// upstream could send many individually valid lines and grow pending without
+// ever reaching flushEvent.
+const maxSSEPendingBytes = maxSSEAggregateBytes
+
 // maxSSELineBytes bounds a single buffered SSE line. A pathological
 // upstream emitting one endless line (no newline) would otherwise grow
 // lineBuf without bound; crossing the bound also fails closed.
@@ -28,15 +34,16 @@ const maxSSELineBytes = 64 * 1024
 // affecting the relay. Only two facts matter to the caller — Complete()
 // (clean termination AND no overflow) and Content().
 type sseAggregator struct {
-	lineBuf  bytes.Buffer // partial line carried across Feed calls
-	pending  []string     // data payload lines of the event being assembled
-	content  strings.Builder
-	overflow bool
-	done     bool
-	sawUsage bool // a data event carried a top-level "usage" field
-	eventID  string // id of the first chat.completion.chunk event
-	limit    int // content aggregation bound
-	lineMax  int // per-line buffer bound
+	lineBuf      bytes.Buffer // partial line carried across Feed calls
+	pending      []string     // data payload lines of the event being assembled
+	pendingBytes int          // pending payload bytes, including join newlines
+	content      strings.Builder
+	overflow     bool
+	done         bool
+	sawUsage     bool   // a data event carried a top-level "usage" field
+	eventID      string // id of the first chat.completion.chunk event
+	limit        int    // content aggregation bound
+	lineMax      int    // per-line buffer bound
 }
 
 func newSSEAggregator(limit int) *sseAggregator {
@@ -66,6 +73,10 @@ func (a *sseAggregator) Feed(p []byte) {
 			return
 		}
 		a.handleLine(strings.TrimRight(line, "\r\n"))
+		if a.overflow {
+			a.lineBuf.Reset()
+			return
+		}
 	}
 }
 
@@ -75,7 +86,19 @@ func (a *sseAggregator) handleLine(line string) {
 		a.flushEvent()
 	case strings.HasPrefix(line, "data:"):
 		payload := strings.TrimPrefix(line, "data:")
-		a.pending = append(a.pending, strings.TrimPrefix(payload, " "))
+		payload = strings.TrimPrefix(payload, " ")
+		additional := len(payload)
+		if len(a.pending) > 0 {
+			additional++ // strings.Join inserts one newline between data lines
+		}
+		if a.pendingBytes+additional > maxSSEPendingBytes {
+			a.pending = nil
+			a.pendingBytes = 0
+			a.overflow = true
+			return
+		}
+		a.pending = append(a.pending, payload)
+		a.pendingBytes += additional
 	}
 	// event:/id:/retry: lines carry no payload; ignored.
 }
@@ -86,12 +109,13 @@ func (a *sseAggregator) flushEvent() {
 	}
 	payload := strings.Join(a.pending, "\n") // SSE joins multi-line data with \n
 	a.pending = nil
+	a.pendingBytes = 0
 	if payload == "[DONE]" {
 		a.done = true
 		return
 	}
 	var evt struct {
-		ID string `json:"id"`
+		ID      string `json:"id"`
 		Choices []struct {
 			Delta struct {
 				Content string `json:"content"`
