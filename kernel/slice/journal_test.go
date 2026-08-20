@@ -10,12 +10,26 @@ import (
 	"testing"
 )
 
+// closeStore is the optional closeable seam used by the test helpers below.
+// slice.Store does not expose Close, so tests that open a *fileStore must
+// close it to release the journal handle — otherwise the .journal file stays
+// locked and t.TempDir() teardown fails on Windows (CI runs on Linux, where
+// unlinking an open file is allowed, so this only bites local Windows runs).
+type testStoreCloser interface{ Close() error }
+
+func closeTestStore(st Store) {
+	if c, ok := st.(testStoreCloser); ok {
+		_ = c.Close()
+	}
+}
+
 func reopen(t *testing.T, path string) Store {
 	t.Helper()
 	st, err := NewFileStore(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { closeTestStore(st) })
 	return st
 }
 
