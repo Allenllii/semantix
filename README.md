@@ -701,6 +701,7 @@ This map follows the current repository layout. It describes observable responsi
 | Semantic slices | [`kernel/slice`](./kernel/slice) | Slice types, scopes, metadata, extraction, file-backed storage, append journal, compaction and maintenance. | `go test ./kernel/slice -race` |
 | BM25 retrieval | [`kernel/bm25`](./kernel/bm25) | Lexical index and CJK-aware tokenizer used by local search and hybrid retrieval. | `go test ./kernel/bm25 -race` |
 | Embeddings | [`kernel/embed`](./kernel/embed) | Embedder contract, deterministic hash embedder, model-backed embedding and in-memory cosine vector index. | `go test ./kernel/embed -race` |
+| Lookup tool | [`kernel/lookup`](./kernel/lookup) | Read-only `semantix_lookup` schema and executor that exposes ranked slice hits to agent harnesses. | `go test ./kernel/lookup` |
 <!-- repository-module-guide:end -->
 
 ---
