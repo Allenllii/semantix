@@ -17,7 +17,7 @@ func runExport(args []string, stdout, stderr io.Writer, deps dependencies) error
 	flags := flag.NewFlagSet("export", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	output := flags.String("output", "-", "backup file path, or - for stdout")
-	dbOverride := flags.String("db", "", "database path override")
+	dbOverride := flags.String("db", cfgString(deps.resolved, "store.db", ""), "database path override")
 	jsonOutput := flags.Bool("json", false, "write JSON envelope output")
 	if err := flags.Parse(args); err != nil {
 		// Parse failures (unknown flag, bad value) are usage errors: exit 2
