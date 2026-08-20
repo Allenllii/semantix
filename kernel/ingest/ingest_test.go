@@ -111,6 +111,11 @@ func TestPipelineExtractsAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if c, ok := store.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	})
 	idx := bm25.New()
 	p := Pipeline{
 		Extractor: slice.NewExtractor(),
