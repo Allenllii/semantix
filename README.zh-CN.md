@@ -234,6 +234,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | Harness 桥接 | [`harness/semantix`](./harness/semantix) | 将 harness 事件镜像为会话 JSONL，并输出复用摘要，同时保持 Semantix fail-open。 | `go test ./harness/semantix -race` |
 | Agent Skill | [`agent-skill`](./agent-skill) | 面向外部 harness 的自助安装、工具 schema、会话绕行 hook 与自测。 | `bash agent-skill/scripts/selftest.sh` |
 | 部署 | [`deploy`](./deploy) | Gateway Docker 镜像、Compose 拓扑与支持环境变量展开的示例配置。 | `docker compose -f deploy/docker-compose.yml config` |
+| 自动化脚本 | [`scripts`](./scripts) | 跨会话 demo、发布构建器和 Go 引导工具，供本地与发布流程使用。 | 在干净工作区运行对应 demo 或发布脚本。 |
 <!-- repository-module-guide:end -->
 
 ---

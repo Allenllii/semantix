@@ -717,6 +717,7 @@ This map follows the current repository layout. It describes observable responsi
 | Harness bridge | [`harness/semantix`](./harness/semantix) | Mirrors harness events into session JSONL and surfaces reuse summaries while keeping Semantix fail-open. | `go test ./harness/semantix -race` |
 | Agent Skill | [`agent-skill`](./agent-skill) | Self-serve install, tool schema, session-bypass hook and self-test for external harness integration. | `bash agent-skill/scripts/selftest.sh` |
 | Deployment | [`deploy`](./deploy) | Gateway Docker image, Compose topology and environment-expandable example configuration. | `docker compose -f deploy/docker-compose.yml config` |
+| Automation scripts | [`scripts`](./scripts) | Cross-session demo, release builders and Go bootstrap helper used by local and release workflows. | Run the relevant demo or release script in a clean workspace. |
 <!-- repository-module-guide:end -->
 
 ---
