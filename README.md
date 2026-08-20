@@ -699,6 +699,7 @@ This map follows the current repository layout. It describes observable responsi
 | Configuration | [`kernel/config`](./kernel/config) | Resolves built-ins, TOML, environment variables and CLI overrides with source tracking and typed errors. | `go test ./kernel/config -race` |
 | Event ingestion | [`kernel/ingest`](./kernel/ingest) | Reads harness JSONL event streams and feeds normalized sessions into extraction without requiring a live harness. | `go test ./kernel/ingest -race` |
 | Semantic slices | [`kernel/slice`](./kernel/slice) | Slice types, scopes, metadata, extraction, file-backed storage, append journal, compaction and maintenance. | `go test ./kernel/slice -race` |
+| BM25 retrieval | [`kernel/bm25`](./kernel/bm25) | Lexical index and CJK-aware tokenizer used by local search and hybrid retrieval. | `go test ./kernel/bm25 -race` |
 <!-- repository-module-guide:end -->
 
 ---
