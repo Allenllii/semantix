@@ -222,6 +222,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | L2 注入 | [`kernel/inject`](./kernel/inject) | 在预算内选择完整切片，输出确定、经过 marker 转义的复用块。 | `go test ./kernel/inject -race` |
 | 检索分区 | [`kernel/zone`](./kernel/zone) | 检索、验证和演化共用的 hit、grey、miss 三区分类器。 | `go test ./kernel/zone -race` |
 | L3 缓存 | [`kernel/cache`](./kernel/cache) | 保守的结果复用判定接口与 L3 decider；无法证明安全时回退正常执行。 | `go test ./kernel/cache -race` |
+| 依赖指纹 | [`kernel/fingerprint`](./kernel/fingerprint) | 捕获并验证文件依赖；项目状态变化时使原本可复用的结果失效。 | `go test ./kernel/fingerprint -race` |
 <!-- repository-module-guide:end -->
 
 ---

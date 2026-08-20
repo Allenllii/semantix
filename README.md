@@ -705,6 +705,7 @@ This map follows the current repository layout. It describes observable responsi
 | L2 injection | [`kernel/inject`](./kernel/inject) | Selects whole slices under a budget and emits a deterministic, marker-escaped reuse block. | `go test ./kernel/inject -race` |
 | Retrieval zones | [`kernel/zone`](./kernel/zone) | Three-region hit, grey and miss classifier shared by retrieval, verification and evolution. | `go test ./kernel/zone -race` |
 | L3 cache | [`kernel/cache`](./kernel/cache) | Conservative result-reuse decision interface and L3 decider; uncertain candidates fall back to normal execution. | `go test ./kernel/cache -race` |
+| Dependency fingerprints | [`kernel/fingerprint`](./kernel/fingerprint) | Captures and verifies file dependencies so stale project state invalidates otherwise reusable results. | `go test ./kernel/fingerprint -race` |
 <!-- repository-module-guide:end -->
 
 ---
