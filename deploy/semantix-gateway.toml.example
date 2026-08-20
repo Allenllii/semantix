@@ -23,7 +23,12 @@ budget = 4096                             # L2 注入块字节预算
 
 [cache]
 ttl_seconds = 86400                       # 默认 TTL（0 = 不设时间窗）
-judge_api_key = ""                        # 可选：grey 区 LLM judge（当前未接线，见 GW6）；留空即不启用
+judge_api_key = ""                        # 可选：grey 区 LLM judge（GW6 #186 已接线）；留空即不启用
+# judge_base_url 与 judge_model 在 judge_api_key 非空时**必填**，缺任一启动即失败
+# （gateway/config.go: "judge_api_key requires judge_base_url and judge_model"）。
+# GW4 实测（Issue #184）：不启用 judge 时 L3 命中率 1/10，启用后 7/10。
+judge_base_url = ""                       # 例：https://api.deepseek.com/v1
+judge_model = ""                          # 例：deepseek-chat
 
 [ingest]
 sessions_dir = "/data/sessions"           # 会话旁路落盘目录（0600）
