@@ -221,6 +221,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | Lookup 工具 | [`kernel/lookup`](./kernel/lookup) | 只读 `semantix_lookup` schema 与执行器，向 Agent harness 暴露排序后的切片命中。 | `go test ./kernel/lookup` |
 | L2 注入 | [`kernel/inject`](./kernel/inject) | 在预算内选择完整切片，输出确定、经过 marker 转义的复用块。 | `go test ./kernel/inject -race` |
 | 检索分区 | [`kernel/zone`](./kernel/zone) | 检索、验证和演化共用的 hit、grey、miss 三区分类器。 | `go test ./kernel/zone -race` |
+| L3 缓存 | [`kernel/cache`](./kernel/cache) | 保守的结果复用判定接口与 L3 decider；无法证明安全时回退正常执行。 | `go test ./kernel/cache -race` |
 <!-- repository-module-guide:end -->
 
 ---

@@ -704,6 +704,7 @@ This map follows the current repository layout. It describes observable responsi
 | Lookup tool | [`kernel/lookup`](./kernel/lookup) | Read-only `semantix_lookup` schema and executor that exposes ranked slice hits to agent harnesses. | `go test ./kernel/lookup` |
 | L2 injection | [`kernel/inject`](./kernel/inject) | Selects whole slices under a budget and emits a deterministic, marker-escaped reuse block. | `go test ./kernel/inject -race` |
 | Retrieval zones | [`kernel/zone`](./kernel/zone) | Three-region hit, grey and miss classifier shared by retrieval, verification and evolution. | `go test ./kernel/zone -race` |
+| L3 cache | [`kernel/cache`](./kernel/cache) | Conservative result-reuse decision interface and L3 decider; uncertain candidates fall back to normal execution. | `go test ./kernel/cache -race` |
 <!-- repository-module-guide:end -->
 
 ---
