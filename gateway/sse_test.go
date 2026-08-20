@@ -143,6 +143,33 @@ func TestSSEAggregatorLineOverflow(t *testing.T) {
 	}
 }
 
+func TestSSEAggregatorPendingOverflow(t *testing.T) {
+	a := newSSEAggregator(maxSSEAggregateBytes)
+	payload := strings.Repeat("x", maxSSELineBytes/2)
+
+	// Each data line stays below the per-line bound, but one event without a
+	// terminating blank line must not let pending payloads grow without bound.
+	for i := 0; i <= maxSSEAggregateBytes/(len(payload)+1); i++ {
+		feedAll(a, "data: "+payload+"\n")
+	}
+
+	if !a.Overflowed() {
+		t.Fatal("Overflowed() = false past the pending event bound, want true")
+	}
+	if a.Complete() {
+		t.Error("Complete() = true past the pending event bound, want false")
+	}
+	if len(a.pending) != 0 {
+		t.Errorf("len(pending) = %d after overflow, want 0", len(a.pending))
+	}
+
+	// Once overflowed, a later terminator must not make the stream complete.
+	feedAll(a, "\ndata: [DONE]\n\n")
+	if a.Complete() {
+		t.Error("Complete() = true after pending overflow, want false")
+	}
+}
+
 func TestSSEAggregatorSawUsage(t *testing.T) {
 	cases := []struct {
 		name   string
