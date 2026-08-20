@@ -708,6 +708,7 @@ This map follows the current repository layout. It describes observable responsi
 | Dependency fingerprints | [`kernel/fingerprint`](./kernel/fingerprint) | Captures and verifies file dependencies so stale project state invalidates otherwise reusable results. | `go test ./kernel/fingerprint -race` |
 | Reuse judge | [`kernel/judge`](./kernel/judge) | Rule gate plus optional LLM judge, prompt sanitization and verdict statistics for risky L3 candidates. | `go test ./kernel/judge -race` |
 | Result promotion | [`kernel/promote`](./kernel/promote) | Stores judge-approved reusable results with content versions and cascade invalidation by source slice. | `go test ./kernel/promote -race` |
+| Scheduler | [`kernel/sched`](./kernel/sched) | Produces per-round parallel groups, budget actions, model-tier hints, injection IDs and prefetch hints. | `go test ./kernel/sched -race` |
 <!-- repository-module-guide:end -->
 
 ---
