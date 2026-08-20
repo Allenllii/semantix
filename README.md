@@ -709,6 +709,7 @@ This map follows the current repository layout. It describes observable responsi
 | Reuse judge | [`kernel/judge`](./kernel/judge) | Rule gate plus optional LLM judge, prompt sanitization and verdict statistics for risky L3 candidates. | `go test ./kernel/judge -race` |
 | Result promotion | [`kernel/promote`](./kernel/promote) | Stores judge-approved reusable results with content versions and cascade invalidation by source slice. | `go test ./kernel/promote -race` |
 | Scheduler | [`kernel/sched`](./kernel/sched) | Produces per-round parallel groups, budget actions, model-tier hints, injection IDs and prefetch hints. | `go test ./kernel/sched -race` |
+| Prefetch | [`kernel/prefetch`](./kernel/prefetch) | Offline planner, transition-matrix learner, waste-aware online predictor and read-only execution runner. | `go test ./kernel/prefetch -race` |
 <!-- repository-module-guide:end -->
 
 ---

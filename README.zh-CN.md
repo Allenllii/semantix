@@ -226,6 +226,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 复用 Judge | [`kernel/judge`](./kernel/judge) | 规则门、可选 LLM judge、提示清洗和判定统计，用于高风险 L3 候选。 | `go test ./kernel/judge -race` |
 | 结果提升 | [`kernel/promote`](./kernel/promote) | 保存 judge 批准的可复用结果，记录内容版本，并按来源切片级联失效。 | `go test ./kernel/promote -race` |
 | 调度器 | [`kernel/sched`](./kernel/sched) | 为每轮生成并行分组、预算动作、模型层级提示、注入 ID 与预取提示。 | `go test ./kernel/sched -race` |
+| 预取 | [`kernel/prefetch`](./kernel/prefetch) | 离线规划器、转移矩阵学习、浪费感知在线预测与只读执行 runner。 | `go test ./kernel/prefetch -race` |
 <!-- repository-module-guide:end -->
 
 ---
