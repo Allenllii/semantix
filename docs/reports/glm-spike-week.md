@@ -3,8 +3,9 @@
 > 对应 Issue：#233 · spec：`docs/specs/semantix-glm-optimization.md`（harness-integration 分支草案）§8
 > 判级：Spec-Exempt（E2 调研/报告，不改代码）
 > 状态（2026-08-20）：五个 Spike 全部有产出。Spike-4/5 浏览器人工核（截图留证）；
-> Spike-1/2/3 在**腾讯云 MaaS 托管 GLM-5.3**（`tokenhub.tencentmaas.com`）上实测完成——
-> 见下方「端点定性」：结果回答的是 spec §3.3/§3.4 的第三方托管线，Z.AI 官方端点数值待同款实验复测。
+> Spike-1/2/3 在**两个第三方网关**上各自完整实测——腾讯云 MaaS→GLM-5.3（§1–§3，本会话）
+> 与 AtomClub→GLM-5.2（§3A，并行会话），跨栈对比见 §3B——
+> 结果回答的是 spec §3.3/§3.4 的第三方托管线，Z.AI 官方端点数值待同款实验复测。
 > 方法：/browse headless 浏览器逐页核对原文；受控 API 实验共 35 请求（脚本 `glm_spike.py` + 补验脚本，
 > 预算护栏 ≤40 请求，实测总消耗 ~75K input tokens；原始 usage 逐条 JSONL 为会话产物）
 
@@ -20,9 +21,9 @@
 
 | Spike | 状态 | 一句话结论 |
 |---|---|---|
-| 1 TTL/命中率曲线 | ✅ 完成（腾讯云栈） | **TTL ∈ (8, 12] 分钟**：1–8 分钟全命中，12 分钟起过期（复测证实真过期非丢失）；「均值 3–5 分钟」传闻低估；另见 1/8 前缀「持续不可见」异常（§1） |
-| 2 Anthropic 兼容端点 | ✅ 完成（腾讯云栈） | 命中时返回 **`cache_read_input_tokens`**（Anthropic 语义、增量 input）；**cache_control 两位置均不报错** → gateway 可透传 |
-| 3 「高度相似」边界 | ✅ 完成（腾讯云栈） | **不存在相似/非前缀命中**：首字符、中段（25%/82% 处）、单空格差异均 cached=0——**全有或全无**，比 DeepSeek 64-token 粒度更严苛 |
+| 1 TTL/命中率曲线 | ✅ 双网关完成；Z.AI 直连待 key | 腾讯云→5.3：**TTL ∈ (8, 12] 分钟**（1–8 分钟全命中，12 分钟真过期）；AtomClub→5.2：0–120s 命中 96–98%、**301s 即降至 28%**——TTL 因栈而异达数倍（§3B） |
+| 2 Anthropic 兼容端点 | ✅ 双网关完成；Z.AI 直连待 key | 两栈 `/v1/messages` 均真实工作、**cache_control 两位置均不报错可透传**；usage 形态不同：腾讯云命中才出 `cache_read_input_tokens`（增量语义），AtomClub 恒含 cache 字段族（§3B） |
+| 3 「高度相似」边界 | ✅ 双网关完成；Z.AI 直连待 key | 两栈一致：**无相似/非前缀命中**，首 token 差异即零命中；粒度不同：腾讯云**全有或全无**（中段 25%/82% 差异全清零），AtomClub 块级保留改动点前 ~48%（§3B） |
 | 4 国内价目核对 | ✅ 完成 | **传闻口径两列颠倒**：官方页为「缓存存储＝限时免费、缓存命中＝¥2/M」；GLM-5.3 **非阶梯计价**（¥8/¥28，1M ctx） |
 | 5 免费档数据条款 | ✅ 完成 | **国际 api.z.ai API 默认不训练（无免费档例外）→ judge 可行；国内 bigmodel 保留匿名化训练权利 → 不建议** |
 
@@ -128,6 +129,89 @@ OpenAI 风格 `reasoning_effort` 字段在此路径**不被接受**（同样 400
 3. **命中报告天花板 ~97.6%**（2560/2620，尾部 ~60 tokens 不足块/门槛部分恒不计入 cached）：
    命中率遥测与验收线要按该天花板校准（§0 影响 5）。
 
+## 3A. AtomClub gateway 预实验：Spike-1/2/3（2026-08-20）
+
+> **证据边界**：本节测量的是 `api.atomclub.cn` → `glm-5.2` 路由，不能替代
+> `api.z.ai` 官方直连实验。代理层可能改变路由、缓存和 usage 字段；因此 §1–§3 的 Z.AI
+> 状态仍为待 key。本节用于提前验证实验方法，并为实际使用 AtomClub gateway 的部署提供端点级证据。
+
+**实验设置**：合成长前缀（约 6,396 prompt tokens，唯一 run id 隔离历史缓存），
+`max_tokens=1`、`temperature=0`；只记录脱敏 usage 和状态码，不发送用户代码、不落盘 API key。
+运行窗口：2026-08-20 05:31–05:39 UTC。每个 TTL 间隔使用独立前缀且只探测一次，避免探测刷新。
+
+### 3A.1 TTL / 命中比例
+
+| 目标间隔 | 实际间隔 | prompt_tokens | cached_tokens | cached / prompt |
+|---:|---:|---:|---:|---:|
+| 0s | 0.0s | 6,396 | 6,272 | 98.06% |
+| 30s | 31.0s | 6,396 | 6,144 | 96.06% |
+| 60s | 60.8s | 6,396 | 6,272 | 98.06% |
+| 120s | 120.3s | 6,396 | 6,272 | 98.06% |
+| 300s | 301.0s | 6,396 | 1,792 | 28.02% |
+
+**预实验判断**：0–120 秒保持 96%–98% 前缀命中；约 5 分钟时只剩 28%，
+已触发 §1 的「5 分钟点 <50%」提前考虑 TTL 对策条件。该曲线每点仅一个样本，足以形成
+端点级工程预警，但不足以估计统计命中率；Z.AI 直连时仍按 §1 设计补齐 8/12/20 分钟点和重复样本。
+
+### 3A.2 Anthropic Messages 兼容行为
+
+AtomClub 的有效兼容入口为 `POST https://api.atomclub.cn/v1/messages`。响应 `type=message`，
+usage 含 `input_tokens`、`cache_creation_input_tokens`、`cache_read_input_tokens`、
+`output_tokens`、`claude_cache_creation_5_m_tokens`、`claude_cache_creation_1_h_tokens`。
+
+| 请求 | HTTP | input_tokens | cache_read_input_tokens | cache_creation_input_tokens |
+|---|---:|---:|---:|---:|
+| 长前缀基线 | 200 | 6,394 | 0 | 0 |
+| 同前缀、尾部变化 | 200 | 6,394 | 6,272 | 0 |
+| system 块带 `cache_control: ephemeral` | 200 | 6,394 | 6,272 | 0 |
+| message 块带 `cache_control: ephemeral` | 200 | 6,394 | 6,144 | 0 |
+
+**预实验判断**：两处 `cache_control` 均被接受，不需要为 AtomClub 路由强制剥离；但
+`cache_creation_input_tokens` 始终为 0，观测到的是 GLM 隐式缓存，而不是 Anthropic 显式缓存创建。
+AtomClub usage 适配器应在 OpenAI 路由解析 `prompt_tokens_details.cached_tokens`，在 Messages
+路由解析 `cache_read_input_tokens`。此结论不外推到 `api.z.ai/api/anthropic`。
+
+### 3A.3 「高度相似」边界
+
+| 变体 | prompt_tokens | cached_tokens | cached / prompt |
+|---|---:|---:|---:|
+| 首次种缓存 | 6,392 | 0 | 0% |
+| 前缀相同、只改尾部 | 6,392 | 6,272 | 98.12% |
+| 320 段中第 160 段改单词 | 6,392 | 3,072 | 48.06% |
+| 第一个 token 前增加字符 | 6,393 | 0 | 0% |
+| 第 160 段增加一个空格（复测） | 6,396 | 3,072 | 48.03% |
+| 完全重放 | 6,392 | 6,272 | 98.12% |
+
+**预实验判断**：行为符合严格前缀缓存——中段差异只保留差异点之前的缓存，首 token 差异
+完全失配，单个空格同样截断后续缓存；未观察到跨差异点的「语义高度相似」命中。因此实现仍应
+优先保证字节/token 稳定，不把官方「高度相似」措辞当作可依赖的非前缀缓存能力。
+
+**成本与安全**：本轮约 16.6 万输入 tokens，输出上限极低；实际账单以 AtomClub 控制台为准。
+实验密钥只存在于交互式进程内，报告与脚本均不包含密钥。由于凭据曾通过会话提供，实验后应轮换。
+
+## 3B. 跨栈对比：同一实验设计在两个网关上的分歧（本次 Spike 周最重要的单一发现）
+
+§1–§3（腾讯云 MaaS→GLM-5.3）与 §3A（AtomClub→GLM-5.2）用同构实验设计测同一模型家族，
+三个行为维度给出**互不相同**的答案（注意变量未隔离：网关栈与模型版本同时不同，差异不能归因单一因素）：
+
+| 维度 | 腾讯云→5.3（§1–§3） | AtomClub→5.2（§3A） | 阿里云→5.2（spec §3.3 单源） |
+|---|---|---|---|
+| TTL | **(8, 12] 分钟**，过期为原子失效 | **~5 分钟已剩 28%**，形态像块级 LRU 部分逐出（1792/6396 恰为块倍数） | 2.5h 会话 96.2% 命中（未测 TTL） |
+| 中段差异行为 | **全有或全无**（25%/82% 处改动均全清零） | **块级保留改动点前**（中点改动仍命中 48%） | 未测 |
+| Anthropic usage 形态 | 命中才出 `cache_read_input_tokens`，miss 时无 cache 字段 | **恒含** `cache_read/cache_creation` 及 `claude_cache_creation_5_m/1_h` 字段族 | 未测 |
+| 严格前缀（首 token 敏感） | ✅ 是 | ✅ 是 | — |
+| 「高度相似」语义命中 | ❌ 无 | ❌ 无 | — |
+| cache_control 容忍 | 两位置不报错 | 两位置不报错 | — |
+
+**结论**：
+1. **跨栈稳定不变量只有三条**：严格前缀匹配、首 token 差异即零命中、cache_control 透传不报错——
+   只有这三条可以作为 provider 无关的通用假设；**TTL、命中粒度、usage 字段形态全部按栈标定**；
+2. spec 推演二的「provider 无关机制、按 provider 标定」从设计原则升级为**实测硬需求**：
+   两个真实网关连缓存粒度机制都不同（原子 vs 块级），任何硬编码单一行为模型都会在另一个栈上失真；
+3. 对遥测（§4.2）的直接要求：per-provider × per-路径适配之外，**TTL/粒度画像也应从遥测在线估计**
+   （命中率曲线按端点自动拟合），而不是配置文件写死；
+4. L1 前缀卫生（§4.1）的优先级在两栈结论一致：字节稳定是唯一可依赖的通用红利。
+
 ## 4. Spike-4 国内 bigmodel 价目核对（完成）
 
 **方法**：headless Chromium 渲染 https://bigmodel.cn/pricing 后读取正文与表格（2026-08-20），
@@ -219,12 +303,16 @@ spec 本体在 `claude/semantix-agent-integration` 分支（未合 main），本
    与「所有经济学参数配置化」的 §10 缓解措施对齐。
 4. **§4.3 免费离线档**：judge/评估作业限定**国际 api.z.ai 端点**；§6 安全一节的 Spike-5 待核项
    替换为本报告 §5 判定（国际可行/国内不建议 + DPA 残留缺口）。
-5. **§3.3 新增托管栈实测行**（置信度 measured，本报告 §1–§3，腾讯云 MaaS `tokenhub.tencentmaas.com`）：
-   > 腾讯云托管 GLM-5.3：前缀缓存严格匹配**全有或全无**（首 token/中段 25%/82%/单空格差异均清零，
-   > 无块级部分命中）；命中报告天花板 ~97.6%（尾部不足块不计）；TTL 1–20 分钟无衰减；
-   > 种下后 ~30s 内不可见且实验中 1/8 前缀持续不可见（疑多实例路由）；
-   > Anthropic 兼容路径真实存在，命中透出 `cache_read_input_tokens`（增量 input 语义），
-   > cache_control 两位置不报错；thinking 参数体系与 OpenAI 路径不互通。
+5. **§3.3 新增两行托管栈实测**（置信度 measured，本报告 §1–§3/§3A/§3B）：
+   > 腾讯云 MaaS→GLM-5.3：严格前缀、**全有或全无**（首 token/中段 25%/82%/单空格差异均清零）；
+   > 命中报告天花板 ~97.6%；**TTL ∈ (8,12] 分钟**（原子过期）；种下 ~30s 内不可见、1/8 前缀持续不可见；
+   > Anthropic 路径命中才透出 `cache_read_input_tokens`（增量语义）；thinking 参数体系与 OpenAI 路径不互通。
+   >
+   > AtomClub→GLM-5.2：严格前缀但**块级部分命中**（中段差异保留改动点前 ~48%）；
+   > **TTL ~5 分钟已剩 28%**（似块级 LRU）；Anthropic 路径恒含 cache 字段族。
+   >
+   > 跨栈不变量仅：严格前缀、首 token 敏感、cache_control 透传不报错；
+   > TTL/粒度/usage 形态全部 per-栈标定（§3B）——「按 provider 标定」为实测硬需求。
 6. **§4.1-2（thinking 回传纪律）补充**：Anthropic 兼容路径强制显式 `thinking: {type: enabled, budget_tokens}`
    且不接受 `reasoning_effort`——sched 低延迟路径的「reasoning_effort=low」映射要 per-路径翻译。
 7. **§4.2 usage 解析适配**：per-provider 细化为 **per-provider × per-路径**——同一托管栈的 OpenAI 路径
@@ -249,4 +337,4 @@ spec 本体在 `claude/semantix-agent-integration` 分支（未合 main），本
 
 ---
 
-*方法与产物：/browse headless Chromium 人工核对（截图×2 留证）；受控 API 实验脚本 `glm_spike.py`/`spike1b.py`/`spike3b.py`（含预算护栏）与逐请求 usage JSONL（`results/spike{1,2,3}.jsonl`）为会话产物；被测端点 `tokenhub.tencentmaas.com`（腾讯云 MaaS 托管 GLM-5.3，key 由用户提供）；本报告为 issue #233 的产出。*
+*方法与产物：/browse headless Chromium 人工核对（截图×2 留证）；受控 API 实验脚本 `glm_spike.py`/`spike1b.py`/`spike3b.py`（含预算护栏）与逐请求 usage JSONL（`results/spike{1,2,3}.jsonl`）为会话产物；被测端点 `tokenhub.tencentmaas.com`（腾讯云 MaaS 托管 GLM-5.3，key 由用户提供）与 `api.atomclub.cn`（→GLM-5.2，§3A 并行会话实测）；两把实验 key 均经会话传递，实验完成后建议轮换；本报告为 issue #233 的产出。*
