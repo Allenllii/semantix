@@ -224,6 +224,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | L3 缓存 | [`kernel/cache`](./kernel/cache) | 保守的结果复用判定接口与 L3 decider；无法证明安全时回退正常执行。 | `go test ./kernel/cache -race` |
 | 依赖指纹 | [`kernel/fingerprint`](./kernel/fingerprint) | 捕获并验证文件依赖；项目状态变化时使原本可复用的结果失效。 | `go test ./kernel/fingerprint -race` |
 | 复用 Judge | [`kernel/judge`](./kernel/judge) | 规则门、可选 LLM judge、提示清洗和判定统计，用于高风险 L3 候选。 | `go test ./kernel/judge -race` |
+| 结果提升 | [`kernel/promote`](./kernel/promote) | 保存 judge 批准的可复用结果，记录内容版本，并按来源切片级联失效。 | `go test ./kernel/promote -race` |
 <!-- repository-module-guide:end -->
 
 ---
