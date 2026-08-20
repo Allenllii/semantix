@@ -215,6 +215,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | Gateway | [`gateway`](./gateway)、[`cmd/semantix-gateway`](./cmd/semantix-gateway) | OpenAI 兼容代理、Anthropic 转换、SSE 转发、检索注入与 fail-open 上游路由。 | `go test ./gateway ./cmd/semantix-gateway -race` |
 | 配置 | [`kernel/config`](./kernel/config) | 按内置值、TOML、环境变量、CLI 覆盖顺序解析配置，并保留来源与类型化错误。 | `go test ./kernel/config -race` |
 | 事件摄取 | [`kernel/ingest`](./kernel/ingest) | 读取 harness JSONL 事件流，将规范化会话送入提取流程，无需依赖在线 harness。 | `go test ./kernel/ingest -race` |
+| 语义切片 | [`kernel/slice`](./kernel/slice) | 切片类型、作用域、元数据、提取、文件存储、追加日志、压缩与维护。 | `go test ./kernel/slice -race` |
 <!-- repository-module-guide:end -->
 
 ---

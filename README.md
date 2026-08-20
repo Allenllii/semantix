@@ -698,6 +698,7 @@ This map follows the current repository layout. It describes observable responsi
 | Gateway | [`gateway`](./gateway), [`cmd/semantix-gateway`](./cmd/semantix-gateway) | OpenAI-compatible proxy, Anthropic conversion, SSE relay, retrieval/injection and fail-open upstream routing. | `go test ./gateway ./cmd/semantix-gateway -race` |
 | Configuration | [`kernel/config`](./kernel/config) | Resolves built-ins, TOML, environment variables and CLI overrides with source tracking and typed errors. | `go test ./kernel/config -race` |
 | Event ingestion | [`kernel/ingest`](./kernel/ingest) | Reads harness JSONL event streams and feeds normalized sessions into extraction without requiring a live harness. | `go test ./kernel/ingest -race` |
+| Semantic slices | [`kernel/slice`](./kernel/slice) | Slice types, scopes, metadata, extraction, file-backed storage, append journal, compaction and maintenance. | `go test ./kernel/slice -race` |
 <!-- repository-module-guide:end -->
 
 ---
