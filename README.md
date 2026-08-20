@@ -693,7 +693,7 @@ This map follows the current repository layout. It describes observable responsi
 
 | Module | Path | Responsibility | Focused verification |
 |---|---|---|---|
-
+| CLI | [`cmd/semantix`](./cmd/semantix) | Command registry, stable JSON envelope, exit-code contract, maintenance and evaluation commands. | `go test ./cmd/semantix -race` |
 <!-- repository-module-guide:end -->
 
 ---

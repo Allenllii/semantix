@@ -210,7 +210,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 
 | 模块 | 路径 | 职责 | 聚焦验证 |
 |---|---|---|---|
-
+| CLI | [`cmd/semantix`](./cmd/semantix) | 命令注册、统一 JSON 信封、退出码契约、维护与评估命令。 | `go test ./cmd/semantix -race` |
 <!-- repository-module-guide:end -->
 
 ---
