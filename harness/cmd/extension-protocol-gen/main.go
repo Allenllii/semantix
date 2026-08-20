@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"semantix/harness/extension/protocolgen"
+	"semantix/harness/internal/extension/protocolgen"
 )
 
 func main() {
