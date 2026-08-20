@@ -5527,7 +5527,7 @@ func interruptedTurnDisplayNotice() string {
 // at the top of the session.
 func renderTUIBanner(label, missing string, width int) string {
 	var b strings.Builder
-	b.WriteString(accent("◆") + " " + bold("reasonix") + "  " + dim("· "+label) + "\n")
+	b.WriteString(accent("◆") + " " + bold("semantix-agent") + "  " + dim("· "+label) + "\n")
 	b.WriteString(dim("  "+i18n.M.ChatTip) + "\n")
 	if missing != "" {
 		b.WriteString(wrapForViewport("  ! "+missing, width, activeCLITheme.warn) + "\n")

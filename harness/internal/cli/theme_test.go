@@ -21,19 +21,19 @@ func TestConfigureCLIThemeSwitchesModeAndDefaultStyle(t *testing.T) {
 	activeColorProfile = colorprofile.ANSI256
 
 	configureCLITheme("light")
-	if activeCLITheme.name != "light" || activeCLITheme.style != "sandstone" {
-		t.Fatalf("light theme = %s/%s, want light/sandstone", activeCLITheme.name, activeCLITheme.style)
+	if activeCLITheme.name != "light" || activeCLITheme.style != "semantix-light" {
+		t.Fatalf("light theme = %s/%s, want light/semantix-light", activeCLITheme.name, activeCLITheme.style)
 	}
-	if got := accent("x"); !strings.HasPrefix(got, "\033[38;5;173m") {
-		t.Fatalf("light default accent = %q, want sandstone xterm 173", got)
+	if got := accent("x"); !strings.HasPrefix(got, "\033[38;5;29m") {
+		t.Fatalf("light default accent = %q, want semantix-light xterm 29", got)
 	}
 
 	configureCLITheme("dark")
-	if activeCLITheme.name != "dark" || activeCLITheme.style != "graphite" {
-		t.Fatalf("dark theme = %s/%s, want dark/graphite", activeCLITheme.name, activeCLITheme.style)
+	if activeCLITheme.name != "dark" || activeCLITheme.style != "semantix" {
+		t.Fatalf("dark theme = %s/%s, want dark/semantix", activeCLITheme.name, activeCLITheme.style)
 	}
-	if got := accent("x"); !strings.HasPrefix(got, ansiAccent) {
-		t.Fatalf("dark accent = %q, want %q", got, ansiAccent)
+	if got := accent("x"); !strings.HasPrefix(got, "\033[38;5;35m") {
+		t.Fatalf("dark accent = %q, want semantix xterm 35", got)
 	}
 }
 
@@ -322,7 +322,7 @@ func TestRuntimeAutoThemeDoesNotProbeStdin(t *testing.T) {
 }
 
 // TestSemantixThemeStyle: the Semantix Design style (U39, blueprint §4)
-// ships a dark base with the semantic green #2F967F accent and success
+// ships a dark base with the semantic green #009c6d accent and success
 // color, and leaves every other style's palette untouched.
 func TestSemantixThemeStyle(t *testing.T) {
 	st, ok := cliThemeStyleByName("semantix")
@@ -332,11 +332,11 @@ func TestSemantixThemeStyle(t *testing.T) {
 	if st.mode != "dark" {
 		t.Errorf("semantix mode = %q, want dark", st.mode)
 	}
-	if st.accent.hex != "#2F967F" {
-		t.Errorf("semantix accent = %q, want #2F967F", st.accent.hex)
+	if st.accent.hex != "#009c6d" {
+		t.Errorf("semantix accent = %q, want #009c6d", st.accent.hex)
 	}
-	if st.success == nil || st.success.hex != "#2F967F" {
-		t.Errorf("semantix success = %+v, want #2F967F override", st.success)
+	if st.success == nil || st.success.hex != "#009c6d" {
+		t.Errorf("semantix success = %+v, want #009c6d override", st.success)
 	}
 }
 
@@ -346,8 +346,8 @@ func TestSemantixThemeStyle(t *testing.T) {
 func TestApplySemantixThemeStyle(t *testing.T) {
 	st, _ := cliThemeStyleByName("semantix")
 	p := applyCLIThemeStyle(cliDarkTheme, st)
-	if p.accent.hex != "#2F967F" || p.selection.hex != "#2F967F" || p.success.hex != "#2F967F" {
-		t.Errorf("applied palette accent/selection/success = %s/%s/%s, want #2F967F",
+	if p.accent.hex != "#009c6d" || p.selection.hex != "#009c6d" || p.success.hex != "#009c6d" {
+		t.Errorf("applied palette accent/selection/success = %s/%s/%s, want #009c6d",
 			p.accent.hex, p.selection.hex, p.success.hex)
 	}
 }

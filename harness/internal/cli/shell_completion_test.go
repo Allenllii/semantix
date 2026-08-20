@@ -149,10 +149,10 @@ func TestCompletionCommandPrintsShellScripts(t *testing.T) {
 					t.Fatalf("completion %s exit code = %d", shell, code)
 				}
 			})
-			if !strings.Contains(out, "reasonix completion __complete") {
+			if !strings.Contains(out, "semantix-agent completion __complete") {
 				t.Fatalf("completion %s script does not route to the shared registry:\n%s", shell, out)
 			}
-			if shell == "fish" && strings.Contains(out, "complete -c reasonix -f ") {
+			if shell == "fish" && strings.Contains(out, "complete -c semantix-agent -f ") {
 				t.Fatal("fish completion must not use -f so path flags can fall back to files")
 			}
 		})

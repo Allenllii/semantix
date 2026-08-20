@@ -51,7 +51,7 @@ type cliThemeStyle struct {
 	mode        string
 	accent      cliColor
 	// success, when non-nil, overrides the palette success color. Only the
-	// Semantix Design style sets it (semantic green #2F967F, blueprint §4);
+	// Semantix Design style sets it (brand green #009c6d, h4-branding.md);
 	// other styles keep their palette default.
 	success     *cliColor
 	description string
@@ -101,6 +101,12 @@ var (
 		toolProc:     cliColor{"#8a6bb8", 97},
 	}
 	cliThemeStyles = []cliThemeStyle{
+		// semantix leads the list: cliThemeStyles[0] is the dark default and
+		// the startup theme. Brand green #009c6d = the semantix site --primary
+		// (oklch(0.608 0.14 165)); see the semantix repo, docs/specs/h4-branding.md.
+		{name: "semantix", mode: "dark", accent: cliColor{"#009c6d", 35},
+			success: &cliColor{"#009c6d", 35}, description: "Semantix brand green (default)"},
+		{name: "semantix-light", mode: "light", accent: cliColor{"#008159", 29}, description: "Semantix brand green light (default)"},
 		{name: "graphite", mode: "dark", accent: cliColor{"#d97757", 173}, description: "warm clay accent"},
 		{name: "ember", mode: "dark", accent: cliColor{"#f06d38", 209}, description: "hot orange accent"},
 		{name: "aurora", mode: "dark", accent: cliColor{"#34c3a6", 79}, description: "cool teal accent"},
@@ -109,11 +115,6 @@ var (
 		{name: "porcelain", mode: "light", accent: cliColor{"#7d63c8", 104}, description: "soft violet light accent"},
 		{name: "linen", mode: "light", accent: cliColor{"#bd5d4d", 167}, description: "muted coral light accent"},
 		{name: "glacier", mode: "light", accent: cliColor{"#357fa8", 74}, description: "cool blue light accent"},
-		// Semantix Design (U39, blueprint §4): dark base + semantic green
-		// #2F967F accent, brand-consistent with the landing page. Select via
-		// REASONIX_THEME=semantix or the /theme slash command.
-		{name: "semantix", mode: "dark", accent: cliColor{"#2F967F", 79},
-			success: &cliColor{"#2F967F", 79}, description: "Semantix Design semantic green"},
 	}
 	activeCLITheme = applyCLIThemeStyle(cliDarkTheme, cliThemeStyles[0])
 	// activeBackgroundProbe stays inert unless a caller that owns stdin opts in
@@ -222,7 +223,7 @@ func cliThemeStyleByName(name string) (cliThemeStyle, bool) {
 func defaultCLIThemeStyle(mode string) cliThemeStyle {
 	if mode == "light" {
 		for _, st := range cliThemeStyles {
-			if st.name == "sandstone" {
+			if st.name == "semantix-light" {
 				return st
 			}
 		}

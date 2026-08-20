@@ -66,7 +66,7 @@ func TestDocsCommandOverviewAndSearchUseEmbeddedCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"内置 Reasonix 文档", "version=", "revision=", "digest=sha256:", "/docs 1.19.5 更新日志"} {
+	for _, want := range []string{"内置 Semantix 文档", "version=", "revision=", "digest=sha256:", "/docs 1.19.5 更新日志"} {
 		if !strings.Contains(overview, want) {
 			t.Fatalf("command overview missing %q:\n%s", want, overview)
 		}
@@ -439,7 +439,7 @@ func TestDocsToolContractIsStableAndReadOnly(t *testing.T) {
 	}
 	contract := tl.Name() + "\n" + tl.Description() + "\n" + string(canonical)
 	got := fmt.Sprintf("%x", sha256.Sum256([]byte(contract)))
-	const want = "0113a592b6bcba5dd2be78c552f95ca27337534b6bb55b7b5e6fd89414f95be5"
+	const want = "fa54f67e27b70fc15376b80809e6ebc7fd329565c5fc69e0001e6a51ef19e429"
 	if got != want {
 		t.Fatalf("provider-visible docs contract changed: got %s, want %s", got, want)
 	}

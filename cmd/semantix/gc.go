@@ -63,6 +63,18 @@ func runGC(args []string, stdout, stderr io.Writer, deps dependencies) error {
 		}
 		return err
 	}
+	// Fold the journal into the base so the store is a plain v1 JSONL file
+	// again — gc doubles as the downgrade path for older binaries.
+	if !*dryRun {
+		if c, ok := store.(interface{ Compact() error }); ok {
+			if err := c.Compact(); err != nil {
+				if *jsonOutput {
+					return failJSON(stdout, "gc", err)
+				}
+				return err
+			}
+		}
+	}
 	if *jsonOutput {
 		expired, lowScore := res.Expired, res.LowScore
 		if expired == nil {

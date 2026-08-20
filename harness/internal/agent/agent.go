@@ -285,6 +285,11 @@ type ToolHooks interface {
 // into the main loop.
 type Agent struct {
 	agentConfig
+	// modelRef and contextWindow start from Options but are runtime-mutable:
+	// the scheduler tier switch (tier.go) retargets them mid-run, so they live
+	// on Agent, not on the immutable agentConfig.
+	modelRef      string
+	contextWindow int
 	// svc are the collaborators this agent talks to; see services.go.
 	svc agentServices
 	// sess is the state one conversation owns; SetSession restarts it. See
@@ -310,14 +315,6 @@ type Agent struct {
 	// agents. Unlike planMode it is not a collaboration toggle: it remains on
 	// for the agent's lifetime and validates proxy calls after resolution.
 	readOnlyExecution bool
-
-	// modelRef names the canonical "provider/model" ref backing the current
-	// provider instance. New sets it from Options.ModelRef; a scheduled tier
-	// switch (applyScheduledTier) is the only other writer.
-	modelRef string
-	// contextWindow bounds compaction; New sets it from Options.ContextWindow,
-	// and a scheduled tier switch may update it alongside modelRef.
-	contextWindow int
 
 	// semantix is the optional kernel bridge (nil = kernel disabled).
 	semantix *semantix.Bridge
@@ -900,6 +897,21 @@ type Options struct {
 	// provider instance. It is attached to emitted Usage events so downstream
 	// usage accounting can attribute tokens to the exact model.
 	ModelRef string
+
+	// Semantix is the optional kernel bridge (U8/H1). Nil disables the
+	// kernel wiring entirely (fail-open).
+	Semantix *semantix.Bridge
+	// Decider plans every tool round. Nil installs kernel/sched.RuleDecider.
+	Decider sched.Decider
+	// TierResolver resolves a scheduler tier (for example "flash" or "pro")
+	// to the provider runtime used by the next model round. Nil keeps the
+	// current provider while retaining scheduling observability.
+	TierResolver TierResolver
+	// KernelEvents receives full ResourceCatalog snapshots. Nil disables only
+	// catalog observability; scheduling remains active.
+	KernelEvents   kernelevent.Bus
+	ResourceModels []kernelevent.ResourceModel
+	ResourceBudget kernelevent.ResourceBudget
 	// RequireVisibleFinal makes internal callers reject reasoning-only responses.
 	RequireVisibleFinal bool
 	// Gate is the per-call permission gate. nil disables gating.
@@ -1047,21 +1059,6 @@ type Options struct {
 	// (or cloned for) sub-agents. nil disables v2 capture. Does not affect
 	// provider-visible tool schemas or prompts.
 	MutationObserver *checkpoint.MutationObserver
-
-	// Semantix is the optional kernel bridge (U8/H1). Nil disables the
-	// kernel wiring entirely (fail-open).
-	Semantix *semantix.Bridge
-	// Decider plans every tool round. Nil installs kernel/sched.RuleDecider.
-	Decider sched.Decider
-	// TierResolver resolves a scheduler tier (for example "flash" or "pro")
-	// to the provider runtime used by the next model round. Nil keeps the
-	// current provider while retaining scheduling observability.
-	TierResolver TierResolver
-	// KernelEvents receives full ResourceCatalog snapshots. Nil disables only
-	// catalog observability; scheduling remains active.
-	KernelEvents   kernelevent.Bus
-	ResourceModels []kernelevent.ResourceModel
-	ResourceBudget kernelevent.ResourceBudget
 }
 
 // New constructs an Agent. MaxSteps <= 0 means no cap — the run loop continues
@@ -1138,6 +1135,8 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		},
 		modelRef:      strings.TrimSpace(opts.ModelRef),
 		contextWindow: opts.ContextWindow,
+		semantix:      opts.Semantix,
+		sched:    decider,
 		sess: sessionRuntime{
 			conversation: session,
 			path:         strings.TrimSpace(opts.SessionPath),
@@ -1161,8 +1160,6 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 		capabilityAudit:        opts.CapabilityAudit,
 		keepPolicy:             opts.KeepPolicy,
 		strictAlternatingRoles: opts.StrictAlternatingRoles,
-		semantix:               opts.Semantix,
-		sched:                  decider,
 	}
 	a.resources = newResourceCatalogState(opts.KernelEvents, tools, opts.ResourceModels, opts.ResourceBudget)
 	if opts.ResourceBudget.LimitUSD > 0 {

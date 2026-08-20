@@ -163,7 +163,7 @@ func botStart(args []string, version string) int {
 		cancel()
 	}()
 
-	fmt.Fprintf(os.Stderr, "reasonix bot starting (model: %s, channels: %s)...\n", modelName, *channels)
+	fmt.Fprintf(os.Stderr, "semantix-agent bot starting (model: %s, channels: %s)...\n", modelName, *channels)
 	fmt.Fprintf(os.Stderr, "version: %s\n", version)
 
 	if err := gw.Start(ctx); err != nil {
@@ -504,7 +504,7 @@ func botWeixinLogin(args []string) int {
 		return 1
 	}
 	fmt.Printf("\n微信登录成功: account_id=%s user_id=%s base_url=%s\n", result.AccountID, result.UserID, result.BaseURL)
-	fmt.Println("凭据已保存到 Reasonix 用户配置目录；也可以把 [bot.weixin] account_id 设置为该 account_id。")
+	fmt.Println("凭据已保存到 Semantix 用户配置目录；也可以把 [bot.weixin] account_id 设置为该 account_id。")
 
 	return 0
 }

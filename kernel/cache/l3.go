@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"semantix/kernel/fingerprint"
+	"semantix/kernel/judge"
 	"semantix/kernel/slice"
 	"semantix/kernel/zone"
 )
@@ -20,6 +21,7 @@ type L3Decider struct {
 	Store slice.Store // optional; used to re-read full slices by ID
 	Root  string      // dependency root (project dir) for mtime/Verify
 	Zones *zone.Zones // grey-zone classifier (nil → zone.Default)
+	Judge judge.Judge // grey-zone LLM judge (nil → conservative reject, kernel/judge RuleGate)
 	K     int         // top-k candidates (default 3)
 }
 
@@ -71,8 +73,18 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 		if s.Type != slice.Result {
 			continue // only Result slices carry reusable outcomes
 		}
-		if z.Classify(h.Score, top1) != zone.Hit {
-			continue // grey/miss: not clearly the same task
+		switch z.Classify(h.Score, top1) {
+		case zone.Hit:
+			// clear hit: reuse after the remaining gates below
+		case zone.Grey:
+			// Ambiguous: reuse only when the judge confirms (spec §3.5
+			// RuleGate.Chain; nil judge → conservative reject). Fingerprint
+			// re-verification below still applies to grey-approved slices.
+			if !d.judgeGrey(ctx, q, s) {
+				continue
+			}
+		default: // zone.Miss
+			continue // clearly not the same task
 		}
 		// Context/model isolation (Issue #133 gateway): a cached outcome
 		// produced under a different conversation history or model must
@@ -144,6 +156,29 @@ func (d *L3Decider) zones() zone.Zones {
 		return *d.Zones
 	}
 	return zone.Default()
+}
+
+// judgeGrey runs the spec §3.5 grey-zone confirmation: RuleGate.Chain
+// (fingerprint gate → rules → judge). The L3Decider already re-verifies
+// dependency fingerprints after this (verified), so a judge "yes" still
+// cannot surface stale data. A nil judge, a judge error, or a judge "no"
+// all reject conservatively (fail-closed).
+func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice) bool {
+	if d.Judge == nil {
+		return false
+	}
+	gate := judge.RuleGate{Judge: d.Judge}
+	v, _, err := gate.Chain(ctx, judge.Candidate{
+		Query:   q.UserInput,
+		SliceID: s.ID,
+		Content: string(s.Content),
+		Scope:   s.Scope,
+		Type:    s.Type,
+		Zone:    zone.Grey,
+		Deps:    s.Meta.Deps,
+		RootDir: d.Root,
+	})
+	return err == nil && v == judge.Confirm
 }
 
 func (d *L3Decider) k() int {

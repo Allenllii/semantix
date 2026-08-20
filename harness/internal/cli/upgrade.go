@@ -76,7 +76,7 @@ func parseCLIReleaseChannel(value string) (cliReleaseChannel, error) {
 	case "", string(cliReleaseStable), "preview", "canary", "beta", "next":
 		return cliReleaseStable, nil
 	default:
-		return "", fmt.Errorf("release channel %q is unsupported; Reasonix now uses the official release", value)
+		return "", fmt.Errorf("release channel %q is unsupported; Semantix now uses the official release", value)
 	}
 }
 
@@ -306,7 +306,7 @@ func upgradeCommand(args []string, version string) int {
 	}
 
 	// 9. Extract binary from archive.
-	binName := "reasonix"
+	binName := "semantix-agent"
 	if runtime.GOOS == "windows" {
 		binName = "reasonix.exe"
 	}
@@ -633,7 +633,7 @@ func verifyChecksum(data []byte, fileName string, checksumFile []byte) error {
 	return fmt.Errorf(i18n.M.UpgradeChecksumNotFoundFmt, fileName)
 }
 
-// extractBinary pulls the "reasonix" binary from a .tar.gz or .zip archive.
+// extractBinary pulls the "semantix-agent" binary from a .tar.gz or .zip archive.
 func extractBinary(data []byte, archiveName, binaryName string) ([]byte, error) {
 	if strings.HasSuffix(archiveName, ".zip") {
 		return extractFromZip(data, binaryName)

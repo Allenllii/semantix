@@ -99,7 +99,7 @@ func cliCompletionRootSpec() cliCompletionSpec {
 		completionFlag("--ablate", cliCompletionStaticValue, "none", "all", "evidence", "planner", "subagent", "retrieval", "compaction"),
 		help,
 	}
-	root := cliCompletionSpec{name: "reasonix", flags: append([]cliCompletionFlag{
+	root := cliCompletionSpec{name: "semantix-agent", flags: append([]cliCompletionFlag{
 		model,
 		completionFlag("--max-steps", cliCompletionStaticValue),
 		completionFlag("--print -p", cliCompletionNoValue),
@@ -443,9 +443,9 @@ func completionCommand(args []string) int {
 
 func completionUsage(w *os.File) {
 	fmt.Fprintln(w, `Usage:
-  reasonix completion bash
-  reasonix completion zsh
-  reasonix completion fish
+  semantix-agent completion bash
+  semantix-agent completion zsh
+  semantix-agent completion fish
 
 The command prints a completion script to stdout. Source it directly or save it
 in your shell's completion directory.`)
@@ -652,35 +652,35 @@ func stableUniqueCompletionValues(values []string) []string {
 	return out
 }
 
-const bashCompletionScript = `# bash completion for reasonix
-_reasonix_completion() {
+const bashCompletionScript = `# bash completion for semantix-agent
+_semantix_agent_completion() {
   local line
   COMPREPLY=()
   while IFS= read -r line; do
     COMPREPLY+=("$line")
-  done < <(command reasonix completion __complete "$COMP_CWORD" "${COMP_WORDS[@]}" 2>/dev/null)
+  done < <(command semantix-agent completion __complete "$COMP_CWORD" "${COMP_WORDS[@]}" 2>/dev/null)
 }
-complete -o default -F _reasonix_completion reasonix
+complete -o default -F _semantix_agent_completion semantix-agent
 `
 
-const zshCompletionScript = `#compdef reasonix
-_reasonix_completion() {
+const zshCompletionScript = `#compdef semantix-agent
+_semantix_agent_completion() {
   local -a candidates
-  candidates=("${(@f)$(command reasonix completion __complete "$((CURRENT - 1))" "${words[@]}" 2>/dev/null)}")
+  candidates=("${(@f)$(command semantix-agent completion __complete "$((CURRENT - 1))" "${words[@]}" 2>/dev/null)}")
   if (( ${#candidates[@]} )); then
     compadd -- "${candidates[@]}"
   else
     _default
   fi
 }
-compdef _reasonix_completion reasonix
+compdef _semantix_agent_completion semantix-agent
 `
 
-const fishCompletionScript = `function __reasonix_completion
+const fishCompletionScript = `function __semantix_agent_completion
     set -l tokens (commandline -opc)
     set -a tokens (commandline -ct)
     set -l current_index (math (count $tokens) - 1)
-    command reasonix completion __complete $current_index $tokens 2>/dev/null
+    command semantix-agent completion __complete $current_index $tokens 2>/dev/null
 end
-complete -c reasonix -a '(__reasonix_completion)'
+complete -c semantix-agent -a '(__semantix_agent_completion)'
 `

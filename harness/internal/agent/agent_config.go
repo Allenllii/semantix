@@ -25,9 +25,10 @@ type agentConfig struct {
 	// agent/skill tools are excluded.
 	subagentDepth    int
 	maxSubagentDepth int
-	// compactRatio decides when at most one provider-visible checkpoint is
-	// installed; recentKeep and archiveDir shape what it keeps.
+	// compactRatio (with Agent.contextWindow) decides when at most one
+	// provider-visible checkpoint is installed; recentKeep and archiveDir
+	// shape what it keeps.
 	compactRatio float64
-	recentKeep   int
-	archiveDir   string
+	recentKeep    int
+	archiveDir    string
 }

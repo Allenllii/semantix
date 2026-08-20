@@ -4317,7 +4317,7 @@ func TestPlanModeReadOnlyTrustApprovalUsesChineseCatalog(t *testing.T) {
 	if !strings.Contains(approval.Subject, "在计划模式中信任") || !strings.Contains(approval.Subject, "gh issue view 5867") {
 		t.Fatalf("approval subject = %q, want Chinese plan-mode trust subject", approval.Subject)
 	}
-	if !strings.Contains(approval.Reason, "不在 Reasonix 内置只读集合中") {
+	if !strings.Contains(approval.Reason, "不在 Semantix 内置只读集合中") {
 		t.Fatalf("approval reason = %q, want Chinese plan-mode trust reason", approval.Reason)
 	}
 

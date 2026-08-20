@@ -145,9 +145,10 @@ func TestSearchVectorModelEmbedderFallback(t *testing.T) {
 	}
 }
 
-// TestEmbedItemsWritesEmbeddingAndMeta verifies embedding + provenance are
-// stored on extracted slices.
-func TestEmbedItemsWritesEmbeddingAndMeta(t *testing.T) {
+// TestEmbedItemsHashNotPersisted: hash vectors are deterministic functions
+// of Content with zero persisted readers, so extract must not store them —
+// no Embedding, no provenance meta.
+func TestEmbedItemsHashNotPersisted(t *testing.T) {
 	items := []*slice.Slice{
 		{ID: "a", Content: []byte("hello")},
 		{ID: "b", Content: []byte("world")},
@@ -156,11 +157,11 @@ func TestEmbedItemsWritesEmbeddingAndMeta(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, item := range items {
-		if len(item.Embedding) != 256 {
-			t.Fatalf("%s: embedding dim = %d, want 256", item.ID, len(item.Embedding))
+		if item.Embedding != nil {
+			t.Fatalf("%s: hash embedding persisted (%d floats), want none", item.ID, len(item.Embedding))
 		}
-		if item.Meta.EmbedModel != "hash" || item.Meta.EmbedDim != 256 {
-			t.Fatalf("%s: meta = %+v, want model=hash dim=256", item.ID, item.Meta)
+		if item.Meta.EmbedModel != "" || item.Meta.EmbedDim != 0 {
+			t.Fatalf("%s: provenance written for unpersisted vector: %+v", item.ID, item.Meta)
 		}
 	}
 }

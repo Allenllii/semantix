@@ -10,12 +10,12 @@ import (
 )
 
 // BuildInfo is the machine- and human-readable build identity for
-// `reasonix version` / `reasonix --version`. Release builds may only fill
+// `reasonix version` / `semantix-agent --version`. Release builds may only fill
 // Version; source and CI builds inject the rest via -ldflags so the binary is
 // traceable without shelling out to git.
 //
 // Plan contract (Integration D/E):
-//   - `reasonix --version` / `-v` stay single-line: "reasonix <version>"
+//   - `semantix-agent --version` / `-v` stay single-line: "semantix-agent <version>"
 //   - `reasonix version --verbose` prints structured fields
 //   - `reasonix version --json` prints a JSON object
 //   - Fields are limited to version, commit, build time, target (and go runtime);
@@ -86,7 +86,7 @@ version --verbose prints build metadata; version --json prints the same as JSON.
 }
 
 func (b BuildInfo) singleLine() string {
-	return "reasonix " + strings.TrimSpace(b.withDefaults().Version)
+	return "semantix-agent " + strings.TrimSpace(b.withDefaults().Version)
 }
 
 func (b BuildInfo) verboseText() string {

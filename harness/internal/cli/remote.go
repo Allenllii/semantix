@@ -61,7 +61,7 @@ func remoteCommand(args []string, version string) int {
 // with an actionable message instead of "unknown subcommand"; the following
 // stable release deletes the stubs and the routes entirely.
 func removedWorkbenchCommand(name string) int {
-	fmt.Fprintf(os.Stderr, "reasonix remote %s: Remote Workbench 已移除，请使用 `reasonix remote connect <host> --open`\n", name)
+	fmt.Fprintf(os.Stderr, "semantix-agent remote %s: Remote Workbench 已移除，请使用 `reasonix remote connect <host> --open`\n", name)
 	return 1
 }
 

@@ -1,12 +1,15 @@
 package gateway
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,10 +17,10 @@ import (
 	"sync"
 	"time"
 
-	"semantix/kernel/bm25"
 	"semantix/kernel/cache"
 	"semantix/kernel/ingest"
 	"semantix/kernel/inject"
+	"semantix/kernel/judge"
 	"semantix/kernel/slice"
 	"semantix/kernel/usage"
 	"semantix/kernel/zone"
@@ -35,12 +38,17 @@ type Gateway struct {
 	usageLog *usage.Recorder
 	client   *http.Client
 
+	// healthProbe checks upstream reachability for /healthz (nil or a
+	// nil-config timeout disables probing). Injectable so tests can stub
+	// or slow it down without a real upstream.
+	healthProbe func(ctx context.Context) error
+
 	sessionsMu sync.Mutex // serializes sidecar JSONL appends
 	ingestMu   sync.Mutex // serializes the async ingest writes
 	ingestWG   sync.WaitGroup
 	shutdownMu sync.Mutex // guards closing flag vs recordSession's Add
 	closing    bool
-	disabled   bool       // SEMANTIX_GATEWAY_DISABLE ablation switch
+	disabled   bool // SEMANTIX_GATEWAY_DISABLE ablation switch
 
 	now func() time.Time
 }
@@ -57,8 +65,10 @@ func disableEnv() bool {
 }
 
 // New assembles the gateway from config: opens the slice store, rebuilds the
-// in-memory BM25 index from it, and wires the L2 injector + L3 decider. It
-// never starts network listeners — the caller (cmd/semantix-gateway) does.
+// in-memory retrieval index (bm25 | vector | hybrid, Issue #186) from it,
+// wires the grey-zone LLM judge (spec §3.5, optional), and wires the L2
+// injector + L3 decider. It never starts network listeners — the caller
+// (cmd/semantix-gateway) does.
 func New(cfg *Config) (*Gateway, error) {
 	root := cfg.Store.DepsRoot
 	if root == "" {
@@ -68,10 +78,40 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gateway: open store %s: %w", cfg.Store.DB, err)
 	}
-	idx := bm25.New()
+	// Startup is a process boundary: fold any journal into the base before
+	// serving (freeze-window semantics — the library never shifts mid-flight).
+	// Best-effort: a failed fold still leaves a consistent store.
+	if c, ok := store.(interface{ Compact() error }); ok {
+		if err := c.Compact(); err != nil {
+			log.Printf("gateway: store compact: %v", err)
+		}
+	}
+	idx := newRetriever(cfg.Retrieval.Retriever, cfg.Retrieval.VectorDim)
 	if err := loadIndex(store, idx); err != nil {
 		_ = closeStore(store)
 		return nil, fmt.Errorf("gateway: rebuild index: %w", err)
+	}
+
+	// Grey-zone LLM judge (Issue #186 / GW6, spec §3.5): when a judge key is
+	// configured, ambiguous L3 candidates are confirmed by kernel/judge
+	// before reuse; without it the decider conservatively rejects grey.
+	var llmJudge judge.Judge
+	if cfg.Cache.JudgeAPIKey != "" {
+		protocol := cfg.Cache.JudgeProtocol
+		if protocol == "" {
+			protocol = "openai"
+		}
+		j, err := judge.NewLLMJudge(judge.LLMConfig{
+			Protocol: protocol,
+			BaseURL:  cfg.Cache.JudgeBaseURL,
+			Model:    cfg.Cache.JudgeModel,
+			APIKey:   cfg.Cache.JudgeAPIKey,
+		})
+		if err != nil {
+			_ = closeStore(store)
+			return nil, fmt.Errorf("gateway: judge: %w", err)
+		}
+		llmJudge = j
 	}
 
 	scope, err := parseScope(cfg.Store.Scope)
@@ -102,14 +142,47 @@ func New(cfg *Config) (*Gateway, error) {
 		cfg:      cfg,
 		store:    store,
 		index:    idx,
-		decider:  &cache.L3Decider{Index: idx, Store: store, Root: root, K: topK},
+		decider:  &cache.L3Decider{Index: idx, Store: store, Root: root, K: topK, Judge: llmJudge},
 		injector: &inject.Injector{Index: idx, Store: store, Scope: scope, K: topK, Budget: budget, Zones: &z},
 		usageLog: rec,
 		client:   &http.Client{Timeout: 120 * time.Second},
 		disabled: disableEnv(),
 		now:      time.Now,
 	}
+	g.healthProbe = g.probeUpstreams
 	return g, nil
+}
+
+// probeUpstreams is the default /healthz probe: every configured upstream
+// must answer 2xx to GET {base_url}/models within the caller-provided
+// timeout. Any non-2xx, network error or timeout marks the gateway
+// unhealthy (fail-closed), so New API disables the channel rather than
+// routing into a dead upstream.
+func (g *Gateway) probeUpstreams(ctx context.Context) error {
+	for _, up := range g.cfg.Upstreams {
+		endpoint := strings.TrimRight(up.BaseURL, "/") + "/models"
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return fmt.Errorf("upstream %s: %w", up.Name, err)
+		}
+		req.Header.Set("Authorization", "Bearer "+up.APIKey)
+		resp, err := g.client.Do(req)
+		if err != nil {
+			// Do not wrap the raw *url.Error: its text embeds the full
+			// base URL, which must never leak into the healthz response.
+			reason := err.Error()
+			var uerr *url.Error
+			if errors.As(err, &uerr) {
+				reason = uerr.Err.Error()
+			}
+			return fmt.Errorf("upstream %s unreachable: %s", up.Name, reason)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("upstream %s unhealthy: status %d", up.Name, resp.StatusCode)
+		}
+	}
+	return nil
 }
 
 // Close stops accepting new sidecar writes, waits for in-flight ingestion
@@ -171,11 +244,12 @@ func (g *Gateway) resolveScope(r *http.Request) (slice.Scope, error) {
 	return parseScope(v)
 }
 
-// cacheFresh applies the configured TTL window over Slice.CreatedAt.
-// ttl_seconds<=0 or unknown age (CreatedAt==0) never expire (kernel gc
-// semantics); the kernel dep-fingerprint chain stays the staleness authority.
-func (g *Gateway) cacheFresh(s *slice.Slice) bool {
-	ttl := g.cfg.Cache.TTLSeconds
+// cacheFresh applies the vendor-aware TTL window over Slice.CreatedAt
+// (design §3.5: DeepSeek 24h / Anthropic 5m, resolved by Config.TTLFor).
+// ttl<=0 or unknown age (CreatedAt==0) never expire (kernel gc semantics);
+// the kernel dep-fingerprint chain stays the staleness authority.
+func (g *Gateway) cacheFresh(s *slice.Slice, vendor string) bool {
+	ttl := g.cfg.TTLFor(vendor)
 	if ttl <= 0 || s.CreatedAt == 0 {
 		return true
 	}
@@ -278,10 +352,16 @@ func (m metaStore) Put(s *slice.Slice) error {
 	return m.inner.Put(s)
 }
 
-func (m metaStore) Get(id string) (*slice.Slice, error)      { return m.inner.Get(id) }
+func (m metaStore) Get(id string) (*slice.Slice, error)            { return m.inner.Get(id) }
 func (m metaStore) List(scope slice.Scope) ([]*slice.Slice, error) { return m.inner.List(scope) }
 func (m metaStore) UpdateStats(id string, delta slice.SliceStats) error {
 	return m.inner.UpdateStats(id, delta)
+}
+
+// UpdateStatsBatch forwards the batch capability so wrapping the store does
+// not silently degrade stats write-back to per-ID rewrites.
+func (m metaStore) UpdateStatsBatch(deltas map[string]slice.SliceStats) error {
+	return slice.ApplyStats(m.inner, deltas)
 }
 func (m metaStore) ListAll() ([]*slice.Slice, error) { return m.inner.ListAll() }
 func (m metaStore) Delete(id string) error           { return m.inner.Delete(id) }

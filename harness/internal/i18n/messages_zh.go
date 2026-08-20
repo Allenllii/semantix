@@ -7,12 +7,12 @@ var Chinese = Messages{
 	WelcomeTitleFmt: "欢迎使用 %s",
 	NoConfigYet:     "还没有配置 — 现在来设置一下吧。",
 
-	InitHint: "项目记忆（AGENTS.md）在会话内由模型生成：运行 `reasonix`，然后 `/init` —— 模型会分析代码库并写入。配置请用 `reasonix setup`。",
+	InitHint: "项目记忆（AGENTS.md）在会话内由模型生成：运行 `semantix-agent`，然后 `/init` —— 模型会分析代码库并写入。配置请用 `semantix-agent setup`。",
 
 	ChatTip:             "对话上下文将跨轮保留。输入 'exit' 或按 Ctrl-D 退出。",
 	TurnCancelled:       "已取消 — 回到提示符",
 	InterruptedRecovery: "本轮已中断。部分输出会永久保留供查看；只有完整工具调用及结果和有界恢复摘要会进入模型下一轮。继续或回滚前请先检查当前工作区。",
-	RecoveryPaused:      "已暂停自动重试。Reasonix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。",
+	RecoveryPaused:      "已暂停自动重试。Semantix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。",
 	ReceiptVerified:     "没有未经验证的部分",
 	ReceiptGapsHeader:   "未验证:",
 	ReceiptRisksHeader:  "已申报的风险:",
@@ -27,7 +27,7 @@ var Chinese = Messages{
 		"unreviewed_change":   "改动后再没看过",
 		"declared_unverified": "自己申报未验证",
 	},
-	NoSessionToResume: "没有可恢复的会话 — 用 `reasonix` 开一个新的",
+	NoSessionToResume: "没有可恢复的会话 — 用 `semantix-agent` 开一个新的",
 	ResumeRequiresTTY: "--resume 需要交互式终端；用 --continue 直接恢复最近一次",
 	PickSessionLabel:  "恢复哪个会话？",
 
@@ -126,17 +126,17 @@ var Chinese = Messages{
 	MemoryApprovalBodyLabel:                "正文",
 	MemoryApprovalArchiveFmt:               "归档记忆 %q",
 	PlanModeBashTrustSubjectFmt:            "在计划模式中信任 %q 为只读命令前缀\n命令：%s",
-	PlanModeBashTrustReason:                "这条 bash 命令不在 Reasonix 内置只读集合中。只有在确认这个精确前缀用于计划和研究时是只读的，才应批准。自动/YOLO 审批不能回答这个信任提示。",
+	PlanModeBashTrustReason:                "这条 bash 命令不在 Semantix 内置只读集合中。只有在确认这个精确前缀用于计划和研究时是只读的，才应批准。自动/YOLO 审批不能回答这个信任提示。",
 	PlanModeBashTrustDeclined:              "用户拒绝将这条 bash 命令信任为计划模式只读命令；不要重试它，请继续使用其它已信任的只读工具，或询问用户希望如何继续。",
 	SandboxEscapeSubjectFallback:           "仅本次不进沙箱运行 shell 命令",
 	SandboxEscapeSubjectPrefix:             "仅本次不进沙箱运行：",
 	SandboxEscapeWrapReason:                "Windows 不提供这条命令所需的 OS 级 Bash 沙箱。是否仅本次不受限运行？这只会对此命令绕过 OS 隔离。",
 	SandboxEscapeRuntimeReason:             "OS 沙箱无法启动这条命令。是否仅本次不受限运行？这只会对此命令绕过 OS 隔离。",
 	SandboxEscapeDeclined:                  "用户拒绝在没有 OS 沙箱的情况下运行这条命令；不要不进沙箱重试，请询问用户希望如何继续。",
-	ApprovalToolLabelConfigWrite:           "Reasonix 配置写入审批",
-	ConfigWriteSubjectPrefix:               "写入 Reasonix 配置：",
-	ConfigWriteReason:                      "这次写入的目标是工作区之外的 Reasonix 托管配置文件。它可以改变后续会话的模型服务商、沙箱规则、权限和 MCP 服务器，因此需要你的明确批准。",
-	ConfigWriteDeclined:                    "用户拒绝了这次 Reasonix 配置写入；不要重试，请询问用户希望如何继续。",
+	ApprovalToolLabelConfigWrite:           "Semantix 配置写入审批",
+	ConfigWriteSubjectPrefix:               "写入 Semantix 配置：",
+	ConfigWriteReason:                      "这次写入的目标是工作区之外的 Semantix 托管配置文件。它可以改变后续会话的模型服务商、沙箱规则、权限和 MCP 服务器，因此需要你的明确批准。",
+	ConfigWriteDeclined:                    "用户拒绝了这次 Semantix 配置写入；不要重试，请询问用户希望如何继续。",
 	ConfigWriteApprovalChoices:             "1. 允许一次\n2. 本会话允许\n3. 拒绝\n选择 [1/2/3]（兼容 y/a/n）",
 	PermissionSavedFmt:                     "授权已保存到 %s：%s",
 	PermissionAlreadyAllowedFmt:            "授权已由 %s 中的规则覆盖：%s",
@@ -320,7 +320,7 @@ var Chinese = Messages{
 	ListSkillsHeaderFmt: "skills（%d 个）",
 	ListSkillsNone:      "暂无 skill — 调用内置的（如 /init），或用 install_skill 创建一个",
 	ListHooksHeaderFmt:  "hooks（生效 %d 个）",
-	ListHooksNone:       "无生效 hooks — 在 .reasonix/settings.json（项目）或 <Reasonix home>/settings.json（全局）配置",
+	ListHooksNone:       "无生效 hooks — 在 .reasonix/settings.json（项目）或 <Semantix home>/settings.json（全局）配置",
 	ListMcpHeader:       "MCP 服务器",
 	ListMcpNone:         "未连接 MCP 服务器 — 在 reasonix.toml（[[plugins]]）或项目 .mcp.json 中添加",
 
@@ -388,7 +388,7 @@ var Chinese = Messages{
 	SetupComplete:            "设置完成。",
 	SetupCancelled:           "设置已取消。",
 	TryHintFmt:               "试试: %s",
-	NextHint:                 "下一步：设置 API key（运行 `reasonix setup` 或 export DEEPSEEK_API_KEY=...），然后运行 `reasonix run \"你的任务\"`。",
+	NextHint:                 "下一步：设置 API key（运行 `semantix-agent setup` 或 export DEEPSEEK_API_KEY=...），然后运行 `semantix-agent run \"你的任务\"`。",
 	ConfirmReconfigureFmt:    "%s 已存在。重新配置并覆盖？",
 	NotOverwritingFmt:        "%s 已存在，不覆盖",
 	SetupManagerTitle:        "供应商配置",
@@ -475,18 +475,18 @@ var Chinese = Messages{
 	RemotePassphrasePromptFmt: "%s 的密钥口令：",
 	RemotePasswordPromptFmt:   "%s 的登录密码：",
 	RemoteBootstrapStepFmt:    "远端 serve：%s %s",
-	RemoteNoHostsHint:         "尚未配置远程主机；用 `reasonix remote add <名称> [user@]host` 添加",
+	RemoteNoHostsHint:         "尚未配置远程主机；用 `semantix-agent remote add <名称> [user@]host` 添加",
 
 	UnknownCommandFmt:         "未知命令 %q",
-	UsageRunHint:              "用法：reasonix -p [--model NAME] <task>",
+	UsageRunHint:              "用法：semantix-agent -p [--model NAME] <task>",
 	ErrorPrefix:               "错误：",
 	ReconfigureOnUnknownModel: "配置的模型已不可用 —— 重新运行引导配置。",
 	WriteConfigErr:            "写入配置失败：",
 	WriteEnvErr:               "写入 .env 失败：",
 
 	ProviderErrBadRequest:          "请求格式错误 (HTTP 400)：请求体被拒绝，通常是程序缺陷。若持续出现请反馈。",
-	ProviderErrAuth:                "认证失败 (HTTP 401)：未读到 API key（缺失或未设置）。请在 .env 中配置密钥，或运行 `reasonix setup`。",
-	ProviderErrAuthRejected:        "认证失败 (HTTP 401)：服务端拒绝了你的 API key。可能是 key 错误或已过期，也可能是服务端出现瞬时鉴权/额度问题——已退避重试仍失败。请稍后再试，或检查 .env 中的密钥 / 运行 `reasonix setup`。",
+	ProviderErrAuth:                "认证失败 (HTTP 401)：未读到 API key（缺失或未设置）。请在 .env 中配置密钥，或运行 `semantix-agent setup`。",
+	ProviderErrAuthRejected:        "认证失败 (HTTP 401)：服务端拒绝了你的 API key。可能是 key 错误或已过期，也可能是服务端出现瞬时鉴权/额度问题——已退避重试仍失败。请稍后再试，或检查 .env 中的密钥 / 运行 `semantix-agent setup`。",
 	ProviderErrInsufficientBalance: "余额不足 (HTTP 402)：账户余额不足，请前往充值后重试。",
 	ProviderErrUnprocessable:       "参数错误 (HTTP 422)：某个请求参数被拒绝，通常是程序缺陷。若持续出现请反馈。",
 	ProviderErrInputSensitive:      "输入被 MiniMax 内容审查拒绝（错误码 1026）。审查对象可能包含会话历史和工具结果；请调整相关内容，或新建会话仅保留必要上下文。原样重试通常无效。",
@@ -533,7 +533,7 @@ var Chinese = Messages{
 	ReportNoPending:           "没有待处理的 CLI 崩溃报告。",
 	ReportHeaderFmt:           "CLI 崩溃报告 %s",
 	ReportCapturedFmt:         "捕获时间：%s",
-	ReportPreviewOnlyFmt:      "当前仅预览。运行 `reasonix report send %s` 可发送这份报告。",
+	ReportPreviewOnlyFmt:      "当前仅预览。运行 `semantix-agent report send %s` 可发送这份报告。",
 	ReportSendPrompt:          "将这份已脱敏报告发送到 crash.reasonix.io？",
 	ReportKept:                "报告已保留在本地。",
 	ReportDeletedFmt:          "已删除 CLI 崩溃报告 %s。",
@@ -542,66 +542,66 @@ var Chinese = Messages{
 	ReportUploadFailedFmt:     "报告上传失败；本地报告已保留：%v",
 	ReportSentDeleteFailedFmt: "报告已发送，但无法删除本地副本：%v",
 	ReportUsageBody: `用法：
-  reasonix report                 预览最新本地报告并确认是否发送
-  reasonix report list            列出本地 CLI 崩溃报告
-  reasonix report show [ID]       预览报告（省略 ID 时使用最新一份）
-  reasonix report send [ID]       发送已审阅报告，成功后删除本地副本
-  reasonix report delete [ID]     不发送，直接删除本地报告`,
+  semantix-agent report                 预览最新本地报告并确认是否发送
+  semantix-agent report list            列出本地 CLI 崩溃报告
+  semantix-agent report show [ID]       预览报告（省略 ID 时使用最新一份）
+  semantix-agent report send [ID]       发送已审阅报告，成功后删除本地副本
+  semantix-agent report delete [ID]     不发送，直接删除本地报告`,
 
-	CLITelemetryConsentNotice:           "Reasonix 可以向 crash.reasonix.io 发送匿名、完全不含内容的 CLI 使用统计：随机安装 ID、版本、操作系统和固定质量分桶。绝不会发送 prompt、回答、代码、路径、模型或工具内容、环境变量。之后可运行 `reasonix config telemetry off` 关闭。",
+	CLITelemetryConsentNotice:           "Semantix 可以向 crash.reasonix.io 发送匿名、完全不含内容的 CLI 使用统计：随机安装 ID、版本、操作系统和固定质量分桶。绝不会发送 prompt、回答、代码、路径、模型或工具内容、环境变量。之后可运行 `semantix-agent config telemetry off` 关闭。",
 	CLITelemetryConsentPrompt:           "允许发送匿名 CLI 使用统计吗？",
 	CLITelemetryConsentInvalid:          "请输入 y 或 n。",
 	CLITelemetryConsentSaveFailedFmt:    "由于无法保存偏好设置，CLI 使用统计仍保持关闭：%v",
 	CLITelemetryConsentCleanupFailedFmt: "CLI 使用统计已关闭，但无法删除待发送统计：%v",
 
-	UsageBody: `reasonix — 由配置和插件驱动的 coding agent（多模型）
+	UsageBody: `semantix-agent — 由配置和插件驱动的 coding agent（多模型）
 
 用法：
-  reasonix [--model NAME] [-c|--continue] [-r|--resume [QUERY]] [--permission-mode MODE] [--effort LEVEL] [--add-dir PATH]   交互式会话
-  reasonix -p|--print [--model NAME] [--output-format text|json|stream-json] [--allowed-tools RULES] [--add-dir PATH] <task>
-  reasonix run [--model NAME] [--max-steps N] [-c|--continue] [--resume PATH] [--copy] [--output-format FORMAT] <task>
-  reasonix run --events-jsonl [--model NAME] <task>      输出脱敏结构化事件 JSONL
-  reasonix review [--base BRANCH] [--commit SHA] [--model NAME]  AI 代码审查（基于本地 diff）
-  reasonix web [--model NAME] [--addr HOST:PORT] [--no-open]  启动本地 Web UI 并用默认浏览器打开
-  reasonix serve [--model NAME] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  通过 HTTP+SSE 提供服务（支持可选认证）
-  reasonix acp [--model NAME]                           通过 stdio 提供 Agent Client Protocol（也可用：reasonix --acp）
-  reasonix setup [path]                                 交互式配置向导；生成 reasonix.toml（及 .env）
-  reasonix config reasoning-language [auto|zh|en]        配置可见思考语言
-  reasonix config compact-ratio [--local] [65..85]       配置自动压缩阈值
-  reasonix config telemetry [auto|on|off]                配置不含内容的 CLI 使用统计
-  reasonix report [list|show|send|delete] [ID]           审阅并明确发送本地 CLI 崩溃报告
-  reasonix mcp <add|remove|list|import>                 管理 reasonix.toml 里的 MCP 服务器
-  reasonix subagent <list|create|edit|delete|try|run>   管理和运行隔离子智能体 profile
-  reasonix init                                         查看如何生成项目记忆（AGENTS.md）
-  reasonix doctor [--json]                              输出脱敏的本地诊断信息
-  reasonix doctor session <branch-id> [--zip] [--out PATH]  导出会话冲突诊断 zip
-  reasonix session list --json [--dir PATH]             为机器客户端列出脱敏会话
-  reasonix session show|status <machine-session-id> --json [--dir PATH]  查询单个脱敏会话
-  reasonix session recovery [<machine-session-id>] --json [--dir PATH]  查询脱敏恢复状态
-  reasonix hook list|status --json [--dir PATH]         查看脱敏 Hook 状态
-  reasonix task list|show|status|events|stop|cancel|monitor|tmux --json [--dir PATH]
+  semantix-agent [--model NAME] [-c|--continue] [-r|--resume [QUERY]] [--permission-mode MODE] [--effort LEVEL] [--add-dir PATH]   交互式会话
+  semantix-agent -p|--print [--model NAME] [--output-format text|json|stream-json] [--allowed-tools RULES] [--add-dir PATH] <task>
+  semantix-agent run [--model NAME] [--max-steps N] [-c|--continue] [--resume PATH] [--copy] [--output-format FORMAT] <task>
+  semantix-agent run --events-jsonl [--model NAME] <task>      输出脱敏结构化事件 JSONL
+  semantix-agent review [--base BRANCH] [--commit SHA] [--model NAME]  AI 代码审查（基于本地 diff）
+  semantix-agent web [--model NAME] [--addr HOST:PORT] [--no-open]  启动本地 Web UI 并用默认浏览器打开
+  semantix-agent serve [--model NAME] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  通过 HTTP+SSE 提供服务（支持可选认证）
+  semantix-agent acp [--model NAME]                           通过 stdio 提供 Agent Client Protocol（也可用：semantix-agent --acp）
+  semantix-agent setup [path]                                 交互式配置向导；生成 reasonix.toml（及 .env）
+  semantix-agent config reasoning-language [auto|zh|en]        配置可见思考语言
+  semantix-agent config compact-ratio [--local] [65..85]       配置自动压缩阈值
+  semantix-agent config telemetry [auto|on|off]                配置不含内容的 CLI 使用统计
+  semantix-agent report [list|show|send|delete] [ID]           审阅并明确发送本地 CLI 崩溃报告
+  semantix-agent mcp <add|remove|list|import>                 管理 reasonix.toml 里的 MCP 服务器
+  semantix-agent subagent <list|create|edit|delete|try|run>   管理和运行隔离子智能体 profile
+  semantix-agent init                                         查看如何生成项目记忆（AGENTS.md）
+  semantix-agent doctor [--json]                              输出脱敏的本地诊断信息
+  semantix-agent doctor session <branch-id> [--zip] [--out PATH]  导出会话冲突诊断 zip
+  semantix-agent session list --json [--dir PATH]             为机器客户端列出脱敏会话
+  semantix-agent session show|status <machine-session-id> --json [--dir PATH]  查询单个脱敏会话
+  semantix-agent session recovery [<machine-session-id>] --json [--dir PATH]  查询脱敏恢复状态
+  semantix-agent hook list|status --json [--dir PATH]         查看脱敏 Hook 状态
+  semantix-agent task list|show|status|events|stop|cancel|monitor|tmux --json [--dir PATH]
                                                          查看或控制脱敏 Task
-  reasonix bot start|doctor|weixin-login                多渠道 IM bot 网关
-  reasonix upgrade [--check] [--force]                   更新到最新正式版（别名：reasonix update）
-  reasonix completion bash|zsh|fish                     打印 shell 补全脚本到 stdout
-  reasonix version [--verbose|--json]                   打印版本（单行）或构建元信息
-  reasonix --version | -v                               单行版本（脚本安全）
-  reasonix help
+  semantix-agent bot start|doctor|weixin-login                多渠道 IM bot 网关
+  semantix-agent upgrade [--check] [--force]                   更新到最新正式版（别名：semantix-agent update）
+  semantix-agent completion bash|zsh|fish                     打印 shell 补全脚本到 stdout
+  semantix-agent version [--verbose|--json]                   打印版本（单行）或构建元信息
+  semantix-agent --version | -v                               单行版本（脚本安全）
+  semantix-agent help
 
 示例：
-  reasonix
-  reasonix --continue
-  reasonix --resume provider-config
-  reasonix web
-  reasonix run "把 main.go 里的 TODO 实现掉"
-  reasonix run --model mimo-pro "给这个函数补单元测试"
-  reasonix -p "总结这个仓库" --output-format json
-  reasonix subagent run review "审查当前改动"
-  echo "解释这段代码" | reasonix run
+  semantix-agent
+  semantix-agent --continue
+  semantix-agent --resume provider-config
+  semantix-agent web
+  semantix-agent run "把 main.go 里的 TODO 实现掉"
+  semantix-agent run --model mimo-pro "给这个函数补单元测试"
+  semantix-agent -p "总结这个仓库" --output-format json
+  semantix-agent subagent run review "审查当前改动"
+  echo "解释这段代码" | semantix-agent run
 
 配置：
-  优先级：flag > ./reasonix.toml > <Reasonix home>/config.toml > 内置默认值
+  优先级：flag > ./reasonix.toml > <Semantix home>/config.toml > 内置默认值
   密钥通过 api_key_env 从环境变量注入（如 DEEPSEEK_API_KEY）。
-  运行 'reasonix setup' 生成配置；详见 docs/SPEC.md。
+  运行 'semantix-agent setup' 生成配置；详见 docs/SPEC.md。
 `,
 }

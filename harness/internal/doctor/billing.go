@@ -126,7 +126,7 @@ func officialKindForBilling(p *config.ProviderEntry) string {
 // RenderBillingText formats a human-readable billing doctor report.
 func RenderBillingText(r BillingReport) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "reasonix doctor billing\n")
+	fmt.Fprintf(&b, "semantix-agent doctor billing\n")
 	fmt.Fprintf(&b, "  display preference: %s\n", r.DisplayCurrencyPref)
 	fmt.Fprintf(&b, "  display resolved:   %s\n", r.DisplayCurrency)
 	fmt.Fprintf(&b, "  fx source:          %s\n", r.FX.Source)

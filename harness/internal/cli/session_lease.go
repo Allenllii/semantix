@@ -15,7 +15,7 @@ import (
 // duplicated session via --copy).
 func sessionLeaseResumeRefusal(err error) string {
 	return control.SessionInUseMessage(err) +
-		"; close the other Reasonix window or process, or rerun with --copy to continue in a duplicated session"
+		"; close the other Semantix window or process, or rerun with --copy to continue in a duplicated session"
 }
 
 // sessionLeaseHeldNotice is the in-TUI refusal for /resume and /switch, where
