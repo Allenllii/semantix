@@ -43,7 +43,11 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 		return
 	}
 	sessionID := r.Header.Get("x-semantix-session")
-	ctx := r.Context()
+	// Route this turn's grey-zone judge decisions back to this turn's usage
+	// event (Issue #242 gap 1). The decider's OnJudge hook is process-wide,
+	// so the request context is what identifies the caller.
+	jc := &judgeCollector{}
+	ctx := withJudgeCollector(r.Context(), jc)
 	q := cache.Query{UserInput: query, ContextHash: chash, Scope: scope, Model: req.Model}
 
 	// L3: verified reuse — zero upstream calls (design §3.3 step 3). The
@@ -54,7 +58,7 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 			g.recordUsage(usage.Event{
 				SessionID: sessionID, TokensIn: int64(len(query)/4) + int64(len(res.Response)/4),
 				TokensOut: 0, CacheHitToken: int64(len(res.Response) / 4),
-				L3Reuse: true, At: g.now().Unix(),
+				L3Reuse: true, JudgeDecisions: jc.drain(), At: g.now().Unix(),
 			})
 			g.replyFromCache(w, r, req, res)
 			return
@@ -97,13 +101,13 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 
 	if req.Stream {
 		if up.Vendor == "anthropic" {
-			g.streamThroughAnthropic(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits)
+			g.streamThroughAnthropic(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, jc)
 			return
 		}
-		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits)
+		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, jc)
 		return
 	}
-	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up.Vendor)
+	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up.Vendor, jc)
 }
 
 // l3Eligible applies the gateway-side TTL window on top of the kernel
@@ -205,7 +209,7 @@ func (g *Gateway) forward(ctx context.Context, up UpstreamConfig, body []byte) (
 // successful exchanges, so failed requests never enter the reuse library.
 // Anthropic responses are translated to OpenAI chat.completion shape first
 // (the client surface is always OpenAI-compatible).
-func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, vendor string) {
+func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, vendor string, jc *judgeCollector) {
 	out, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		writeAPIError(w, http.StatusBadGateway, "upstream_error",
@@ -258,6 +262,7 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 		TokensOut:      int64(len(out) / 4),
 		InjectedTokens: injectedTokens,
 		SliceHits:      sliceHits,
+		JudgeDecisions: jc.drain(),
 		At:             g.now().Unix(),
 	})
 }
@@ -272,7 +277,7 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 // failed exchanges are not recorded (design §0.3 documented debt, now paid).
 // If the upstream ends without a [DONE] marker (abnormal disconnect), the
 // gateway appends one so the client never hangs on an unterminated stream.
-func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int) {
+func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, jc *judgeCollector) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 		writeAPIError(w, resp.StatusCode, "upstream_error",
@@ -343,6 +348,7 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 		TokensOut:      tokensOut,
 		InjectedTokens: injectedTokens,
 		SliceHits:      sliceHits,
+		JudgeDecisions: jc.drain(),
 		At:             g.now().Unix(),
 	})
 }

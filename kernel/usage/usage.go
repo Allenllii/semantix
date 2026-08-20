@@ -40,7 +40,45 @@ type Event struct {
 	// this turn (L2 injected slice count). Omitted for older logs, which
 	// Summarize reads as 0.
 	SliceHits int `json:"slice_hits,omitempty"`
-	At        int64 `json:"at"` // unix seconds
+	// JudgeDecisions records the grey-zone LLM judge verifications this turn
+	// triggered (Issue #242 gap 1). Empty on every turn that never entered
+	// the grey zone, and on every deployment without a judge configured.
+	JudgeDecisions []JudgeDecision `json:"judge,omitempty"`
+	At             int64           `json:"at"` // unix seconds
+}
+
+// JudgeDecision is one grey-zone judge verification, as recorded on the
+// turn that triggered it (Issue #242 gap 1).
+//
+// It lives in the usage log rather than only in a process log line because
+// the judge is a *separate upstream model call*: it does not go through the
+// serving channel, so nothing else meters it. Summarize is the only place
+// that turns this library's savings into a number, so a cost the savings
+// figure must be reconciled against has to be reachable from here.
+type JudgeDecision struct {
+	// SliceID is the candidate that entered the grey zone.
+	SliceID string `json:"slice_id,omitempty"`
+	// RelConfidence is the score/top1 ratio that classified it as grey.
+	RelConfidence float64 `json:"rel_confidence,omitempty"`
+	// Verdict: "approved" | "declined" | "fail_closed" | "skipped".
+	// fail_closed means the call errored or timed out — the rejection
+	// carries no semantic information, which is exactly the distinction
+	// the GW4 acceptance could not make from disk.
+	Verdict string `json:"verdict"`
+	// Reason is the verification chain's own explanation.
+	Reason string `json:"reason,omitempty"`
+	// Called reports that the judge model was actually invoked. This is
+	// the unit of judge cost: a "skipped" decision never left the process.
+	Called bool `json:"called,omitempty"`
+	// FailClosed mirrors Verdict=="fail_closed" as a filterable flag.
+	FailClosed bool `json:"fail_closed,omitempty"`
+	// Error is the judge error text when FailClosed.
+	Error string `json:"error,omitempty"`
+	// LatencyMs is the judge call duration in milliseconds.
+	LatencyMs int64 `json:"latency_ms,omitempty"`
+	// PromptTokens estimates the judge's input tokens (byte/4, the same
+	// estimator the gateway uses elsewhere — never a tokenizer count).
+	PromptTokens int64 `json:"prompt_tokens,omitempty"`
 }
 
 // Recorder appends usage events to a JSONL file (0600, atomic rewrite via
@@ -91,8 +129,37 @@ type Summary struct {
 	SliceHits       int     // total slices hit and injected across turns
 	CostPaidUSD     float64 // what the user actually paid
 	CostNoCacheUSD  float64 // what it would cost without any cache
-	SavingsUSD      float64 // CostNoCache - CostPaid
+	SavingsUSD      float64 // CostNoCache - CostPaid, gross of judge cost
 	SavingsRate     float64 // Savings / CostNoCache (0 when no cost)
+
+	// Grey-zone judge accounting (Issue #242 gap 1). These describe a
+	// different model on a different channel, so they are reported
+	// separately and deliberately do NOT move SavingsUSD/SavingsRate —
+	// see JudgeCostUSD for the net figure.
+	JudgeDecisions    int   // grey-zone verifications recorded
+	JudgeCalls        int   // of those, ones that actually invoked the judge (billable)
+	JudgeApproved     int   // judge said the cached answer is reusable
+	JudgeDeclined     int   // judge said no (a real verdict)
+	JudgeFailClosed   int   // judge errored/timed out; rejection carries no verdict
+	JudgeSkipped      int   // rejected before the judge was reached (free)
+	JudgePromptTokens int64 // byte/4 estimate of tokens sent to the judge
+	JudgeLatencyMs    int64 // total time spent in judge calls
+}
+
+// JudgeCostUSD estimates what the grey-zone judge calls cost, at the judge
+// model's own input price per 1M tokens (Issue #242 gap 1).
+//
+// It is a separate call rather than a Summary field because the judge model
+// is configured independently of the served model ([cache] judge_model in
+// the gateway config) and its price is not derivable from this log. The
+// judge's completion is a single word — one to a handful of tokens, orders
+// of magnitude below the byte/4 estimator's own error — so only the input
+// side is modeled.
+//
+// Net savings = SavingsUSD - JudgeCostUSD(judgePrice). SavingsUSD itself
+// stays gross so the served-model arithmetic keeps one meaning.
+func (s *Summary) JudgeCostUSD(costPerMTok float64) float64 {
+	return float64(s.JudgePromptTokens) * costPerMTok / 1e6
 }
 
 // Summarize reads the log at path and computes the aggregate. Malformed
@@ -131,6 +198,26 @@ func Summarize(path string, costMiss, costHit float64) (*Summary, error) {
 			s.L3Reuses++
 			l3In += e.TokensIn
 			l3Out += e.TokensOut
+		}
+		for _, jd := range e.JudgeDecisions {
+			s.JudgeDecisions++
+			s.JudgeLatencyMs += jd.LatencyMs
+			if jd.Called {
+				// Only a reached judge sent a prompt upstream; a skipped
+				// decision must never inflate the cost estimate.
+				s.JudgeCalls++
+				s.JudgePromptTokens += jd.PromptTokens
+			}
+			switch jd.Verdict {
+			case "approved":
+				s.JudgeApproved++
+			case "declined":
+				s.JudgeDeclined++
+			case "fail_closed":
+				s.JudgeFailClosed++
+			case "skipped":
+				s.JudgeSkipped++
+			}
 		}
 	}
 	if err := sc.Err(); err != nil {

@@ -737,7 +737,7 @@ func (c *anthropicSSEConverter) writeDone() {
 // OpenAI SSE (the events must be translated — Anthropic frames differ from
 // OpenAI's). Sidecar/usage accounting matches the OpenAI streaming path:
 // request turns only, assistant content extraction is deferred debt.
-func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int) {
+func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, jc *judgeCollector) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 		writeAPIError(w, resp.StatusCode, "upstream_error",
@@ -768,6 +768,7 @@ func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Respo
 		TokensIn:       int64(len(query)/4) + injectedTokens,
 		InjectedTokens: injectedTokens,
 		SliceHits:      sliceHits,
+		JudgeDecisions: jc.drain(),
 		At:             g.now().Unix(),
 	})
 }

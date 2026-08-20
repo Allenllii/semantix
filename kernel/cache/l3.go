@@ -23,6 +23,15 @@ type L3Decider struct {
 	Zones *zone.Zones // grey-zone classifier (nil → zone.Default)
 	Judge judge.Judge // grey-zone LLM judge (nil → conservative reject, kernel/judge RuleGate)
 	K     int         // top-k candidates (default 3)
+
+	// OnJudge, when non-nil, receives one JudgeObservation per grey-zone
+	// verification (Issue #242 gap 1) so the host can make the verdict —
+	// and the judge's cost — durable. It is a hook rather than a direct
+	// write so kernel/cache stays free of the event bus / gateway
+	// (docs/specs/h2h3-resource-orchestration.md §6). Called synchronously
+	// on the decision path with the request context, so implementations
+	// must not block; a nil hook disables observation entirely.
+	OnJudge func(ctx context.Context, obs JudgeObservation)
 }
 
 // DecideL2 returns top-k hits filtered by the grey zone (hit-only enters the
@@ -80,7 +89,7 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 			// Ambiguous: reuse only when the judge confirms (spec §3.5
 			// RuleGate.Chain; nil judge → conservative reject). Fingerprint
 			// re-verification below still applies to grey-approved slices.
-			if !d.judgeGrey(ctx, q, s) {
+			if !d.judgeGrey(ctx, q, s, relConfidence(h.Score, top1)) {
 				continue
 			}
 		default: // zone.Miss
@@ -163,12 +172,19 @@ func (d *L3Decider) zones() zone.Zones {
 // dependency fingerprints after this (verified), so a judge "yes" still
 // cannot surface stale data. A nil judge, a judge error, or a judge "no"
 // all reject conservatively (fail-closed).
-func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice) bool {
+//
+// rel is the score/top1 ratio that classified the candidate as grey; it is
+// reported through OnJudge so a rejection can later be explained without
+// re-running retrieval (Issue #242 gap 1). No observation is emitted when
+// no judge is wired: that path is deterministic and costs nothing, so
+// recording it would only add noise to the host's usage log.
+func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice, rel float64) bool {
 	if d.Judge == nil {
 		return false
 	}
-	gate := judge.RuleGate{Judge: d.Judge}
-	v, _, err := gate.Chain(ctx, judge.Candidate{
+	timed := &timedJudge{inner: d.Judge}
+	gate := judge.RuleGate{Judge: timed}
+	v, reason, err := gate.Chain(ctx, judge.Candidate{
 		Query:   q.UserInput,
 		SliceID: s.ID,
 		Content: string(s.Content),
@@ -178,7 +194,33 @@ func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice) bool
 		Deps:    s.Meta.Deps,
 		RootDir: d.Root,
 	})
-	return err == nil && v == judge.Confirm
+	ok := err == nil && v == judge.Confirm
+	if d.OnJudge != nil {
+		obs := JudgeObservation{
+			SliceID:       s.ID,
+			RelConfidence: rel,
+			Reason:        reason,
+			Called:        timed.called,
+			Latency:       timed.latency,
+			PromptBytes:   len(q.UserInput) + len(s.Content),
+		}
+		switch {
+		case err != nil:
+			// The only error Chain surfaces is the judge call's own —
+			// a timeout or transport failure, not a verdict.
+			obs.Verdict = JudgeFailClosed
+			obs.FailClosed = true
+			obs.Err = err.Error()
+		case !timed.called:
+			obs.Verdict = JudgeSkipped
+		case ok:
+			obs.Verdict = JudgeApproved
+		default:
+			obs.Verdict = JudgeDeclined
+		}
+		d.OnJudge(ctx, obs)
+	}
+	return ok
 }
 
 func (d *L3Decider) k() int {
