@@ -229,6 +229,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 预取 | [`kernel/prefetch`](./kernel/prefetch) | 离线规划器、转移矩阵学习、浪费感知在线预测与只读执行 runner。 | `go test ./kernel/prefetch -race` |
 | 参数演化 | [`kernel/evolve`](./kernel/evolve) | 使用 EWMA 调整检索阈值和注入预算，参数变化有边界且可检查。 | `go test ./kernel/evolve -race` |
 | 事件契约 | [`kernel/event`](./kernel/event) | 类型化 kernel 事件、payload、wire format 与同步进程内总线。 | `go test ./kernel/event -race` |
+| 用量核算 | [`kernel/usage`](./kernel/usage) | 记录逐轮 token/cache 事件，汇总基线成本、实际成本与估算节省。 | `go test ./kernel/usage -race` |
 <!-- repository-module-guide:end -->
 
 ---

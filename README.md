@@ -712,6 +712,7 @@ This map follows the current repository layout. It describes observable responsi
 | Prefetch | [`kernel/prefetch`](./kernel/prefetch) | Offline planner, transition-matrix learner, waste-aware online predictor and read-only execution runner. | `go test ./kernel/prefetch -race` |
 | Evolution | [`kernel/evolve`](./kernel/evolve) | EWMA-driven tuning for retrieval thresholds and injection budget with bounded, inspectable parameters. | `go test ./kernel/evolve -race` |
 | Event contract | [`kernel/event`](./kernel/event) | Typed kernel event kinds, payloads, wire format and synchronous in-process bus. | `go test ./kernel/event -race` |
+| Usage accounting | [`kernel/usage`](./kernel/usage) | Records per-turn token/cache events and summarizes baseline cost, paid cost and estimated savings. | `go test ./kernel/usage -race` |
 <!-- repository-module-guide:end -->
 
 ---
