@@ -230,6 +230,22 @@ func feedEvolve(dir, logPath string, stdout io.Writer) error {
 		}
 		epoch++
 		_ = e.RecordSignal(evolve.Signal{Name: "cache_hit", Value: v, Epoch: epoch})
+		// Issue #262 negative evidence: judge rejections and suspected
+		// false hits fold into the pollution EWMA so TauL2 tuning sees
+		// both directions (mirrors #267's SliceReject producer). A turn
+		// with L3 activity but no rejection evidence reports 0 (clean),
+		// letting the EWMA fall back after a pollution streak; turns
+		// without L3 activity emit no signal at all (old logs unchanged).
+		if decisions := ev.L3GreyCandidates + ev.L3RulesReject + ev.L3FingerprintReject + ev.L3IsolatedReject; decisions > 0 || ev.L3Reuse || ev.L3FalseHit {
+			pol := float64(ev.L3JudgeReject) / float64(decisions+1)
+			if ev.L3FalseHit {
+				pol = float64(ev.L3JudgeReject+1) / float64(decisions+1)
+			}
+			if pol > 1 {
+				pol = 1
+			}
+			_ = e.RecordSignal(evolve.Signal{Name: "inject_pollution", Value: pol, Epoch: epoch})
+		}
 	}
 	if err := sc.Err(); err != nil {
 		return err

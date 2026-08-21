@@ -161,7 +161,7 @@ func buildCommands() []commandSpec {
 		run:     depsCommand(runVerify),
 		completionFlags: []string{"--session", "--db", "--project", "--holdout", "--scope", "--grey-target",
 			"--strict", "--tau-high", "--tau-low", "--abs-high", "--abs-low",
-			"--judge-protocol", "--judge-base-url", "--judge-model"},
+			"--judge-protocol", "--judge-base-url", "--judge-model", "--calibrate", "--labels"},
 		flagValues: map[string][]string{"--scope": scopeValues, "--judge-protocol": protocolValues}},
 	{name: "eval", group: groupKernelOps,
 		usage:   "semantix eval --set <oracle.tsv> [--tau-*]",
