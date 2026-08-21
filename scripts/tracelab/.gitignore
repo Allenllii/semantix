@@ -1,0 +1,7 @@
+# Python bytecode / build artifacts.
+__pycache__/
+*.py[cod]
+
+# Downloaded TraceLab data must never be committed (CC BY 4.0 data + size).
+tracelab-data/
+*.sha256
