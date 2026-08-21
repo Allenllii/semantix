@@ -1,9 +1,42 @@
 package agent
 
+type prefetchGateDecision struct {
+	Turn   int64
+	Allow  bool
+	Reason string
+}
+
 type prefetchedInjectResult struct {
 	Text    string
 	Targets []string
 	Turn    int64
+}
+
+func (a *Agent) armPrefetch(reason string) {
+	if a == nil || reason == "" {
+		if a != nil {
+			a.prefetchGate.Store(nil)
+		}
+		return
+	}
+	allow := true
+	switch reason {
+	case "load_saturated", "window_too_short", "budget:halt_prefetch", "budget:hard_stop":
+		allow = false
+	}
+	a.prefetchGate.Store(&prefetchGateDecision{
+		Turn:   a.semantixTurn.Load(),
+		Allow:  allow,
+		Reason: reason,
+	})
+}
+
+func (a *Agent) prefetchAllowed() bool {
+	if a == nil {
+		return false
+	}
+	decision := a.prefetchGate.Load()
+	return decision == nil || decision.Turn != a.semantixTurn.Load() || decision.Allow
 }
 
 func (a *Agent) storePrefetch(next *prefetchedInjectResult) {

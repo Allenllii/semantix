@@ -333,6 +333,9 @@ type Agent struct {
 	// during LLM wait time (N12); used as a fallback when the turn's
 	// synchronous injection produced nothing.
 	prefetchedInject atomic.Pointer[prefetchedInjectResult]
+	prefetchGate     atomic.Pointer[prefetchGateDecision]
+	prefetchWaitMS   atomic.Int64
+	prefetchTaskMS   atomic.Int64
 	semantixTurn     atomic.Int64
 
 	// mutationDependencyBarrier records the first durable-state write that
@@ -1120,7 +1123,7 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 	if decider == nil {
 		rule := sched.NewRuleDecider(sched.Config{})
 		matrix = prefetch.NewMatrixPrefetcher(prefetch.Config{})
-		rule.SetPrefetchPlanFunc(prefetch.AsPlanFunc(matrix))
+		rule.SetLoadAwarePrefetchPlanFunc(prefetch.AsLoadAwarePlanFunc(matrix))
 		if opts.Semantix != nil {
 			opts.Semantix.AttachEvolution(rule, matrix)
 		}
@@ -1843,6 +1846,14 @@ func (a *Agent) streamWithFrozen(ctx context.Context, turn int, sink event.Sink,
 	if err != nil {
 		return streamedTurn{usage: provider.UsageWithRequestAttemptCount(ctx, nil), err: err}
 	}
+	streamStartedAt := time.Now()
+	defer func() {
+		elapsed := time.Since(streamStartedAt).Milliseconds()
+		if elapsed < 1 {
+			elapsed = 1
+		}
+		a.prefetchWaitMS.Store(elapsed)
+	}()
 
 	// N12 speculative prefetch: while the LLM streams, warm the next
 	// injection block in the background so a timed-out or missing
@@ -2943,6 +2954,9 @@ func (a *Agent) startInjectWarm(ctx context.Context) {
 	if a.budgetCtrl != nil && a.budgetCtrl.Action() != "" {
 		return
 	}
+	if !a.prefetchAllowed() {
+		return
+	}
 	input := a.turn.input
 	if input == "" {
 		return
@@ -2951,6 +2965,14 @@ func (a *Agent) startInjectWarm(ctx context.Context) {
 		// Detach from the stream context so cancellation of the current
 		// request does not cancel the warm-up; Inject applies its own 3s cap.
 		warmCtx := context.WithoutCancel(ctx)
+		startedAt := time.Now()
+		defer func() {
+			elapsed := time.Since(startedAt).Milliseconds()
+			if elapsed < 1 {
+				elapsed = 1
+			}
+			a.prefetchTaskMS.Store(elapsed)
+		}()
 		if result := a.semantix.InjectDetailed(warmCtx, input); result.Text != "" {
 			a.storePrefetch(&prefetchedInjectResult{Text: result.Text, Targets: result.Targets, Turn: a.semantixTurn.Load()})
 		}
