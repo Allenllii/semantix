@@ -107,7 +107,7 @@ func helpShowsFlag(helpOut, short string) bool {
 		if !strings.HasPrefix(line, "-") {
 			continue
 		}
-		if fields := strings.Fields(line); len(fields) > 0 && fields[0] == "-"+short {
+		if fields := strings.Fields(line); len(fields) > 0 && strings.TrimLeft(fields[0], "-") == short {
 			return true
 		}
 	}

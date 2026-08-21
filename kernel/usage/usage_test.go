@@ -1,8 +1,10 @@
 package usage
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -165,5 +167,25 @@ func writeAll(t *testing.T, path string, data []byte) {
 	t.Helper()
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+// TestEventL3SliceIDRoundTrip: the L3 source slice id survives the usage
+// wire (Issue #267 step 4) so a wrong reused answer can be traced back
+// to the exact slice for rejection.
+func TestEventL3SliceIDRoundTrip(t *testing.T) {
+	e := Event{L3Reuse: true, L3SliceID: "s-42"}
+	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"l3_slice_id":"s-42"`) {
+		t.Fatalf("wire = %s, want l3_slice_id field", b)
+	}
+	var back Event
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if !back.L3Reuse || back.L3SliceID != "s-42" {
+		t.Fatalf("round-trip = %+v", back)
 	}
 }
