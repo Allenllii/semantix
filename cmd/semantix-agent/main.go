@@ -16,9 +16,10 @@ import (
 	_ "semantix/harness/tool/builtin"
 )
 
-// Build identity injected via -ldflags (see Makefile). version remains the
-// single-line contract for `semantix-agent --version`; gitCommit/buildTimeUTC feed
-// `semantix-agent version --verbose` / `--json` without embedding config paths.
+// Build identity injected via -ldflags (see scripts/release/build-full.sh).
+// version remains the single-line contract for `semantix-agent --version`;
+// gitCommit/buildTimeUTC feed `semantix-agent version --verbose` / `--json`
+// without embedding config paths.
 var (
 	version      = "dev"
 	gitCommit    = ""
