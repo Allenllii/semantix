@@ -56,25 +56,44 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 		Freshness: cache.Freshness{NowUnix: g.now().Unix(), TTLSeconds: g.cfg.TTLFor(up.Vendor)},
 	}
 
+	// L3 negative-observability carry (Issue #262): the per-turn rejection
+	// detail from the L3 decision, folded into the downstream usage record.
+	var l3Obs cache.Obs
+
 	// L3: verified reuse — zero upstream calls (design §3.3 step 3). The
 	// kernel gate enforces context/model isolation (fail closed) on top of
 	// the dep-fingerprint chain. TTL is vendor-aware (design §3.5).
+	l3FalseHit := false
 	if !g.disabled {
-		if res, lerr := g.decider.DecideL3(ctx, q); lerr == nil && res != nil && g.l3Eligible(res.SliceID, up.Vendor) {
-			now := g.now()
-			g.recordUsage(usage.Event{
-				SessionID: sessionID, Provider: up.Name, Vendor: up.Vendor, Model: req.Model,
-				TokensIn:  int64(len(query)/4) + int64(len(res.Response)/4),
-				TokensOut: 0, CacheHitToken: int64(len(res.Response) / 4),
-				L3Reuse: true, L3SliceID: res.SliceID, JudgeDecisions: jc.drain(), At: now.Unix(),
-			})
-			g.recordSliceStats(map[string]slice.SliceStats{
-				res.SliceID: {Hits: 1, LastUsed: now.Unix()},
-			})
-			g.recordSliceEvent(sessionID, chash, req.Model, kernelevent.SliceHit,
-				kernelevent.SliceHitPayload{Layer: "L3", SliceIDs: []string{res.SliceID}}, now)
-			g.replyFromCache(w, r, req, res)
-			return
+		// Suspected false hit (Issue #262 §3.3): the user retries a query
+		// that was just served from L3 in this session — bypass L3 and go
+		// upstream so the retry gets a fresh answer, and record the
+		// negative signal in the usage event.
+		if g.detectFalseHit(sessionID, query) {
+			l3FalseHit = true
+		} else {
+			res, obs := g.decideL3(ctx, q)
+			if res != nil && g.l3Eligible(res.SliceID, up.Vendor) {
+				now := g.now()
+				g.recordUsage(g.withL3Obs(usage.Event{
+					SessionID: sessionID, Provider: up.Name, Vendor: up.Vendor, Model: req.Model,
+					TokensIn:  int64(len(query)/4) + int64(len(res.Response)/4),
+					TokensOut: 0, CacheHitToken: int64(len(res.Response) / 4),
+					L3Reuse: true, L3SliceID: res.SliceID, JudgeDecisions: jc.drain(), At: now.Unix(),
+				}, obs, false))
+				g.recordSliceStats(map[string]slice.SliceStats{
+					res.SliceID: {Hits: 1, LastUsed: now.Unix()},
+				})
+				g.recordSliceEvent(sessionID, chash, req.Model, kernelevent.SliceHit,
+					kernelevent.SliceHitPayload{Layer: "L3", SliceIDs: []string{res.SliceID}}, now)
+				g.recordL3Reuse(sessionID, query, res.SliceID)
+				g.replyFromCache(w, r, req, res)
+				return
+			}
+			// L3 did not serve this request; carry the rejection detail
+			// into the turn's usage record (all-zero → omitted by the
+			// additive omitempty fields).
+			l3Obs = obs
 		}
 	}
 
@@ -131,13 +150,13 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 
 	if req.Stream {
 		if up.Vendor == "anthropic" {
-			g.streamThroughAnthropic(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up, jc)
+			g.streamThroughAnthropic(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up, jc, l3Obs, l3FalseHit)
 			return
 		}
-		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up, jc)
+		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up, jc, l3Obs, l3FalseHit)
 		return
 	}
-	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up, jc)
+	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up, jc, l3Obs, l3FalseHit)
 }
 
 // l3Eligible applies the gateway-side TTL window on top of the kernel
@@ -273,7 +292,7 @@ func (g *Gateway) forward(ctx context.Context, up UpstreamConfig, body []byte) (
 // successful exchanges, so failed requests never enter the reuse library.
 // Anthropic responses are translated to OpenAI chat.completion shape first
 // (the client surface is always OpenAI-compatible).
-func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector) {
+func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector, l3Obs cache.Obs, l3FalseHit bool) {
 	vendor := up.Vendor
 	out, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
@@ -323,8 +342,7 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 
 	// Real provider accounting when the upstream carried usage (GLM-P0-3 /
 	// #291); the bytes/4 estimate stays as the fallback, marked Exact=false.
-	ev := usage.Event{
-		SessionID:      sessionID,
+	ev := g.withL3Obs(usage.Event{
 		Provider:       up.Name,
 		Vendor:         vendor,
 		Model:          req.Model,
@@ -334,7 +352,7 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 		SliceHits:      sliceHits,
 		JudgeDecisions: jc.drain(),
 		At:             g.now().Unix(),
-	}
+	}, l3Obs, l3FalseHit)
 	if nu, ok := parseUsageBody(out); ok {
 		ev.TokensIn = nu.Prompt
 		ev.TokensOut = nu.Completion
@@ -354,7 +372,7 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 // failed exchanges are not recorded (design §0.3 documented debt, now paid).
 // If the upstream ends without a [DONE] marker (abnormal disconnect), the
 // gateway appends one so the client never hangs on an unterminated stream.
-func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector) {
+func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector, l3Obs cache.Obs, l3FalseHit bool) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 		writeAPIError(w, resp.StatusCode, "upstream_error",
@@ -419,7 +437,7 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 	if agg.Complete() {
 		tokensOut = int64(len(agg.Content()) / 4)
 	}
-	ev := usage.Event{
+	ev := g.withL3Obs(usage.Event{
 		SessionID:      sessionID,
 		Provider:       up.Name,
 		Vendor:         up.Vendor,
@@ -430,7 +448,7 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 		SliceHits:      sliceHits,
 		JudgeDecisions: jc.drain(),
 		At:             g.now().Unix(),
-	}
+	}, l3Obs, l3FalseHit)
 	// The relayed stream's own usage frame is the real provider accounting
 	// (GLM-P0-3 / #291): prefer it over the bytes/4 estimate. writeUsageChunk
 	// syntheses never land here — the aggregator only captured upstream frames.
@@ -491,6 +509,93 @@ func (g *Gateway) recordUsage(e usage.Event) {
 	if err := g.usageLog.Append(e); err != nil {
 		log.Printf("gateway: usage append: %v", err)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// L3 negative observability (Issue #262)
+
+// decideL3 runs the shared decider on a per-request copy so the Obs
+// accumulator stays request-local: concurrent requests never mix their
+// rejection counters, and the returned snapshot is this call's exact delta.
+// A decider error behaves like a miss (fail-closed) — the snapshot still
+// carries whatever the decision path counted.
+func (g *Gateway) decideL3(ctx context.Context, q cache.Query) (*cache.L3Result, cache.Obs) {
+	d := *g.decider
+	acc := &cache.ObsAccum{}
+	d.Obs = acc
+	res, err := d.DecideL3(ctx, q)
+	if err != nil {
+		log.Printf("gateway: L3 decide: %v", err)
+		return nil, acc.Snapshot()
+	}
+	return res, acc.Snapshot()
+}
+
+// falseHitSim resolves the retry-detection threshold: -1 (disabled) → 0,
+// 0/unspecified → DefaultFalseHitSim, otherwise the configured value.
+func (g *Gateway) falseHitSim() float64 {
+	switch {
+	case g.cfg.Cache.FalseHitSim < 0:
+		return 0 // explicitly disabled
+	case g.cfg.Cache.FalseHitSim == 0:
+		return DefaultFalseHitSim
+	default:
+		return g.cfg.Cache.FalseHitSim
+	}
+}
+
+// detectFalseHit reports whether this request retries the query that was
+// just served from L3 in the same session (Issue #262 §3.3 heuristic), and
+// consumes the record so one retry counts once. No session header, a
+// disabled threshold, or no prior reuse → false.
+func (g *Gateway) detectFalseHit(sessionID, query string) bool {
+	sim := g.falseHitSim()
+	if sessionID == "" || sim <= 0 {
+		return false
+	}
+	g.reuseMu.Lock()
+	defer g.reuseMu.Unlock()
+	entry, ok := g.l3Reuses[sessionID]
+	if !ok {
+		return false
+	}
+	delete(g.l3Reuses, sessionID)
+	return normalizedEditRatio(entry.Query, query) >= sim
+}
+
+// recordL3Reuse remembers the most recent L3-served request per session
+// (bounded: maxL3ReuseEntries, LRU eviction by timestamp).
+func (g *Gateway) recordL3Reuse(sessionID, query, sliceID string) {
+	if sessionID == "" {
+		return
+	}
+	g.reuseMu.Lock()
+	defer g.reuseMu.Unlock()
+	g.l3Reuses[sessionID] = l3ReuseEntry{Query: query, SliceID: sliceID, At: g.now()}
+	if len(g.l3Reuses) > maxL3ReuseEntries {
+		var oldestKey string
+		var oldest time.Time
+		for k, v := range g.l3Reuses {
+			if oldestKey == "" || v.At.Before(oldest) {
+				oldestKey, oldest = k, v.At
+			}
+		}
+		delete(g.l3Reuses, oldestKey)
+	}
+}
+
+// withL3Obs folds the per-turn L3 decision detail into a usage event
+// (Issue #262). All fields are additive; zero values are omitted by the
+// event's omitempty tags.
+func (g *Gateway) withL3Obs(e usage.Event, o cache.Obs, falseHit bool) usage.Event {
+	e.L3GreyCandidates = o.Grey
+	e.L3JudgeReject = o.JudgeReject
+	e.L3JudgeApproved = o.JudgeApproved
+	e.L3RulesReject = o.RulesReject
+	e.L3FingerprintReject = o.FingerprintReject
+	e.L3IsolatedReject = o.IsolatedReject
+	e.L3FalseHit = falseHit
+	return e
 }
 
 // ---------------------------------------------------------------------------

@@ -52,12 +52,28 @@ type Gateway struct {
 	closing    bool
 	disabled   bool // SEMANTIX_GATEWAY_DISABLE ablation switch
 
+	// Suspected-false-hit tracking (Issue #262 §3.3): the most recent L3
+	// reuse per session, bounded, so a same-session retry of a served
+	// query bypasses L3 and is recorded as L3FalseHit.
+	reuseMu  sync.Mutex
+	l3Reuses map[string]l3ReuseEntry
+
 	now func() time.Time
 
 	// lexicalBlocks counts zone-Hit candidates downgraded by the lexical
 	// support gate (Issue #260), for hit-rate-loss accounting.
 	lexicalBlocks atomic.Int64
 }
+
+// l3ReuseEntry records one L3-served request per session (Issue #262).
+type l3ReuseEntry struct {
+	Query   string // the served query, for retry similarity
+	SliceID string
+	At      time.Time // LRU eviction timestamp
+}
+
+// maxL3ReuseEntries bounds the per-session reuse map (LRU eviction).
+const maxL3ReuseEntries = 1024
 
 // disableEnv reports the ablation switch SEMANTIX_GATEWAY_DISABLE. Only
 // truthy values disable ("1", "true", "yes", "on") — "0"/"false" must keep
@@ -159,6 +175,7 @@ func New(cfg *Config) (*Gateway, error) {
 		usageLog: rec,
 		client:   &http.Client{Timeout: 120 * time.Second},
 		disabled: disableEnv(),
+		l3Reuses: make(map[string]l3ReuseEntry),
 		now:      time.Now,
 	}
 	// Grey-zone judge decisions become durable here (Issue #242 gap 1):

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"semantix/kernel/fingerprint"
 	"semantix/kernel/judge"
@@ -47,6 +48,58 @@ type L3Decider struct {
 	// host can count blocks and measure hit-rate loss. Hook-only, like
 	// OnJudge; nil disables observation.
 	OnLexicalGate func(ctx context.Context, obs LexicalGateObservation)
+
+	// Negative observability (Issue #262): both are nil-safe and never
+	// change DecideL3's behavior. Obs accumulates decision-path counters
+	// across calls (thread-safe, Snapshot for reads); OnDecide receives
+	// each call's delta right before return — the gateway concurrent path
+	// consumes the delta to write per-turn usage records. OnJudge (#242)
+	// observes the judge stage; Obs covers every rejection path.
+	Obs      *ObsAccum
+	OnDecide func(Obs)
+}
+
+// Obs is a negative-observation counter snapshot (Issue #262): the L3
+// runtime paths that rejected reuse and why, plus the approved/reused
+// totals. It is a plain value type — safe to copy and pass by value.
+type Obs struct {
+	Candidates        int // Result-typed candidates found by retrieval
+	Grey              int // grey-zone candidates routed to the judge
+	RulesReject       int // clear miss, or grey with no judge wired
+	FingerprintReject int // fingerprint gate error / mtime|sha256 changed / L3Safe=false
+	IsolatedReject    int // context/model isolation mismatch (Issue #133)
+	JudgeReject       int // judge declined
+	JudgeApproved     int // judge approved (later gates may still reject)
+	Reused            int // finally reused (all gates passed)
+}
+
+// ObsAccum is a thread-safe accumulator for Obs. Consumers read snapshots
+// via Snapshot; the gateway instead consumes per-call deltas through
+// L3Decider.OnDecide.
+type ObsAccum struct {
+	mu sync.Mutex
+	n  Obs
+}
+
+// Snapshot returns a copy of the accumulated counters.
+func (a *ObsAccum) Snapshot() Obs {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.n
+}
+
+// add folds a per-call delta into the accumulator.
+func (a *ObsAccum) add(o Obs) {
+	a.mu.Lock()
+	a.n.Candidates += o.Candidates
+	a.n.Grey += o.Grey
+	a.n.RulesReject += o.RulesReject
+	a.n.FingerprintReject += o.FingerprintReject
+	a.n.IsolatedReject += o.IsolatedReject
+	a.n.JudgeReject += o.JudgeReject
+	a.n.JudgeApproved += o.JudgeApproved
+	a.n.Reused += o.Reused
+	a.mu.Unlock()
 }
 
 // DecideL2 returns top-k hits filtered by the grey zone (hit-only enters the
@@ -90,6 +143,12 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Negative observability (Issue #262): count every decision path of
+	// this call, then hand the delta to OnDecide / ObsAccum on the way
+	// out — every return path is covered by the defer.
+	var o Obs
+	defer func() { d.observe(o) }()
+
 	if len(hits) == 0 {
 		return nil, nil // no candidate → no reuse
 	}
@@ -109,6 +168,7 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 		if h.Slice == nil || h.Slice.Type != slice.Result {
 			continue // only Result slices carry reusable outcomes
 		}
+		o.Candidates++ // Issue #262: every Result candidate under consideration
 		cands = append(cands, h)
 		if h.Score > resultTop1 {
 			resultTop1 = h.Score
@@ -132,7 +192,7 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 			// key-collision attacks (CacheAttack, arXiv:2601.23088).
 			if !d.lexicalSupported(h) {
 				d.observeLexicalGate(ctx, h, true)
-				if !d.judgeGrey(ctx, q, s, relConfidence(h.Score, resultTop1)) {
+				if !d.judgeGrey(ctx, q, s, relConfidence(h.Score, resultTop1), &o) {
 					continue
 				}
 				break
@@ -142,10 +202,11 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 			// Ambiguous: reuse only when the judge confirms (spec §3.5
 			// RuleGate.Chain; nil judge → conservative reject). Fingerprint
 			// re-verification below still applies to grey-approved slices.
-			if !d.judgeGrey(ctx, q, s, relConfidence(h.Score, resultTop1)) {
+			if !d.judgeGrey(ctx, q, s, relConfidence(h.Score, resultTop1), &o) {
 				continue
 			}
 		default: // zone.Miss
+			o.RulesReject++
 			continue // clearly not the same task
 		}
 		// Context/model isolation (Issue #133 gateway): a cached outcome
@@ -155,14 +216,18 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 		// unstamped legacy slices — fail closed; empty query fields keep
 		// the legacy CLI behavior.
 		if q.ContextHash != "" && s.Meta.ContextHash != q.ContextHash {
+			o.IsolatedReject++
 			continue
 		}
 		if q.Model != "" && s.Meta.Model != q.Model {
+			o.IsolatedReject++
 			continue
 		}
 		if !d.verified(ctx, s) {
-			continue // deps changed: stale, reject this candidate
+			o.FingerprintReject++ // deps changed: stale, reject this candidate
+			continue
 		}
+		o.Reused++
 		return &L3Result{
 			SliceID:  s.ID,
 			Response: string(s.Content),
@@ -190,6 +255,18 @@ func (f Freshness) classify(createdAt int64) zone.Zone {
 		return zone.Grey
 	}
 	return zone.Hit
+}
+
+// observe folds a per-call delta into the observers (Issue #262): the
+// OnDecide callback receives the raw delta (gateway per-turn usage records),
+// and ObsAccum accumulates it for snapshots. Both are nil-safe.
+func (d *L3Decider) observe(o Obs) {
+	if d.OnDecide != nil {
+		d.OnDecide(o)
+	}
+	if d.Obs != nil {
+		d.Obs.add(o)
+	}
 }
 
 // verified runs the two-stage dependency check; false is fail-closed.
@@ -251,12 +328,23 @@ func (d *L3Decider) zones() zone.Zones {
 // re-running retrieval (Issue #242 gap 1). No observation is emitted when
 // no judge is wired: that path is deterministic and costs nothing, so
 // recording it would only add noise to the host's usage log.
-func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice, rel float64) bool {
+// all reject conservatively (fail-closed). The per-call observer o is
+// folded with the rule-gate counters (Issue #262).
+//
+// rel is the score/top1 ratio that classified the candidate as grey; it is
+// reported through OnJudge so a rejection can later be explained without
+// re-running retrieval (Issue #242 gap 1). No observation is emitted when
+// no judge is wired: that path is deterministic and costs nothing, so
+// recording it would only add noise to the host's usage log.
+func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice, rel float64, o *Obs) bool {
+	o.Grey++ // the zone verdict is grey; whether a judge exists decides the path
 	if d.Judge == nil {
+		o.RulesReject++ // grey without a judge: conservative reject
 		return false
 	}
 	timed := &timedJudge{inner: d.Judge}
-	gate := judge.RuleGate{Judge: timed}
+	var gs judge.Stats
+	gate := judge.RuleGate{Judge: timed, Stats: &gs}
 	v, reason, err := gate.Chain(ctx, judge.Candidate{
 		Query:   q.UserInput,
 		SliceID: s.ID,
@@ -267,6 +355,10 @@ func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice, rel 
 		Deps:    s.Meta.Deps,
 		RootDir: d.Root,
 	})
+	o.RulesReject += gs.RulesReject
+	o.FingerprintReject += gs.Fingerprint
+	o.JudgeReject += gs.JudgeReject
+	o.JudgeApproved += gs.JudgeApproved
 	ok := err == nil && v == judge.Confirm
 	if d.OnJudge != nil {
 		obs := JudgeObservation{
@@ -295,13 +387,13 @@ func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice, rel 
 	}
 	return ok
 }
-
 func (d *L3Decider) k() int {
 	if d.K > 0 {
 		return d.K
 	}
 	return 3
 }
+
 // lexicalFloor returns the lexical-support floor: explicit override,
 // default 0.05 (a tiny epsilon above the strict zero of a pure-vector
 // hit), or 0 when the gate is explicitly disabled.

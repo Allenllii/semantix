@@ -71,9 +71,10 @@ semantix verify --session <会话目录> --project demo > eval.tsv
 |---|---|---|
 | `extract` | 会话 JSONL → 语义切片入库 | `--input` `--db` `--scope` `--project` |
 | `search` | 检索切片 | `--query` `--retriever bm25\|vector\|hybrid` `--limit` `--json` |
-| `verify` | 离线回放命中率验证（门禁） | `--session` `--holdout` `--db` `--strict` |
+| `verify` | 离线回放命中率验证（门禁）；`--calibrate` 分桶校准报告 | `--session` `--holdout` `--db` `--strict` `--calibrate` `--labels` |
 | `eval` | 检索策略比较（单阈值 vs 三段） | `--set` `--train-frac` `--tau-*` |
 | `eval-judge` | LLM judge 真实性评估（门禁） | `--stub` `--audit` `--min-consistency` |
+| `calibrate` | L3 负向校准报告（judge vs oracle + 运行时汇总） | `--audit` `--usage` `--stub` `--min-consistency` |
 | `usage` | 成本节省统计 | `--db` `--evolve-db` |
 | `lookup` | semantix_lookup 工具（JSON） | `--query` `--limit` `--scope` `--evolve-db` |
 | `inject` | L2 注入块（规范序/预算截断） | `--query` `--budget` `--k` `--evolve-db` |
