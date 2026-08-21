@@ -66,7 +66,7 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 				SessionID: sessionID, Provider: up.Name, Vendor: up.Vendor, Model: req.Model,
 				TokensIn:  int64(len(query)/4) + int64(len(res.Response)/4),
 				TokensOut: 0, CacheHitToken: int64(len(res.Response) / 4),
-				L3Reuse: true, JudgeDecisions: jc.drain(), At: now.Unix(),
+				L3Reuse: true, L3SliceID: res.SliceID, JudgeDecisions: jc.drain(), At: now.Unix(),
 			})
 			g.recordSliceStats(map[string]slice.SliceStats{
 				res.SliceID: {Hits: 1, LastUsed: now.Unix()},

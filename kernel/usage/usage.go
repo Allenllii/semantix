@@ -45,6 +45,10 @@ type Event struct {
 	// L3Reuse marks a turn fully served by a verified L3 result (no backend
 	// call at all) — its entire cost is saved.
 	L3Reuse bool `json:"l3_reuse,omitempty"`
+	// L3SliceID is the source slice that served an L3 reuse (Issue #267 step
+	// 4): the veto entry point — a consumer can reject the exact slice that
+	// produced a wrong reused answer. Empty when L3Reuse is false.
+	L3SliceID string `json:"l3_slice_id,omitempty"`
 	// InjectedTokens is the L2 injection block size for this turn.
 	InjectedTokens int64 `json:"injected_tokens,omitempty"`
 	// SliceHits is the number of semantic slices that hit and were injected
