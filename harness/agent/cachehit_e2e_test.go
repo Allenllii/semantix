@@ -69,6 +69,7 @@ type mockDeepSeek struct {
 	prevMessages []json.RawMessage // last conversation request's messages
 	reqChars     []int             // total prompt chars per conversation request
 	hitChars     []int             // cached prefix chars per conversation request
+	toolsJSON    []string          // raw tools array per conversation request (byte-stability check)
 	withTools    bool              // advertise the echo tool (and emit tool calls)
 	reasoning    string            // chain-of-thought echoed every turn (round-tripped)
 	toolRounds   int               // remaining tool-call rounds before a final answer
@@ -96,6 +97,7 @@ func (m *mockDeepSeek) handler(w http.ResponseWriter, r *http.Request) {
 	m.prevMessages = msgs
 	m.reqChars = append(m.reqChars, totalChars)
 	m.hitChars = append(m.hitChars, hitChars)
+	m.toolsJSON = append(m.toolsJSON, decodeToolsRaw(body))
 
 	promptTok := totalChars / 4
 	hitTok := hitChars / 4
@@ -174,6 +176,18 @@ func TestCacheHitPrefixStable(t *testing.T) {
 		}
 	}
 	t.Logf("prefix STABLE across %d requests — nothing in the client breaks the cache", len(mock.reqChars))
+
+	// GLM-P0-1 (#289): the tools array is part of the provider-cached prefix
+	// and implicit caches are byte-exact — assert byte-identical serialization
+	// across every conversation request, not just set equality.
+	for i := 1; i < len(mock.toolsJSON); i++ {
+		if mock.toolsJSON[i] != mock.toolsJSON[0] {
+			t.Errorf("TOOLS ARRAY UNSTABLE at req %d:\n  first: %s\n  now:   %s", i, mock.toolsJSON[0], mock.toolsJSON[i])
+		}
+	}
+	if len(mock.toolsJSON) > 0 && mock.toolsJSON[0] == "" {
+		t.Error("tools array missing from conversation requests (withTools=true)")
+	}
 
 	t.Logf("==== reported usage (what the status line renders) ====")
 	for i, u := range sink.usages {
@@ -574,6 +588,17 @@ func decodeMessages(body []byte) []json.RawMessage {
 	}
 	_ = json.Unmarshal(body, &req)
 	return req.Messages
+}
+
+// decodeToolsRaw returns the request's tools array exactly as serialized on the
+// wire. GLM-style implicit caches are byte-exact over the whole prefix
+// (tools included), so the audit asserts byte equality, not set equality.
+func decodeToolsRaw(body []byte) string {
+	var req struct {
+		Tools json.RawMessage `json:"tools"`
+	}
+	_ = json.Unmarshal(body, &req)
+	return string(req.Tools)
 }
 
 func isSummarizeRequest(body []byte) bool {
