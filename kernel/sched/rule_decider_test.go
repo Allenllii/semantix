@@ -211,15 +211,15 @@ func TestTierRules(t *testing.T) {
 	plan, _ := d.DecideRound(context.Background(), RoundInput{ToolCalls: []ToolCallInfo{
 		call("a", "grep", true), call("b", "read_file", true),
 	}})
-	if plan.Tier != "flash" {
-		t.Fatalf("want flash, got %s", plan.Tier)
+	if plan.Tier != "flash" || plan.TierReason != "default" {
+		t.Fatalf("want flash/default, got %s/%s", plan.Tier, plan.TierReason)
 	}
 	// writer present → pro
 	plan, _ = d.DecideRound(context.Background(), RoundInput{ToolCalls: []ToolCallInfo{
 		call("a", "grep", true), call("b", "bash", false),
 	}})
-	if plan.Tier != "pro" {
-		t.Fatalf("want pro (writer), got %s", plan.Tier)
+	if plan.Tier != "pro" || plan.TierReason != "writer:bash" {
+		t.Fatalf("want pro/writer:bash, got %s/%s", plan.Tier, plan.TierReason)
 	}
 	// many read-only calls → pro
 	var many []ToolCallInfo
@@ -227,8 +227,41 @@ func TestTierRules(t *testing.T) {
 		many = append(many, call(string(rune('a'+i)), "grep", true))
 	}
 	plan, _ = d.DecideRound(context.Background(), RoundInput{ToolCalls: many})
-	if plan.Tier != "pro" {
-		t.Fatalf("want pro (complex), got %s", plan.Tier)
+	if plan.Tier != "pro" || plan.TierReason != "complex:4" {
+		t.Fatalf("want pro/complex:4, got %s/%s", plan.Tier, plan.TierReason)
+	}
+}
+
+func TestTierIntentPrecedesRoundShape(t *testing.T) {
+	d := NewRuleDecider(Config{})
+	for _, intent := range []string{"mutation", "persistent_action", " Mutation "} {
+		plan, err := d.DecideRound(context.Background(), RoundInput{
+			Intent:    intent,
+			ToolCalls: []ToolCallInfo{call("a", "read_file", true)},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantReason := "intent:" + strings.ToLower(strings.TrimSpace(intent))
+		if plan.Tier != "pro" || plan.TierReason != wantReason {
+			t.Fatalf("intent %q: got tier=%q reason=%q, want pro/%s", intent, plan.Tier, plan.TierReason, wantReason)
+		}
+	}
+}
+
+func TestTierReadOnlyIntentFallsBack(t *testing.T) {
+	d := NewRuleDecider(Config{})
+	for _, intent := range []string{"", "conversation", "advisory", "observable_read", "unknown"} {
+		plan, err := d.DecideRound(context.Background(), RoundInput{
+			Intent:    intent,
+			ToolCalls: []ToolCallInfo{call("a", "read_file", true)},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if plan.Tier != "flash" || plan.TierReason != "default" {
+			t.Fatalf("intent %q: got tier=%q reason=%q, want flash/default", intent, plan.Tier, plan.TierReason)
+		}
 	}
 }
 
@@ -251,7 +284,7 @@ func TestBudgetActions(t *testing.T) {
 	}{
 		{0.69, "", "pro"},
 		{0.70, BudgetActionHaltPrefetch, "pro"},
-	{0.80, BudgetActionDegradeInject, "pro"},
+		{0.80, BudgetActionDegradeInject, "pro"},
 		{0.90, BudgetActionDegradeTier, "flash"},
 		{1.00, BudgetActionHardStop, "pro"},
 	}
@@ -266,6 +299,9 @@ func TestBudgetActions(t *testing.T) {
 		if plan.BudgetAction != tt.action || plan.Tier != tt.tier {
 			t.Fatalf("spent %.2f: got action=%q tier=%q", tt.spent, plan.BudgetAction, plan.Tier)
 		}
+		if tt.action == BudgetActionDegradeTier && plan.TierReason != "budget:degrade_tier" {
+			t.Fatalf("spent %.2f: got reason=%q", tt.spent, plan.TierReason)
+		}
 	}
 }
 
@@ -278,7 +314,7 @@ func TestRoundPlanJSONKeepsLegacyNamesAndOmitsZeroExtensions(t *testing.T) {
 	if !strings.Contains(text, `"ParallelGroups"`) || !strings.Contains(text, `"Tier"`) {
 		t.Fatalf("legacy field names changed: %s", text)
 	}
-	for _, field := range []string{"suspendTools", "maxParallel", "budgetAction"} {
+	for _, field := range []string{"tierReason", "suspendTools", "maxParallel", "budgetAction"} {
 		if strings.Contains(text, field) {
 			t.Fatalf("zero extension %q was not omitted: %s", field, text)
 		}

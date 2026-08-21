@@ -38,6 +38,7 @@ type ToolCallInfo struct {
 type RoundPlan struct {
 	ParallelGroups [][]string // groups of call IDs to run concurrently
 	Tier           string     // "flash" | "pro"
+	TierReason     string     `json:"tierReason,omitempty"` // stable explanation; does not affect execution
 	InjectIDs      []string   // L2 slice IDs in canonical order
 	PrefetchIDs    []string   // prefetch targets (may be empty)
 	SuspendTools   []string   `json:"suspendTools,omitempty"`
@@ -46,13 +47,13 @@ type RoundPlan struct {
 }
 
 const (
-	BudgetActionDegradeTier  = "degrade_tier"
+	BudgetActionDegradeTier = "degrade_tier"
 	// BudgetActionDegradeInject shrinks L2 injection instead of dropping it
 	// (Issue #270 step 2): inject half the block budget, keep the harness
 	// running. Sits between halt_prefetch (0.7) and degrade_tier (0.9).
 	BudgetActionDegradeInject = "degrade_inject"
-	BudgetActionHaltPrefetch = "halt_prefetch"
-	BudgetActionHardStop     = "hard_stop"
+	BudgetActionHaltPrefetch  = "halt_prefetch"
+	BudgetActionHardStop      = "hard_stop"
 )
 
 // Decider plans each tool round (MVP implementation in M3).
