@@ -41,7 +41,7 @@
 | §3.1 | 切片库用 `slice.NewFileStore`（JSONL），0600/0700 权限 | `gateway.go` `appendJSONLLines` / kernel store |
 | §3.2 | `GET /v1/models`（列出全部 model_alias） | `server.go` `handleModels` |
 | §3.2 | `POST /v1/chat/completions`（含 `stream=true`） | `server.go` → `pipeline.go` `handleChat` |
-| §3.2 | `GET /healthz`（New API 渠道探活） | `server.go` `handleHealth`（**仅本地就绪，不探上游**，见 §0.3） |
+| §3.2 | `GET /healthz`（New API 渠道探活） | `server.go` `handleHealth`（上游探活已实现，见 §0.3） |
 | §3.2 | 错误一律走 OpenAI 信封 `{"error":{message,type,code}}` | `server.go` `writeAPIError` |
 | §3.3 | 七步流水线：鉴权 → 归一化 → L3 → L2 → 转发 → 透传 usage → 异步写记忆 | `pipeline.go` `handleChat` |
 | §3.3 | 「缓存永不阻塞主链路」：注入失败只记日志继续转发 | `pipeline.go`（`inject` 错误不中断） |
@@ -62,6 +62,8 @@
 | §4.3 | L3 命中返回合成 usage：`completion_tokens=0` + `prompt_tokens_details.cached_tokens` | `pipeline.go` `replyFromCache` |
 | §4.3 | 网关侧 `kernel/usage` 事件记录（L3 复用 / 注入 token / 切片命中数） | `gateway.go` `recordUsage` + `[ingest] usage_log` |
 | §9 D4 | 缓存库与切片库**合库**（同一 JSONL Store，L3 条目即 Result 切片） | `config.go` `[store] db` 单一路径 |
+| §3.5 | grey 区 LLM judge：`[cache] judge_api_key` 接线 `judge.RuleGate.Chain`（Issue #186 / GW6） | `kernel/cache` `L3Decider.Judge`（灰区候选 `judgeGrey`）+ `gateway.go` `New()` 构造 `judge.LLMJudge`；未配 key 时灰区保守 Reject |
+| §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` 接线（Issue #186 / GW6）：vector/hybrid 走 `kernel/embed` HashEmbedder/VectorIndex | `gateway/retriever.go` `newRetriever`（返回 `slice.Index`，L2/L3 无感知）；hybrid 双路归一化融合 |
 
 实现另外做了两件 spec 没要求、但属于同方向的收尾：上游异常断流时网关补发 `data: [DONE]`
 （客户端不会挂死）、以及转发时过滤 hop-by-hop 头（RFC 9110 §7.6.1）。
@@ -71,7 +73,7 @@
 | §  | spec 原文 | 实际实现 |
 |---|---|---|
 | §3.5 | `缓存键 = hash(scope \| 归一化 query \| 模型名 \| deps 指纹 \| messages 上下文指纹)` | **没有缓存键，也没有哈希查表**。实际是 kernel 既有的「检索 + 分层门禁」：BM25 检索 top-k → zone Hit 分类 → Result 类型 → `ContextHash`/`Model` 精确相等 → deps mtime + sha256 验证。scope / 模型名 / 上下文指纹是**过滤条件**，归一化 query 是**检索查询**，都不是键的组成部分。隔离效果与 spec 意图一致，机制不同 |
-| §3.5 | 验证走 `judge.RuleGate.Chain`，grey 区可配 `SEMANTIX_JUDGE_API_KEY` 走 LLM judge | 验证由 `cache.L3Decider` 的 `zone.Zones.Classify` 灰区分类 + 指纹链承担；**`kernel/judge` 包 gateway 与 `kernel/cache` 都未引用**（它目前只服务 `cmd/semantix` 的 verify/eval）。`[cache] judge_api_key` 配置键保留但 `New()` 从不消费（见 §0.3 死配置键） |
+| §3.5 | 验证走 `judge.RuleGate.Chain`，grey 区可配 `SEMANTIX_JUDGE_API_KEY` 走 LLM judge | **GW6 已接线**（Issue #186）：`cache.L3Decider` 新增 `Judge` 字段，灰区候选（`zone.Grey`）经 `judgeGrey` → `judge.RuleGate.Chain`（fingerprint 门 → LLM judge）确认后才复用；`[cache] judge_api_key` + `judge_base_url` + `judge_model`（+ 可选 `judge_protocol`，默认 openai）构造 `judge.LLMJudge`。未配 key → 灰区保守 Reject（fail-closed）。`verified` 的 deps 指纹校验仍在 judge 之后兜底 |
 | §3.5 | TTL 按 vendor 差异化（DeepSeek 24h / DashScope 5m / Anthropic 5m） | 单一 `[cache] ttl_seconds` 时间窗，作用在 `Slice.CreatedAt` 上；`0` 表示不设时间窗。无 vendor 分支（M2 未开始，多 vendor 尚无实际差异） |
 | §3.2 | `/v1/completions` 可选，MVP 默认返回 501 | 该路由未注册，落到默认分支返回 **404 `not_found`**（不是 501） |
 | §4.4 | 方案 B：渠道注入固定 `x-project` header，网关按 header **选 scope 库** | 实现的是 `x-semantix-scope` header，传的是 scope **枚举**（`session`/`project`/`user`）而非项目名；底层始终是**同一个 store 文件**，只切 kernel 的 scope 字段。是方案 B 的接入点，不是多库隔离 |
@@ -87,12 +89,12 @@
 |---|---|---|
 | §3.8 / §7 M2 | Claude / Anthropic 适配（messages 格式转换 + `cache_control` 断点） | **配置层显式拒绝**：`vendor="anthropic"` 在 `validate()` 直接报错，避免把 Anthropic 流量误发到 OpenAI 式端点。§3.6 对 Claude 打断点同理未做 |
 | §3.5 | `promote.CascadeInvalidate` 级联失效 | gateway 零引用 `kernel/promote`。上游内容版本变化时不会级联失效下游条目（deps 指纹仍能兜住文件类变更） |
-| §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` | **死配置键**：字段被解析和校验，但 `New()` 固定构造 `bm25.New()`，填 `hybrid`/`vector` 不报错也不生效。与 `[cache] judge_api_key` 同属「保留但未接线」（验收报告 §4 已列为 nit、§6 记为「预留字段」） |
-| §3.4 | 未命中流式：上游不返回 usage 时，网关在 `[DONE]` 前补含注入统计的末块 | 未做。逐块原样透传，只在上游异常断流时补 `[DONE]` |
+| §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` | **GW6 已接线**（Issue #186）：`gateway/retriever.go` `newRetriever` 按配置构造索引——`bm25` 保持 `kernel/bm25`；`vector` 用 `kernel/embed` HashEmbedder + VectorIndex（cosine）；`hybrid` 双路检索、分数归一化融合（[0,1] 尺度，与 zone 绝对阈值兼容）。`vector_dim` 键（默认 256）控制 HashEmbedder 维度；非法 retriever 值 `validate()` 报错 |
+| §3.4 | 未命中流式：上游不返回 usage 时，网关在 `[DONE]` 前补含注入统计的末块 | 已实现（Issue #187）：完整流且上游无 usage 时，在 `[DONE]` 前补发 OpenAI 格式 usage 事件（含 `prompt_tokens_details.cached_tokens` 注入统计 + `"estimator":"bytes/4"`）；异常断流只补 `[DONE]` 不补 usage（半截流不计量） |
 | §3.7 | 流式路径的**响应侧**写记忆 | `streamThrough` 只把请求 turns 写进旁路文件，不解析 SSE 取 assistant 内容（代码内已标注为 documented debt，验收报告 §6 也记为债务）。后果：**流式请求的本次响应不会成为可复用的 Result 切片**——Result 提取取的是旁路文件里最后一条无 tool_calls 的 assistant 消息，流式路径下那只可能是请求里带的历史轮次。L3 的写入实际只来自非流式请求 |
-| §3.2 | `/healthz` 检查「切片库可打开 + **上游可达性**」 | 只回 `{"status":"ok"}`。切片库在 `New()` 阶段已打开（打不开进程起不来），上游探活未做 |
-| §5 | 部署产物：`docker-compose.yml`、网关镜像 Dockerfile、`semantix-gateway.toml` 示例 | 仓库中**均不存在**。§5 目前仍是纯文字方案，照它部署需要自己写 compose 与配置文件（验收报告 §6 建议另开运维 issue） |
-| §4.3 | 与 New API 计费对账的 token 口径 | 合成 usage 已实现，但 token 数是 `len(bytes)/4` 的**字节估算**，不是真 tokenizer 计数。对账时须知道这个口径差 |
+| §3.2 | `/healthz` 检查「切片库可打开 + **上游可达性**」 | 切片库在 `New()` 阶段已打开（打不开进程起不来）；上游探活已实现（Issue #183）：`GET {base_url}/models` 逐个上游探测，2xx=健康，任一失败/超时返回 503 + OpenAI envelope；`[server] health_timeout_seconds` 可配（0=禁用探活） |
+| §5 | 部署产物：`docker-compose.yml`、网关镜像 Dockerfile、`semantix-gateway.toml` 示例 | 已存在 `deploy/`（Issue #183）：`semantix-gateway.toml.example`（全部小节 + `${VAR}` 示范）、多阶段 Dockerfile（alpine + CA 证书 + 非 root，取舍见 deploy/Dockerfile 注释）、`docker-compose.yml`（New API + 网关两服务 + healthcheck，named volume 持久化）；部署指引见 `docs/QUICKSTART.md`「网关部署」节 |
+| §4.3 | 与 New API 计费对账的 token 口径 | 合成 usage 附 `"estimator":"bytes/4"` 字段显式标注字节估算（非真 tokenizer 计数）。**tokenizer 评估结论（Issue #187）：不引入**——tiktoken 兼容实现需新增 BPE 词表依赖面，与「零第三方运行依赖」铁律冲突；`bytes/4` 对英文偏差约 ±10%、对中文偏大，口径差由 estimator 字段承载，对账时按字段识别 |
 | §7 M0 | 门：真实客户端 → New API → 网关 → DeepSeek 全链路跑通 **且** 会话入库后 `semantix search` 可检索到切片 | **合取门只满足后半**：入库可检索有 e2e 证据（`TestE2ESidecarWrittenAndIngested`，验收报告 §3「写记忆」✅），这半句本就不依赖真上游；**真实全链路无记录**——`gateway/e2e_test.go` 与验收报告 §3 的上游都是 `httptest` 假上游 |
 | §7 M1 | 门：重复任务第二次命中 `x-semantix-cache: hit` 且零上游调用；成本节省 ≥30% 实测 | 前半在 e2e 中以假上游验证（`TestE2EL3HitZeroUpstreamCalls`：命中且上游 0 调用），**真实环境与成本节省实测无记录**；验收报告 §6 明确「M1/M2 里程碑项未在本 issue 范围」 |
 | §7 M2 | 四家模型全通 + 命中率周报 + New API 对账一致 | 未开始 |
@@ -275,6 +277,9 @@ POST /v1/chat/completions {model, messages, stream, ...}
 | GPT | `https://api.openai.com/v1` | 同上 | 同 OpenAI 兼容 |
 | Claude | `https://api.anthropic.com/v1` | `x-api-key` + `anthropic-version` | ① 需要把 messages 转 Anthropic 格式（或走官方 OpenAI 兼容端点）；② 注入块边界打 `cache_control:{type:"ephemeral"}`（≤2 断点：system 尾 + 最后消息尾） |
 
+> 转换规则与 cache_control 断点的具体设计见 §3.11（M2 上半，Issue #185）；§3.11 落地前
+> `vendor="anthropic"` 在配置层被显式拒绝，避免把 Anthropic 流量误发到 OpenAI 式端点。
+
 **模型映射**：`semantix-gateway.toml` 中定义 `upstreams[].model_alias`（New API 侧模型名 ↔ 上游模型名）；New API 渠道的模型名即网关的 model_alias，网关负责换成上游真实模型名。
 
 **超时与重试**：网关给上游设保守超时（connect 10s / 首字节 60s / 总时长继承 New API 配置）；重试逻辑**主要放 New API 渠道层**（New API 有重试/负载均衡），网关只做一次重试兜底（幂等 GET 类；chat 请求重试仅对网络错误）。
@@ -294,13 +299,18 @@ db = "~/.semantix/gateway.jsonl"          # 切片库 + L3 缓存库（JSONL 单
 scope = "project"                         # 默认切片作用域
 
 [retrieval]
-retriever = "hybrid"                      # bm25 | vector | hybrid
+retriever = "hybrid"                      # bm25 | vector | hybrid（GW6 接线：vector/hybrid 走 kernel/embed HashEmbedder，无需外部 embedding API）
 top_k = 5
 budget = 4096                             # L2 注入块字节预算
+vector_dim = 256                          # HashEmbedder 维度（<=0 取默认 256；模型级 Embedder 接入后忽略）
 
 [cache]
 ttl_seconds = 86400                       # 默认 TTL（vendor 差异化优先）
-judge_api_key = "${SEMANTIX_JUDGE_API_KEY}"   # 可选：grey 区 LLM judge
+vendor_ttl = { anthropic = 300 }          # 可选：按 vendor 覆盖 TTL（秒；内置默认 DeepSeek 24h / Anthropic 5m，§3.11.4）
+judge_api_key = "${SEMANTIX_JUDGE_API_KEY}"   # 可选：grey 区 LLM judge（GW6 接线，见下三键）
+judge_base_url = "https://api.openai.com/v1"  # judge 端点（judge_api_key 非空时必填）
+judge_model = "gpt-4o-mini"               # judge 模型（judge_api_key 非空时必填）
+judge_protocol = "openai"                 # openai | anthropic（默认 openai）
 
 [ingest]
 sessions_dir = "~/.semantix/sessions"     # 会话旁路落盘目录
@@ -323,6 +333,82 @@ vendor = "deepseek"                       # deepseek | anthropic | openai | moon
 - 切片库 0600/0700 权限、原子写、防 symlink（沿用现有安全约定）；
 - 敏感内容：默认 `scope=project` 隔离；脱敏接入点预留（`sanitize` 已有，正式版按策略启用）；
 - 网关无公网暴露面：只允许 New API 所在网段访问（compose 内网即可，见 §5）。
+
+---
+
+## 3.11 M2 设计节：Claude / Anthropic 适配（Issue #185）
+
+> 本节是 §7 M2「多模型」的上半（Anthropic 一家），2026-08-17 起草，随 Issue #185 落地。
+> 覆盖：chat/completions ↔ Anthropic messages 双向转换、cache_control 断点注入、流式 SSE 事件映射、
+> TTL 按 vendor 差异化。Kimi / GPT（OpenAI 兼容系）与计费对账属 M2 下半，不在本节。
+
+**适配形态**：客户端（New API 侧）永远只看到 OpenAI 兼容协议；转换只发生在网关 → 上游这一跳。
+`vendor="anthropic"` 的上游走 `POST {base_url}/v1/messages`，鉴权头 `x-api-key` + `anthropic-version: 2023-06-01`
+（**不发** `Authorization`）。转换层独立文件 `gateway/anthropic.go`，不触碰 OpenAI 直通路径
+（非 anthropic vendor 的转发、透传、流式逻辑一律不变）。
+
+### 3.11.1 请求转换（chat/completions → /v1/messages）
+
+| OpenAI chat/completions | Anthropic /v1/messages | 规则 |
+|---|---|---|
+| `model`（客户端别名） | `model`（upstream_model） | 与 OpenAI 路径相同的三层模型映射（§4.2） |
+| `messages[].role=system` | 顶层 `system` | **system 提升**：全部 system 文本以 `\n\n` 合并到顶层；有注入块时升级为 block 数组 `[{type:"text",text,cache_control}]` |
+| `messages[].role=user` | `user`，content 为 block 数组 | 字符串 → `{type:"text"}`；part 数组：text → text block、image_url → image block（`data:` URI 转 base64 source，其余 url source） |
+| `messages[].role=assistant`（含 tool_calls） | `assistant`，content 含 text + `{type:"tool_use"}` | `tool_calls[].function.arguments`（JSON 字符串）→ `input`（object，解析失败置 `{}`） |
+| `messages[].role=tool` | 并入相邻 user 消息的 `{type:"tool_result",tool_use_id,content}` | Anthropic 无 tool role；连续 tool_result 合并进同一条 user 消息 |
+| 相邻同 role 消息 | 合并 | Anthropic 强制 user/assistant 交替，OpenAI 允许连续同角色 |
+| `max_tokens` / `max_completion_tokens` | `max_tokens`（**必填**） | OpenAI 未传时默认 4096 |
+| `temperature` / `top_p` / `stream` | 同名透传 | — |
+| `stop` | `stop_sequences` | string 或数组统一归一为数组 |
+| `tools[].function` | `tools[]{name,description,input_schema}` | `function.parameters` → `input_schema` |
+| `tool_choice` | `tool_choice` | auto→auto、none→none、required→any、`{function:{name}}`→`{type:"tool",name}` |
+
+**cache_control 断点注入（L2 注入块末尾，≤2 个）**：
+
+- 仅当本次请求真的注入了切片（`inject.Injection.Slices` 非空；空 marker block 不打断点，避免浪费 prompt-cache 预算）；
+- 断点 ① system 尾：注入块文本追加到合并后的 system 末尾，system 以 block 数组承载，最后一个 text block 带 `cache_control:{type:"ephemeral"}`；
+- 断点 ② 最后消息尾：最后一条消息的最后一个 text block 带 `cache_control:{type:"ephemeral"}`；
+- 与 §3.6「对 Claude 在注入块边界打 cache_control 断点（≤2 断点：system 尾 + 最后消息尾）」一致；断点让注入前缀按缓存价计费（§2.3 Claude 行：$3.00/M → $0.30/M）。
+
+### 3.11.2 响应转换（/v1/messages → chat.completion）
+
+| Anthropic | OpenAI | 规则 |
+|---|---|---|
+| `content[].type=text` | `choices[0].message.content` | 全部 text 块按序拼接 |
+| `content[].type=tool_use` | `choices[0].message.tool_calls[]` | `{id, type:"function", function:{name, arguments: JSON.stringify(input)}}` |
+| `stop_reason` | `finish_reason` | end_turn / stop_sequence → stop、max_tokens → length、tool_use → tool_calls |
+| `usage.input_tokens` | `usage.prompt_tokens` | — |
+| `usage.output_tokens` | `usage.completion_tokens` | — |
+| `usage.cache_read_input_tokens` | `usage.prompt_tokens_details.cached_tokens` | L3/计费口径：注入前缀按缓存价（§4.3 合成 usage 同源） |
+| `id` / `model` | `id` / `model`（客户端别名） | `created` 由网关生成 |
+
+### 3.11.3 流式 SSE 事件映射（Anthropic → OpenAI）
+
+| Anthropic 事件 | OpenAI 事件 | 规则 |
+|---|---|---|
+| `message_start` | `delta:{role:"assistant"}` 首块 | 客户端识别角色 |
+| `content_block_start`（tool_use） | `delta:{tool_calls:[{index,id,type:"function",function:{name,arguments:""}}]}` | tool index 独立编号 |
+| `content_block_delta`（text_delta） | `delta:{content}` | 文本增量原样透传 |
+| `content_block_delta`（input_json_delta） | `delta:{tool_calls:[{index,function:{arguments}}]}` | arguments 增量透传 |
+| `message_delta`（stop_reason） | `delta:{}, finish_reason` | 映射同非流式 |
+| `message_stop` | `data: [DONE]` | 终止 |
+| `event: ping` / 非 data 行 / thinking 块 | 丢弃 | 客户端只见 OpenAI 形状 |
+| 异常断流（无 message_stop） | 网关补 `finish_reason` + `[DONE]` | 客户端不挂死（同 §3.4 保证） |
+
+流式响应侧仍只写请求 turns 进旁路（assistant 内容解析属既有债务，与 OpenAI 流式路径一致）。
+
+### 3.11.4 TTL 按 vendor 差异化
+
+- 新增 `[cache] vendor_ttl`（`map[string]int64`，可选）；`Config.TTLFor(vendor)` 解析顺序：显式 `vendor_ttl` > 内置默认 > 通用 `ttl_seconds`；
+- 内置默认（§3.5）：DeepSeek 24h、**Anthropic 5m**；Kimi / GPT 用通用 `ttl_seconds`（上游文档确认后再配）；
+- L3 命中判定 `cacheFresh(slice, vendor)` 按上游 vendor 取 TTL（`l3Eligible` 传入 `up.Vendor`）。
+
+### 3.11.5 验收（e2e，假 Anthropic 上游）
+
+- 非流式全链路：客户端收到 OpenAI 格式响应（content / usage 映射正确），假上游收到 `x-api-key` + `anthropic-version`、`/v1/messages` 路径、system 提升后的 body，且**无** `Authorization` 头；
+- 流式全链路：客户端收到 OpenAI SSE（role 首块 → content 分块 → finish_reason → [DONE]），无 Anthropic 原始事件泄漏；
+- L2 注入断言：注入块出现在 system 尾且带 `cache_control:{type:"ephemeral"}`；
+- `go test ./gateway/... -race` 全绿。
 
 ---
 
@@ -427,7 +513,7 @@ docker-compose.yml
 |---|---|---|---|
 | **M0 网关 MVP** | `cmd/semantix-gateway`：OpenAI 兼容层（chat/completions + SSE 透传 + /healthz）+ 鉴权 + 上游 DeepSeek 适配 + 会话旁路入库 | 1–2 周 | 任意 OpenAI 兼容客户端 → New API → 网关 → DeepSeek 全链路跑通；会话入库后 `semantix search` 可检索到切片 |
 | **M1 缓存闭环** | L2 注入 + L3 缓存（指纹/RuleGate/promote/TTL）+ 流式命中回放 + usage 标记 | +1–2 周 | 重复任务第二次命中 `x-semantix-cache: hit` 且零上游调用；合成演示成本节省 ≥30%（复用 m0-cost-comparison 脚本） |
-| **M2 多模型 + 上线** | Claude（格式转换 + cache_control）/ Kimi / GPT 适配 + 模型映射表 + 计费对账 + 健康监控 | +1 周 | 四家模型渠道全通；命中率/节省率有周报数字；New API 侧对账一致 |
+| **M2 多模型 + 上线** | Claude（格式转换 + cache_control，**上半已落地，见 §3.11**）/ Kimi / GPT 适配 + 模型映射表 + 计费对账 + 健康监控 | +1 周 | 四家模型渠道全通；命中率/节省率有周报数字；New API 侧对账一致 |
 
 **M0 为决策门**：若网关形态下「请求级注入」收益显著低于预期（重复率低的场景），及时转向纯 L3 缓存策略或按会话聚合注入，控制投入在 2 周内。
 
@@ -467,5 +553,6 @@ docker-compose.yml
 
 Semantix Gateway 是 Semantix 从「agent kernel / CLI」走向「**API 网关形态**」的关键一步：
 把已验证的 79.8% 成本节省机制（L2 注入 + L3 复用 + L1 字节稳定）搬到 New API 后面，**零侵入任何客户端与 harness**，
-一条命令部署（`go build ./cmd/semantix-gateway`），天然服务 DeepSeek / Claude / Kimi / GPT 四家模型。
+一条命令部署（`go build ./cmd/semantix-gateway`），天然服务 DeepSeek / Claude / Kimi / GPT 四家模型
+（Claude 经 §3.11 的格式转换 + cache_control 断点接入，其余三家同为 OpenAI 兼容协议）。
 M0 决策门控制投入在 2 周内，收益不成立可随时退化为纯透传。

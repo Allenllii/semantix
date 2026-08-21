@@ -19,3 +19,12 @@ site/.wrangler/
 *.db
 *.db-journal
 /semantix
+
+# Secrets and local deployment state (never commit)
+.env
+*.env
+!*.env.example
+/deploy/data/
+/deploy/semantix-gateway.toml
+/tmp/
+.reasonix/

@@ -35,6 +35,8 @@
 
 - M0 ✅；M1 中 **#58 真实数据命中率 ≥70% 是唯一 P0 遗留门禁**（30 天窗口，`semantix verify` 回放）
 - v0.3.1 已发布（bundle + QUICKSTART + agent-skill + 官网）
+- v0.4.0 已发布（CLI v2 完整版：命令树 / config / --json 信封 / completion / doctor / install / gc / serve，4 平台资产）
+- v0.4.1 已发布（CLI 可用性修复：doctor --json 信封 version 与发布版本一致 #169 + zoneIcon 同名冲突修复 #172，4 平台资产，见 `docs/releases/v0.4.1.md`）
 - CLI v2（M2/U19-U27）是本 Agile 的补强，不阻塞 DoD
 
 ### DoD（完成定义）
@@ -77,18 +79,18 @@
 
 | U | 内容 | 阶段 |
 |---|---|---|
-| U37 | Harness 合体 + 资源编排契约 spec 评审（C0 vendor 方案 + ResourceCatalog + RoundPlan 扩展） | 门禁 |
+| U37 | Harness 合体 + 资源编排契约 spec 评审（C0 vendor 方案 + ResourceCatalog + RoundPlan 扩展） | 门禁（评审意见已回写 spec §10，待批准解锁 U38-U43） |
 | U38 | C0：vendor Reasonix agent 系统进 `harness/`（模块改写 + 构建 + 冒烟） | 合体 |
 | U39 | C5：Semantix Design 视觉基线（主题 token + U33 复用面板迁移进程内化） | H4 |
 | U40 | C1/C2：kernel 进程内接线（Decider 直连 + ResourceCatalog + SuspendTools 执行点） | H2/H3 |
 | U41 | C3：BudgetController 阶梯降级（70/90/100 三阈值） | H2 |
-| U42 | 调度演示 + 可量化收益报告（DoD 证据） | H3 |
+| U42 | 调度演示 + 可量化收益报告（DoD 证据）✅ `docs/reports/agile2-scheduling-demo.md`（#193） | H3 |
 | U43 | C4：prefetch/evolve 闭环接线 + 自进化曲线报告（DoD 证据） | H5 |
 
 ### 验收标准（蓝图 §5）
 
 - [ ] 工具可挂起/恢复 + 预算配额生效（H2）
-- [ ] 调度演示：kernel 决策改变 harness 行为 + 可量化收益（H3）
+- [x] 调度演示：kernel 决策改变 harness 行为 + 可量化收益（H3）— 5 场景 on/off 对照，聚合节省 61.0%，见 `docs/reports/agile2-scheduling-demo.md`（U42/#193）
 - [ ] 命中率/成本随使用提升曲线（H5，自进化证据）
 
 ### 前置依赖

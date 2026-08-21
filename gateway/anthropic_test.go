@@ -1,0 +1,446 @@
+package gateway
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"semantix/kernel/inject"
+	"semantix/kernel/slice"
+)
+
+// ---------------------------------------------------------------------------
+// request translation (OpenAI chat/completions -> Anthropic /v1/messages)
+
+func anthropicUp() UpstreamConfig {
+	return UpstreamConfig{
+		Name: "claude", BaseURL: "https://api.anthropic.com/v1",
+		APIKey: "up-key", ModelAlias: []string{"claude-sonnet"},
+		UpstreamModel: "claude-sonnet-4", Vendor: "anthropic",
+	}
+}
+
+func TestToAnthropicRequestSystemLift(t *testing.T) {
+	body := `{"model":"claude-sonnet","stream":false,
+		"messages":[
+			{"role":"system","content":"you are helpful"},
+			{"role":"user","content":"hello"},
+			{"role":"assistant","content":"hi there"},
+			{"role":"user","content":"tell me about widgets"}
+		]}`
+	raw, err := toAnthropicRequest([]byte(body), anthropicUp(), nil)
+	if err != nil {
+		t.Fatalf("toAnthropicRequest: %v", err)
+	}
+	var req anthropicRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if req.Model != "claude-sonnet-4" {
+		t.Errorf("model = %q, want upstream model claude-sonnet-4", req.Model)
+	}
+	if req.MaxTokens != defaultAnthropicMaxTokens {
+		t.Errorf("max_tokens = %d, want default %d (Anthropic requires it)", req.MaxTokens, defaultAnthropicMaxTokens)
+	}
+	if string(req.System) != `"you are helpful"` {
+		t.Errorf("system = %s, want lifted system string", req.System)
+	}
+	if len(req.Messages) != 3 {
+		t.Fatalf("messages = %d, want 3 (system lifted out)", len(req.Messages))
+	}
+	if req.Messages[0].Role != "user" || req.Messages[0].Content[0].Text != "hello" {
+		t.Errorf("messages[0] = %#v", req.Messages[0])
+	}
+	if req.Messages[1].Role != "assistant" || req.Messages[1].Content[0].Text != "hi there" {
+		t.Errorf("messages[1] = %#v", req.Messages[1])
+	}
+}
+
+func TestToAnthropicRequestToolCalls(t *testing.T) {
+	body := `{"model":"claude-sonnet","stream":false,
+		"tools":[{"type":"function","function":{"name":"read_file","description":"read","parameters":{"type":"object","properties":{"path":{"type":"string"}}}}}],
+		"tool_choice":"auto",
+		"messages":[
+			{"role":"user","content":"read the file"},
+			{"role":"assistant","content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"/a\"}"}}]},
+			{"role":"tool","tool_call_id":"call_1","name":"read_file","content":"file contents"}
+		]}`
+	raw, err := toAnthropicRequest([]byte(body), anthropicUp(), nil)
+	if err != nil {
+		t.Fatalf("toAnthropicRequest: %v", err)
+	}
+	var req anthropicRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(req.Tools) != 1 || req.Tools[0].Name != "read_file" {
+		t.Fatalf("tools = %#v", req.Tools)
+	}
+	if req.ToolChoice != "auto" {
+		t.Errorf("tool_choice = %v, want auto", req.ToolChoice)
+	}
+	// user, assistant(tool_use), user(tool_result) — tool result rides on a
+	// user message, adjacent user messages merged
+	if len(req.Messages) != 3 {
+		t.Fatalf("messages = %d, want 3, got %#v", len(req.Messages), req.Messages)
+	}
+	assistant := req.Messages[1]
+	if assistant.Role != "assistant" || len(assistant.Content) != 1 || assistant.Content[0].Type != "tool_use" {
+		t.Fatalf("assistant message = %#v, want one tool_use block", assistant)
+	}
+	tu := assistant.Content[0]
+	if tu.ID != "call_1" || tu.Name != "read_file" {
+		t.Errorf("tool_use = %#v", tu)
+	}
+	input, _ := json.Marshal(tu.Input)
+	if string(input) != `{"path":"/a"}` {
+		t.Errorf("tool_use.input = %s, want parsed arguments object", input)
+	}
+	toolResult := req.Messages[2]
+	if toolResult.Role != "user" || len(toolResult.Content) != 1 {
+		t.Fatalf("tool result message = %#v", toolResult)
+	}
+	tr := toolResult.Content[0]
+	if tr.Type != "tool_result" || tr.ToolUseID != "call_1" || tr.Input != "file contents" {
+		t.Errorf("tool_result = %#v", tr)
+	}
+}
+
+func TestToAnthropicRequestCacheControlBreakpoints(t *testing.T) {
+	body := `{"model":"claude-sonnet","stream":false,
+		"messages":[
+			{"role":"system","content":"base sys"},
+			{"role":"user","content":"query about widgets"}
+		]}`
+	inj := &inject.Injection{
+		Text:   "[semantix-reuse]\nprior knowledge\n[/semantix-reuse]",
+		Slices: []*slice.Slice{{ID: "s1", Type: slice.Prompt, Scope: slice.Project, Content: []byte("prior knowledge")}},
+	}
+	raw, err := toAnthropicRequest([]byte(body), anthropicUp(), inj)
+	if err != nil {
+		t.Fatalf("toAnthropicRequest: %v", err)
+	}
+	var req anthropicRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// system becomes a block array with the injection appended and a
+	// cache_control breakpoint on the last text block (design §3.6 / §0.5)
+	var sys []anthropicBlock
+	if err := json.Unmarshal(req.System, &sys); err != nil || len(sys) != 1 {
+		t.Fatalf("system = %s, want single block array (unmarshal err %v)", req.System, err)
+	}
+	if !strings.Contains(sys[0].Text, "[semantix-reuse]") {
+		t.Errorf("system block missing injection text: %q", sys[0].Text)
+	}
+	if sys[0].CacheControl == nil || sys[0].CacheControl.Type != "ephemeral" {
+		t.Errorf("system block missing cache_control breakpoint: %#v", sys[0])
+	}
+	// final message tail also gets a breakpoint (≤2 total)
+	if len(req.Messages) == 0 {
+		t.Fatal("no messages")
+	}
+	last := req.Messages[len(req.Messages)-1]
+	found := false
+	for _, b := range last.Content {
+		if b.Type == "text" && b.CacheControl != nil {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("final message tail missing cache_control breakpoint: %#v", last)
+	}
+}
+
+func TestToAnthropicRequestNoBlockNoBreakpoints(t *testing.T) {
+	body := `{"model":"claude-sonnet","messages":[{"role":"user","content":"hi"}]}`
+	raw, err := toAnthropicRequest([]byte(body), anthropicUp(), nil)
+	if err != nil {
+		t.Fatalf("toAnthropicRequest: %v", err)
+	}
+	if strings.Contains(string(raw), "cache_control") {
+		t.Errorf("no breakpoints expected without an injection block: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"system"`) || strings.Contains(string(raw), `[`) {
+		t.Logf("system without block is a plain string: %s", raw)
+	}
+}
+
+func TestToAnthropicRequestImageAndAdjacentMerge(t *testing.T) {
+	body := `{"model":"claude-sonnet",
+		"messages":[
+			{"role":"user","content":"first turn"},
+			{"role":"user","content":[{"type":"text","text":"second turn"},{"type":"image_url","image_url":{"url":"https://x/y.png"}}]}
+		]}`
+	raw, err := toAnthropicRequest([]byte(body), anthropicUp(), nil)
+	if err != nil {
+		t.Fatalf("toAnthropicRequest: %v", err)
+	}
+	var req anthropicRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// both user turns merge into one message (Anthropic alternation rule)
+	if len(req.Messages) != 1 {
+		t.Fatalf("messages = %d, want 1 (adjacent users merged): %#v", len(req.Messages), req.Messages)
+	}
+	blocks := req.Messages[0].Content
+	if len(blocks) != 3 {
+		t.Fatalf("blocks = %d, want 3 (two text + one image): %#v", len(blocks), blocks)
+	}
+	if blocks[0].Text != "first turn" || blocks[1].Text != "second turn" {
+		t.Errorf("text blocks = %q %q", blocks[0].Text, blocks[1].Text)
+	}
+	if blocks[2].Type != "image" || blocks[2].Source == nil || blocks[2].Source.Type != "url" {
+		t.Errorf("image block = %#v", blocks[2])
+	}
+}
+
+// TestToAnthropicRequestTemperatureTopPExclusive: Anthropic rejects requests
+// that set both temperature and top_p; the adapter must drop top_p when
+// temperature is present (OpenAI clients routinely send both).
+func TestToAnthropicRequestTemperatureTopPExclusive(t *testing.T) {
+	body := `{"model":"claude-sonnet","temperature":0.7,"top_p":0.9,
+		"messages":[{"role":"user","content":"hi"}]}`
+	raw, err := toAnthropicRequest([]byte(body), anthropicUp(), nil)
+	if err != nil {
+		t.Fatalf("toAnthropicRequest: %v", err)
+	}
+	var req anthropicRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if req.Temperature == nil || *req.Temperature != 0.7 {
+		t.Errorf("temperature = %v, want 0.7", req.Temperature)
+	}
+	if req.TopP != nil {
+		t.Errorf("top_p = %v, want nil (must be dropped alongside temperature)", req.TopP)
+	}
+	// without temperature, top_p passes through
+	body = `{"model":"claude-sonnet","top_p":0.9,"messages":[{"role":"user","content":"hi"}]}`
+	raw, _ = toAnthropicRequest([]byte(body), anthropicUp(), nil)
+	req = anthropicRequest{}
+	_ = json.Unmarshal(raw, &req)
+	if req.TopP == nil || *req.TopP != 0.9 {
+		t.Errorf("top_p alone = %v, want 0.9", req.TopP)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// response translation (Anthropic /v1/messages -> OpenAI chat.completion)
+
+func TestAnthropicToOpenAIResponse(t *testing.T) {
+	body := `{"id":"msg_01","type":"message","role":"assistant","model":"claude-sonnet-4",
+		"content":[{"type":"text","text":"the answer"}],
+		"stop_reason":"end_turn",
+		"usage":{"input_tokens":100,"output_tokens":25,"cache_read_input_tokens":60}}`
+	raw, err := anthropicToOpenAIResponse([]byte(body), "claude-sonnet")
+	if err != nil {
+		t.Fatalf("anthropicToOpenAIResponse: %v", err)
+	}
+	var out struct {
+		Object  string `json:"object"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+			PromptDetails    struct {
+				CachedTokens int `json:"cached_tokens"`
+			} `json:"prompt_tokens_details"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if out.Object != "chat.completion" || out.Model != "claude-sonnet" {
+		t.Errorf("object/model = %q/%q", out.Object, out.Model)
+	}
+	if out.Choices[0].Message.Content != "the answer" || out.Choices[0].FinishReason != "stop" {
+		t.Errorf("choice = %#v (end_turn must map to stop)", out.Choices[0])
+	}
+	if out.Usage.PromptTokens != 100 || out.Usage.CompletionTokens != 25 || out.Usage.TotalTokens != 125 {
+		t.Errorf("usage = %#v (input/output tokens must map)", out.Usage)
+	}
+	if out.Usage.PromptDetails.CachedTokens != 60 {
+		t.Errorf("cached_tokens = %d, want 60 (cache_read_input_tokens)", out.Usage.PromptDetails.CachedTokens)
+	}
+}
+
+func TestAnthropicToOpenAIResponseToolUse(t *testing.T) {
+	body := `{"id":"msg_02","type":"message","role":"assistant","model":"m",
+		"content":[{"type":"tool_use","id":"toolu_1","name":"read_file","input":{"path":"/a"}}],
+		"stop_reason":"tool_use",
+		"usage":{"input_tokens":10,"output_tokens":5}}`
+	raw, err := anthropicToOpenAIResponse([]byte(body), "m")
+	if err != nil {
+		t.Fatalf("anthropicToOpenAIResponse: %v", err)
+	}
+	var out struct {
+		Choices []struct {
+			Message struct {
+				Content   string `json:"content"`
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Type     string `json:"type"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if out.Choices[0].FinishReason != "tool_calls" {
+		t.Errorf("finish_reason = %q, want tool_calls", out.Choices[0].FinishReason)
+	}
+	tc := out.Choices[0].Message.ToolCalls
+	if len(tc) != 1 || tc[0].ID != "toolu_1" || tc[0].Function.Name != "read_file" {
+		t.Fatalf("tool_calls = %#v", tc)
+	}
+	if tc[0].Function.Arguments != `{"path":"/a"}` {
+		t.Errorf("arguments = %q, want marshaled input", tc[0].Function.Arguments)
+	}
+}
+
+func TestAnthropicStopReasonMapping(t *testing.T) {
+	cases := map[string]string{
+		"":              "stop",
+		"end_turn":      "stop",
+		"stop_sequence": "stop",
+		"max_tokens":    "length",
+		"tool_use":      "tool_calls",
+		"weird":         "stop",
+	}
+	for in, want := range cases {
+		if got := anthropicStopReason(in); got != want {
+			t.Errorf("anthropicStopReason(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// streaming translation (Anthropic SSE -> OpenAI SSE)
+
+func TestAnthropicSSEConverter(t *testing.T) {
+	var out strings.Builder
+	conv := newAnthropicSSEConverter(&out, nil)
+	events := []string{
+		`event: message_start
+data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"m"}}`,
+		`event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
+		`event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hel"}}`,
+		`event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"lo"}}`,
+		`event: content_block_stop
+data: {"type":"content_block_stop","index":0}`,
+		`event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"read_file","input":{}}}`,
+		`event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"path\":"}}`,
+		`event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"/a\"}"}}`,
+		`event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"output_tokens":5}}`,
+		`event: message_stop
+data: {"type":"message_stop"}`,
+	}
+	done := false
+	for _, e := range events {
+		lines := strings.Split(e, "\n")
+		for _, l := range lines {
+			if conv.feed([]byte(l)) {
+				done = true
+			}
+		}
+	}
+	if !done {
+		t.Error("converter did not finish on message_stop")
+	}
+	got := out.String()
+	for _, want := range []string{
+		`"id":"msg_1"`,                 // stable id captured from message_start
+		`"model":"m"`,                  // model echoed on every chunk
+		`"role":"assistant"`,           // first chunk carries the role
+		`"content":"Hel"`,              // text deltas mapped verbatim
+		`"content":"lo"`,               // text delta mapped verbatim (lowercase)
+		`"id":"toolu_1"`,               // tool_use start -> tool_calls chunk
+		`"arguments":"{\"path\":`,      // input_json deltas streamed
+		`"finish_reason":"tool_calls"`, // stop_reason mapped
+		"data: [DONE]",                 // message_stop terminator
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("stream missing %q in:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "message_start") || strings.Contains(got, "ping") {
+		t.Errorf("raw anthropic events leaked through:\n%s", got)
+	}
+}
+
+// TestAnthropicSSEConverterMidStreamError: an Anthropic error event must
+// surface as an OpenAI error envelope — never as a clean completion.
+func TestAnthropicSSEConverterMidStreamError(t *testing.T) {
+	var out strings.Builder
+	conv := newAnthropicSSEConverter(&out, nil)
+	conv.feed([]byte(`data: {"type":"message_start","message":{"id":"m1"}}`))
+	conv.feed([]byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}`))
+	done := conv.feed([]byte(`data: {"type":"error","error":{"type":"overloaded_error","message":"upstream blew up"}}`))
+	if !done {
+		t.Error("error event must terminate the stream")
+	}
+	conv.finish() // must be a no-op after error
+	got := out.String()
+	if !strings.Contains(got, `"error"`) || !strings.Contains(got, "upstream blew up") {
+		t.Errorf("error not surfaced as OpenAI envelope: %s", got)
+	}
+	if !strings.Contains(got, "data: [DONE]") {
+		t.Errorf("error path missing [DONE]: %s", got)
+	}
+	if strings.Contains(got, `"finish_reason":"`) {
+		t.Errorf("error path must not emit a real finish_reason (clean completion): %s", got)
+	}
+}
+
+// TestAnthropicSSEConverterFinishKeepsRealReason: when message_delta already
+// emitted the real finish_reason, an abnormal end must not clobber it.
+func TestAnthropicSSEConverterFinishKeepsRealReason(t *testing.T) {
+	var out strings.Builder
+	conv := newAnthropicSSEConverter(&out, nil)
+	conv.feed([]byte(`data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}`))
+	conv.finish()
+	got := out.String()
+	if n := strings.Count(got, "finish_reason"); n != 1 {
+		t.Errorf("finish_reason emitted %d times, want 1: %s", n, got)
+	}
+	if !strings.Contains(got, `"finish_reason":"length"`) {
+		t.Errorf("real finish_reason lost: %s", got)
+	}
+	if !strings.Contains(got, "data: [DONE]") {
+		t.Errorf("missing [DONE]: %s", got)
+	}
+}
+
+func TestAnthropicSSEConverterAbnormalEnd(t *testing.T) {
+	var out strings.Builder
+	conv := newAnthropicSSEConverter(&out, nil)
+	conv.feed([]byte(`data: {"type":"message_start","message":{}}`))
+	conv.feed([]byte(`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}`))
+	conv.finish() // upstream disconnected without message_stop
+	got := out.String()
+	if !strings.Contains(got, "partial") || !strings.Contains(got, "data: [DONE]") {
+		t.Errorf("abnormal end must flush content + [DONE], got: %s", got)
+	}
+}

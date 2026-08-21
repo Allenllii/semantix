@@ -347,7 +347,7 @@ func TestExportReportsCorruptStoreLines(t *testing.T) {
 
 // A store with an oversized line stays readable (ListAll/Export keep working
 // and report the skipped line) — the line is treated like any corrupt line.
-// A subsequent write rewrites the file and drops it, same as corrupt lines.
+// Corrupt/oversized lines survive (skipped) until compaction folds the base.
 func TestFileStoreToleratesOversizedLine(t *testing.T) {
 	big := make([]byte, 9*1024*1024) // > 8 MiB
 	for i := range big {

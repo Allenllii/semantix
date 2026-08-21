@@ -66,4 +66,4 @@ xychart-beta
 
 - `docs/reports/data/agile2-evolution-curve/sessions.jsonl`
 - `docs/reports/data/agile2-evolution-curve/summary.csv`
-- 重跑：`go run ./scripts/evolution-curve`
+- 重跑：`go run ./harness/cmd/evolution-curve`

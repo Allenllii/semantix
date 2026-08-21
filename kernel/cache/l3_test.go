@@ -9,7 +9,9 @@ import (
 
 	"semantix/kernel/bm25"
 	"semantix/kernel/fingerprint"
+	"semantix/kernel/judge"
 	"semantix/kernel/slice"
+	"semantix/kernel/zone"
 )
 
 // buildTestLib creates a temp project with one dependency file, indexes a
@@ -386,4 +388,87 @@ func idxMtimes(t *testing.T, root string) map[string]int64 {
 		t.Fatal(err)
 	}
 	return map[string]int64{"dep.txt": st.ModTime().Unix()}
+}
+
+// ---- Issue #186 / GW6: grey-zone judge wiring (spec §3.5 RuleGate.Chain) ----
+
+type mockJudge struct {
+	confirm bool
+	err     error
+	got     *judge.Candidate
+}
+
+func (m *mockJudge) Confirm(ctx context.Context, c judge.Candidate) (bool, error) {
+	cc := c
+	m.got = &cc
+	return m.confirm, m.err
+}
+
+// greyZones forces every candidate into the grey band: TauHigh above 1 means
+// no score/top1 ratio can reach Hit, so even the top-1 candidate is Grey.
+func greyZones() *zone.Zones {
+	return &zone.Zones{TauHigh: 1.5, TauLow: 0.5, AbsHigh: 0.7, AbsLow: 0.45}
+}
+
+func TestDecideL3GreyZoneWithoutJudgeRejects(t *testing.T) {
+	root, idx, _, _ := buildTestLib(t)
+	d := &L3Decider{Index: idx, Root: root, Zones: greyZones()}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != nil {
+		t.Fatalf("grey without judge must be conservatively rejected, got %+v", res)
+	}
+}
+
+func TestDecideL3GreyZoneJudgeConfirmsReuse(t *testing.T) {
+	root, idx, _, _ := buildTestLib(t)
+	mj := &mockJudge{confirm: true}
+	d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("judge-confirmed grey candidate should be reused, got nil")
+	}
+	if res.SliceID != "l3-1" {
+		t.Fatalf("SliceID = %q, want l3-1", res.SliceID)
+	}
+	if mj.got == nil {
+		t.Fatal("judge was not consulted")
+	}
+	if mj.got.Zone != zone.Grey || mj.got.Query != "修复 go 测试失败" || mj.got.SliceID != "l3-1" {
+		t.Fatalf("candidate = %+v, want zone=grey query/slice propagated", mj.got)
+	}
+	if len(mj.got.Deps) == 0 {
+		t.Fatal("candidate deps must be forwarded to the judge (spec §3.5 fingerprint gate)")
+	}
+}
+
+func TestDecideL3GreyZoneJudgeRejectsReuse(t *testing.T) {
+	root, idx, _, _ := buildTestLib(t)
+	mj := &mockJudge{confirm: false}
+	d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != nil {
+		t.Fatalf("judge-declined grey candidate must not be reused, got %+v", res)
+	}
+}
+
+func TestDecideL3GreyZoneJudgeErrorFailsClosed(t *testing.T) {
+	root, idx, _, _ := buildTestLib(t)
+	mj := &mockJudge{confirm: true, err: context.DeadlineExceeded}
+	d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != nil {
+		t.Fatalf("judge error must fail closed, got %+v", res)
+	}
 }
