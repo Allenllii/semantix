@@ -14,10 +14,7 @@ import (
 func TestSearchVectorRetriever(t *testing.T) {
 	dir := t.TempDir()
 	db := filepath.Join(dir, "lib.db")
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	for _, c := range []string{"修复 go 测试失败", "配置 CI 流水线", "部署到服务器"} {
 		sl := &slice.Slice{ID: "v-" + c[:4], Type: slice.Prompt, Scope: slice.Project, Content: []byte(c)}
 		if err := store.Put(sl); err != nil {
@@ -41,7 +38,7 @@ func TestSearchVectorRetriever(t *testing.T) {
 func TestSearchHybridRetriever(t *testing.T) {
 	dir := t.TempDir()
 	db := filepath.Join(dir, "lib.db")
-	store, _ := slice.NewFileStore(db)
+	store := openTestStore(t, db)
 	for _, c := range []string{"修复 go 测试失败", "配置 CI 流水线"} {
 		sl := &slice.Slice{ID: "h-" + c[:4], Type: slice.Prompt, Scope: slice.Project, Content: []byte(c)}
 		if err := store.Put(sl); err != nil {
@@ -79,10 +76,7 @@ func TestRRFFuseRanksSharedHitsHigher(t *testing.T) {
 func TestSearchHitVisualization(t *testing.T) {
 	dir := t.TempDir()
 	db := filepath.Join(dir, "lib.db")
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	for _, s := range []struct {
 		id, sess, content string
 	}{

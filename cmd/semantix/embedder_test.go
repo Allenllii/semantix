@@ -85,10 +85,7 @@ func TestSearchVectorModelEmbedder(t *testing.T) {
 
 	dir := t.TempDir()
 	db := filepath.Join(dir, "lib.db")
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	for _, c := range []string{"修复 go 测试失败", "配置 CI 流水线"} {
 		sl := &slice.Slice{ID: "m-" + c[:4], Type: slice.Prompt, Scope: slice.Project, Content: []byte(c)}
 		if err := store.Put(sl); err != nil {
@@ -124,7 +121,7 @@ func TestSearchVectorModelEmbedderFallback(t *testing.T) {
 
 	dir := t.TempDir()
 	db := filepath.Join(dir, "lib.db")
-	store, _ := slice.NewFileStore(db)
+	store := openTestStore(t, db)
 	for _, c := range []string{"修复 go 测试失败", "配置 CI 流水线"} {
 		sl := &slice.Slice{ID: "f-" + c[:4], Type: slice.Prompt, Scope: slice.Project, Content: []byte(c)}
 		if err := store.Put(sl); err != nil {

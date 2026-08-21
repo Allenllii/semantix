@@ -180,7 +180,7 @@ func TestJournalOrphanStashed(t *testing.T) {
 func TestJournalForwardCompat(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "s.jsonl")
-	reopen(t, path) // create empty base
+	st0 := reopen(t, path) // create empty base
 
 	stat, err := os.Stat(path)
 	if err != nil {
@@ -193,6 +193,7 @@ func TestJournalForwardCompat(t *testing.T) {
 	if err := os.WriteFile(path+".journal", []byte(journal), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	closeTestStore(st0) // release the journal handle before the store below reopens the path
 	st := reopen(t, path)
 	if got, _ := st.Get("ok"); got == nil {
 		t.Fatal("valid record after unknown op must still apply")
@@ -207,6 +208,7 @@ func TestJournalForwardCompat(t *testing.T) {
 	if err := os.WriteFile(path+".journal", append(future, '\n'), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	closeTestStore(st) // ditto: the stash-rename below needs the handle free on Windows
 	st2 := reopen(t, path)
 	if all, _ := st2.ListAll(); len(all) != 0 {
 		t.Fatalf("future-version journal must not replay, got %d slices", len(all))

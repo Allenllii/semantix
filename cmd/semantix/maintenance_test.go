@@ -58,10 +58,7 @@ func TestExportImportCLIRoundTrip(t *testing.T) {
 	if !strings.Contains(stdout.String(), "imported=") {
 		t.Fatalf("import stdout = %q", stdout.String())
 	}
-	store, err := slice.NewFileStore(dst)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, dst)
 	items, err := store.ListAll()
 	if err != nil {
 		t.Fatal(err)
@@ -89,10 +86,7 @@ func TestImportCLIIdempotent(t *testing.T) {
 			t.Fatalf("import %d code = %d, stderr = %q", i, code, stderr.String())
 		}
 	}
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	items, err := store.ListAll()
 	if err != nil || len(items) != 1 {
 		t.Fatalf("after double import len = %d (%v), want 1", len(items), err)
@@ -219,19 +213,18 @@ func TestGCCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Dry-run removes nothing but reports candidates.
+	// Dry-run removes nothing but reports candidates. --no-rescore keeps the
+	// handcrafted fixture weights authoritative (a rescore would replace
+	// them with computed values, which is its own test).
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"gc", "--retention-days", "7", "--min-weight", "0.5", "--dry-run", "--db", db}, &stdout, &stderr, deps)
+	code := run([]string{"gc", "--retention-days", "7", "--min-weight", "0.5", "--no-rescore", "--dry-run", "--db", db}, &stdout, &stderr, deps)
 	if code != 0 {
 		t.Fatalf("gc dry-run code = %d, stderr = %q", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "would_remove=2") {
 		t.Fatalf("gc dry-run stdout = %q", stdout.String())
 	}
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	if all, _ := store.ListAll(); len(all) != 3 {
 		t.Fatalf("dry-run removed slices: len = %d", len(all))
 	}
@@ -239,7 +232,7 @@ func TestGCCLI(t *testing.T) {
 	// Real run removes old + low, keeps the rest.
 	stdout.Reset()
 	stderr.Reset()
-	code = run([]string{"gc", "--retention-days", "7", "--min-weight", "0.5", "--db", db}, &stdout, &stderr, deps)
+	code = run([]string{"gc", "--retention-days", "7", "--min-weight", "0.5", "--no-rescore", "--db", db}, &stdout, &stderr, deps)
 	if code != 0 {
 		t.Fatalf("gc code = %d, stderr = %q", code, stderr.String())
 	}
@@ -249,10 +242,7 @@ func TestGCCLI(t *testing.T) {
 	// Re-open: a store handle is a snapshot of open time (freeze-window
 	// semantics); the gc ran in its own handle, so observe like a fresh
 	// process would.
-	store, err = slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store = openTestStore(t, db)
 	items, err := store.ListAll()
 	if err != nil {
 		t.Fatal(err)

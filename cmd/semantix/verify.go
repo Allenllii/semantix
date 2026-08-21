@@ -287,6 +287,7 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 			return 1
 		}
 	}
+	defer closeStore(store)
 	idx := deps.newIndex()
 
 	// Train: index every user turn of earlier sessions as a P-slice.
