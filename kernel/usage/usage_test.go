@@ -189,3 +189,55 @@ func TestEventL3SliceIDRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip = %+v", back)
 	}
 }
+// TestSummarizeInjectROI (Issue #270 step 1): the injection economics
+// figure pairs the L2 injection spend against the savings it participates
+// in (L2 price delta + L3 full-turn savings), per 1M injected tokens.
+func TestSummarizeInjectROI(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	r, err := NewRecorder(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := []Event{
+		{SessionID: "s1", Turn: 1, TokensIn: 5000, TokensOut: 300, CacheHitToken: 4000, InjectedTokens: 1000, SliceHits: 2},
+		{SessionID: "s1", Turn: 2, TokensIn: 20000, TokensOut: 500, L3Reuse: true},
+	}
+	for _, e := range evs {
+		if err := r.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := Summarize(path, DefaultCostMissPerMTok, DefaultCostHitPerMTok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.InjectedTokens != 1000 || s.L3Reuses != 1 {
+		t.Fatalf("baseline = injected %d l3 %d", s.InjectedTokens, s.L3Reuses)
+	}
+	// l2Savings = 1000*(0.27-0.07)/1e6 = 0.0002
+	// l3Savings = (20000*0.27 + 500*0.27)/1e6 = 0.005535
+	// InjectROI = (0.0002+0.005535)/1000*1e6 = 5.735 USD per 1M injected
+	want := 5.735
+	if diff := s.InjectROI - want; diff < -1e-9 || diff > 1e-9 {
+		t.Fatalf("InjectROI = %v, want %v", s.InjectROI, want)
+	}
+}
+
+// TestSummarizeInjectROIZeroWhenNoInjection: no injection, no figure.
+func TestSummarizeInjectROIZeroWhenNoInjection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	r, err := NewRecorder(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Append(Event{SessionID: "s", Turn: 1, TokensIn: 1000, TokensOut: 100}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Summarize(path, DefaultCostMissPerMTok, DefaultCostHitPerMTok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.InjectROI != 0 {
+		t.Fatalf("InjectROI = %v, want 0", s.InjectROI)
+	}
+}

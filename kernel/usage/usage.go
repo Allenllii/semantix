@@ -146,6 +146,7 @@ type Summary struct {
 	CostNoCacheUSD  float64 // what it would cost without any cache
 	SavingsUSD      float64 // CostNoCache - CostPaid, gross of judge cost
 	SavingsRate     float64 // Savings / CostNoCache (0 when no cost)
+	InjectROI       float64 // cache savings per 1M injected tokens (Issue #270 step 1)
 
 	// Grey-zone judge accounting (Issue #242 gap 1). These describe a
 	// different model on a different channel, so they are reported
@@ -294,6 +295,16 @@ func Summarize(path string, costMiss, costHit float64) (*Summary, error) {
 	s.SavingsUSD = noCache - paid
 	if noCache > 0 {
 		s.SavingsRate = s.SavingsUSD / noCache
+	}
+	// Issue #270 step 1: injection economics. The L2 injection is the
+	// only cache layer that spends tokens upfront; the ROI pairs the
+	// injection spend against the savings it participates in (L2 price
+	// delta + L3 full-turn savings). Reported per 1M injected tokens for
+	// readability.
+	if s.InjectedTokens > 0 {
+		l2Savings := float64(s.InjectedTokens) * (costMiss - costHit) / 1e6
+		l3Savings := (float64(l3In)*costMiss + float64(l3Out)*costMiss) / 1e6
+		s.InjectROI = (l2Savings + l3Savings) / float64(s.InjectedTokens) * 1e6
 	}
 	return s, nil
 }
