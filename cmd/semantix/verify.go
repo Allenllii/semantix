@@ -48,9 +48,37 @@ type verifySummary struct {
 	RelevancePct   float64            `json:"relevance_pct"`
 	Icon           string             `json:"icon"`
 	WarnGrey       bool               `json:"warn_grey"`
-	Judge          *judge.Stats       `json:"judge,omitempty"`
+	Judge          *verifyJudgeJSON   `json:"judge,omitempty"`
 	Calibration    *verifyCalibration `json:"calibration,omitempty"`
 	Rows           []verifyRow        `json:"rows"`
+}
+
+// verifyJudgeJSON is the CLI-side wire shape for judge.Stats. The kernel type
+// carries no json tags, so marshaling it directly published PascalCase keys
+// ("NeedJudge", and — once Issue #245 landed — "JudgeError") into an envelope
+// that is snake_case everywhere else. Keeping the mapping here follows the
+// house rule already stated in search.go: the CLI owns its wire format and the
+// kernel type stays policy-free.
+type verifyJudgeJSON struct {
+	Confirmed     int `json:"confirmed"`
+	RulesReject   int `json:"rules_reject"`
+	Fingerprint   int `json:"fingerprint"`
+	JudgeReject   int `json:"judge_reject"`
+	JudgeError    int `json:"judge_error"`
+	JudgeApproved int `json:"judge_approved"`
+	NeedJudge     int `json:"need_judge"`
+}
+
+func newVerifyJudgeJSON(s judge.Stats) *verifyJudgeJSON {
+	return &verifyJudgeJSON{
+		Confirmed:     s.Confirmed,
+		RulesReject:   s.RulesReject,
+		Fingerprint:   s.Fingerprint,
+		JudgeReject:   s.JudgeReject,
+		JudgeError:    s.JudgeError,
+		JudgeApproved: s.JudgeApproved,
+		NeedJudge:     s.NeedJudge,
+	}
 }
 
 // verifyCalibration is the Issue #262 calibration report: the replay stream
@@ -640,7 +668,7 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 			summary.Calibration = cal
 		}
 		if *judgeProtocol != "" {
-			summary.Judge = &jstats
+			summary.Judge = newVerifyJudgeJSON(jstats)
 		}
 		if err := writeJSON(stdout, okEnvelope("verify", summary)); err != nil {
 			fmt.Fprintf(stdout, "verify: %v\n", err)
@@ -667,9 +695,12 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 		fmt.Fprintf(stdout, "# ⚠ WARN grey_ratio=%.1f%% exceeds target %.1f%%\n", greyRatio, *greyTarget)
 	}
 	if *judgeProtocol != "" {
-		fmt.Fprintf(stdout, "# judge: confirmed=%d rules_reject=%d fingerprint=%d judge_reject=%d judge_approved=%d waste=%d\n",
-			jstats.Confirmed, jstats.RulesReject, jstats.Fingerprint, jstats.JudgeReject, jstats.JudgeApproved,
-			jstats.JudgeReject+jstats.Fingerprint+jstats.RulesReject)
+		// waste keeps its pre-#245 meaning. Judge errors used to arrive inside
+		// RulesReject, so JudgeError must be added back into the total or this
+		// published number would silently shrink as a side effect of the split.
+		fmt.Fprintf(stdout, "# judge: confirmed=%d rules_reject=%d fingerprint=%d judge_reject=%d judge_error=%d judge_approved=%d waste=%d\n",
+			jstats.Confirmed, jstats.RulesReject, jstats.Fingerprint, jstats.JudgeReject, jstats.JudgeError, jstats.JudgeApproved,
+			jstats.JudgeReject+jstats.Fingerprint+jstats.RulesReject+jstats.JudgeError)
 	}
 	printVerifyCalibration(stdout, cal)
 	if *greyTarget > 0 && greyRatio > *greyTarget {
