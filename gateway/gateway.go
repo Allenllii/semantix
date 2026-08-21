@@ -36,6 +36,7 @@ type Gateway struct {
 	decider  *cache.L3Decider
 	injector *inject.Injector
 	usageLog *usage.Recorder
+	quota    *quotaEngine // nil unless [billing] enabled (gateway/quota.go)
 	client   *http.Client
 
 	// healthProbe checks upstream reachability for /healthz (nil or a
@@ -154,6 +155,21 @@ func New(cfg *Config) (*Gateway, error) {
 	// non-hit can be explained and the judge's own model call can be costed.
 	g.decider.OnJudge = g.observeJudge
 	g.healthProbe = g.probeUpstreams
+
+	// Customer free-tier gate (gateway/quota.go). The persisted counter
+	// lives next to the slice store unless [billing] state_file overrides.
+	if cfg.Billing.Enabled {
+		statePath := cfg.Billing.StateFile
+		if statePath == "" {
+			statePath = filepath.Join(filepath.Dir(cfg.Store.DB), "quota-state.json")
+		}
+		qe, qerr := newQuotaEngine(cfg.Billing, statePath, g.client, g.now)
+		if qerr != nil {
+			_ = closeStore(store)
+			return nil, fmt.Errorf("gateway: billing: %w", qerr)
+		}
+		g.quota = qe
+	}
 	return g, nil
 }
 

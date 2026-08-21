@@ -423,8 +423,16 @@ func extractAssistantContent(body []byte) string {
 	return resp.Choices[0].Message.Content
 }
 
-// recordUsage appends one kernel/usage event (best-effort).
+// recordUsage appends one kernel/usage event (best-effort) and meters the
+// free-tier quota. Every reply path funnels through here exactly once, so
+// this is the single billing tap: forwarded requests consume the tier,
+// L3 verified-reuse hits cost the platform nothing and stay free.
 func (g *Gateway) recordUsage(e usage.Event) {
+	if g.quota != nil && !e.L3Reuse {
+		if err := g.quota.Consume(e.TokensIn + e.TokensOut); err != nil {
+			log.Printf("gateway: quota persist: %v", err)
+		}
+	}
 	if g.usageLog == nil {
 		return
 	}

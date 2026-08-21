@@ -24,6 +24,7 @@ type Config struct {
 	Retrieval RetrievalConfig  `toml:"retrieval"`
 	Cache     CacheConfig      `toml:"cache"`
 	Ingest    IngestConfig     `toml:"ingest"`
+	Billing   BillingConfig    `toml:"billing"`
 	Upstreams []UpstreamConfig `toml:"upstreams"`
 }
 
@@ -69,6 +70,34 @@ type CacheConfig struct {
 	JudgeModel    string           `toml:"judge_model"`
 	JudgeProtocol string           `toml:"judge_protocol"`
 }
+
+// BillingConfig is the customer free-tier gate (see gateway/quota.go):
+// the first FreeTokens upstream tokens are served for free; after that the
+// gateway answers 402 with RechargeURL until the customer's platform wallet
+// reports an active balance.
+type BillingConfig struct {
+	Enabled bool `toml:"enabled"`
+	// FreeTokens is the free-tier size in tokens (prompt + completion of
+	// forwarded requests; L3 cache hits are free). 0 defaults to 10M.
+	FreeTokens int64 `toml:"free_tokens"`
+	// RechargeURL is the platform top-up page shown in the 402 message and
+	// the x-semantix-quota-recharge-url header. Required when enabled.
+	RechargeURL string `toml:"recharge_url"`
+	// StateFile persists the token counter across restarts. Defaults to
+	// quota-state.json next to the slice store db.
+	StateFile string `toml:"state_file"`
+	// BalanceURL + BalanceKey (both or neither) probe the platform wallet
+	// (DeepSeek GET /user/balance schema) once the tier is exhausted: an
+	// available balance unlocks paid mode automatically after a top-up.
+	BalanceURL string `toml:"balance_url"`
+	BalanceKey string `toml:"balance_key"`
+	// BalanceCacheSeconds bounds probe frequency (0 defaults to 300).
+	BalanceCacheSeconds int `toml:"balance_cache_seconds"`
+}
+
+// defaultFreeTokens is the free tier granted to every customer install:
+// 10,000,000 tokens (产品口径: 前 1000 万 token 免费).
+const defaultFreeTokens int64 = 10_000_000
 
 // IngestConfig controls the session-sidecar write path.
 type IngestConfig struct {
@@ -149,6 +178,8 @@ func (c *Config) expand() error {
 		&c.Cache.JudgeModel,
 		&c.Cache.JudgeProtocol,
 		&c.Ingest.SessionsDir, &c.Ingest.UsageLog,
+		&c.Billing.RechargeURL, &c.Billing.StateFile,
+		&c.Billing.BalanceURL, &c.Billing.BalanceKey,
 	}
 	for i := range c.Upstreams {
 		u := &c.Upstreams[i]
@@ -190,6 +221,13 @@ func (c *Config) expand() error {
 			return err
 		} else {
 			c.Ingest.UsageLog = home
+		}
+	}
+	if c.Billing.StateFile != "" {
+		if home, err := expandHome(c.Billing.StateFile); err != nil {
+			return err
+		} else {
+			c.Billing.StateFile = home
 		}
 	}
 	return nil
@@ -269,6 +307,26 @@ func (c *Config) validate() error {
 	}
 	if c.Server.HealthTimeoutSeconds < 0 {
 		return fmt.Errorf("gateway config: [server] health_timeout_seconds must be >= 0 (0 disables the upstream probe)")
+	}
+	if c.Billing.Enabled {
+		if c.Billing.FreeTokens < 0 {
+			return fmt.Errorf("gateway config: [billing] free_tokens must be >= 0 (0 uses the default %d)", defaultFreeTokens)
+		}
+		if c.Billing.FreeTokens == 0 {
+			c.Billing.FreeTokens = defaultFreeTokens
+		}
+		if strings.TrimSpace(c.Billing.RechargeURL) == "" {
+			return fmt.Errorf("gateway config: [billing] recharge_url is required when billing is enabled (the top-up page customers are sent to)")
+		}
+		if (c.Billing.BalanceURL == "") != (c.Billing.BalanceKey == "") {
+			return fmt.Errorf("gateway config: [billing] balance_url and balance_key must be set together")
+		}
+		if c.Billing.BalanceCacheSeconds < 0 {
+			return fmt.Errorf("gateway config: [billing] balance_cache_seconds must be >= 0 (0 uses the default 300)")
+		}
+		if c.Billing.BalanceCacheSeconds == 0 {
+			c.Billing.BalanceCacheSeconds = 300
+		}
 	}
 	if len(c.Upstreams) == 0 {
 		return fmt.Errorf("gateway config: at least one [[upstreams]] entry is required")

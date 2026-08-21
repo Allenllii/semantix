@@ -35,6 +35,21 @@ sessions_dir = "/data/sessions"           # 会话旁路落盘目录（0600）
 usage_log = "/data/gateway-usage.jsonl"   # usage 事件记录
 l3_safe_default = false                   # 无 deps 的网关结果默认不进 L3（true 需显式确认）
 
+[billing]                                 # 客户免费额度闸门（gateway/quota.go）
+enabled = false                           # true 后：前 free_tokens 个 token 免费，用完 402 引导充值
+free_tokens = 10000000                    # 免费额度（前 1000 万 token）；0 = 用默认 1000 万
+# recharge_url 在 enabled = true 时必填：平台充值页（402 报错与
+# x-semantix-quota-recharge-url 头均携带）。注意 ${VAR} 展开不分段落是否启用，
+# 未设置的环境变量会直接启动失败，所以此处默认留空而不是占位 ${VAR}。
+recharge_url = ""                         # 例："https://platform.example.com/topup" 或 "${SEMANTIX_RECHARGE_URL}"
+# state_file = "/data/quota-state.json"   # 计数持久化位置；默认落在 store.db 同目录
+# 可选：平台钱包探测（DeepSeek GET /user/balance 兼容 schema）。配置后客户在
+# 平台充值到账 → is_available=true → 网关自动解锁付费模式，无需人工操作。
+# balance_url 与 balance_key 必须同时设置。
+# balance_url = "https://your-platform.example.com/user/balance"
+# balance_key = "${SEMANTIX_PLATFORM_KEY}"
+# balance_cache_seconds = 300             # 钱包探测结果缓存（秒）；0 = 用默认 300
+
 [[upstreams]]                             # 每个 New API 渠道模型对应一段
 name = "deepseek"
 base_url = "https://api.deepseek.com/v1"
