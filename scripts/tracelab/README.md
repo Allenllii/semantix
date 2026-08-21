@@ -43,17 +43,19 @@ scripts/tracelab/
 ## 用法（骨架）
 
 ```bash
-# 1. 下载公共子集到本地（约 X MB；脚本 + 校验和入 repo，数据不入库）
-python scripts/tracelab/fetch.py --out ./tracelab-data
-# 2. 分层抽样子集（可复现：固定 seed）
-python scripts/tracelab/sample.py --in ./tracelab-data/round_trace.jsonl \
-  --out ./tracelab-data/sample.jsonl --n 200 --seed 20260821
-# 3. 转换每个会话为 semantix ingest 兼容的 JSONL
-python scripts/tracelab/convert.py --in ./tracelab-data/sample.jsonl --out ./tracelab-sessions/
+# 1. 下载公共子集到本地（不在 repo 内，路径落在 scripts/tracelab/.gitignore 忽略范围）
+python scripts/tracelab/fetch.py --out ./scripts/tracelab/tracelab-data
+# 2. 分层抽样子集（可复现：固定 seed）→ 输出 session-id 列表
+python scripts/tracelab/sample.py --in ./scripts/tracelab/tracelab-data/round_trace.jsonl \
+  --out ./scripts/tracelab/tracelab-data/sample-ids.txt --n 200 --seed 20260821
+# 3. 转换每个会话为 semantix ingest 兼容的 JSONL（--only 只转换抽样命中的会话）
+python scripts/tracelab/convert.py --in ./scripts/tracelab/tracelab-data/round_trace.jsonl \
+  --only ./scripts/tracelab/tracelab-data/sample-ids.txt \
+  --out ./tracelab-sessions/
 ```
 
 生成的 `./tracelab-sessions/*.jsonl` 直接喂给 `semantix ingest`（`kernel/ingest.JSONLSource`
-兼容：`role/content/tool_calls` + `type/tool` 行）。
+兼容：`role/content/tool_calls` + `role:tool` 行）。
 
 ## 验收清单（本轮骨架的后续落地项）
 
