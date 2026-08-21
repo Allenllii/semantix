@@ -122,8 +122,11 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
 	// A fresh turn must not inherit a previous turn's warmed [semantix-reuse]
 	// block: prefetchedInject lives on Agent (not turnRuntime), so clearing it
 	// here keeps buildSamplingRequest's fallback (sampling_request.go) scoped
-	// to same-turn use only.
-	a.prefetchedInject.Store(nil)
+	// to same-turn use only. The clear goes through wastePrefetch rather than
+	// a raw Store(nil): startInjectWarm's detached goroutine can land a stale
+	// block between the wastePrefetch at the top of this function and here,
+	// and dropping it raw would hide that waste from the evolution feedback.
+	a.wastePrefetch()
 	a.resetStructuralRunGuards()
 	scope, scoped := DeliveryExecutionScopeFromContext(ctx)
 	preserveEvidence := a.pending.preserveEvidence
