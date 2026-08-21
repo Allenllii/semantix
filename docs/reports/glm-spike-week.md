@@ -288,10 +288,11 @@ Last Update: April 14, 2026，https://docs.z.ai/legal-agreement/terms-of-use）*
 | 国际 api.z.ai · GLM-4.7-Flash（免费） | **可行** | API 用户默认不训练，无免费档例外；sanitize 管线仍保留（深度防御 + DPA 未核验前的兜底） |
 | 国内 open.bigmodel.cn · GLM-4.7-Flash（免费） | **不建议** | 匿名化训练默认授权 + 无 API 排除承诺；企业协议另签前不外发代码片段 |
 
-## 6. spec §3 回写清单（待 spec 分支吸收）
+## 6. spec §3 回写清单（已吸收：spec 修订版随本 PR 合入）
 
-spec 本体在 `claude/semantix-agent-integration` 分支（未合 main），本报告不直接改 spec 文件；
-以下为逐条修正，供该分支吸收：
+spec 修订版（[docs/specs/semantix-glm-optimization.md](../specs/semantix-glm-optimization.md)）已按本清单
+逐条回写、并落地 2026-08-20 端点战略决策（**只走云厂商托管，不接智谱官方 API/Coding Plan**——
+详见 spec 头部与 §1 推演三/§4.3/§8），随本 PR 合入 main。清单原文保留备查：
 
 1. **§3.1 国内价目行**（原 reported）改为，置信度 **official（2026-08-20 亲验）**：
    > 国内 bigmodel：GLM-5.3/5.2 = ¥8 / ¥2（缓存命中）/ ¥28，1M ctx **非阶梯**；5.1/5-Turbo/5/4.7 按输入长度阶梯；
