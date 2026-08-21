@@ -10,9 +10,12 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"semantix/kernel/cache"
+	kernelevent "semantix/kernel/event"
 	"semantix/kernel/inject"
+	"semantix/kernel/slice"
 	"semantix/kernel/usage"
 )
 
@@ -58,12 +61,18 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	// the dep-fingerprint chain. TTL is vendor-aware (design §3.5).
 	if !g.disabled {
 		if res, lerr := g.decider.DecideL3(ctx, q); lerr == nil && res != nil && g.l3Eligible(res.SliceID, up.Vendor) {
+			now := g.now()
 			g.recordUsage(usage.Event{
 				SessionID: sessionID, Provider: up.Name, Vendor: up.Vendor, Model: req.Model,
-				TokensIn: int64(len(query)/4) + int64(len(res.Response)/4),
+				TokensIn:  int64(len(query)/4) + int64(len(res.Response)/4),
 				TokensOut: 0, CacheHitToken: int64(len(res.Response) / 4),
-				L3Reuse: true, JudgeDecisions: jc.drain(), At: g.now().Unix(),
+				L3Reuse: true, JudgeDecisions: jc.drain(), At: now.Unix(),
 			})
+			g.recordSliceStats(map[string]slice.SliceStats{
+				res.SliceID: {Hits: 1, LastUsed: now.Unix()},
+			})
+			g.recordSliceEvent(sessionID, chash, req.Model, kernelevent.SliceHit,
+				kernelevent.SliceHitPayload{Layer: "L3", SliceIDs: []string{res.SliceID}}, now)
 			g.replyFromCache(w, r, req, res)
 			return
 		}
@@ -79,6 +88,23 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	if inj != nil {
 		injectedTokens = int64(inj.Bytes / 4)
 		sliceHits = len(inj.Slices)
+		if len(inj.Slices) > 0 {
+			now := g.now()
+			ids := make([]string, 0, len(inj.Slices))
+			deltas := make(map[string]slice.SliceStats, len(inj.Slices))
+			for _, sl := range inj.Slices {
+				if sl == nil {
+					continue
+				}
+				ids = append(ids, sl.ID)
+				deltas[sl.ID] = slice.SliceStats{Injected: 1, LastUsed: now.Unix()}
+			}
+			if len(ids) > 0 {
+				g.recordSliceStats(deltas)
+				g.recordSliceEvent(sessionID, chash, req.Model, kernelevent.SliceInject,
+					kernelevent.SliceInjectPayload{SliceIDs: ids, Bytes: inj.Bytes}, now)
+			}
+		}
 	}
 	if up.Vendor == "anthropic" {
 		// Anthropic hop (design §0.5): translate the OpenAI body to the
@@ -130,25 +156,59 @@ func (g *Gateway) l3Eligible(id, vendor string) bool {
 }
 
 // rewriteOutgoing rewrites the outgoing body in place: the client model
-// alias is mapped to the upstream model name, and (when an injection block
-// was assembled) the block is appended to the first system message
-// (byte-stable prefix tail, L1) or prepended as a new system message. All
-// other request fields pass through untouched.
+// alias is mapped to the upstream model name, the prefix-hygiene middleware
+// runs (GLM-P0-2, #290: attribution stripping / tools canonicalization /
+// per-upstream cache_control policy), and (when an injection block was
+// assembled) the block is appended to the first system message (byte-stable
+// prefix tail, L1) or prepended as a new system message. All other request
+// fields pass through untouched. Sanitation operates on the decoded body
+// before injection so both the injected and non-injected paths ship the
+// same sanitized prefix.
 func (g *Gateway) rewriteOutgoing(body []byte, req *chatRequest, up UpstreamConfig, inj *inject.Injection) []byte {
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return body
 	}
 	raw["model"] = up.UpstreamModel
+	g.sanitizeOutgoing(raw, up)
+	// OpenAI-style path forwards reasoning_effort verbatim; surface a
+	// vocabulary drift in the log instead of an unattributable upstream 400.
+	if effort, _ := raw["reasoning_effort"].(string); effort != "" {
+		validateEffortForOpenAIPath(effort)
+	}
 	if inj != nil && inj.Text != "" {
-		messages := append([]chatMessage(nil), req.Messages...)
-		raw["messages"] = attachBlock(messages, inj.Text)
+		if msgs, ok := raw["messages"].([]any); ok {
+			raw["messages"] = attachBlockRaw(msgs, inj.Text)
+		}
 	}
 	out, err := json.Marshal(raw)
 	if err != nil {
 		return body
 	}
 	return out
+}
+
+// attachBlockRaw is attachBlock over the decoded JSON form: it appends block
+// to the last string-content system message, or prepends a system message
+// when none exists. Operating on the decoded body (rather than re-encoding
+// req.Messages) preserves whatever the sanitizer just did to the prefix.
+func attachBlockRaw(messages []any, block string) []any {
+	last := -1
+	for i, m := range messages {
+		msg, ok := m.(map[string]any)
+		if !ok || msg["role"] != "system" {
+			continue
+		}
+		if _, ok := msg["content"].(string); ok {
+			last = i
+		}
+	}
+	if last >= 0 {
+		msg := messages[last].(map[string]any)
+		msg["content"] = msg["content"].(string) + "\n\n" + block
+		return messages
+	}
+	return append([]any{map[string]any{"role": "system", "content": block}}, messages...)
 }
 
 // attachBlock appends block to the last string-content system message (the
@@ -545,6 +605,38 @@ func (g *Gateway) replyFromCache(w http.ResponseWriter, r *http.Request, req *ch
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(raw)
+}
+
+// recordSliceStats applies one request's per-slice deltas off the HTTP hot
+// path. Close waits for these tasks through the same lifecycle gate used by
+// asynchronous session ingestion, so accepted observations are not dropped.
+func (g *Gateway) recordSliceStats(deltas map[string]slice.SliceStats) {
+	if len(deltas) == 0 {
+		return
+	}
+	g.shutdownMu.Lock()
+	if g.closing {
+		g.shutdownMu.Unlock()
+		return
+	}
+	g.ingestWG.Add(1)
+	g.shutdownMu.Unlock()
+	go func() {
+		defer g.ingestWG.Done()
+		if err := slice.ApplyStats(g.store, deltas); err != nil {
+			log.Printf("gateway: slice stats: %v", err)
+		}
+	}()
+}
+
+func (g *Gateway) recordSliceEvent(sessionID, ctxHash, model string, kind kernelevent.Kind, payload any, at time.Time) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	g.recordKernelEvent(sessionID, ctxHash, model, kernelevent.Event{
+		Kind: kind, SessionID: sessionID, At: at.UTC(), Data: data,
+	})
 }
 
 // replayStream rebuilds an SSE stream from the cached response, chunking the

@@ -29,11 +29,21 @@ judge_api_key = ""                        # 可选：grey 区 LLM judge（GW6 #1
 # GW4 实测（Issue #184）：不启用 judge 时 L3 命中率 1/10，启用后 7/10。
 judge_base_url = ""                       # 例：https://api.deepseek.com/v1
 judge_model = ""                          # 例：deepseek-chat
+# lexical_floor = 0.05                      # Issue #260：L3 Hit 词面支持下限（0 = 关闭词面门）
 
 [ingest]
 sessions_dir = "/data/sessions"           # 会话旁路落盘目录（0600）
 usage_log = "/data/gateway-usage.jsonl"   # usage 事件记录
 l3_safe_default = false                   # 无 deps 的网关结果默认不进 L3（true 需显式确认）
+
+[sanitize]                                # 前缀净化中间件（GLM-P0-2 #290）：第三方 GLM 栈缓存
+                                          # 逐字节严格（单空格差异即清零），且不像官方端点那样
+                                          # 服务端剥离 harness 计费头——净化默认开启
+# strip_attribution = true                # 剥离 system 首段的逐请求计费标记（默认 true）
+                                          # 关闭 = 客户端请求原样转发，缓存费最多多付 4–5 倍
+# attribution_markers = []                # 自定义标记行前缀，与内置合并（内置：x-anthropic-billing-header）
+# sort_tools = true                       # tools 数组按工具名固定序（默认 true；语义中性——
+                                          # 工具按名寻址，顺序只影响缓存字节）
 
 [billing]                                 # 客户免费额度闸门（gateway/quota.go）
 enabled = false                           # true 后：前 free_tokens 个 token 免费，用完 402 引导充值
@@ -57,3 +67,6 @@ api_key = "${DEEPSEEK_API_KEY}"           # 上游 key：只走环境变量
 model_alias = ["deepseek-chat"]           # 客户端可见模型名（New API 渠道模型名）
 upstream_model = "deepseek-chat"          # 上游真实模型名
 vendor = "deepseek"                       # deepseek | openai | moonshot（anthropic 需 M2 格式转换，未支持）
+# strip_cache_control = false             # per-upstream：剥离 body 内 cache_control 字段。
+                                          # 默认透传——双网关实测（glm-spike-week.md §2/§3A.2）
+                                          # 均容忍该字段；仅当上游明确报错时开启

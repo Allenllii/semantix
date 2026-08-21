@@ -9,11 +9,15 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"semantix/kernel/slice"
+	"semantix/kernel/usage"
 )
 
 // cliVersion is the semantix CLI release reported in the --json envelope
@@ -71,6 +75,7 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "config file path (default: ./semantix.toml; skipped when absent)")
 	dbFlag := fs.String("db", "", "slice store path (overrides SEMANTIX_DB and [store] db)")
+	usageDB := fs.String("usage-db", filepath.Join(".semantix", "usage.jsonl"), "usage log for the L1 hit-rate check (missing = check skipped)")
 	jsonOutput := fs.Bool("json", false, "write the report as JSON (envelope per cli-v2-architecture §4.2)")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -117,6 +122,8 @@ func runDoctor(args []string, stdout, stderr io.Writer) int {
 			checkDoctorDB(dbPath),
 			checkDoctorEmbedder(cfg),
 			checkDoctorJudge(cfg),
+			checkDoctorL1HitRate(*usageDB),
+			checkDoctorModelCatalog(cfg),
 		},
 	}
 	summarizeDoctor(&report)
@@ -207,6 +214,8 @@ type doctorConfig struct {
 	judgeBaseURL  string   // [judge] base_url
 	judgeModel    string   // [judge] model
 	judgeProtocol string   // [judge] protocol
+	modelsURL     string   // [doctor] models_url (GLM-P0-4 #292; empty = check skipped)
+	watchModels   string   // [doctor] watch_models — comma list, e.g. "glm-5.3,deepseek-v4-flash"
 }
 
 // parseDoctorConfig reads the TOML subset doctor needs: [section] headers
@@ -275,6 +284,15 @@ func parseDoctorConfig(path string) (*doctorConfig, error) {
 				cfg.judgeModel = value
 			case "protocol":
 				cfg.judgeProtocol = value
+			}
+		case "doctor":
+			switch key {
+			case "models_url":
+				cfg.modelsURL = value
+			case "watch_models":
+				// Accept both a TOML array literal and a plain comma list;
+				// the light parser sees the raw value either way.
+				cfg.watchModels = strings.Trim(value, "[]")
 			}
 		}
 	}
@@ -548,6 +566,149 @@ func checkDoctorJudge(cfg *doctorConfig) doctorCheck {
 		ID: "judge", Name: "judge", Status: statusPass,
 		Detail: fmt.Sprintf("judge ready (%s, %s)", protocol, model),
 	}
+}
+
+// l1WarnThreshold is the spec §4.2-3 alert line: ≥90% is the acceptance
+// target (≈92% of the measured 97.6% reporting ceiling), 85% the
+// investigate-prefix-pollution floor. Sample floor keeps cold logs quiet.
+const (
+	l1WarnThreshold   = 0.85
+	l1MinExactEvents  = 20
+	modelsHTTPTimeout = 5 * time.Second
+)
+
+// checkDoctorL1HitRate reads the usage log and warns when any endpoint with
+// enough exact-metered samples sits below the prefix-pollution floor
+// (GLM-P0-4, Issue #292). Hit-rates use exact events only (#291): estimated
+// events never saw provider cache accounting.
+func checkDoctorL1HitRate(usagePath string) doctorCheck {
+	if _, err := os.Stat(usagePath); err != nil {
+		return doctorCheck{
+			ID: "l1-hit-rate", Name: "L1 hit rate", Status: statusPass,
+			Detail: "no usage log — check skipped",
+			Advice: "run traffic through the gateway (or agent) to populate " + usagePath,
+		}
+	}
+	s, err := usage.Summarize(usagePath, 0, 0)
+	if err != nil {
+		return doctorCheck{
+			ID: "l1-hit-rate", Name: "L1 hit rate", Status: statusWarn,
+			Detail: "usage log unreadable: " + err.Error(),
+		}
+	}
+	var low, measured []string
+	for name, p := range s.ByProvider {
+		if p.ExactEvents < l1MinExactEvents {
+			continue
+		}
+		label := name
+		if label == "" {
+			label = "(unattributed)"
+		}
+		measured = append(measured, fmt.Sprintf("%s %.1f%%", label, p.L1HitRate()*100))
+		if p.L1HitRate() < l1WarnThreshold {
+			low = append(low, fmt.Sprintf("%s %.1f%%", label, p.L1HitRate()*100))
+		}
+	}
+	sort.Strings(measured)
+	sort.Strings(low)
+	if len(low) > 0 {
+		return doctorCheck{
+			ID: "l1-hit-rate", Name: "L1 hit rate", Status: statusWarn,
+			Detail: fmt.Sprintf("below %.0f%% on: %s (exact-metered, ceiling ≈97.6%%, first-round seeds included)", l1WarnThreshold*100, strings.Join(low, ", ")),
+			Advice: "investigate prefix pollution: docs/reports/glm-p0-1-prefix-audit.md checklist; ensure the gateway [sanitize] middleware is on (strip_attribution / sort_tools)",
+		}
+	}
+	if len(measured) == 0 {
+		return doctorCheck{
+			ID: "l1-hit-rate", Name: "L1 hit rate", Status: statusPass,
+			Detail: fmt.Sprintf("no endpoint with ≥%d exact-metered events yet — check skipped", l1MinExactEvents),
+		}
+	}
+	return doctorCheck{
+		ID: "l1-hit-rate", Name: "L1 hit rate", Status: statusPass,
+		Detail: strings.Join(measured, ", "),
+	}
+}
+
+// checkDoctorModelCatalog probes the configured /v1/models endpoint and
+// warns when a watched model is missing or no longer online (GLM-P0-4:
+// TokenHub marks retiring models status=pre-offline before removal).
+// Unconfigured ⇒ skipped: doctor stays offline by default. Network errors
+// WARN rather than FAIL — an unreachable catalog is not a local defect.
+func checkDoctorModelCatalog(cfg *doctorConfig) doctorCheck {
+	if cfg == nil || strings.TrimSpace(cfg.modelsURL) == "" {
+		return doctorCheck{
+			ID: "model-catalog", Name: "model catalog", Status: statusPass,
+			Detail: "no [doctor] models_url configured — check skipped",
+			Advice: "set [doctor] models_url (e.g. https://tokenhub.tencentmaas.com/v1/models) and watch_models to track tier model availability",
+		}
+	}
+	req, err := http.NewRequest(http.MethodGet, cfg.modelsURL, nil)
+	if err != nil {
+		return doctorCheck{ID: "model-catalog", Name: "model catalog", Status: statusWarn, Detail: "invalid models_url: " + err.Error()}
+	}
+	if key := os.Getenv("SEMANTIX_MODELS_API_KEY"); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	client := &http.Client{Timeout: modelsHTTPTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return doctorCheck{
+			ID: "model-catalog", Name: "model catalog", Status: statusWarn,
+			Detail: "catalog unreachable: " + err.Error(),
+			Advice: "check network / SEMANTIX_MODELS_API_KEY; the check is advisory and does not block",
+		}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return doctorCheck{
+			ID: "model-catalog", Name: "model catalog", Status: statusWarn,
+			Detail: fmt.Sprintf("catalog returned HTTP %d", resp.StatusCode),
+			Advice: "set SEMANTIX_MODELS_API_KEY if the endpoint requires auth",
+		}
+	}
+	var payload struct {
+		Data []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&payload); err != nil {
+		return doctorCheck{ID: "model-catalog", Name: "model catalog", Status: statusWarn, Detail: "catalog response unparseable: " + err.Error()}
+	}
+	status := make(map[string]string, len(payload.Data))
+	for _, m := range payload.Data {
+		status[m.ID] = m.Status
+	}
+	var bad, good []string
+	for _, want := range strings.Split(cfg.watchModels, ",") {
+		want = strings.Trim(strings.TrimSpace(want), `"'`)
+		if want == "" {
+			continue
+		}
+		st, ok := status[want]
+		switch {
+		case !ok:
+			bad = append(bad, want+" missing")
+		case st != "" && st != "online":
+			bad = append(bad, want+" "+st)
+		default:
+			good = append(good, want)
+		}
+	}
+	if len(bad) > 0 {
+		return doctorCheck{
+			ID: "model-catalog", Name: "model catalog", Status: statusWarn,
+			Detail: strings.Join(bad, ", "),
+			Advice: "update the tier mapping before the provider retires the model (spec §4.3: tier models are per-endpoint config)",
+		}
+	}
+	detail := fmt.Sprintf("%d models online", len(status))
+	if len(good) > 0 {
+		detail = strings.Join(good, ", ") + " online"
+	}
+	return doctorCheck{ID: "model-catalog", Name: "model catalog", Status: statusPass, Detail: detail}
 }
 
 // missingArgs returns the sorted names of required settings with empty

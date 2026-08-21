@@ -148,4 +148,14 @@ type Slice struct {
 type Hit struct {
 	Slice *Slice
 	Score float64
+	// Lexical is the lexical-support score in [0,1] contributed by the
+	// lexical (BM25) route of a fused retrieval: 0 means the candidate was
+	// a pure-vector hit with no term overlap (Issue #260 lexical support
+	// gate). In single-route modes it carries the query-token coverage
+	// (vector mode) or 1 (bm25 mode). LexicalValid=false (zero value)
+	// means the index did not evaluate lexical support — consumers must
+	// treat that as "not measured", not "unsupported", so legacy and
+	// third-party Index implementations are never blocked by default.
+	Lexical      float64 `json:"lexical,omitempty"`
+	LexicalValid bool    `json:"-"`
 }

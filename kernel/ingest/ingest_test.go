@@ -102,6 +102,8 @@ func TestJSONLSourcePreservesAndProjectsClosedLoopEvents(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "closed-loop.jsonl")
 	lines := []string{
+		`{"kind":5,"session_id":"closed-loop","turn":1,"at":"2026-08-18T00:00:00Z","data":{"layer":"L3","slice_ids":["slice-hit"]}}`,
+		`{"kind":6,"session_id":"closed-loop","turn":1,"at":"2026-08-18T00:00:00Z","data":{"slice_ids":["slice-inject"],"bytes":128}}`,
 		`{"kind":8,"session_id":"closed-loop","turn":1,"at":"2026-08-18T00:00:00Z","data":{"targets":["slice-a"]}}`,
 		`{"kind":9,"session_id":"closed-loop","turn":2,"at":"2026-08-18T00:00:01Z","data":{"targets":["slice-b"]}}`,
 		`{"kind":11,"session_id":"closed-loop","turn":2,"at":"2026-08-18T00:00:02Z","data":{"params":{"tau_l2":0.55,"prefetch_conf":0.6}}}`,
@@ -117,11 +119,11 @@ func TestJSONLSourcePreservesAndProjectsClosedLoopEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(se.Events) != 3 {
-		t.Fatalf("events=%d, want 3", len(se.Events))
+	if len(se.Events) != 5 {
+		t.Fatalf("events=%d, want 5", len(se.Events))
 	}
 	text := string(se.Transcript)
-	for _, phrase := range []string{"prefetch hit", "prefetch waste", "evolution tick"} {
+	for _, phrase := range []string{"slice hit", "slice inject", "prefetch hit", "prefetch waste", "evolution tick"} {
 		if !strings.Contains(text, phrase) {
 			t.Fatalf("transcript missing %q:\n%s", phrase, text)
 		}
@@ -173,6 +175,55 @@ func TestPipelineExtractsAndPersists(t *testing.T) {
 	}
 	if len(hits) == 0 || !strings.Contains(string(hits[0].Slice.Content), "修复 go 测试") {
 		t.Fatalf("search after ingest: top hit = %q, want the repair-testing slice", firstContent(hits))
+	}
+}
+
+func TestPipelineDoesNotPersistProjectContextOutsideProjectScope(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "context.jsonl")
+	transcript := `{"role":"user","content":"inspect"}
+{"role":"assistant","tool_calls":[{"name":"read_file","arguments":{"path":"kernel/ingest/ingest.go"}}]}
+{"role":"assistant","tool_calls":[{"name":"read_file","arguments":{"path":"kernel/ingest/ingest.go"}}]}
+{"role":"assistant","content":"done"}
+`
+	if err := os.WriteFile(path, []byte(transcript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src, err := NewJSONLSource(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := slice.NewFileStore(filepath.Join(t.TempDir(), "user.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if c, ok := store.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	})
+	pipeline := Pipeline{
+		Extractor: slice.NewExtractor(),
+		Store:     store,
+		Index:     bm25.New(),
+		Scope:     slice.User,
+		Project:   "semantix",
+	}
+	stats, err := pipeline.Run(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats["context"] == 0 {
+		t.Fatalf("expected non-context slices to be stored: %v", stats)
+	}
+	items, err := store.List(slice.User)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range items {
+		if item.Type == slice.Context {
+			t.Fatal("project Context slice was persisted in user scope")
+		}
 	}
 }
 

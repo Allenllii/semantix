@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,7 +107,7 @@ protocol = "openai"
 	out := stdout.String()
 	for _, want := range []string{
 		"[PASS] config", "[PASS] slice store", "[PASS] embedder", "[PASS] judge",
-		"checks: pass=4 warn=0 fail=0",
+		"checks: pass=6 warn=0 fail=0",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout missing %q:\n%s", want, out)
@@ -132,7 +134,7 @@ func TestDoctorWarnsOnMissingStoreAndConfig(t *testing.T) {
 			t.Errorf("stdout missing %q:\n%s", want, out)
 		}
 	}
-	if !strings.Contains(out, "checks: pass=1 warn=3 fail=0") {
+	if !strings.Contains(out, "checks: pass=3 warn=3 fail=0") {
 		t.Errorf("stdout missing summary:\n%s", out)
 	}
 }
@@ -156,7 +158,7 @@ func TestDoctorFailsOnCorruptStore(t *testing.T) {
 	if !strings.Contains(out, "[FAIL] slice store") || !strings.Contains(out, "corrupt JSONL line(s) [2]") {
 		t.Errorf("stdout missing corrupt-store report:\n%s", out)
 	}
-	if !strings.Contains(out, "checks: pass=1 warn=2 fail=1") {
+	if !strings.Contains(out, "checks: pass=3 warn=2 fail=1") {
 		t.Errorf("stdout missing summary:\n%s", out)
 	}
 }
@@ -279,7 +281,7 @@ func TestDoctorJSON(t *testing.T) {
 	if errEnv, ok := env.Error.(map[string]any); !ok || errEnv["code"] != float64(3) {
 		t.Fatalf("envelope.error = %v, want code 3", env.Error)
 	}
-	if len(env.Data.Checks) != 4 || env.Data.Fail == 0 || env.Data.DB != dbPath {
+	if len(env.Data.Checks) != 6 || env.Data.Fail == 0 || env.Data.DB != dbPath {
 		t.Fatalf("data = %+v", env.Data)
 	}
 
@@ -478,5 +480,80 @@ func TestDoctorEnvOverridesConfig(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "[PASS] slice store") || strings.Contains(stdout.String(), ".semantix/project.db") {
 		t.Errorf("env override not applied:\n%s", stdout.String())
+	}
+}
+
+// TestDoctorL1HitRateWarns: an endpoint with enough exact events below the
+// 85% floor triggers the prefix-pollution advisory (GLM-P0-4, #292).
+func TestDoctorL1HitRateWarns(t *testing.T) {
+	clearDoctorEnv(t)
+	dir := t.TempDir()
+	usagePath := filepath.Join(dir, "usage.jsonl")
+	var lines []string
+	// 25 exact events at 50% hit rate for provider "tokenhub-glm".
+	for range 25 {
+		lines = append(lines, `{"provider":"tokenhub-glm","exact":true,"tokens_in":1000,"tokens_out":10,"cache_hit_tokens":500}`)
+	}
+	writeJSONL(t, usagePath, lines...)
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"doctor", "--usage-db", usagePath}, &stdout, &stderr, productionDependencies())
+	if code != 0 { // WARN does not fail doctor
+		t.Fatalf("doctor: code = %d, want 0; stderr=%q", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "[WARN] L1 hit rate") || !strings.Contains(out, "tokenhub-glm 50.0%") {
+		t.Errorf("missing L1 warn row:\n%s", out)
+	}
+	if !strings.Contains(out, "glm-p0-1-prefix-audit") {
+		t.Errorf("advice does not point at the prefix audit:\n%s", out)
+	}
+}
+
+// TestDoctorL1HitRateHealthy: high hit rate with enough samples reports PASS
+// with the measured figure.
+func TestDoctorL1HitRateHealthy(t *testing.T) {
+	clearDoctorEnv(t)
+	dir := t.TempDir()
+	usagePath := filepath.Join(dir, "usage.jsonl")
+	var lines []string
+	for range 25 {
+		lines = append(lines, `{"provider":"tokenhub-glm","exact":true,"tokens_in":1000,"tokens_out":10,"cache_hit_tokens":960}`)
+	}
+	writeJSONL(t, usagePath, lines...)
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"doctor", "--usage-db", usagePath}, &stdout, &stderr, productionDependencies()); code != 0 {
+		t.Fatalf("doctor: code = %d; stderr=%q", code, stderr.String())
+	}
+	if out := stdout.String(); !strings.Contains(out, "[PASS] L1 hit rate: tokenhub-glm 96.0%") {
+		t.Errorf("missing healthy L1 row:\n%s", out)
+	}
+}
+
+// TestDoctorModelCatalog: a watched model in pre-offline status warns; an
+// online one passes (GLM-P0-4: TokenHub retirement flow).
+func TestDoctorModelCatalog(t *testing.T) {
+	clearDoctorEnv(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"data":[{"id":"glm-5.3","status":"online"},{"id":"qwen3.5-flash","status":"pre-offline"}]}`)
+	}))
+	defer srv.Close()
+
+	cfgPath := writeConfig(t, fmt.Sprintf(`
+[doctor]
+models_url = %q
+watch_models = "glm-5.3,qwen3.5-flash,ghost-model"
+`, srv.URL))
+
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"doctor", "--config", cfgPath}, &stdout, &stderr, productionDependencies()); code != 0 {
+		t.Fatalf("doctor: code = %d; stderr=%q", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "[WARN] model catalog") ||
+		!strings.Contains(out, "qwen3.5-flash pre-offline") ||
+		!strings.Contains(out, "ghost-model missing") {
+		t.Errorf("missing catalog warn detail:\n%s", out)
 	}
 }

@@ -33,6 +33,20 @@ type L3Decider struct {
 	// on the decision path with the request context, so implementations
 	// must not block; a nil hook disables observation entirely.
 	OnJudge func(ctx context.Context, obs JudgeObservation)
+
+	// LexicalFloor is the minimum lexical-support score for a zone Hit to
+	// reuse directly (Issue #260). A Hit whose index reports zero lexical
+	// support (pure-vector hit, no term overlap) is downgraded to Grey —
+	// judge-gated reuse, fail-closed without a judge. nil → default 0.05;
+	// an explicit 0 disables the gate (escape hatch). Hits with
+	// LexicalValid=false are never blocked (not measured).
+	LexicalFloor *float64
+
+	// OnLexicalGate, when non-nil, receives one LexicalGateObservation per
+	// zone-Hit candidate the lexical gate evaluated (Issue #260), so the
+	// host can count blocks and measure hit-rate loss. Hook-only, like
+	// OnJudge; nil disables observation.
+	OnLexicalGate func(ctx context.Context, obs LexicalGateObservation)
 }
 
 // DecideL2 returns top-k hits filtered by the grey zone (hit-only enters the
@@ -112,7 +126,18 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 		}
 		switch verdict {
 		case zone.Hit:
-			// clear hit: reuse after the remaining gates below
+			// Issue #260 lexical support gate: a Hit with no term overlap
+			// (pure-vector hit) is downgraded to Grey — judge-gated reuse,
+			// fail-closed without a judge. First mitigation against embedding
+			// key-collision attacks (CacheAttack, arXiv:2601.23088).
+			if !d.lexicalSupported(h) {
+				d.observeLexicalGate(ctx, h, true)
+				if !d.judgeGrey(ctx, q, s, relConfidence(h.Score, resultTop1)) {
+					continue
+				}
+				break
+			}
+			d.observeLexicalGate(ctx, h, false)
 		case zone.Grey:
 			// Ambiguous: reuse only when the judge confirms (spec §3.5
 			// RuleGate.Chain; nil judge → conservative reject). Fingerprint
@@ -276,4 +301,40 @@ func (d *L3Decider) k() int {
 		return d.K
 	}
 	return 3
+}
+// lexicalFloor returns the lexical-support floor: explicit override,
+// default 0.05 (a tiny epsilon above the strict zero of a pure-vector
+// hit), or 0 when the gate is explicitly disabled.
+func (d *L3Decider) lexicalFloor() float64 {
+	if d.LexicalFloor != nil {
+		return *d.LexicalFloor
+	}
+	return 0.05
+}
+
+// lexicalSupported reports whether a candidate carries enough lexical
+// support to reuse directly. LexicalValid=false means the index never
+// evaluated lexical support — not measured, never blocked.
+func (d *L3Decider) lexicalSupported(h slice.Hit) bool {
+	if !h.LexicalValid {
+		return true
+	}
+	return h.Lexical >= d.lexicalFloor()
+}
+
+func (d *L3Decider) observeLexicalGate(ctx context.Context, h slice.Hit, blocked bool) {
+	if d.OnLexicalGate == nil {
+		return
+	}
+	z := "hit"
+	if blocked {
+		z = "grey"
+	}
+	d.OnLexicalGate(ctx, LexicalGateObservation{
+		SliceID: h.Slice.ID,
+		Score:   h.Score,
+		Lexical: h.Lexical,
+		Blocked: blocked,
+		Zone:    z,
+	})
 }

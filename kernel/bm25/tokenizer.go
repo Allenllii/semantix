@@ -5,8 +5,8 @@ import (
 	"unicode"
 )
 
-// tokenize lowercases word tokens and emits each CJK rune as its own token.
-func tokenize(text string) []string {
+// Tokenize lowercases word tokens and emits each CJK rune as its own token.
+func Tokenize(text string) []string {
 	var tokens []string
 	var word strings.Builder
 	flush := func() {
@@ -55,4 +55,22 @@ func uniqueTerms(terms []string) []string {
 		unique = append(unique, term)
 	}
 	return unique
+}
+
+// QueryCoverage returns the fraction of query terms that appear in content,
+// in [0,1]. A query with no terms (pure punctuation/symbols) returns 0
+// — fail-closed for the lexical support gate (Issue #260).
+func QueryCoverage(query, content string) float64 {
+	qt := uniqueTerms(Tokenize(query))
+	if len(qt) == 0 {
+		return 0
+	}
+	ct := countTerms(Tokenize(content))
+	covered := 0
+	for _, q := range qt {
+		if _, ok := ct[q]; ok {
+			covered++
+		}
+	}
+	return float64(covered) / float64(len(qt))
 }

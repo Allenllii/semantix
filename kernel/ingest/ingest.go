@@ -188,11 +188,16 @@ func (s *JSONLSource) Next() (*SessionEvents, error) {
 }
 
 func isClosedLoopEvent(k event.Kind) bool {
-	return k == event.PrefetchHit || k == event.PrefetchWaste || k == event.EvolutionTick
+	return k == event.SliceHit || k == event.SliceInject ||
+		k == event.PrefetchHit || k == event.PrefetchWaste || k == event.EvolutionTick
 }
 
 func projectClosedLoopEvent(e event.Event) string {
 	switch e.Kind {
+	case event.SliceHit:
+		return "slice hit " + string(e.Data)
+	case event.SliceInject:
+		return "slice inject " + string(e.Data)
 	case event.PrefetchHit:
 		return "prefetch hit targets " + string(e.Data)
 	case event.PrefetchWaste:
@@ -239,6 +244,11 @@ func (p Pipeline) Run(src Source) (map[string]int, error) {
 		}
 		n := 0
 		for _, sl := range slices {
+			// Context slices summarize project structure. Never copy them into
+			// session- or user-scoped stores where project paths could leak.
+			if sl.Type == slice.Context && p.Scope != slice.Project {
+				continue
+			}
 			sl.Scope = p.Scope
 			if err := p.Store.Put(sl); err != nil {
 				return stats, fmt.Errorf("ingest %s: put %s: %w (persisted %d of %d slices before failure)",

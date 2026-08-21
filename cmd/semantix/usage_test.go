@@ -201,3 +201,77 @@ func TestLoadEvolveState(t *testing.T) {
 		t.Fatal("corrupt file must surface an error")
 	}
 }
+
+// TestRunUsageByProvider (GLM-P0-4, #292): per-provider rows render with
+// exact-only hit rates, per-provider prices from [cost.providers.<name>]
+// override the global pair, and the --json envelope grows a by_provider list.
+func TestRunUsageByProvider(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "usage.jsonl")
+	r, err := usage.NewRecorder(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []usage.Event{
+		{Turn: 1, Provider: "tokenhub-glm", Exact: true, TokensIn: 1_000_000, TokensOut: 10, CacheHitToken: 500_000},
+		{Turn: 2, Provider: "deepseek", TokensIn: 900, TokensOut: 10}, // estimated only
+	} {
+		if err := r.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfgPath := filepath.Join(dir, "semantix.toml")
+	if err := os.WriteFile(cfgPath, []byte(`
+[cost.providers.tokenhub-glm]
+input_price_usd = 1.12   # ¥8/M ≈ $1.12
+cache_price_usd = 0.28   # ¥2/M ≈ $0.28
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SEMANTIX_CONFIG", cfgPath)
+
+	var out, errBuf bytes.Buffer
+	if code := run([]string{"usage", "--db", logPath}, &out, &errBuf, productionDependencies()); code != 0 {
+		t.Fatalf("usage exit = %d (stderr=%s)", code, errBuf.String())
+	}
+	s := out.String()
+	if !strings.Contains(s, "tokenhub-glm") || !strings.Contains(s, "50.0%") {
+		t.Fatalf("missing provider hit-rate row:\n%s", s)
+	}
+	// 500k hit tokens × ($1.12−$0.28)/M = $0.42 priced from the provider table.
+	if !strings.Contains(s, "0.420000") {
+		t.Fatalf("provider-priced savings missing (want $0.420000):\n%s", s)
+	}
+	// The estimated-only endpoint renders an em-dash rate, not 0%.
+	if !strings.Contains(s, "deepseek") || !strings.Contains(s, "—") {
+		t.Fatalf("estimated-only endpoint should show — :\n%s", s)
+	}
+
+	out.Reset()
+	if code := run([]string{"usage", "--db", logPath, "--json"}, &out, &errBuf, productionDependencies()); code != 0 {
+		t.Fatalf("usage --json exit = %d", code)
+	}
+	var env struct {
+		Data struct {
+			ByProvider []struct {
+				Provider      string  `json:"provider"`
+				ExactEvents   int     `json:"exact_events"`
+				L1HitRate     float64 `json:"l1_hit_rate"`
+				HitSavingsUSD float64 `json:"hit_savings_usd"`
+			} `json:"by_provider"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &env); err != nil {
+		t.Fatalf("json: %v\n%s", err, out.String())
+	}
+	if len(env.Data.ByProvider) != 2 {
+		t.Fatalf("by_provider rows = %d, want 2", len(env.Data.ByProvider))
+	}
+	glm := env.Data.ByProvider[1] // sorted: deepseek, tokenhub-glm
+	if glm.Provider != "tokenhub-glm" || glm.ExactEvents != 1 || glm.L1HitRate != 0.5 {
+		t.Fatalf("glm row = %+v", glm)
+	}
+	if glm.HitSavingsUSD < 0.4199 || glm.HitSavingsUSD > 0.4201 {
+		t.Fatalf("glm savings = %v, want ≈0.42", glm.HitSavingsUSD)
+	}
+}

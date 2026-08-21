@@ -19,6 +19,7 @@ import (
 
 	"semantix/kernel/judge"
 	"semantix/kernel/slice"
+	"semantix/kernel/usage"
 	"semantix/kernel/zone"
 )
 
@@ -219,6 +220,7 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	fs.StringVar(&scopeName, "scope", cfgString(deps.resolved, "store.scope", "project"), "scope: project|user|session")
 	greyTarget := fs.Float64("grey-target", 30.0, "grey-zone traffic ratio alarm threshold in percent (0 disables the alarm)")
 	strict := fs.Bool("strict", false, "return exit code 3 when the grey-zone ratio exceeds --grey-target")
+	usageDB := fs.String("usage-db", filepath.Join(".semantix", "usage.jsonl"), "usage log for the L1 hit-rate regression footer (missing = skipped)")
 	jsonOut := fs.Bool("json", false, "output as JSON envelope (summary + rows)")
 	zf := addZoneFlags(fs)
 	judgeProtocol := fs.String("judge-protocol", "", "LLM judge protocol: openai|anthropic (empty = rules only)")
@@ -453,7 +455,48 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 			return 3
 		}
 	}
+	printVerifyL1Footer(stdout, *usageDB)
 	return 0
+}
+
+// printVerifyL1Footer appends the L1 hit-rate regression rows to the replay
+// report (GLM-P0-4, Issue #292): per-provider exact-metered rates from the
+// usage log, flagged against the 85% prefix-pollution floor. Purely
+// informational — replay verdicts and exit codes are untouched. A missing
+// or unreadable log prints nothing (verify stays usable without traffic).
+func printVerifyL1Footer(stdout io.Writer, usagePath string) {
+	if usagePath == "" {
+		return
+	}
+	if _, err := os.Stat(usagePath); err != nil {
+		return
+	}
+	s, err := usage.Summarize(usagePath, 0, 0)
+	if err != nil {
+		return
+	}
+	names := make([]string, 0, len(s.ByProvider))
+	for name, p := range s.ByProvider {
+		if p.ExactEvents > 0 {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		p := s.ByProvider[name]
+		label := name
+		if label == "" {
+			label = "(unattributed)"
+		}
+		flag := ""
+		if p.L1HitRate() < l1WarnThreshold {
+			flag = fmt.Sprintf("  ⚠ below %.0f%% — prefix-pollution checklist: docs/reports/glm-p0-1-prefix-audit.md", l1WarnThreshold*100)
+		}
+		fmt.Fprintf(stdout, "# l1: %s hit=%.1f%% (exact %d/%d)%s\n", label, p.L1HitRate()*100, p.ExactEvents, p.Events, flag)
+	}
 }
 
 // classifyTop1 maps the top-1/top-2 scores to a zone for the replay table.

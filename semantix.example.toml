@@ -28,3 +28,14 @@ reuse_ratio = 0.8           # 注入替代重复步骤比例
 input_price_usd = 0.27      # 每 1M 输入 token（cache miss）
 cache_price_usd = 0.07      # 每 1M 输入 token（cache hit）
 output_price_usd = 1.10     # 每 1M 输出 token
+
+# Per-endpoint 价目覆盖（GLM-P0-4 #292）：`semantix usage` 的 per-provider
+# 命中节省按端点价目计算，键名 = usage 事件的 provider 字段；缺省回退上面的全局价。
+# [cost.providers.tokenhub-glm]
+# input_price_usd = 1.12    # TokenHub GLM-5.3 ¥8/M ≈ $1.12
+# cache_price_usd = 0.28    # 缓存命中 ¥2/M ≈ $0.28（折扣率 0.75）
+# output_price_usd = 3.92   # ¥28/M ≈ $3.92
+
+[doctor]                    # doctor 可选网络检查（GLM-P0-4 #292）；不配置 = 跳过、doctor 保持离线
+# models_url = "https://tokenhub.tencentmaas.com/v1/models"   # 型号目录端点（需要时配 SEMANTIX_MODELS_API_KEY）
+# watch_models = "glm-5.3,glm-5-turbo,deepseek-v4-flash"      # tier 映射所依赖的型号；pre-offline/下线时 WARN

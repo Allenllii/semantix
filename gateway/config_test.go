@@ -277,3 +277,48 @@ func TestValidateAcceptsRetrieverKindsAndJudge(t *testing.T) {
 		t.Fatalf("wired judge rejected: %v", err)
 	}
 }
+// TestLexicalFloorConfigParse: lexical_floor maps to Cache.LexicalFloor
+// (Issue #260). Missing = nil (kernel default), 0 = gate disabled,
+// any other value = the configured floor.
+func TestLexicalFloorConfigParse(t *testing.T) {
+	base := `[server]
+	addr = "127.0.0.1:0"
+	gateway_key = "k"
+	[store]
+	db = "x.jsonl"
+	[retrieval]
+	[ingest]
+	[[upstreams]]
+	name = "d"
+	base_url = "https://api.deepseek.com"
+	api_key = "k"
+	model_alias = ["x"]
+	upstream_model = "y"
+	vendor = "deepseek"
+	`
+	load := func(floor string) *float64 {
+		body := base + "[cache]" + string([]byte{10}) + "ttl_seconds = 86400" + string([]byte{10})
+		if floor != "" {
+			body += "lexical_floor = " + floor + string([]byte{10})
+		}
+		p := filepath.Join(t.TempDir(), "gw.toml")
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := Load(p)
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		return cfg.Cache.LexicalFloor
+	}
+
+	if got := load(""); got != nil {
+		t.Fatalf("missing lexical_floor = %v, want nil", got)
+	}
+	if got := load("0"); got == nil || *got != 0 {
+		t.Fatalf("lexical_floor=0 = %v, want 0 (gate disabled)", got)
+	}
+	if got := load("0.2"); got == nil || *got != 0.2 {
+		t.Fatalf("lexical_floor=0.2 = %v, want 0.2", got)
+	}
+}

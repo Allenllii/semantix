@@ -102,7 +102,10 @@ func (v *vectorIndex) Search(query string, k int, scope slice.Scope) ([]slice.Hi
 		if s == nil || s.Scope != scope {
 			continue
 		}
-		out = append(out, slice.Hit{Slice: s, Score: float64(h.Score)})
+		// Pure-vector route: no fused BM25 contribution exists, so lexical
+	// support degrades to query-token coverage (Issue #260). Zero overlap
+	// is the "pure-vector hit with no term support" signal for the L3 gate.
+	out = append(out, slice.Hit{Slice: s, Score: float64(h.Score), Lexical: bm25.QueryCoverage(query, string(s.Content)), LexicalValid: true})
 		if len(out) >= k {
 			break
 		}
@@ -200,7 +203,14 @@ func fuseHits(bm, vec []slice.Hit, k int) []slice.Hit {
 	out := make([]slice.Hit, 0, len(merged))
 	for id, s := range merged {
 		if score[id] > 0 { // drop no-signal candidates, like bm25's score<=0 filter
-			out = append(out, slice.Hit{Slice: s, Score: score[id]})
+			// Lexical support = the normalized BM25 route contribution; 0 means
+			// the candidate was a pure-vector hit with no term overlap (Issue
+			// #260). A fused index always evaluates it, so LexicalValid is set.
+			lx := 0.0
+			if v, ok := bmN[id]; ok {
+				lx = v
+			}
+			out = append(out, slice.Hit{Slice: s, Score: score[id], Lexical: lx, LexicalValid: true})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
