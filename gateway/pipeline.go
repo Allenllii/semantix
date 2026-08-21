@@ -48,7 +48,10 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	// so the request context is what identifies the caller.
 	jc := &judgeCollector{}
 	ctx := withJudgeCollector(r.Context(), jc)
-	q := cache.Query{UserInput: query, ContextHash: chash, Scope: scope, Model: req.Model}
+	q := cache.Query{
+		UserInput: query, ContextHash: chash, Scope: scope, Model: req.Model,
+		Freshness: cache.Freshness{NowUnix: g.now().Unix(), TTLSeconds: g.cfg.TTLFor(up.Vendor)},
+	}
 
 	// L3: verified reuse — zero upstream calls (design §3.3 step 3). The
 	// kernel gate enforces context/model isolation (fail closed) on top of
