@@ -421,9 +421,10 @@ type anthropicResponse struct {
 		Input any    `json:"input"`
 	} `json:"content"`
 	Usage struct {
-		InputTokens          int `json:"input_tokens"`
-		OutputTokens         int `json:"output_tokens"`
-		CacheReadInputTokens int `json:"cache_read_input_tokens"`
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 	} `json:"usage"`
 }
 
@@ -454,10 +455,15 @@ func anthropicToOpenAIResponse(body []byte, model string) ([]byte, error) {
 	if len(toolCalls) > 0 {
 		msg["tool_calls"] = toolCalls
 	}
+	// Anthropic-style input_tokens is incremental — it excludes cache reads
+	// and writes (measured: cache_read + input = full input, glm-spike-week.md
+	// §2). OpenAI prompt_tokens is the full input, so reconcile here or the
+	// translated usage under-reports every cache hit by its cached portion.
+	prompt := a.Usage.InputTokens + a.Usage.CacheCreationInputTokens + a.Usage.CacheReadInputTokens
 	usage := map[string]any{
-		"prompt_tokens":     a.Usage.InputTokens,
+		"prompt_tokens":     prompt,
 		"completion_tokens": a.Usage.OutputTokens,
-		"total_tokens":      a.Usage.InputTokens + a.Usage.OutputTokens,
+		"total_tokens":      prompt + a.Usage.OutputTokens,
 	}
 	if a.Usage.CacheReadInputTokens > 0 {
 		usage["prompt_tokens_details"] = map[string]any{"cached_tokens": a.Usage.CacheReadInputTokens}
@@ -537,6 +543,13 @@ type anthropicSSEConverter struct {
 	model      string
 	created    int64
 	finishSent bool // a real finish_reason already went out
+	// Usage counters harvested from message_start/message_delta frames.
+	// Counters are cumulative; max-merge tolerates gateways that repeat
+	// partial usage across both frames (GLM-P0-3 / #291). usageSent guards
+	// the single translated usage chunk emitted before [DONE].
+	inTok, outTok, cacheCreate, cacheRead int
+	sawUsage                              bool
+	usageSent                             bool
 }
 
 func newAnthropicSSEConverter(w io.Writer, flusher http.Flusher) *anthropicSSEConverter {
@@ -576,6 +589,7 @@ func (c *anthropicSSEConverter) feed(line []byte) bool {
 		c.done = true
 		return true
 	case "message_stop":
+		c.writeUsageChunk()
 		c.writeDone()
 		c.done = true
 		return true
@@ -595,16 +609,20 @@ func (c *anthropicSSEConverter) finish() {
 	if !c.finishSent {
 		c.writeChunk(map[string]any{}, "stop")
 	}
+	c.writeUsageChunk()
 	c.writeDone()
 }
 
 // messageStart captures the message id/model so every OpenAI chunk carries
-// the stable identity the OpenAI SDKs validate on.
+// the stable identity the OpenAI SDKs validate on, plus the input/cache
+// usage counters the native stream reports here (message_start carries
+// input-side accounting; message_delta carries output_tokens).
 func (c *anthropicSSEConverter) messageStart(payload []byte) {
 	var ev struct {
 		Message struct {
-			ID    string `json:"id"`
-			Model string `json:"model"`
+			ID    string        `json:"id"`
+			Model string        `json:"model"`
+			Usage *wireSSEUsage `json:"usage"`
 		} `json:"message"`
 	}
 	if err := json.Unmarshal(payload, &ev); err != nil {
@@ -615,6 +633,76 @@ func (c *anthropicSSEConverter) messageStart(payload []byte) {
 	}
 	if ev.Message.Model != "" {
 		c.model = ev.Message.Model
+	}
+	c.mergeUsage(ev.Message.Usage)
+}
+
+// wireSSEUsage is the usage fragment carried on Anthropic stream frames.
+type wireSSEUsage struct {
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+}
+
+// mergeUsage folds one frame's counters in. Counters are cumulative and
+// non-negative, so keeping the max also tolerates gateways that repeat
+// partial usage on both message_start and message_delta.
+func (c *anthropicSSEConverter) mergeUsage(u *wireSSEUsage) {
+	if u == nil {
+		return
+	}
+	c.sawUsage = true
+	c.inTok = max(c.inTok, u.InputTokens)
+	c.outTok = max(c.outTok, u.OutputTokens)
+	c.cacheCreate = max(c.cacheCreate, u.CacheCreationInputTokens)
+	c.cacheRead = max(c.cacheRead, u.CacheReadInputTokens)
+}
+
+// usage returns the harvested provider accounting normalized to the full
+// prompt convention (input + cache_creation + cache_read; see
+// anthropicToOpenAIResponse). ok is false when no frame carried usage.
+func (c *anthropicSSEConverter) usage() (normUsage, bool) {
+	if !c.sawUsage {
+		return normUsage{}, false
+	}
+	return normalizeUpstreamUsage(&upstreamUsage{
+		InputTokens:              c.inTok,
+		OutputTokens:             c.outTok,
+		CacheCreationInputTokens: c.cacheCreate,
+		CacheReadInputTokens:     c.cacheRead,
+	})
+}
+
+// writeUsageChunk emits one OpenAI stream-usage event (empty choices +
+// usage) carrying the translated provider accounting, before [DONE], so
+// OpenAI-surface clients receive real usage instead of nothing.
+func (c *anthropicSSEConverter) writeUsageChunk() {
+	nu, ok := c.usage()
+	if !ok || c.usageSent {
+		return
+	}
+	c.usageSent = true
+	usage := map[string]any{
+		"prompt_tokens":     nu.Prompt,
+		"completion_tokens": nu.Completion,
+		"total_tokens":      nu.Prompt + nu.Completion,
+	}
+	if nu.CacheHit > 0 {
+		usage["prompt_tokens_details"] = map[string]any{"cached_tokens": nu.CacheHit}
+	}
+	evt := map[string]any{
+		"id":      c.id,
+		"object":  "chat.completion.chunk",
+		"created": c.created,
+		"model":   c.model,
+		"choices": []any{},
+		"usage":   usage,
+	}
+	raw, _ := json.Marshal(evt)
+	_, _ = fmt.Fprintf(c.w, "data: %s\n\n", raw)
+	if c.flusher != nil {
+		c.flusher.Flush()
 	}
 }
 
@@ -698,10 +786,12 @@ func (c *anthropicSSEConverter) messageDelta(payload []byte) {
 		Delta struct {
 			StopReason string `json:"stop_reason"`
 		} `json:"delta"`
+		Usage *wireSSEUsage `json:"usage"`
 	}
 	if err := json.Unmarshal(payload, &ev); err != nil {
 		return
 	}
+	c.mergeUsage(ev.Usage)
 	if ev.Delta.StopReason == "" {
 		return
 	}
@@ -737,7 +827,7 @@ func (c *anthropicSSEConverter) writeDone() {
 // OpenAI SSE (the events must be translated — Anthropic frames differ from
 // OpenAI's). Sidecar/usage accounting matches the OpenAI streaming path:
 // request turns only, assistant content extraction is deferred debt.
-func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, jc *judgeCollector) {
+func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 		writeAPIError(w, resp.StatusCode, "upstream_error",
@@ -763,12 +853,24 @@ func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Respo
 	}
 	conv.finish() // no-op when message_stop already seen
 	g.recordSession(sessionID, ctxHash, req.Model, turns(req, ""))
-	g.recordUsage(usage.Event{
+	ev := usage.Event{
 		SessionID:      sessionID,
+		Provider:       up.Name,
+		Vendor:         up.Vendor,
+		Model:          req.Model,
 		TokensIn:       int64(len(query)/4) + injectedTokens,
 		InjectedTokens: injectedTokens,
 		SliceHits:      sliceHits,
 		JudgeDecisions: jc.drain(),
 		At:             g.now().Unix(),
-	})
+	}
+	// message_start/message_delta carried real provider accounting: prefer
+	// it over the bytes/4 estimate (GLM-P0-3 / #291).
+	if nu, ok := conv.usage(); ok {
+		ev.TokensIn = nu.Prompt
+		ev.TokensOut = nu.Completion
+		ev.CacheHitToken = nu.CacheHit
+		ev.Exact = true
+	}
+	g.recordUsage(ev)
 }

@@ -33,7 +33,7 @@
 | Kind | 序号 | 语义 | Payload 字段 | 触发方 |
 |---|---|---|---|---|
 | `TurnStarted` | 0 | 一个用户 turn 开始 | （无，SessionID/Turn 在信封） | harness 会话 |
-| `Usage` | 1 | 模型调用 token 用量，含缓存命中明细 | `prompt_tokens`, `cache_hit`, `cache_miss`, `completion_tokens`, `cost_usd` | harness 模型层 |
+| `Usage` | 1 | 模型调用 token 用量，含缓存命中明细 | `prompt_tokens`, `cache_hit`, `cache_miss`, `completion_tokens`, `cost_usd`；可选（#291 只增）：`provider`（端点名）, `vendor`（"openai"\|"anthropic"…）, `model`, `exact`（true=真实 provider 计量，false/缺省=bytes/4 估算） | harness 模型层 |
 | `ToolDispatch` | 2 | 一个工具调用被派发 | `call_id`, `name`, `args`(raw), `read_only` | harness 工具执行器 |
 | `ToolResult` | 3 | 一个工具调用结果 | `call_id`, `ok`, `latency_ns`, `err_msg`(omitempty) | harness 工具执行器 |
 | `ToolRoundEnd` | 4 | 一批工具执行汇总 | `dispatched`, `succeeded` | harness 工具执行器 |

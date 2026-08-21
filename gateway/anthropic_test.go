@@ -265,8 +265,12 @@ func TestAnthropicToOpenAIResponse(t *testing.T) {
 	if out.Choices[0].Message.Content != "the answer" || out.Choices[0].FinishReason != "stop" {
 		t.Errorf("choice = %#v (end_turn must map to stop)", out.Choices[0])
 	}
-	if out.Usage.PromptTokens != 100 || out.Usage.CompletionTokens != 25 || out.Usage.TotalTokens != 125 {
-		t.Errorf("usage = %#v (input/output tokens must map)", out.Usage)
+	// Anthropic input_tokens is incremental (excludes cache reads/writes):
+	// OpenAI prompt_tokens must carry the reconciled full input, or every
+	// cache hit under-reports by its cached portion (#291; measured
+	// cache_read + input = full input, glm-spike-week.md §2).
+	if out.Usage.PromptTokens != 160 || out.Usage.CompletionTokens != 25 || out.Usage.TotalTokens != 185 {
+		t.Errorf("usage = %#v (prompt must be input+cache_read reconciled)", out.Usage)
 	}
 	if out.Usage.PromptDetails.CachedTokens != 60 {
 		t.Errorf("cached_tokens = %d, want 60 (cache_read_input_tokens)", out.Usage.PromptDetails.CachedTokens)
@@ -387,6 +391,44 @@ data: {"type":"message_stop"}`,
 	}
 	if strings.Contains(got, "message_start") || strings.Contains(got, "ping") {
 		t.Errorf("raw anthropic events leaked through:\n%s", got)
+	}
+}
+
+// TestAnthropicSSEConverterUsage covers the #291 harvest: message_start
+// carries input/cache counters (Tencent-style: cache_read only on a hit,
+// input_tokens incremental), message_delta carries output_tokens; the
+// converter reconciles to the full-prompt convention and emits one
+// translated usage chunk before [DONE].
+func TestAnthropicSSEConverterUsage(t *testing.T) {
+	var out strings.Builder
+	conv := newAnthropicSSEConverter(&out, nil)
+	frames := []string{
+		`data: {"type":"message_start","message":{"id":"msg_u","model":"glm-5.3","usage":{"input_tokens":64,"cache_read_input_tokens":2556}}}`,
+		`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}`,
+		`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":15}}`,
+		`data: {"type":"message_stop"}`,
+	}
+	for _, f := range frames {
+		conv.feed([]byte(f))
+	}
+	nu, ok := conv.usage()
+	if !ok {
+		t.Fatal("converter harvested no usage")
+	}
+	if nu.Prompt != 2620 || nu.CacheHit != 2556 || nu.Completion != 15 {
+		t.Fatalf("usage = %+v (want reconciled prompt 2620, hit 2556, out 15)", nu)
+	}
+	got := out.String()
+	usageIdx := strings.Index(got, `"prompt_tokens":2620`)
+	doneIdx := strings.LastIndex(got, "data: [DONE]")
+	if usageIdx < 0 {
+		t.Fatalf("no translated usage chunk in stream:\n%s", got)
+	}
+	if !strings.Contains(got, `"cached_tokens":2556`) {
+		t.Errorf("usage chunk missing cached_tokens:\n%s", got)
+	}
+	if doneIdx >= 0 && usageIdx > doneIdx {
+		t.Errorf("usage chunk must precede [DONE]:\n%s", got)
 	}
 }
 

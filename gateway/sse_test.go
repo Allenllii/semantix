@@ -193,3 +193,26 @@ func TestSSEAggregatorSawUsage(t *testing.T) {
 		})
 	}
 }
+
+// TestSSEAggregatorUsageRaw covers the #291 capture: the raw usage object of
+// the last usage-bearing frame is retained for real-accounting metering.
+func TestSSEAggregatorUsageRaw(t *testing.T) {
+	a := newSSEAggregator(maxSSEAggregateBytes)
+	feedAll(a, "data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}],\"usage\":{\"prompt_tokens\":1}}\n\n"+
+		"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":2620,\"completion_tokens\":15,\"prompt_tokens_details\":{\"cached_tokens\":2560}}}\n\n"+
+		"data: [DONE]\n\n")
+	nu, ok := parseUsageRaw(a.UsageRaw())
+	if !ok {
+		t.Fatalf("UsageRaw did not parse: %q", a.UsageRaw())
+	}
+	// Last frame wins: OpenAI streams put the authoritative usage last.
+	if nu.Prompt != 2620 || nu.CacheHit != 2560 || nu.Completion != 15 {
+		t.Fatalf("normalized usage = %+v", nu)
+	}
+
+	empty := newSSEAggregator(maxSSEAggregateBytes)
+	feedAll(empty, "data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\n\ndata: [DONE]\n\n")
+	if empty.UsageRaw() != nil {
+		t.Fatalf("stream without usage must return nil raw, got %q", empty.UsageRaw())
+	}
+}

@@ -26,8 +26,19 @@ const (
 
 // Event is one LLM turn's usage observation.
 type Event struct {
-	SessionID     string  `json:"session_id,omitempty"`
-	Turn          uint64  `json:"turn"`
+	SessionID string `json:"session_id,omitempty"`
+	Turn      uint64 `json:"turn"`
+	// Provider is the upstream endpoint's configured name and Vendor its wire
+	// shape ("openai" | "anthropic" | ...). Together with Model they key the
+	// per-provider L1 hit-rate calibration (GLM-P0-3 / #291; spec §4.2).
+	// Empty on logs written before these fields existed (wire: append-only).
+	Provider string `json:"provider,omitempty"`
+	Vendor   string `json:"vendor,omitempty"`
+	Model    string `json:"model,omitempty"`
+	// Exact marks token counts relayed from real provider usage accounting;
+	// false means the gateway's bytes/4 estimate (pre-#291 logs are all
+	// estimates and unmarshal to false).
+	Exact         bool    `json:"exact,omitempty"`
 	TokensIn      int64   `json:"tokens_in"`
 	TokensOut     int64   `json:"tokens_out"`
 	CacheHitToken int64   `json:"cache_hit_tokens"`
@@ -144,6 +155,31 @@ type Summary struct {
 	JudgeSkipped      int   // rejected before the judge was reached (free)
 	JudgePromptTokens int64 // byte/4 estimate of tokens sent to the judge
 	JudgeLatencyMs    int64 // total time spent in judge calls
+
+	// ByProvider groups per-endpoint L1 telemetry (GLM-P0-3 / #291). The key
+	// is Event.Provider; events from pre-#291 logs land under "". Hit-rate
+	// calibration must use ExactEvents-backed figures — estimated events
+	// never observed provider cache accounting and would read as 0% hits.
+	ByProvider map[string]*ProviderStats
+}
+
+// ProviderStats aggregates one upstream endpoint's usage telemetry.
+type ProviderStats struct {
+	Events         int   // turns recorded against this endpoint
+	ExactEvents    int   // of those, ones carrying real provider usage
+	TokensIn       int64 // exact-only input tokens (cache hits included)
+	TokensOut      int64 // exact-only output tokens
+	CacheHitTokens int64 // exact-only prefix-cache-served input tokens
+	L3Reuses       int   // turns served without an upstream call
+}
+
+// L1HitRate is the prefix-cache hit share of exact-metered input tokens.
+// Zero when the endpoint has no exact events yet.
+func (p *ProviderStats) L1HitRate() float64 {
+	if p == nil || p.TokensIn == 0 {
+		return 0
+	}
+	return float64(p.CacheHitTokens) / float64(p.TokensIn)
 }
 
 // JudgeCostUSD estimates what the grey-zone judge calls cost, at the judge
@@ -176,7 +212,7 @@ func Summarize(path string, costMiss, costHit float64) (*Summary, error) {
 	}
 	defer f.Close()
 
-	s := &Summary{}
+	s := &Summary{ByProvider: map[string]*ProviderStats{}}
 	var l3In, l3Out int64 // tokens of L3-reused turns (not billed)
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -194,6 +230,24 @@ func Summarize(path string, costMiss, costHit float64) (*Summary, error) {
 		s.CacheHitTokens += e.CacheHitToken
 		s.InjectedTokens += e.InjectedTokens
 		s.SliceHits += e.SliceHits
+		p := s.ByProvider[e.Provider]
+		if p == nil {
+			p = &ProviderStats{}
+			s.ByProvider[e.Provider] = p
+		}
+		p.Events++
+		if e.L3Reuse {
+			p.L3Reuses++
+		}
+		if e.Exact {
+			// Only exact events feed the calibration figures: an estimated
+			// event never saw provider cache accounting, so folding it in
+			// would drag every hit-rate toward zero.
+			p.ExactEvents++
+			p.TokensIn += e.TokensIn
+			p.TokensOut += e.TokensOut
+			p.CacheHitTokens += e.CacheHitToken
+		}
 		if e.L3Reuse {
 			s.L3Reuses++
 			l3In += e.TokensIn
