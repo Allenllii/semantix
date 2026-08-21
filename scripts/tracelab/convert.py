@@ -6,11 +6,11 @@ Input  : one JSON object per line — a TraceLab normalized step (one LLM
          invocation) with timing_events[] (user_message/reasoning/text/
          tool_call) and tools[].
 Output : one directory with one *.{jsonl} per session, each line compatible
-         with kernel/ingest.JSONLSource:
+         with kernel/ingest.JSONLSource (which reads the `role` field):
            {"role":"user",     "content": ..}
            {"role":"assistant","content": ..}
            {"role":"assistant","tool_calls":[{"id","name"}, ...]}
-           {"type":"tool","tool_call_id": .., "name": .., "content": ..}
+           {"role":"tool","tool_call_id": .., "name": .., "content": ..}
 
 The sanitized TraceLab data strips real content (tools[].input, message
 bodies) and keeps only character counts, so this converter preserves the
@@ -23,7 +23,6 @@ from an unsanitized source if the license permits.
 import argparse
 import json
 import pathlib
-import sys
 
 
 def _rows_for_step(step: dict) -> list[dict]:
@@ -63,24 +62,30 @@ def _rows_for_step(step: dict) -> list[dict]:
             t = tools.get(tid)
             if t is not None:
                 tool_result_rows.append({
-                    "type": "tool",
+                    "role": "tool",
                     "tool_call_id": tid,
                     "name": tname,
                     "content": _char_marker(t),
                 })
     flush_assistant()
 
-    # Emit tool result lines right after the assistant step that called them.
-    placed = 0
+    # Emit each tool result right after the assistant row that called it,
+    # keyed by tool_call_id so results attach to the correct call.
+    results_by_id = {tr["tool_call_id"]: tr for tr in tool_result_rows}
     out: list[dict] = []
+    emitted: set[str] = set()
     for r in rows:
         out.append(r)
-        if r.get("role") == "assistant" and r.get("tool_calls"):
-            for tr in tool_result_rows[placed:placed + len(r["tool_calls"])]:
-                out.append(tr)
-            placed += len(r["tool_calls"])
-    if placed < len(tool_result_rows):
-        out.extend(tool_result_rows[placed:])
+        if r.get("role") == "assistant":
+            for tc in r.get("tool_calls", []):
+                tr = results_by_id.get(tc.get("id"))
+                if tr is not None and tr["tool_call_id"] not in emitted:
+                    out.append(tr)
+                    emitted.add(tr["tool_call_id"])
+    for tr in tool_result_rows:  # any results not paired to a row, in order
+        if tr["tool_call_id"] not in emitted:
+            out.append(tr)
+            emitted.add(tr["tool_call_id"])
     return out
 
 
@@ -96,7 +101,7 @@ def _content(kind: str, parts: list[str]) -> str:
     return joined if joined else f"({kind})"
 
 
-def convert(trace: pathlib.Path, outdir: pathlib.Path) -> int:
+def convert(trace: pathlib.Path, outdir: pathlib.Path, only: set[str] | None = None) -> int:
     sessions: dict[str, list[dict]] = {}
     with trace.open() as f:
         for line in f:
@@ -104,6 +109,8 @@ def convert(trace: pathlib.Path, outdir: pathlib.Path) -> int:
                 continue
             step = json.loads(line)
             sid = step.get("session_id") or "unknown"
+            if only is not None and sid not in only:
+                continue
             sessions.setdefault(sid, []).append(step)
 
     outdir.mkdir(parents=True, exist_ok=True)
@@ -121,12 +128,26 @@ def convert(trace: pathlib.Path, outdir: pathlib.Path) -> int:
     return count
 
 
+def read_ids(path: pathlib.Path) -> set[str]:
+    """Read one session id per line (as produced by sample.py)."""
+    ids = {ln.strip() for ln in path.read_text().splitlines() if ln.strip()}
+    if not ids:
+        raise SystemExit(f"no session ids in {path}")
+    return ids
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--in", dest="src", type=pathlib.Path, required=True)
-    ap.add_argument("--out", type=pathlib.Path, required=True)
+    ap.add_argument("--in", dest="src", type=pathlib.Path, required=True,
+                    help="source trace round_trace.jsonl")
+    ap.add_argument("--out", type=pathlib.Path, required=True,
+                    help="output directory for per-session .jsonl files")
+    ap.add_argument("--only", type=pathlib.Path, default=None,
+                    help="optional file of session ids to subset (from sample.py)")
     args = ap.parse_args()
-    sys.exit(0 if convert(args.src, args.out) else 0)
+    only = read_ids(args.only) if args.only else None
+    converted = convert(args.src, args.out, only=only)
+    print(f"converted {converted} sessions to {args.out}")
 
 
 if __name__ == "__main__":
