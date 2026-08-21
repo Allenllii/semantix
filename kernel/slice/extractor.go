@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	kernelevent "semantix/kernel/event"
 )
@@ -334,11 +333,11 @@ func parseTranscript(data []byte) ([]transcriptLine, error) {
 func promptSlice(turn []transcriptLine, meta SliceMeta) *Slice {
 	for _, l := range turn {
 		if l.Role == "user" {
-			content := strings.TrimSpace(l.Content)
-			if content == "" {
+			content := compressText(l.Content, maxPromptLen)
+			if len(content) == 0 {
 				return nil
 			}
-			return newSlice(Prompt, Project, truncate([]byte(content), maxPromptLen), meta)
+			return newSlice(Prompt, Project, content, compressionMeta(meta, l.Content, content))
 		}
 	}
 	return nil
@@ -365,26 +364,21 @@ func finalResultSlice(lines []transcriptLine, meta SliceMeta) *Slice {
 	for i := len(lines) - 1; i >= 0; i-- {
 		l := lines[i]
 		if l.Role == "assistant" && len(l.ToolCalls) == 0 {
-			content := strings.TrimSpace(l.Content)
-			if content == "" {
+			content := compressText(l.Content, maxResultLen)
+			if len(content) == 0 {
 				return nil
 			}
-			return newSlice(Result, Project, truncate([]byte(content), maxResultLen), meta)
+			return newSlice(Result, Project, content, compressionMeta(meta, l.Content, content))
 		}
 	}
 	return nil
 }
 
-func truncate(b []byte, max int) []byte {
-	if len(b) <= max {
-		return b
-	}
-	b = b[:max]
-	// Avoid cutting mid-rune: back off to the last valid UTF-8 boundary.
-	for len(b) > 0 && !utf8.Valid(b) {
-		b = b[:len(b)-1]
-	}
-	return b
+func compressionMeta(meta SliceMeta, original string, stored []byte) SliceMeta {
+	meta.CompressionVersion = compressionVersion
+	meta.OriginalBytes = len([]byte(original))
+	meta.StoredBytes = len(stored)
+	return meta
 }
 
 func newSlice(t SliceType, sc Scope, content []byte, meta SliceMeta) *Slice {
