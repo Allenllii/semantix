@@ -314,7 +314,8 @@ func (b *Bridge) mirror(e event.Event) {
 }
 
 func (b *Bridge) mirrorKernel(e kernelevent.Event) {
-	if e.Kind != kernelevent.PrefetchHit && e.Kind != kernelevent.PrefetchWaste && e.Kind != kernelevent.EvolutionTick {
+	if e.Kind != kernelevent.SliceHit && e.Kind != kernelevent.SliceInject &&
+		e.Kind != kernelevent.PrefetchHit && e.Kind != kernelevent.PrefetchWaste && e.Kind != kernelevent.EvolutionTick {
 		return
 	}
 	hs := b.sessionSink()

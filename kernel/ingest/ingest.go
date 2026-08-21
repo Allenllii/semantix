@@ -188,11 +188,16 @@ func (s *JSONLSource) Next() (*SessionEvents, error) {
 }
 
 func isClosedLoopEvent(k event.Kind) bool {
-	return k == event.PrefetchHit || k == event.PrefetchWaste || k == event.EvolutionTick
+	return k == event.SliceHit || k == event.SliceInject ||
+		k == event.PrefetchHit || k == event.PrefetchWaste || k == event.EvolutionTick
 }
 
 func projectClosedLoopEvent(e event.Event) string {
 	switch e.Kind {
+	case event.SliceHit:
+		return "slice hit " + string(e.Data)
+	case event.SliceInject:
+		return "slice inject " + string(e.Data)
 	case event.PrefetchHit:
 		return "prefetch hit targets " + string(e.Data)
 	case event.PrefetchWaste:

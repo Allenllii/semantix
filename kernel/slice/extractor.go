@@ -98,6 +98,10 @@ func parseTranscript(data []byte) ([]transcriptLine, error) {
 		if tl.Role == "" {
 			if e, err := kernelevent.FromJSON(line); err == nil {
 				switch e.Kind {
+				case kernelevent.SliceHit:
+					tl = transcriptLine{Role: "user", Content: "slice hit " + string(e.Data)}
+				case kernelevent.SliceInject:
+					tl = transcriptLine{Role: "user", Content: "slice inject " + string(e.Data)}
 				case kernelevent.PrefetchHit:
 					tl = transcriptLine{Role: "user", Content: "prefetch hit targets " + string(e.Data)}
 				case kernelevent.PrefetchWaste:
