@@ -93,7 +93,7 @@
 - [x] 工具可挂起/恢复 + 预算配额生效（H2）——U40/U41 落地，证据见 `docs/reports/agile2-scheduling-demo.md` S3/S4；
       kernel 侧 hard_stop 执行点缺口（#250）收尾时补上（PR #285：plan 携带 hard_stop 在工具执行前拦截整轮）
 - [x] 调度演示：kernel 决策改变 harness 行为 + 可量化收益（H3）——**U42 完成（2026-08-20）**：挂起执行省 79.5% 轮时延、预算三档阶梯生效、硬停阻断，报告 `docs/reports/agile2-scheduling-demo.md`（#193）
-- [x] 命中率/成本随使用提升曲线（H5，自进化证据）——**U43 完成（2026-08-21，#194/#253）**：因果对照（evolve on/off 同负载同反馈）证明制度性变更下 evolve ON 浪费预取 10 vs OFF 15、25 会话总成本 $0.510 vs $0.540，报告 `docs/reports/agile2-evolution-curve.md`
+- [x] 命中率/成本随使用提升曲线（H5，自进化证据）——**U43 完成（2026-08-21，#194/#253）**：因果对照（evolve on/off 同负载同反馈）当时证明制度性变更下 evolve ON 浪费预取 10 vs OFF 15、25 会话总成本 $0.510 vs $0.540，报告 `docs/reports/agile2-evolution-curve.md`。**Issue #272 报告扩展后重采（2026-08-21）**：demote 衰减修复（#255）+ β 后验计数（#272）使两组同轨（churn 期各 9 次 waste、成本 $0.504 vs $0.504），单目标降级主导止损，evolve 门控独立收益需在无 demote 干扰场景单独验证（详见报告机制分解）
 
 ### Agile 2 收尾（2026-08-21）
 
@@ -101,6 +101,10 @@ DoD 三项验收全绿，Agile 2 关账；**v0.6.0「Agile 2 完整落地」当�
 落地过程中发现的品质缺陷当日几乎全数修复合入：#252（HarnessSink 归因，#287）、
 #254（evolve 吸收态 ε-探针逃逸，#295）、#255（prefetch demoted 免疫，#294）——均随 v0.6.0 发出；
 仅剩 #245（RuleGate 统计口径）挂账。
+**v0.6.0 后当日续作（2026-08-21）**：#272（Markov 三指标 coverage/accuracy/timeliness + Beta-Binomial 计数，
+spec `docs/specs/issue-272-markov-metrics.md`）——指标三元组透出进自进化曲线报告、hit/waste 计数由裸 EWMA
+升级为带时间折扣的 β 后验（demote 判定 μ < 1/(1+WasteHitLimit)），并修复 `evolution-curve` 脚本的
+不可复现问题（Plan 探针改实例级固定随机源 + 候选排序 key tie-break）。
 
 ### 前置依赖
 

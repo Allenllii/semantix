@@ -8,9 +8,11 @@
 //     P(next | last); high-confidence successors become prefetch candidates;
 //   - budget: each task carries a cost; Plan stops once the total budget is
 //     exhausted (single prefetch ≤ 2k token equivalent by default);
-//   - waste penalty: hit/waste feedback per candidate decays its confidence
-//     (waste/hit > 3:1 auto-demotes), so the prefetcher learns when betting
-//     is worth it — the same signal family the evolution engine consumes.
+//   - waste penalty: hit/waste feedback folds into a per-candidate
+//     Beta-Binomial posterior with time decay; a candidate whose posterior
+//     mean drops below 1/(1+WasteHitLimit) auto-demotes, so the prefetcher
+//     learns when betting is worth it — the same signal family the
+//     evolution engine consumes (Issue #272).
 //
 // The Prefetcher interface (Plan) is frozen since U1; two implementations
 // ship side by side (see docs/Agile路线图.md H5):
@@ -19,9 +21,12 @@
 //     transition matrix from the slice library's ToolPattern slices; a
 //     whitelist makes it fail-closed (empty whitelist = no prefetch).
 //   - MatrixPrefetcher (this file, N12 authority): online — Observe()
-//     updates bigram counts per executed tool, hit/waste feedback decays
-//     candidate confidence (waste/hit > 3:1 auto-demotes), and only tools
-//     observed read-only are ever proposed.
+//     updates bigram counts per executed tool, hit/waste feedback updates a
+//     per-candidate Beta posterior (waste/hit weight ratio > WasteHitLimit
+//     auto-demotes), and only tools observed read-only are ever proposed.
+//     Stats() exposes the Markov evaluation triple — coverage / accuracy /
+//     timeliness (timeliness via harness-emitted LeadMs) — plus the
+//     posterior parameters (Issue #272).
 //
 // They are complementary (offline seed vs online learning); the harness
 // picks one and wires it into sched.RuleDecider via AsPlanFunc.
@@ -83,10 +88,13 @@ type Config struct {
 	// BaseCost is the estimated cost of one slice-assembly task
 	// (default 512; assembly re-reads a few slices).
 	BaseCost int
-	// WasteHitLimit: candidates whose waste/hit EWMA ratio exceeds this are
-	// demoted (default 3.0 — N12 "waste/hit > 3:1 自动降权").
+	// WasteHitLimit: candidates whose discounted waste/hit weight ratio
+	// exceeds this are demoted (default 3.0 — N12 "waste/hit > 3:1 自动降权";
+	// equivalent to posterior mean μ < 1/(1+WasteHitLimit), Issue #272).
 	WasteHitLimit float64
-	// Decay is the EWMA smoothing for hit/waste rates (default 0.2).
+	// Decay is the per-feedback time discount applied to the Beta posterior
+	// before each new sample (default 0.2; same forgetting as the former
+	// hit/waste EWMA, Issue #272).
 	Decay float64
 	// Epsilon is the absorbing-state escape probability (default 0 =
 	// disabled). When every candidate falls below MinConf and the plan
@@ -122,10 +130,36 @@ type MatrixPrefetcher struct {
 	bigrams  map[string]map[string]int // prev -> next -> count
 	counts   map[string]int            // prev -> total transitions
 	readOnly map[string]bool           // next -> observed read-only (safe to prefetch)
-	hit      map[string]float64        // key -> EWMA hit rate
-	waste    map[string]float64        // key -> EWMA waste rate
-	gate     gateCounter
+	// rnd is the escape-probe source: per-instance, seeded with a fixed
+	// constant (not the auto-seeded global source) so Plan stays
+	// bit-reproducible — the probe is an ε-trickle, not a security
+	// primitive, so a fixed sequence is fine (Issue #272 c6).
+	rnd *rand.Rand
+	// Beta-Binomial posterior per candidate (Issue #272): hitW/wasteW are
+	// time-discounted feedback weights (0 = no feedback); the posterior
+	// parameters exposed by Stats are Alpha = hitW + betaPrior and
+	// Beta = wasteW + betaPrior.
+	hitW        map[string]float64
+	wasteW      map[string]float64
+	hitCount    map[string]int // per-key integer hit feedback count
+	wasteCount  map[string]int // per-key integer waste feedback count
+	totalHits   int
+	totalWastes int
+	// Markov coverage bookkeeping (Issue #272): the most recent Plan's
+	// proposed key set, matched against the next Observe to decide whether
+	// that read-only call was covered by prefetching.
+	lastPrev      string
+	lastProposed  map[string]bool
+	readOnlyCalls int
+	coveredCalls  int
+	gate          gateCounter // load-aware outcome counters (Issue #273)
+
 }
+
+// betaPrior is the uniform prior strength α₀=β₀ for the per-candidate Beta
+// posterior (Issue #272). It is a constant, not a knob: it only smooths
+// small-sample estimates and its exact value is not part of any contract.
+const betaPrior = 1.0
 
 // NewMatrixPrefetcher builds a MatrixPrefetcher with cfg (zero → Defaults).
 func NewMatrixPrefetcher(cfg Config) *MatrixPrefetcher {
@@ -155,19 +189,24 @@ func NewMatrixPrefetcher(cfg Config) *MatrixPrefetcher {
 		cfg.MaxLoad = def.MaxLoad
 	}
 	return &MatrixPrefetcher{
-		cfg:      cfg,
-		bigrams:  make(map[string]map[string]int),
-		counts:   make(map[string]int),
-		readOnly: make(map[string]bool),
-		hit:      make(map[string]float64),
-		waste:    make(map[string]float64),
+		cfg:        cfg,
+		bigrams:    make(map[string]map[string]int),
+		counts:     make(map[string]int),
+		readOnly:   make(map[string]bool),
+		rnd:        rand.New(rand.NewSource(1)),
+		hitW:       make(map[string]float64),
+		wasteW:     make(map[string]float64),
+		hitCount:   make(map[string]int),
+		wasteCount: make(map[string]int),
 	}
 }
 
 // Observe records one tool transition prev -> next. readOnly marks whether
 // next is a safe (read-only) prefetch target; only read-only successors are
 // ever proposed by Plan. The harness should call this once per executed
-// tool, chaining transitions within and across rounds.
+// tool, chaining transitions within and across rounds. When the executed
+// tool is read-only and was proposed by the most recent Plan, the call is
+// counted as covered by prefetching (Markov coverage, Issue #272).
 func (m *MatrixPrefetcher) Observe(prev, next string, readOnly bool) {
 	if prev == "" || next == "" {
 		return
@@ -181,6 +220,10 @@ func (m *MatrixPrefetcher) Observe(prev, next string, readOnly bool) {
 	m.counts[prev]++
 	if readOnly {
 		m.readOnly[next] = true
+		m.readOnlyCalls++
+		if prev == m.lastPrev && m.lastProposed[next] {
+			m.coveredCalls++
+		}
 	}
 }
 
@@ -198,6 +241,7 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 	transitions := m.bigrams[last]
 	total := m.counts[last]
 	if total == 0 || len(transitions) == 0 {
+		m.recordProposal(last, nil)
 		return nil, nil
 	}
 
@@ -215,8 +259,10 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 		if prob < m.cfg.MinConf {
 			// absorb into the escape probe when it is the best (but
 			// still-threshold-eligible) excluded candidate; skip demoted
-			// ones so the probe never channels a known-bad bet
-			if !m.demoted(next) && (probe == nil || prob > probe.prob) {
+			// ones so the probe never channels a known-bad bet. The key
+			// tie-break keeps probe selection deterministic despite Go's
+			// randomized map iteration (Issue #272 c6).
+			if !m.demoted(next) && (probe == nil || prob > probe.prob || (prob == probe.prob && next < probe.key)) {
 				probe = &cand{key: next, prob: prob}
 			}
 			continue
@@ -226,7 +272,15 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 		}
 		cands = append(cands, cand{key: next, prob: prob})
 	}
-	sort.Slice(cands, func(i, j int) bool { return cands[i].prob > cands[j].prob })
+	// Probability descending, key ascending on ties: sort.Slice is not
+	// stable and transitions map iteration is randomized, so equal-probability
+	// candidates need a deterministic order (Issue #272 c6).
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].prob != cands[j].prob {
+			return cands[i].prob > cands[j].prob
+		}
+		return cands[i].key < cands[j].key
+	})
 
 	var tasks []PrefetchTask
 	cost := 0
@@ -249,7 +303,7 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 	// to keep a trickle of hit/waste signal flowing back into the evolve loop
 	// so PrefetchConf can recover (Issue #254).
 	if len(tasks) == 0 && probe != nil && m.cfg.TopK > 0 &&
-		m.cfg.Epsilon > 0 && rand.Float64() < m.cfg.Epsilon {
+		m.cfg.Epsilon > 0 && m.rnd.Float64() < m.cfg.Epsilon {
 		if m.cfg.BaseCost <= m.cfg.MaxCost {
 			tasks = append(tasks, PrefetchTask{
 				Kind:     "slice-assembly",
@@ -259,6 +313,7 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 			})
 		}
 	}
+	m.recordProposal(last, tasks)
 	return tasks, nil
 }
 
@@ -289,45 +344,164 @@ func (m *MatrixPrefetcher) PlanWithLoad(lastToolNames []string, hint LoadHint) (
 // method are intentionally excluded because they carry no load decision.
 func (m *MatrixPrefetcher) GateStats() GateStats { return m.gate.snapshot() }
 
+// recordProposal snapshots the proposed key set of the most recent Plan for
+// the Markov coverage accounting in Observe (Issue #272). An empty or
+// errored plan clears the previous proposal set so a stale one can never
+// count as coverage. Caller holds m.mu.
+func (m *MatrixPrefetcher) recordProposal(last string, tasks []PrefetchTask) {
+	m.lastPrev = last
+	m.lastProposed = make(map[string]bool, len(tasks))
+	for _, t := range tasks {
+		m.lastProposed[t.Key] = true
+	}
+}
+
 // ObserveHit marks a planned prefetch as useful (the predicted tool was
-// actually called).
+// actually called). The hit folds into the candidate's Beta posterior:
+// α ← (1−Decay)·α + 1, β ← (1−Decay)·β (Issue #272).
 func (m *MatrixPrefetcher) ObserveHit(key string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.hit[key] = ewma(m.hit[key], 1, m.cfg.Decay)
-	m.waste[key] = ewma(m.waste[key], 0, m.cfg.Decay)
+	m.hitW[key] = (1-m.cfg.Decay)*m.hitW[key] + 1
+	m.wasteW[key] = (1 - m.cfg.Decay) * m.wasteW[key]
+	m.hitCount[key]++
+	m.totalHits++
 }
 
 // ObserveWaste marks a planned prefetch as wasted (the predicted tool was
-// not called, or its result was unused).
+// not called, or its result was unused). The waste folds into the
+// candidate's Beta posterior:
+// β ← (1−Decay)·β + 1, α ← (1−Decay)·α (Issue #272).
 func (m *MatrixPrefetcher) ObserveWaste(key string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.hit[key] = ewma(m.hit[key], 0, m.cfg.Decay)
-	m.waste[key] = ewma(m.waste[key], 1, m.cfg.Decay)
+	m.wasteW[key] = (1-m.cfg.Decay)*m.wasteW[key] + 1
+	m.hitW[key] = (1 - m.cfg.Decay) * m.hitW[key]
+	m.wasteCount[key]++
+	m.totalWastes++
 }
 
-// Stats returns a snapshot of the transition matrix (observability).
+// Stats returns a snapshot of the transition matrix plus the Markov
+// evaluation metrics (observability, Issue #272): global coverage /
+// accuracy with their denominators, per-key Beta posterior parameters
+// (Alpha/Beta include the uniform prior), posterior means, 90% Wilson
+// lower bounds, and integer feedback counts.
 type Stats struct {
 	Transitions int            // total observed transitions
 	Pairs       map[string]int // prev -> total transitions
 	TopNext     map[string]int // prev -> next -> count (flattened key "prev→next")
+
+	// Markov evaluation triple + count model (Issue #272). Coverage and
+	// Accuracy are 0 when their denominator is 0; the denominators
+	// (ReadOnlyCalls, TotalHits+TotalWastes) are exposed so consumers can
+	// render N/A instead.
+	ReadOnlyCalls int     // read-only tool calls observed
+	CoveredCalls  int     // of those, covered by the most recent Plan proposal
+	Coverage      float64 // CoveredCalls / ReadOnlyCalls
+	TotalHits     int     // ObserveHit calls (feedback-level accuracy)
+	TotalWastes   int     // ObserveWaste calls
+	Accuracy      float64 // TotalHits / (TotalHits + TotalWastes)
+
+	HitRate    map[string]float64 // per-key posterior mean μ
+	Alpha      map[string]float64 // per-key posterior α (incl. prior)
+	Beta       map[string]float64 // per-key posterior β (incl. prior)
+	LowerBound map[string]float64 // per-key 90% Wilson lower bound (0 = no feedback)
+	Hits       map[string]int     // per-key hit feedback count
+	Wastes     map[string]int     // per-key waste feedback count
 }
 
-// demoted reports whether a candidate's waste/hit ratio exceeds the limit.
-// Caller holds m.mu. A candidate with zero waste is never demoted.
+// Stats returns a snapshot of the transition matrix (observability).
+func (m *MatrixPrefetcher) Stats() Stats {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := Stats{
+		Transitions:   m.countsTotal(),
+		Pairs:         cloneIntMap(m.counts),
+		TopNext:       cloneNested(m.bigrams),
+		ReadOnlyCalls: m.readOnlyCalls,
+		CoveredCalls:  m.coveredCalls,
+		TotalHits:     m.totalHits,
+		TotalWastes:   m.totalWastes,
+		HitRate:       make(map[string]float64),
+		Alpha:         make(map[string]float64),
+		Beta:          make(map[string]float64),
+		LowerBound:    make(map[string]float64),
+		Hits:          cloneIntMap(m.hitCount),
+		Wastes:        cloneIntMap(m.wasteCount),
+	}
+	if m.readOnlyCalls > 0 {
+		s.Coverage = float64(m.coveredCalls) / float64(m.readOnlyCalls)
+	}
+	if m.totalHits+m.totalWastes > 0 {
+		s.Accuracy = float64(m.totalHits) / float64(m.totalHits+m.totalWastes)
+	}
+	for key, hw := range m.hitW {
+		ww := m.wasteW[key]
+		s.HitRate[key] = posteriorMean(hw, ww)
+		s.Alpha[key] = hw + betaPrior
+		s.Beta[key] = ww + betaPrior
+		if n := hw + ww; n > 0 {
+			s.LowerBound[key] = wilsonLower(s.HitRate[key], n)
+		}
+	}
+	return s
+}
+
+// demoted reports whether a candidate's discounted waste/hit weight ratio
+// exceeds the limit (posterior mean μ < 1/(1+WasteHitLimit)). Caller holds
+// m.mu. A candidate with no feedback (prior state) is never demoted.
 func (m *MatrixPrefetcher) demoted(key string) bool {
-	w, h := m.waste[key], m.hit[key]
-	if w == 0 {
+	hw, ww := m.hitW[key], m.wasteW[key]
+	if hw+ww == 0 {
 		return false
 	}
-	if h == 0 {
-		return true // all waste, no hits: demote
-	}
-	return w/h > m.cfg.WasteHitLimit
+	return posteriorMean(hw, ww) < 1/(1+m.cfg.WasteHitLimit)
 }
 
-// ewma folds one binary sample into a rate.
-func ewma(prev, sample, alpha float64) float64 {
-	return alpha*sample + (1-alpha)*prev
+// posteriorMean is the Beta posterior mean of the hit propensity given
+// time-discounted feedback weights hw (hits) and ww (wastes) plus the
+// uniform prior betaPrior.
+func posteriorMean(hw, ww float64) float64 {
+	return (hw + betaPrior) / (hw + ww + 2*betaPrior)
+}
+
+// wilsonLower is the 90% (z=1.645) one-sided Wilson lower bound for the
+// hit propensity with discounted sample size n and observed mean mu. It
+// tolerates fractional n (time-discounted weights), unlike a Beta quantile
+// requiring integer counts (Issue #272).
+func wilsonLower(mu, n float64) float64 {
+	if n <= 0 {
+		return 0
+	}
+	const z = 1.645
+	denom := 1 + z*z/n
+	center := mu + z*z/(2*n)
+	margin := z * math.Sqrt(mu*(1-mu)/n+z*z/(4*n*n))
+	return (center - margin) / denom
+}
+
+func (m *MatrixPrefetcher) countsTotal() int {
+	total := 0
+	for _, c := range m.counts {
+		total += c
+	}
+	return total
+}
+
+func cloneIntMap(src map[string]int) map[string]int {
+	dst := make(map[string]int, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func cloneNested(src map[string]map[string]int) map[string]int {
+	dst := make(map[string]int)
+	for prev, nexts := range src {
+		for next, cnt := range nexts {
+			dst[prev+"→"+next] = cnt
+		}
+	}
+	return dst
 }
