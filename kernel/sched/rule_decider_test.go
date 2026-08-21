@@ -251,6 +251,7 @@ func TestBudgetActions(t *testing.T) {
 	}{
 		{0.69, "", "pro"},
 		{0.70, BudgetActionHaltPrefetch, "pro"},
+	{0.80, BudgetActionDegradeInject, "pro"},
 		{0.90, BudgetActionDegradeTier, "flash"},
 		{1.00, BudgetActionHardStop, "pro"},
 	}
