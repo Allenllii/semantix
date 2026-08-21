@@ -17,6 +17,11 @@ type EvolutionTuner interface {
 	ApplyEvolution(float64) error
 }
 
+// EscapeEpsilon is the prefetch absorbing-state escape probability the
+// harness wires into a MatrixPrefetcher so the evolve loop never starves
+// itself of hit/waste signal (Issue #254).
+const EscapeEpsilon = 0.1
+
 // EvolutionLoop folds prefetch outcomes into the online engine and publishes
 // one immutable parameter snapshot after every real change.
 type EvolutionLoop struct {
@@ -96,10 +101,15 @@ func (l *EvolutionLoop) observe(e kernelevent.Event) {
 		return
 	}
 	if l.scheduler != nil {
-		_ = l.scheduler.ApplyEvolution(after.TauL2)
+		// Behavior gate is driven by SuccessFloor; TauL2 now only controls
+		// injection confidence (PR #228 decoupling, Issue #254).
+		_ = l.scheduler.ApplyEvolution(after.SuccessFloor)
 	}
 	if l.prefetcher != nil {
 		_ = l.prefetcher.ApplyEvolution(after.PrefetchConf)
+	}
+	if eps, ok := l.prefetcher.(interface{ SetEpsilon(float64) error }); ok {
+		_ = eps.SetEpsilon(EscapeEpsilon)
 	}
 	params, err := json.Marshal(after)
 	if err != nil {

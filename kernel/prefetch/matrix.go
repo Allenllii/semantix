@@ -30,6 +30,7 @@ package prefetch
 import (
 	"errors"
 	"math"
+	"math/rand"
 	"sort"
 	"sync"
 )
@@ -53,6 +54,22 @@ func (m *MatrixPrefetcher) ApplyEvolution(minConf float64) error {
 	return nil
 }
 
+// SetEpsilon enables or disables the absorbing-state escape probe at
+// runtime (Issue #254). It is separate from ApplyEvolution because Epsilon
+// is a closed-loop escape knob, not a per-snapshot confidence threshold.
+func (m *MatrixPrefetcher) SetEpsilon(epsilon float64) error {
+	if math.IsNaN(epsilon) || math.IsInf(epsilon, 0) {
+		return errors.New("prefetch: non-finite epsilon rejected")
+	}
+	if epsilon < 0 || epsilon > 1 {
+		return errors.New("prefetch: epsilon out of range [0,1]")
+	}
+	m.mu.Lock()
+	m.cfg.Epsilon = epsilon
+	m.mu.Unlock()
+	return nil
+}
+
 // Config carries operator knobs; zero values select documented defaults.
 type Config struct {
 	// TopK caps the number of tasks returned per Plan (default 3).
@@ -71,6 +88,13 @@ type Config struct {
 	WasteHitLimit float64
 	// Decay is the EWMA smoothing for hit/waste rates (default 0.2).
 	Decay float64
+	// Epsilon is the absorbing-state escape probability (default 0 =
+	// disabled). When every candidate falls below MinConf and the plan
+	// would be empty, Plan probes the highest-probability excluded candidate
+	// with probability Epsilon to keep a trickle of hit/waste signal flowing
+	// (Issue #254). Applicable only when there is any learned transition; an
+	// empty transition table still yields an empty plan.
+	Epsilon float64
 }
 
 // Defaults returns the built-in configuration.
@@ -82,6 +106,7 @@ func Defaults() Config {
 		BaseCost:      512,
 		WasteHitLimit: 3.0,
 		Decay:         0.2,
+		Epsilon:       0, // disabled by default; enabled by evolve wiring
 	}
 }
 
@@ -117,6 +142,9 @@ func NewMatrixPrefetcher(cfg Config) *MatrixPrefetcher {
 	}
 	if cfg.Decay <= 0 || cfg.Decay > 1 {
 		cfg.Decay = def.Decay
+	}
+	if cfg.Epsilon < 0 || cfg.Epsilon > 1 {
+		cfg.Epsilon = def.Epsilon
 	}
 	return &MatrixPrefetcher{
 		cfg:      cfg,
@@ -170,12 +198,19 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 		prob float64
 	}
 	var cands []cand
+	var probe *cand // highest-probability candidate excluded only by MinConf (#254)
 	for next, cnt := range transitions {
 		if !m.readOnly[next] {
 			continue // never prefetch a writer
 		}
 		prob := float64(cnt) / float64(total)
 		if prob < m.cfg.MinConf {
+			// absorb into the escape probe when it is the best (but
+			// still-threshold-eligible) excluded candidate; skip demoted
+			// ones so the probe never channels a known-bad bet
+			if !m.demoted(next) && (probe == nil || prob > probe.prob) {
+				probe = &cand{key: next, prob: prob}
+			}
 			continue
 		}
 		if m.demoted(next) {
@@ -200,6 +235,20 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 			Cost: m.cfg.BaseCost,
 		})
 		cost += m.cfg.BaseCost
+	}
+	// Absorbing-state escape: if all candidates were excluded by MinConf and
+	// nothing ran, probe the best excluded candidate with probability Epsilon
+	// to keep a trickle of hit/waste signal flowing back into the evolve loop
+	// so PrefetchConf can recover (Issue #254).
+	if len(tasks) == 0 && probe != nil && m.cfg.TopK > 0 &&
+		m.cfg.Epsilon > 0 && rand.Float64() < m.cfg.Epsilon {
+		if m.cfg.BaseCost <= m.cfg.MaxCost {
+			tasks = append(tasks, PrefetchTask{
+				Kind: "slice-assembly",
+				Key:  probe.key,
+				Cost: m.cfg.BaseCost,
+			})
+		}
 	}
 	return tasks, nil
 }
