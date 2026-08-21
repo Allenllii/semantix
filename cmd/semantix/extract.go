@@ -122,6 +122,9 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 		if item == nil {
 			return fmt.Errorf("extractor returned nil slice at position %d", i)
 		}
+		if item.Type == slice.Context && scope != slice.Project {
+			continue
+		}
 		item.Scope = scope
 		if err := store.Put(item); err != nil {
 			return fmt.Errorf("store slice %q: %w", item.ID, err)
