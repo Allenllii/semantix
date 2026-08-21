@@ -54,3 +54,56 @@ func TestCustomThresholds(t *testing.T) {
 		t.Errorf("got %v, want Hit", got)
 	}
 }
+
+// TestClassifyL3TwoAxis pins the Issue #241 verdict on the GW4 acceptance
+// numbers (docs/reports/gateway-m1-acceptance.md §5.2): every repeated task
+// stored a Prompt slice byte-identical to the query, which BM25 ranked
+// first, so globalTop1 is the twin's score and resultTop1 the best Result's.
+// With the raw-list denominator only t07 (rel 0.826) cleared TauHigh; the
+// two-axis verdict must restore all ten genuinely reusable tasks to Hit —
+// real BM25 puts rewritten same-task answers at ~0.52–0.83 of the twin and
+// same-field-different-task documents near 0.16, so the AbsLow relevance
+// floor (0.45) separates the clusters without killing the tail.
+func TestClassifyL3TwoAxis(t *testing.T) {
+	z := Default()
+	cases := []struct {
+		name                       string
+		score, resultTop1, globalTop1 float64
+		want                       Zone
+	}{
+		// GW4 replay: best Result measured against its own twin.
+		{"t07", 47.03, 47.03, 56.97, Hit},  // relGlobal 0.826
+		{"t04", 47.13, 47.13, 65.31, Hit},  // relGlobal 0.722
+		{"t05", 36.66, 36.66, 50.83, Hit},  // relGlobal 0.721
+		{"t10", 44.95, 44.95, 66.57, Hit},  // relGlobal 0.675
+		{"t08", 25.90, 25.90, 43.01, Hit},  // relGlobal 0.602
+		{"t02", 35.46, 35.46, 59.78, Hit},  // relGlobal 0.593
+		{"t03", 34.62, 34.62, 59.33, Hit},  // relGlobal 0.584
+		{"t01", 30.86, 30.86, 54.49, Hit},  // relGlobal 0.566
+		{"t09", 42.94, 42.94, 79.26, Hit},  // relGlobal 0.542 >= AbsLow 0.45
+		{"t06", 34.50, 34.50, 65.72, Hit},  // relGlobal 0.525 >= AbsLow 0.45
+
+		// Non-best peers: prominence axis still discriminates.
+		{"second peer prominent", 42.0, 47.03, 56.97, Hit},  // relSame 0.893 >= 0.8, relGlobal 0.737
+		{"second peer grey", 35.0, 47.03, 56.97, Grey},      // relSame 0.744, relGlobal 0.615
+		{"second peer weak grey", 30.0, 47.03, 56.97, Grey}, // relSame 0.638, relGlobal 0.527 >= AbsLow
+		{"second peer off-floor miss", 22.0, 47.03, 56.97, Miss}, // relGlobal 0.386 < AbsLow
+
+		// Absolute floors still bind on the scale anchor: a lone weak
+		// BM25 hit (no twin to inflate globalTop1) cannot self-certify.
+		{"lone weak bm25 grey", 0.5, 0.5, 0.5, Grey},   // rel 1.0 but globalTop1 < AbsHigh
+		{"lone weak bm25 miss", 0.3, 0.3, 0.3, Miss},   // globalTop1 < AbsLow
+
+		// Failure-safe guards.
+		{"zero resultTop1", 0.5, 0, 1.0, Miss},
+		{"negative globalTop1", 0.5, 0.5, -1, Miss},
+		{"nan score", nan(), 0.5, 1.0, Miss},
+		{"inf globalTop1", 0.5, 0.5, inf(), Miss},
+	}
+	for _, c := range cases {
+		if got := z.ClassifyL3(c.score, c.resultTop1, c.globalTop1); got != c.want {
+			t.Errorf("%s: ClassifyL3(%v, %v, %v) = %v, want %v",
+				c.name, c.score, c.resultTop1, c.globalTop1, got, c.want)
+		}
+	}
+}

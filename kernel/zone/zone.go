@@ -68,3 +68,60 @@ func (z Zones) Classify(score, top1 float64) Zone {
 		return Miss
 	}
 }
+
+// ClassifyL3 is the two-axis verdict for the L3 reuse path (Issue #241).
+//
+// The single-axis Classify assumes one denominator plays both roles at
+// once: "how prominent is this candidate among its peers" (normalization)
+// and "how relevant is this whole batch" (absolute anchor). In the gateway
+// the store always holds a Prompt slice byte-identical to the query, which
+// BM25 ranks first by a wide margin; measuring every Result against it
+// (Classify's top1) depresses the relative confidence of every reusable
+// candidate for a reason unrelated to reusability — GW4 measured 8 of 10
+// repeated tasks landing in grey and the hit rate hinged on whether a
+// judge was configured. But simply scoping the denominator to Result
+// candidates (the issue's option 1) throws the batch-relevance anchor
+// away: the best Result then has ratio 1.0 unconditionally and the
+// relative axis stops discriminating (Allenllii's review on the issue).
+//
+// ClassifyL3 splits the two roles into an explicit three-argument verdict:
+//
+//   - resultTop1  (relative axis): max score among the Result candidates
+//     L3 actually considers; relSame = score/resultTop1 measures prominence
+//     within that set.
+//   - globalTop1  (scale anchor): max score over the raw hit list (which
+//     the prompt twin usually leads). relGlobal = score/globalTop1 is the
+//     scale-normalized relevance floor — a Result far below the batch's
+//     best match is not "the best of a bad batch".
+//   - absolute floors still bind on globalTop1 (AbsLow/AbsHigh), exactly
+//     as Classify binds them on top1: on a bounded (cosine) scale they
+//     guard reuse outright, while BM25 scores (typically >> 1) never trip
+//     them.
+//
+// The relevance floor reuses AbsLow (0.45), calibrated on real BM25
+// behavior: byte-identical re-asks and rewritten same-task answers measure
+// 0.52–0.83 against their twin (GW4 acceptance §5.2: 0.525–0.826), while
+// same-field-but-different-task documents sit near 0.16 and unrelated ones
+// at 0 — AbsLow sits in the wide gap between the two clusters.
+//
+// Hit requires prominence (relSame >= TauHigh) AND batch relevance
+// (relGlobal >= AbsLow); a weaker but still relevant peer falls to Grey
+// (judge-gated downstream); anything below either floor is Miss
+// (fail-closed). NaN/Inf/zero/negative inputs are always Miss.
+func (z Zones) ClassifyL3(score, resultTop1, globalTop1 float64) Zone {
+	if math.IsNaN(score) || math.IsNaN(resultTop1) || math.IsNaN(globalTop1) ||
+		math.IsInf(score, 0) || math.IsInf(resultTop1, 0) || math.IsInf(globalTop1, 0) ||
+		score <= 0 || resultTop1 <= 0 || globalTop1 <= 0 {
+		return Miss
+	}
+	switch {
+	case globalTop1 < z.AbsLow:
+		return Miss
+	case score/resultTop1 >= z.TauHigh && score/globalTop1 >= z.AbsLow && globalTop1 >= z.AbsHigh:
+		return Hit
+	case score/resultTop1 >= z.TauLow && score/globalTop1 >= z.AbsLow && globalTop1 >= z.AbsLow:
+		return Grey
+	default:
+		return Miss
+	}
+}
