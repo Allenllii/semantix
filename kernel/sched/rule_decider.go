@@ -66,6 +66,17 @@ var SerialToolNames = map[string]struct{}{
 // prefetch (keeps the dependency direction sched → nothing).
 type PrefetchPlanFunc func(lastToolNames []string) []string
 
+// PrefetchPlanResult is the load-aware callback's candidate list and stable
+// explanation. IDs are still reduced to tool-name keys by the adapter.
+type PrefetchPlanResult struct {
+	IDs    []string
+	Reason string
+}
+
+// LoadAwarePrefetchPlanFunc is an additive callback seam; PrefetchPlanFunc is
+// retained for existing integrations.
+type LoadAwarePrefetchPlanFunc func(lastToolNames []string, hint PrefetchLoadHint) PrefetchPlanResult
+
 // Config carries operator knobs; zero values select documented defaults.
 type Config struct {
 	// MaxParallel caps how many read-only tools may run in one parallel
@@ -126,10 +137,11 @@ func (t *toolStat) successRate() float64 {
 // lock. It is a plain struct (no interface split) so the harness can hold
 // it directly; it satisfies the frozen Decider interface.
 type RuleDecider struct {
-	mu         sync.Mutex
-	cfg        Config
-	stats      map[string]*toolStat
-	prefetchFn PrefetchPlanFunc
+	mu             sync.Mutex
+	cfg            Config
+	stats          map[string]*toolStat
+	prefetchFn     PrefetchPlanFunc
+	loadPrefetchFn LoadAwarePrefetchPlanFunc
 }
 
 // NewRuleDecider builds a RuleDecider with cfg (zero values → Defaults).
@@ -169,6 +181,14 @@ func (d *RuleDecider) SetPrefetchPlanFunc(fn PrefetchPlanFunc) {
 	d.prefetchFn = fn
 }
 
+// SetLoadAwarePrefetchPlanFunc installs the preferred load-aware planner.
+// When set, it takes precedence over the legacy PrefetchPlanFunc.
+func (d *RuleDecider) SetLoadAwarePrefetchPlanFunc(fn LoadAwarePrefetchPlanFunc) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.loadPrefetchFn = fn
+}
+
 // DecideRound implements the frozen Decider interface.
 func (d *RuleDecider) DecideRound(ctx context.Context, in RoundInput) (RoundPlan, error) {
 	d.mu.Lock()
@@ -178,8 +198,9 @@ func (d *RuleDecider) DecideRound(ctx context.Context, in RoundInput) (RoundPlan
 	active := withoutSuspended(in.ToolCalls, suspended)
 	action := decideBudgetAction(in.Budget)
 	tier, tierReason := decideTier(in.Intent, active, d.cfg)
+	groups := d.partition(active)
 	plan := RoundPlan{
-		ParallelGroups: d.partition(active),
+		ParallelGroups: groups,
 		Tier:           tier,
 		TierReason:     tierReason,
 		InjectIDs:      canonicalInjectIDs(in.SliceHits, d.cfg.InjectMax),
@@ -187,17 +208,40 @@ func (d *RuleDecider) DecideRound(ctx context.Context, in RoundInput) (RoundPlan
 		MaxParallel:    d.cfg.MaxParallel,
 		BudgetAction:   action,
 	}
-	if d.prefetchFn != nil {
+	if d.loadPrefetchFn != nil {
+		hint := normalizedPrefetchLoad(in.PrefetchLoad, groups, d.cfg.MaxParallel)
+		result := d.loadPrefetchFn(toolNames(active), hint)
+		plan.PrefetchIDs = result.IDs
+		plan.PrefetchReason = result.Reason
+	} else if d.prefetchFn != nil {
 		plan.PrefetchIDs = d.prefetchFn(toolNames(active))
 	}
 	if action == BudgetActionHaltPrefetch || action == BudgetActionHardStop {
 		plan.PrefetchIDs = nil
+		plan.PrefetchReason = "budget:" + action
 	}
 	if action == BudgetActionDegradeTier {
 		plan.Tier = d.cfg.DefaultTier
 		plan.TierReason = "budget:" + BudgetActionDegradeTier
 	}
 	return plan, nil
+}
+
+func normalizedPrefetchLoad(hint PrefetchLoadHint, groups [][]string, maxParallel int) PrefetchLoadHint {
+	if hint.ConcurrencyLimit <= 0 {
+		hint.ConcurrencyLimit = maxParallel
+	}
+	if hint.ConcurrencyUsed <= 0 {
+		for _, group := range groups {
+			if len(group) > hint.ConcurrencyUsed {
+				hint.ConcurrencyUsed = len(group)
+			}
+		}
+	}
+	if hint.ConcurrencyUsed > hint.ConcurrencyLimit && hint.ConcurrencyLimit > 0 {
+		hint.ConcurrencyUsed = hint.ConcurrencyLimit
+	}
+	return hint
 }
 
 func canonicalNames(names []string) []string {

@@ -113,6 +113,7 @@ func (s *deferredStreamSink) Discard() {
 func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string, state *turnRuntime) {
 	a.wastePrefetch()
 	a.semantixTurn.Add(1)
+	a.prefetchGate.Store(nil)
 	rawInput = RawUserInput(ctx, input)
 	providerInput := input
 	// A fresh user turn starts from zeroed per-turn host state; the new turn's

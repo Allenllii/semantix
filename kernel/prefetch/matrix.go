@@ -95,6 +95,9 @@ type Config struct {
 	// (Issue #254). Applicable only when there is any learned transition; an
 	// empty transition table still yields an empty plan.
 	Epsilon float64
+	// MaxLoad is the slot-occupancy ratio at which speculative work yields
+	// to normal execution (default 0.8).
+	MaxLoad float64
 }
 
 // Defaults returns the built-in configuration.
@@ -107,6 +110,7 @@ func Defaults() Config {
 		WasteHitLimit: 3.0,
 		Decay:         0.2,
 		Epsilon:       0, // disabled by default; enabled by evolve wiring
+		MaxLoad:       DefaultMaxLoad,
 	}
 }
 
@@ -120,6 +124,7 @@ type MatrixPrefetcher struct {
 	readOnly map[string]bool           // next -> observed read-only (safe to prefetch)
 	hit      map[string]float64        // key -> EWMA hit rate
 	waste    map[string]float64        // key -> EWMA waste rate
+	gate     gateCounter
 }
 
 // NewMatrixPrefetcher builds a MatrixPrefetcher with cfg (zero → Defaults).
@@ -145,6 +150,9 @@ func NewMatrixPrefetcher(cfg Config) *MatrixPrefetcher {
 	}
 	if cfg.Epsilon < 0 || cfg.Epsilon > 1 {
 		cfg.Epsilon = def.Epsilon
+	}
+	if cfg.MaxLoad <= 0 || cfg.MaxLoad > 1 {
+		cfg.MaxLoad = def.MaxLoad
 	}
 	return &MatrixPrefetcher{
 		cfg:      cfg,
@@ -253,6 +261,33 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 	}
 	return tasks, nil
 }
+
+// PlanWithLoad implements LoadAwarePrefetcher without changing Plan's frozen
+// behavior. Load is checked before transition lookup so a skip performs no
+// speculative ranking work.
+func (m *MatrixPrefetcher) PlanWithLoad(lastToolNames []string, hint LoadHint) (PlanDecision, error) {
+	m.mu.Lock()
+	maxLoad := m.cfg.MaxLoad
+	m.mu.Unlock()
+	if reason := EvaluateLoad(hint, maxLoad); reason != "" {
+		m.gate.observe(reason)
+		return PlanDecision{Reason: reason}, nil
+	}
+	tasks, err := m.Plan(lastToolNames)
+	if err != nil {
+		return PlanDecision{}, err
+	}
+	reason := ReasonNoCandidate
+	if len(tasks) > 0 {
+		reason = ReasonCandidate
+	}
+	m.gate.observe(reason)
+	return PlanDecision{Tasks: tasks, Reason: reason}, nil
+}
+
+// GateStats returns load-aware outcome counters. Calls through the frozen Plan
+// method are intentionally excluded because they carry no load decision.
+func (m *MatrixPrefetcher) GateStats() GateStats { return m.gate.snapshot() }
 
 // ObserveHit marks a planned prefetch as useful (the predicted tool was
 // actually called).

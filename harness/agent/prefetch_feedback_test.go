@@ -54,3 +54,42 @@ func TestPrefetchReplacementAndExpirySettleAsWaste(t *testing.T) {
 		t.Fatalf("hits=%d wastes=%d", hits, wastes)
 	}
 }
+
+func TestPrefetchGateControlsWarmWithoutCreatingFeedback(t *testing.T) {
+	b := semantix.NewBridge(semantix.Config{Enabled: true})
+	defer b.Close()
+	var hits, wastes int
+	b.Events().Subscribe(func(e kernelevent.Event) {
+		switch e.Kind {
+		case kernelevent.PrefetchHit:
+			hits++
+		case kernelevent.PrefetchWaste:
+			wastes++
+		}
+	})
+	a := &Agent{semantix: b}
+	a.semantixTurn.Store(3)
+
+	if !a.prefetchAllowed() {
+		t.Fatal("cold start must preserve legacy allow behavior")
+	}
+	a.armPrefetch("load_saturated")
+	if a.prefetchAllowed() {
+		t.Fatal("load skip must block the warm")
+	}
+	if hits != 0 || wastes != 0 {
+		t.Fatalf("a skipped warm is not feedback: hits=%d wastes=%d", hits, wastes)
+	}
+	a.armPrefetch("candidate")
+	if !a.prefetchAllowed() {
+		t.Fatal("candidate plan must allow the warm")
+	}
+	a.armPrefetch("no_candidate")
+	if !a.prefetchAllowed() {
+		t.Fatal("no-candidate plan must preserve legacy fail-open warm")
+	}
+	a.semantixTurn.Add(1)
+	if !a.prefetchAllowed() {
+		t.Fatal("a stale prior-turn gate must not block a new turn")
+	}
+}
