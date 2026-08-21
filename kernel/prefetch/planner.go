@@ -103,7 +103,7 @@ func (p *Planner) Plan(lastToolNames []string) ([]PrefetchTask, error) {
 		if spent+cost > budget {
 			break // budget truncation; candidates arrive probability-descending
 		}
-		tasks = append(tasks, PrefetchTask{Kind: "slice-assembly", Key: c.Name, Cost: cost})
+		tasks = append(tasks, PrefetchTask{Kind: "slice-assembly", Key: c.Name, Cost: cost, Locality: LocalityLocal})
 		spent += cost
 		if len(tasks) >= maxTasks {
 			break
