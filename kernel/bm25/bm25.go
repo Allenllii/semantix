@@ -56,7 +56,7 @@ func (ix *Index) Search(query string, k int, scope slice.Scope) ([]slice.Hit, er
 		return []slice.Hit{}, nil
 	}
 
-	queryTerms := uniqueTerms(tokenize(query))
+	queryTerms := uniqueTerms(Tokenize(query))
 	if len(queryTerms) == 0 {
 		return nil, errors.New("bm25: query must contain at least one letter or number")
 	}
@@ -141,7 +141,7 @@ func (ix *Index) Insert(s *slice.Slice) error {
 		return errors.New("bm25: empty slice ID")
 	}
 
-	terms := tokenize(string(s.Content))
+	terms := Tokenize(string(s.Content))
 	if len(terms) == 0 {
 		return errors.New("bm25: slice content must contain at least one letter or number")
 	}
