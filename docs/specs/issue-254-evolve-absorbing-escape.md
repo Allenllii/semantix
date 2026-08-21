@@ -98,9 +98,9 @@ prefetchHitEWMA / prefetchWasteEWMA 更新 → maybeAdjustLocked ─→ 抬降 P
   ε 探针仅覆盖「有知识但被阈值过滤」的吸收态，不引入无意义探测。
 - **随机源**：注入 `*rand.Rand`（可选）或 `math/rand`，供测试用固定种子保证确定性。
 
-**ε 默认与语义**：evolve 侧新增常量 `DefaultEpsilon`（取 `0.1`）与 `Params` 不直接暴露 ε
-（ε 是链路级开关，不是每个会话快照要暴露的目标参数；接线处 `ApplyEvolution` 携带即可，
-见 §3.3）。
+**ε 默认与语义**：`Epsilon` 是 prefetch 的 `Config` 字段（默认 `0`，关闭）。harness 接线层在
+`harness/semantix/evolution.go` 定义 `EscapeEpsilon = 0.1` 并通过类型断言 `interface{ SetEpsilon }`
+启用（见 §3.3）。`Params` 不直接暴露 ε——ε 是链路级开关，不是每个会话快照要暴露的目标参数。
 
 ### 3.2 TauL2 / SuccessFloor 拆分
 
@@ -122,14 +122,15 @@ if l.scheduler != nil {
     _ = l.scheduler.ApplyEvolution(after.SuccessFloor) // 行为门
 }
 if l.prefetcher != nil {
-    // 由 pref.getter 类型断言拿到 Epsilon 设置；或 MatrixPrefetcher 暴露 SetEpsilon
     _ = l.prefetcher.ApplyEvolution(after.PrefetchConf)
-    _ = l.setPrefetchEpsilon(DefaultEpsilon)          // 开启逃逸
+}
+if eps, ok := l.prefetcher.(interface{ SetEpsilon(float64) error }); ok {
+    _ = eps.SetEpsilon(EscapeEpsilon) // 开启吸收态逃逸（0.1）
 }
 ```
 
-> `setPrefetchEpsilon` 为窄接口（`interface{ SetEpsilon(float64) }` 类型断言），避免改
-> `EvolutionTuner` 冻结接口。
+> `SetEpsilon` 通过窄接口类型断言调用（`MatrixPrefetcher` 实现），避免修改 `EvolutionTuner`
+> 冻结接口。scheduler 侧由 `after.SuccessFloor` 驱动，`TauL2` 不再越界到行为门。
 
 ### 3.4 包结构与改动面
 
@@ -146,11 +147,13 @@ harness/semantix/evolution_test.go # 参数拆分接线测试
 ## 4. 测试
 
 - `TestPlanEpsilonProbeEscapesAbsorbingState`（`kernel/prefetch/escape_test.go`）：
-  构造 `MinConf` 高、候选 prob 低 → 正常 Plan 空；设固定种子 + `Epsilon=1.0`（或高值）→
-  Plan 返回 1 个 `probe`（最高 prob 候选）；确认探针计入预算、`Epsilon=0`（默认）时行为不变。
+  构造 `MinConf` 高、候选 prob 低 → 正常 Plan 空；`Epsilon=1.0` → Plan 返回 1 个 `probe`
+  （最高 prob、非 demoted 的候选）；确认探针计入预算、`Epsilon=0`（默认）时行为不变。
+- `TestPlanEpsilonZeroKeepsEmptyPlan`：`Epsilon=0`（默认）时保持空计划（向后兼容）。
 - `TestPlanEpsilonRespectsNoData`：无转移知识时即使 `ε=1` 也返回空（不引入无意义探测）。
-- `TestEvolveSplitSuccessFloorWiring`（`harness/semantix/evolution_test.go`）：参数变化后
-  `scheduler` 收到的是 `after.SuccessFloor` 而非 `after.TauL2`。
+- `TestPlanEpsilonSkipsDemotedCandidates`：被 waste/hit 降级的候选不被选为探针。
+- `TestEvolveSchedulerReceivesSuccessFloor`（`harness/semantix/evolution_test.go`）：参数变化后
+  `scheduler` 收到的是 `after.SuccessFloor`（默认 0.7）而非 `after.TauL2`。
 - 既有 `TestApplyEvolutionChangesNextPlanConfidence` 保持通过（默认 `Epsilon=0` 向后兼容）。
 
 ## 5. 后续候选（不在本轮）
