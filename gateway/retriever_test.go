@@ -130,3 +130,67 @@ func scoresOf(hits []slice.Hit) []float64 {
 	}
 	return out
 }
+
+func TestFuseHitsCarriesLexicalRoute(t *testing.T) {
+	bm := []slice.Hit{
+		{Slice: projectSlice("a", "x"), Score: 5.0},
+		{Slice: projectSlice("b", "y"), Score: 3.0},
+	}
+	vec := []slice.Hit{
+		{Slice: projectSlice("a", "x"), Score: 0.9},
+		{Slice: projectSlice("b", "y"), Score: 0.8},
+		{Slice: projectSlice("c", "z"), Score: 0.7}, // pure-vector hit
+	}
+	got := fuseHits(bm, vec, 10)
+	byID := map[string]slice.Hit{}
+	for _, h := range got {
+		byID[h.Slice.ID] = h
+	}
+	if len(byID) != 3 {
+		t.Fatalf("fuseHits = %d candidates, want 3", len(byID))
+	}
+	if a := byID["a"]; !approx(a.Lexical, 1.0) || !a.LexicalValid {
+		t.Fatalf("a: lexical=%v valid=%v, want 1.0/true (top-1 both routes)", a.Lexical, a.LexicalValid)
+	}
+	if b := byID["b"]; !approx(b.Lexical, 0.6) || !b.LexicalValid {
+		t.Fatalf("b: lexical=%v valid=%v, want 0.6/true (normalized bm route)", b.Lexical, b.LexicalValid)
+	}
+	if c := byID["c"]; !approx(c.Lexical, 0.0) || !c.LexicalValid {
+		t.Fatalf("c: lexical=%v valid=%v, want 0.0/true (pure-vector hit)", c.Lexical, c.LexicalValid)
+	}
+}
+
+func TestVectorIndexFillsLexicalCoverage(t *testing.T) {
+	idx := newRetriever("vector", 0)
+	seedRetriever(t, idx, projectSlice("a", "deploy golang binary to linux server with systemd"))
+	got, err := idx.Search("deploy golang binary linux", 5, slice.Project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) == 0 || !got[0].LexicalValid {
+		t.Fatalf("vector hit must carry LexicalValid, got %+v", got)
+	}
+	if !approx(got[0].Lexical, 1.0) {
+		t.Fatalf("lexical coverage = %v, want 1.0 (all query terms present)", got[0].Lexical)
+	}
+}
+
+func TestBM25HitsCarryLexicalSupport(t *testing.T) {
+	idx := newRetriever("bm25", 0)
+	seedRetriever(t, idx, projectSlice("a", "deploy golang binary to linux server"))
+	got, err := idx.Search("deploy golang", 5, slice.Project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) == 0 || got[0].Lexical != 1.0 || !got[0].LexicalValid {
+		t.Fatalf("bm25 hit must carry lexical=1/valid, got %+v", got)
+	}
+}
+
+func approx(a, b float64) bool {
+	d := a - b
+	if d < 0 {
+		d = -d
+	}
+	return d < 1e-9
+}

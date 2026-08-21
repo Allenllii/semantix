@@ -91,7 +91,9 @@ func (ix *Index) Search(query string, k int, scope slice.Scope) ([]slice.Hit, er
 		if score <= 0 {
 			continue
 		}
-		hits = append(hits, slice.Hit{Slice: cloneSlice(doc.value), Score: score})
+		// BM25 is lexical retrieval: a hit is lexical support by definition
+		// (Issue #260 lexical support gate).
+		hits = append(hits, slice.Hit{Slice: cloneSlice(doc.value), Score: score, Lexical: 1, LexicalValid: true})
 	}
 
 	sort.Slice(hits, func(i, j int) bool {
