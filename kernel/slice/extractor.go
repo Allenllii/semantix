@@ -6,6 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	pathpkg "path"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -26,16 +29,19 @@ type transcriptLine struct {
 	Role      string `json:"role"`
 	Content   string `json:"content"`
 	ToolCalls []struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
+		ID        string          `json:"id"`
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments,omitempty"`
 	} `json:"tool_calls,omitempty"`
 }
 
 // Limits for extracted slice content (kept modest for the MVP).
 const (
-	maxPromptLen = 4000 // bytes of a Prompt slice
-	maxResultLen = 8000 // bytes of a Result slice
-	minToolSeq   = 2    // minimum tool calls for a ToolPattern slice
+	maxPromptLen  = 4000 // bytes of a Prompt slice
+	maxResultLen  = 8000 // bytes of a Result slice
+	minToolSeq    = 2    // minimum tool calls for a ToolPattern slice
+	minContextUse = 2    // repeated observations only; one-off paths are noise
+	maxContextTop = 5    // entries retained per Context summary section
 )
 
 type extractor struct{}
@@ -47,6 +53,7 @@ func NewExtractor() Extractor { return extractor{} }
 // Extract parses one session JSONL transcript into slices:
 //   - Prompt slice: first user message of each turn (bounded)
 //   - ToolPattern slice: tool-name sequence of each turn (>= 2 calls)
+//   - Context slice: repeated project paths, directories, and command heads
 //   - Result slice: final assistant answer of the session (bounded)
 //
 // Malformed lines are skipped (tolerant). Duplicate content (same ID) is
@@ -74,12 +81,217 @@ func (extractor) Extract(sessionJSONL []byte, meta SliceMeta) ([]*Slice, error) 
 	if len(turn) > 0 {
 		flushTurn()
 	}
+	if s := contextSlice(lines, meta); s != nil {
+		out = append(out, s)
+	}
 	if s := finalResultSlice(lines, meta); s != nil {
 		out = append(out, s)
 	}
 	// Partial results are still returned; perr reports a truncated scan
 	// (oversized line) so callers can decide whether to retry/scale up.
 	return dedup(out), perr
+}
+
+var contextPathKeys = map[string]bool{
+	"path": true, "paths": true, "file": true, "files": true,
+	"file_path": true, "file_paths": true, "source_path": true, "destination_path": true,
+	"directory": true, "directories": true, "dir": true, "dirs": true,
+	"cwd": true, "workdir": true,
+}
+
+var shellToolNames = map[string]bool{
+	"bash": true, "shell": true, "exec_command": true, "run_command": true,
+}
+
+var commandFamilies = map[string]bool{
+	"cargo": true, "docker": true, "git": true, "go": true, "make": true,
+	"npm": true, "pnpm": true, "python": true, "python3": true, "uv": true, "yarn": true,
+}
+
+type contextEntry struct {
+	value string
+	count int
+}
+
+func contextSlice(lines []transcriptLine, meta SliceMeta) *Slice {
+	paths := map[string]int{}
+	dirs := map[string]int{}
+	commands := map[string]int{}
+	for _, line := range lines {
+		for _, call := range line.ToolCalls {
+			args := decodeToolArgs(call.Arguments)
+			for _, raw := range contextPaths(args) {
+				p, ok := normalizeContextPath(raw)
+				if !ok {
+					continue
+				}
+				paths[p]++
+				if dir := pathpkg.Dir(p); dir != "." {
+					dirs[dir]++
+				}
+			}
+			if shellToolNames[strings.ToLower(call.Name)] {
+				if head := commandHead(commandValue(args)); head != "" {
+					commands[head]++
+				}
+			}
+		}
+	}
+
+	pathTop := topContextEntries(paths)
+	dirTop := topContextEntries(dirs)
+	commandTop := topContextEntries(commands)
+	if len(pathTop)+len(dirTop)+len(commandTop) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("Project context observed from repeated tool calls:\n")
+	writeContextSection(&b, "Frequent paths:", pathTop)
+	writeContextSection(&b, "Frequent directories:", dirTop)
+	writeContextSection(&b, "Common command heads:", commandTop)
+	return newSlice(Context, Project, []byte(strings.TrimSpace(b.String())), meta)
+}
+
+func decodeToolArgs(raw json.RawMessage) any {
+	if len(raw) == 0 {
+		return nil
+	}
+	var value any
+	if json.Unmarshal(raw, &value) != nil {
+		return nil
+	}
+	if encoded, ok := value.(string); ok {
+		if json.Unmarshal([]byte(encoded), &value) != nil {
+			return nil
+		}
+	}
+	return value
+}
+
+func contextPaths(value any) []string {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for key, field := range object {
+		if contextPathKeys[strings.ToLower(key)] {
+			out = append(out, stringValues(field)...)
+		}
+		if nested, ok := field.(map[string]any); ok {
+			out = append(out, contextPaths(nested)...)
+		}
+		if list, ok := field.([]any); ok {
+			for _, item := range list {
+				out = append(out, contextPaths(item)...)
+			}
+		}
+	}
+	return out
+}
+
+func stringValues(value any) []string {
+	switch value := value.(type) {
+	case string:
+		return []string{value}
+	case []any:
+		var out []string
+		for _, item := range value {
+			out = append(out, stringValues(item)...)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func normalizeContextPath(raw string) (string, bool) {
+	p := strings.TrimSpace(strings.Trim(raw, `"'`))
+	p = strings.ReplaceAll(p, `\`, "/")
+	if p == "" || p == "." || strings.HasPrefix(p, "/") || strings.HasPrefix(p, "~") ||
+		strings.Contains(p, "://") || (len(p) >= 2 && p[1] == ':') {
+		return "", false
+	}
+	p = pathpkg.Clean(p)
+	p = strings.TrimPrefix(p, "./")
+	if p == "" || p == "." || p == ".." || strings.HasPrefix(p, "../") {
+		return "", false
+	}
+	return p, true
+}
+
+func commandValue(value any) string {
+	object, ok := value.(map[string]any)
+	if !ok {
+		return ""
+	}
+	command, _ := object["command"].(string)
+	return command
+}
+
+func commandHead(command string) string {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return ""
+	}
+	first := strings.Trim(fields[0], `"'`)
+	if !validCommandToken(first) {
+		return ""
+	}
+	head := first
+	if commandFamilies[strings.ToLower(first)] && len(fields) > 1 {
+		second := strings.Trim(fields[1], `"'`)
+		if !strings.HasPrefix(second, "-") && validCommandToken(second) {
+			head += " " + second
+		}
+	}
+	return head
+}
+
+func validCommandToken(token string) bool {
+	if token == "" || strings.ContainsAny(token, `/\\=:$`) {
+		return false
+	}
+	for _, r := range token {
+		if !(r == '-' || r == '_' || r == '.' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
+			return false
+		}
+	}
+	return true
+}
+
+func topContextEntries(counts map[string]int) []contextEntry {
+	entries := make([]contextEntry, 0, len(counts))
+	for value, count := range counts {
+		if count >= minContextUse {
+			entries = append(entries, contextEntry{value: value, count: count})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].count != entries[j].count {
+			return entries[i].count > entries[j].count
+		}
+		return entries[i].value < entries[j].value
+	})
+	if len(entries) > maxContextTop {
+		entries = entries[:maxContextTop]
+	}
+	return entries
+}
+
+func writeContextSection(b *strings.Builder, title string, entries []contextEntry) {
+	if len(entries) == 0 {
+		return
+	}
+	b.WriteString(title)
+	b.WriteByte('\n')
+	for _, entry := range entries {
+		b.WriteString("- ")
+		b.WriteString(entry.value)
+		b.WriteString(" (")
+		b.WriteString(strconv.Itoa(entry.count))
+		b.WriteString(")\n")
+	}
 }
 
 func parseTranscript(data []byte) ([]transcriptLine, error) {

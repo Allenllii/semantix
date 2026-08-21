@@ -129,6 +129,38 @@ func TestExtractStoresSlicesInSelectedScope(t *testing.T) {
 	}
 }
 
+func TestExtractDoesNotStoreProjectContextInUserScope(t *testing.T) {
+	input := filepath.Join(t.TempDir(), "session.jsonl")
+	if err := os.WriteFile(input, []byte("{\"role\":\"user\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	extractor := &fakeExtractor{items: []*slice.Slice{
+		{ID: "prompt", Type: slice.Prompt, Scope: slice.Project, Content: []byte("question")},
+		{ID: "context", Type: slice.Context, Scope: slice.Project, Content: []byte("project paths")},
+	}}
+	store := newFakeStore()
+	deps := dependencies{
+		newExtractor: func() slice.Extractor { return extractor },
+		openStore:    func(string) (slice.Store, error) { return store, nil },
+		newIndex:     func() slice.Index { return bm25.New() },
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"extract", "--input", input, "--scope", "user", "--db", filepath.Join(t.TempDir(), "user.db")}, &stdout, &stderr, deps)
+	if code != 0 {
+		t.Fatalf("run() code = %d, stderr = %q", code, stderr.String())
+	}
+	if store.items["context"] != nil {
+		t.Fatal("project Context slice was stored in user scope")
+	}
+	if store.items["prompt"] == nil || store.items["prompt"].Scope != slice.User {
+		t.Fatalf("prompt slice = %#v, want user scope", store.items["prompt"])
+	}
+	if !strings.Contains(stdout.String(), "extracted=2 stored=1 scope=user") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
 func TestSearchLoadsStoreAndRanksResults(t *testing.T) {
 	store := newFakeStore(
 		&slice.Slice{ID: "relevant", Scope: slice.Project, Content: []byte("BM25 cache retrieval")},
