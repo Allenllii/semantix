@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"semantix/kernel/slice"
 )
@@ -272,6 +274,57 @@ func TestGCJSONEnvelope(t *testing.T) {
 	data := env.Data.(map[string]interface{})
 	if data["removed"].(float64) != 1 || data["dry_run"].(bool) != false {
 		t.Fatalf("data = %v", data)
+	}
+}
+
+// The gc JSON envelope carries the typed eviction distribution (Issue #277)
+// alongside the evicted id list; the text path prints a by_type summary.
+func TestGCJSONEnvelopeEvictedByType(t *testing.T) {
+	deps, db := buildMaintenanceDeps(t)
+	// 3 stale Result slices (type 3) + 1 stale Context slice (type 1),
+	// all past retention; cap 2 keeps only the Context (type priority) and
+	// the two Results are evicted.
+	now := time.Now().Unix()
+	line := func(id string, typ int) string {
+		return fmt.Sprintf("{\"id\":%q,\"type\":%d,\"scope\":1,\"created_at\":%d}\n", id, typ, now-48*3600)
+	}
+	if err := os.WriteFile(db, []byte(
+		line("r1", 3)+line("r2", 3)+line("r3", 3)+line("c1", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"gc", "--max-slices", "2", "--db", db, "--json"}, &stdout, &stderr, deps)
+	if code != 0 {
+		t.Fatalf("gc --json code = %d, stderr = %q", code, stderr.String())
+	}
+	var env envelope
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("envelope not valid JSON: %v", err)
+	}
+	data := env.Data.(map[string]interface{})
+	byType, ok := data["evicted_by_type"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("evicted_by_type missing or wrong shape: %v", data["evicted_by_type"])
+	}
+	if byType["result"] != float64(2) || len(byType) != 1 {
+		t.Fatalf("evicted_by_type = %v, want {result: 2} (Context survives by type priority)", byType)
+	}
+
+	// Text path: the by_type summary line lists types deterministically.
+	// Fresh library — the JSON run above already consumed its fixture.
+	deps2, db2 := buildMaintenanceDeps(t)
+	if err := os.WriteFile(db2, []byte(
+		line("r1", 3)+line("r2", 3)+line("r3", 3)+line("c1", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	code = run([]string{"gc", "--max-slices", "2", "--db", db2}, &stdout, &stderr, deps2)
+	if code != 0 {
+		t.Fatalf("gc text code = %d, stderr = %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "by_type result:2") {
+		t.Fatalf("text output missing by_type summary:\n%s", stdout.String())
 	}
 }
 

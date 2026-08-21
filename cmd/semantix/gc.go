@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
+	"strings"
 
 	"semantix/kernel/slice"
 )
@@ -105,6 +107,7 @@ func runGC(args []string, stdout, stderr io.Writer, deps dependencies) error {
 			"expired":         expired,
 			"low_score":       lowScore,
 			"evicted":         overCap,
+			"evicted_by_type": res.EvictedByType, // nil → null when no cap eviction
 			"capacity":        res.Capacity,
 			"archived":        res.Archived,
 			"weights_updated": res.RescoredWeights,
@@ -117,6 +120,18 @@ func runGC(args []string, stdout, stderr io.Writer, deps dependencies) error {
 	} else {
 		fmt.Fprintf(stdout, "gc: checked=%d removed=%d capacity=%d archived=%d weights_updated=%d\n",
 			res.Checked, res.Removed, res.Capacity, res.Archived, res.RescoredWeights)
+	}
+	if len(res.EvictedByType) > 0 {
+		keys := make([]string, 0, len(res.EvictedByType))
+		for k := range res.EvictedByType {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%s:%d", k, res.EvictedByType[k]))
+		}
+		fmt.Fprintf(stdout, "  by_type %s\n", strings.Join(parts, ","))
 	}
 	for _, id := range res.Expired {
 		fmt.Fprintf(stdout, "  expired  %s\n", id)
