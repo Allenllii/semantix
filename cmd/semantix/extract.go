@@ -118,6 +118,7 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	defer closeStore(store)
 
 	stored := 0
+	storedItems := make([]*slice.Slice, 0, len(items))
 	for i, item := range items {
 		if item == nil {
 			return fmt.Errorf("extractor returned nil slice at position %d", i)
@@ -130,9 +131,10 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 			return fmt.Errorf("store slice %q: %w", item.ID, err)
 		}
 		stored++
+		storedItems = append(storedItems, item)
 	}
 
-	rawBytes, storedBytes, compressionRatio := extractionCompression(items)
+	rawBytes, storedBytes, compressionRatio := extractionCompression(storedItems)
 	fmt.Fprintf(stdout, "extracted=%d stored=%d scope=%s db=%s raw_bytes=%d stored_bytes=%d compression_ratio=%.4f\n",
 		len(items), stored, scopeName(scope), dbPath, rawBytes, storedBytes, compressionRatio)
 	return nil

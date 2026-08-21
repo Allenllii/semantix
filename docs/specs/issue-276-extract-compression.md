@@ -46,7 +46,7 @@ compression metadata.
 ## Observability
 
 `semantix extract` reports aggregate `raw_bytes`, `stored_bytes`, and
-`compression_ratio` for the slices it extracted. `compression_ratio` is the
+`compression_ratio` for the slices it successfully stores. `compression_ratio` is the
 fraction saved, `(raw_bytes - stored_bytes) / raw_bytes`, from 0 to 1. Slices
 without compression metadata count their current content bytes as both raw and
 stored bytes.

@@ -27,6 +27,16 @@ func TestExtractReportsAggregateCompression(t *testing.T) {
 			},
 		},
 		{ID: "legacy", Content: []byte("legacy")},
+		{
+			ID:      "filtered-context",
+			Type:    slice.Context,
+			Content: []byte("x"),
+			Meta: slice.SliceMeta{
+				CompressionVersion: "rules-v1",
+				OriginalBytes:      100,
+				StoredBytes:        1,
+			},
+		},
 	}}
 	store := newFakeStore()
 	deps := dependencies{
@@ -36,7 +46,7 @@ func TestExtractReportsAggregateCompression(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"extract", "--input", input, "--db", filepath.Join(t.TempDir(), "slices.db")}, &stdout, &stderr, deps)
+	code := run([]string{"extract", "--input", input, "--scope", "user", "--db", filepath.Join(t.TempDir(), "slices.db")}, &stdout, &stderr, deps)
 	if code != 0 {
 		t.Fatalf("run() code = %d, stderr = %q", code, stderr.String())
 	}
@@ -44,6 +54,9 @@ func TestExtractReportsAggregateCompression(t *testing.T) {
 		if !strings.Contains(stdout.String(), field) {
 			t.Fatalf("stdout = %q, missing %q", stdout.String(), field)
 		}
+	}
+	if store.items["filtered-context"] != nil {
+		t.Fatal("filtered Context slice was unexpectedly stored")
 	}
 }
 
