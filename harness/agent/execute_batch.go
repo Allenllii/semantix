@@ -105,6 +105,11 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 	// scheduler is wired (nil), the static grouping is used unchanged.
 	plan := a.decideRound(ctx, calls)
 	suspended := suspendedToolSet(plan.SuspendTools)
+	// U41 C3 hard_stop (kernel path): a plan-issued hard_stop blocks every
+	// call in this round before any tool runs. Outcomes stay paired with the
+	// stored assistant tool calls; handleToolRound terminates the run after
+	// persisting them.
+	planHardStop := plan.BudgetAction == sched.BudgetActionHardStop
 
 	results := make([]string, len(calls))
 	outcomes := make([]toolOutcome, len(calls))
@@ -124,6 +129,12 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 	earlierWriterRan := false
 	surfaceWriters := make([]bool, len(calls))
 	run := func(i int) {
+		if planHardStop {
+			const msg = "blocked: window budget exhausted (scheduler hard_stop)"
+			outcomes[i] = toolOutcome{output: msg, blocked: true, errMsg: msg}
+			results[i] = msg
+			return
+		}
 		if _, blocked := suspended[calls[i].Name]; blocked {
 			const msg = "suspended by scheduler"
 			outcomes[i] = toolOutcome{output: msg, blocked: true, errMsg: msg}

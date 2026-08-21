@@ -111,12 +111,15 @@ func (b *BudgetController) classify() string {
 	}
 }
 
-// budgetHardStopError returns the user-visible hard_stop message (U41 C3).
-// It is an explicit, non-silent error: the harness refuses the next tool round
-// and tells the user exactly how much was spent against the cap.
+// budgetHardStopError returns the user-visible hard_stop message (U41 C3),
+// shared by the local-account guard and the kernel RoundPlan path. It is an
+// explicit, non-silent error: the harness refuses the tool round and tells
+// the user exactly how much was spent against the cap. Without a local
+// controller (kernel-only wiring) the spend snapshot is unavailable, so the
+// message names the scheduler as the source instead.
 func (a *Agent) budgetHardStopError() error {
 	if a == nil || a.budgetCtrl == nil {
-		return fmt.Errorf("budget exhausted")
+		return fmt.Errorf("budget exhausted: scheduler issued hard_stop; no further tool calls will be issued")
 	}
 	snap := a.budgetCtrl.Snapshot()
 	return fmt.Errorf("budget exhausted: spent $%.4f of the $%.4f %s limit; no further tool calls will be issued",
