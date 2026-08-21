@@ -263,6 +263,11 @@ func buildCommands() []commandSpec {
 		summary: "prune stale / low-weight slices",
 		run:     errCommand("gc", runGC),
 		completionFlags: []string{"--retention-days", "--min-weight", "--dry-run", "--json"}},
+	{name: "reject", group: groupMaintenance,
+		usage:   "semantix reject <slice-id> [--reason ...] [--db ...] [--json]",
+		summary: "mark a slice as user-rejected (Rejected++ / UserFeedback-1)",
+		run:     errCommand("reject", runReject),
+		completionFlags: []string{"--reason", "--db", "--json"}},
 	}
 }
 
