@@ -74,6 +74,11 @@ func (l *EvolutionLoop) observe(e kernelevent.Event) {
 		if json.Unmarshal(e.Data, &p) == nil {
 			targets = p.Targets
 		}
+	case kernelevent.SliceReject:
+		// Issue #267 step 3: injection pollution is the last unproduced
+		// signal source (PR #228 wired prefetch_hit/waste). targets stays
+		// nil so the prefetch feedback loop below never sees rejections.
+		signal = "inject_pollution"
 	default:
 		return
 	}
