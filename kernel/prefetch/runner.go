@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"semantix/kernel/slice"
 )
@@ -33,6 +34,10 @@ type Runner struct {
 	// is treated as Project, since prefetch results are meant for reuse
 	// across sessions.
 	Scope slice.Scope
+
+	// BlockedEgress counts tasks rejected for crossing a process boundary
+	// (Issue #273): egress or undeclared-locality tasks are never executed.
+	BlockedEgress atomic.Int64
 }
 
 // Run executes tasks in order and stores each successful result. It returns
@@ -49,6 +54,14 @@ func (r *Runner) Run(ctx context.Context, tasks []PrefetchTask) ([]string, error
 	var ids []string
 	var errs []error
 	for _, t := range tasks {
+		// Issue #273 red line: only explicitly-local tasks run. Egress (or
+		// undeclared) tasks are rejected — a speculative external call leaks
+		// inferred user intent to an observer before any commit, and no
+		// read-only/ACL discipline can unwatch it.
+		if t.Locality != LocalityLocal {
+			r.BlockedEgress.Add(1)
+			continue
+		}
 		content, err := r.Executor.Execute(ctx, t)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("prefetch: execute %s %q: %w", t.Kind, t.Key, err))

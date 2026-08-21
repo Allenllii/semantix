@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -277,6 +278,7 @@ func TestValidateAcceptsRetrieverKindsAndJudge(t *testing.T) {
 		t.Fatalf("wired judge rejected: %v", err)
 	}
 }
+
 // TestLexicalFloorConfigParse: lexical_floor maps to Cache.LexicalFloor
 // (Issue #260). Missing = nil (kernel default), 0 = gate disabled,
 // any other value = the configured floor.
@@ -320,5 +322,34 @@ func TestLexicalFloorConfigParse(t *testing.T) {
 	}
 	if got := load("0.2"); got == nil || *got != 0.2 {
 		t.Fatalf("lexical_floor=0.2 = %v, want 0.2", got)
+	}
+}
+
+// TestValidateFalseHitSim covers the Issue #262 retry-threshold config
+// contract: -1 (disabled) and [0,1] accepted, NaN/Inf/out-of-range rejected.
+func TestValidateFalseHitSim(t *testing.T) {
+	base := func() *Config {
+		c := DefaultConfig()
+		c.Server.GatewayKey = "k"
+		c.Store.DB = "x.jsonl"
+		c.Upstreams = []UpstreamConfig{{
+			Name: "ds", BaseURL: "https://u/v1", APIKey: "k",
+			ModelAlias: []string{"m"}, UpstreamModel: "m", Vendor: "deepseek",
+		}}
+		return c
+	}
+	for _, v := range []float64{-1, 0, 0.3, 0.6, 1} {
+		c := base()
+		c.Cache.FalseHitSim = v
+		if err := c.validate(); err != nil {
+			t.Errorf("false_hit_sim=%v rejected: %v", v, err)
+		}
+	}
+	for _, v := range []float64{-2, 1.5, math.NaN(), math.Inf(1)} {
+		c := base()
+		c.Cache.FalseHitSim = v
+		if err := c.validate(); err == nil {
+			t.Errorf("false_hit_sim=%v must be rejected", v)
+		}
 	}
 }

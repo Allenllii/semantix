@@ -118,11 +118,18 @@ type SliceRejectPayload struct {
 // PrefetchHitPayload reports a prefetch that was used.
 type PrefetchHitPayload struct {
 	Targets []string `json:"targets"`
+	// LeadMs is consume − warm-up-completion in milliseconds; positive means
+	// the prefetch finished in time (Markov timeliness, Issue #272).
+	LeadMs int64 `json:"lead_ms,omitempty"`
 }
 
 // PrefetchWastePayload reports a prefetch that was not used.
 type PrefetchWastePayload struct {
 	Targets []string `json:"targets"`
+	// LeadMs is the survival time (outcome decision − warm-up completion),
+	// not a consumption lead: wastes were never consumed. Consumers of the
+	// timeliness metric aggregate hits only (Issue #272).
+	LeadMs int64 `json:"lead_ms,omitempty"`
 }
 
 // CompactPayload reports a context compaction. Trigger is "snip"|"prune"|"summary".

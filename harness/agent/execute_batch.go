@@ -103,7 +103,8 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 	// P3 scheduler: decide parallel groups + tier once per round. The plan
 	// replaces the static partitionToolCalls grouping below; when no
 	// scheduler is wired (nil), the static grouping is used unchanged.
-	plan := a.decideRound(ctx, calls)
+	plan := a.decideRound(ctx, turn, calls)
+	a.armPrefetch(plan.PrefetchReason)
 	suspended := suspendedToolSet(plan.SuspendTools)
 	// U41 C3 hard_stop (kernel path): a plan-issued hard_stop blocks every
 	// call in this round before any tool runs. Outcomes stay paired with the
@@ -588,7 +589,7 @@ launch:
 // decideRound runs the P3 scheduler for one tool round. Returns the zero
 // RoundPlan when no scheduler is wired so callers degrade to the static
 // grouping (partitionToolCalls).
-func (a *Agent) decideRound(ctx context.Context, calls []provider.ToolCall) sched.RoundPlan {
+func (a *Agent) decideRound(ctx context.Context, turn *turnRuntime, calls []provider.ToolCall) sched.RoundPlan {
 	if a.sched == nil {
 		return sched.RoundPlan{}
 	}
@@ -604,9 +605,14 @@ func (a *Agent) decideRound(ctx context.Context, calls []provider.ToolCall) sche
 	suspended, budget := a.resourceSchedulingState()
 	a.observePrefetchTransitions(info)
 	plan, err := a.sched.DecideRound(ctx, sched.RoundInput{
+		Intent:         intentName(turn.policy.Intent),
 		ToolCalls:      info,
 		SuspendedTools: suspended,
 		Budget:         sched.BudgetState{LimitUSD: budget.LimitUSD, SpentUSD: budget.SpentUSD, Window: budget.Window},
+		PrefetchLoad: sched.PrefetchLoadHint{
+			WaitWindowMS:   a.prefetchWaitMS.Load(),
+			TaskEstimateMS: a.prefetchTaskMS.Load(),
+		},
 	})
 	if err != nil {
 		if a.resources != nil {

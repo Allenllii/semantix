@@ -199,6 +199,9 @@ func TestJudgeApprovalLandsOnL3HitEvent(t *testing.T) {
 	if !evs[0].L3Reuse {
 		t.Fatal("the hit event must be the L3 reuse event")
 	}
+	if evs[0].L3SliceID != "grey-approve" {
+		t.Fatalf("L3SliceID = %q, want grey-approve (veto entry point)", evs[0].L3SliceID)
+	}
 	if len(evs[0].JudgeDecisions) != 1 || evs[0].JudgeDecisions[0].Verdict != "approved" {
 		t.Fatalf("judge decisions on the hit event = %+v, want one approved", evs[0].JudgeDecisions)
 	}

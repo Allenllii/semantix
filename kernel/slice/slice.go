@@ -94,6 +94,14 @@ type SliceMeta struct {
 	TaskType      string
 	Language      string
 	ProjectSlug   string
+	// CompressionVersion identifies the deterministic extraction rules applied
+	// before Content and its hash-derived ID were produced. Empty means a
+	// legacy or generated slice that did not pass through source compression.
+	CompressionVersion string `json:"compression_version,omitempty"`
+	// OriginalBytes and StoredBytes make extraction compression observable
+	// without mixing non-LLM work into the model usage ledger.
+	OriginalBytes int `json:"original_bytes,omitempty"`
+	StoredBytes   int `json:"stored_bytes,omitempty"`
 	// Deps captures the dependency fingerprint at slice time (path -> sha256,
 	// Issue #8): reuse is gated on these files not having changed.
 	Deps fingerprint.Deps `json:"deps,omitempty"`
