@@ -13,7 +13,6 @@ host's clone of github.com/uw-syfi/TraceLab timed out).
 
 import argparse
 import hashlib
-import json
 import pathlib
 import sys
 import urllib.request
@@ -24,7 +23,8 @@ ASSET = "syfi_coding_trace.jsonl.gz"
 
 # SHA-256 of ASSET. PLACEHOLDER: fill from the upstream release once the
 # download is verified on a reachable network (see README "限制").
-# A mismatch aborts loudly rather than trusting a truncated/corrupt file.
+# Mismatch OR placeholder aborts (unless --allow-unverified) rather than
+# trusting a truncated/corrupt or unverified file.
 EXPECTED_SHA256 = {
     ASSET: "PLACEHOLDER-SHA256",
 }
@@ -38,9 +38,8 @@ def _sha256(path: pathlib.Path) -> str:
     return h.hexdigest()
 
 
-def download(out: pathlib.Path) -> pathlib.Path:
-    """Fetch the trace asset to out/, verifying SHA-256. Skeleton: resolves
-    the release download URL via the GitHub API and streams the asset."""
+def download(out: pathlib.Path, allow_unverified: bool = False) -> pathlib.Path:
+    """Fetch the trace asset to out/, verifying SHA-256 when non-placeholder."""
     url = f"https://github.com/{TRACELAB_REPO}/releases/latest/download/{ASSET}"
     dst = out / ASSET
     out.mkdir(parents=True, exist_ok=True)
@@ -49,7 +48,15 @@ def download(out: pathlib.Path) -> pathlib.Path:
     got = _sha256(dst)
     want = EXPECTED_SHA256[ASSET]
     if want == "PLACEHOLDER-SHA256":
-        print(f"NOTE: checksum is a placeholder; not verifying {got}", file=sys.stderr)
+        # The repo-checked checksum is not filled yet: refuse to hand back an
+        # unverified artifact unless explicitly overridden.
+        if not allow_unverified:
+            raise SystemExit(
+                "checksum is a placeholder (not yet verified); "
+                "pass --allow-unverified to accept the download anyway"
+            )
+        print(f"NOTE: checksum placeholder accepted via --allow-unverified ({got})",
+              file=sys.stderr)
         return dst
     if got != want:
         print(f"checksum mismatch: got {got}, want {want}", file=sys.stderr)
@@ -58,10 +65,9 @@ def download(out: pathlib.Path) -> pathlib.Path:
 
 
 def download_to(dst: pathlib.Path, url: str) -> None:
-    # Skeleton: streaming download with a raw or API-authenticated request.
+    # Skeleton: streaming download from the release asset URL.
     req = urllib.request.Request(url, headers={"User-Agent": "semantix-tracelab"})
     with urllib.request.urlopen(req, timeout=60) as resp, dst.open("wb") as f:
-        sh = hashlib.sha256()  # computed downstream by _sha256; stream copy here
         while True:
             chunk = resp.read(1 << 20)
             if not chunk:
@@ -73,8 +79,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", type=pathlib.Path, default=pathlib.Path("tracelab-data"),
                     help="destination directory for the downloaded asset")
+    ap.add_argument("--allow-unverified", action="store_true",
+                    help="accept a download even when the checksum is a placeholder")
     args = ap.parse_args()
-    dst = download(args.out)
+    dst = download(args.out, allow_unverified=args.allow_unverified)
     print(f"ok: {dst}")
 
 
