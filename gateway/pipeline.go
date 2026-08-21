@@ -130,25 +130,54 @@ func (g *Gateway) l3Eligible(id, vendor string) bool {
 }
 
 // rewriteOutgoing rewrites the outgoing body in place: the client model
-// alias is mapped to the upstream model name, and (when an injection block
-// was assembled) the block is appended to the first system message
-// (byte-stable prefix tail, L1) or prepended as a new system message. All
-// other request fields pass through untouched.
+// alias is mapped to the upstream model name, the prefix-hygiene middleware
+// runs (GLM-P0-2, #290: attribution stripping / tools canonicalization /
+// per-upstream cache_control policy), and (when an injection block was
+// assembled) the block is appended to the first system message (byte-stable
+// prefix tail, L1) or prepended as a new system message. All other request
+// fields pass through untouched. Sanitation operates on the decoded body
+// before injection so both the injected and non-injected paths ship the
+// same sanitized prefix.
 func (g *Gateway) rewriteOutgoing(body []byte, req *chatRequest, up UpstreamConfig, inj *inject.Injection) []byte {
 	var raw map[string]any
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return body
 	}
 	raw["model"] = up.UpstreamModel
+	g.sanitizeOutgoing(raw, up)
 	if inj != nil && inj.Text != "" {
-		messages := append([]chatMessage(nil), req.Messages...)
-		raw["messages"] = attachBlock(messages, inj.Text)
+		if msgs, ok := raw["messages"].([]any); ok {
+			raw["messages"] = attachBlockRaw(msgs, inj.Text)
+		}
 	}
 	out, err := json.Marshal(raw)
 	if err != nil {
 		return body
 	}
 	return out
+}
+
+// attachBlockRaw is attachBlock over the decoded JSON form: it appends block
+// to the last string-content system message, or prepends a system message
+// when none exists. Operating on the decoded body (rather than re-encoding
+// req.Messages) preserves whatever the sanitizer just did to the prefix.
+func attachBlockRaw(messages []any, block string) []any {
+	last := -1
+	for i, m := range messages {
+		msg, ok := m.(map[string]any)
+		if !ok || msg["role"] != "system" {
+			continue
+		}
+		if _, ok := msg["content"].(string); ok {
+			last = i
+		}
+	}
+	if last >= 0 {
+		msg := messages[last].(map[string]any)
+		msg["content"] = msg["content"].(string) + "\n\n" + block
+		return messages
+	}
+	return append([]any{map[string]any{"role": "system", "content": block}}, messages...)
 }
 
 // attachBlock appends block to the last string-content system message (the
