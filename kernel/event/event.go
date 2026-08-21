@@ -60,12 +60,18 @@ type Event struct {
 type TurnStartedPayload struct{}
 
 // UsagePayload reports model-call token usage including cache breakdown.
+// Provider/Vendor/Model/Exact are optional per-endpoint calibration keys
+// (GLM-P0-3 / #291; wire: append-only) matching kernel/usage.Event.
 type UsagePayload struct {
 	PromptTokens  int     `json:"prompt_tokens"`
 	CacheHit      int     `json:"cache_hit"`
 	CacheMiss     int     `json:"cache_miss"`
 	CompletionTok int     `json:"completion_tokens"`
 	CostUSD       float64 `json:"cost_usd"`
+	Provider      string  `json:"provider,omitempty"` // upstream endpoint name
+	Vendor        string  `json:"vendor,omitempty"`   // wire shape: "openai" | "anthropic" | ...
+	Model         string  `json:"model,omitempty"`
+	Exact         bool    `json:"exact,omitempty"` // real provider accounting vs bytes/4 estimate
 }
 
 // ToolDispatchPayload describes one dispatched tool call.

@@ -56,7 +56,8 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	if !g.disabled {
 		if res, lerr := g.decider.DecideL3(ctx, q); lerr == nil && res != nil && g.l3Eligible(res.SliceID, up.Vendor) {
 			g.recordUsage(usage.Event{
-				SessionID: sessionID, TokensIn: int64(len(query)/4) + int64(len(res.Response)/4),
+				SessionID: sessionID, Provider: up.Name, Vendor: up.Vendor, Model: req.Model,
+				TokensIn: int64(len(query)/4) + int64(len(res.Response)/4),
 				TokensOut: 0, CacheHitToken: int64(len(res.Response) / 4),
 				L3Reuse: true, JudgeDecisions: jc.drain(), At: g.now().Unix(),
 			})
@@ -101,13 +102,13 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 
 	if req.Stream {
 		if up.Vendor == "anthropic" {
-			g.streamThroughAnthropic(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, jc)
+			g.streamThroughAnthropic(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up, jc)
 			return
 		}
-		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, jc)
+		g.streamThrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up, jc)
 		return
 	}
-	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up.Vendor, jc)
+	g.passthrough(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up, jc)
 }
 
 // l3Eligible applies the gateway-side TTL window on top of the kernel
@@ -209,7 +210,8 @@ func (g *Gateway) forward(ctx context.Context, up UpstreamConfig, body []byte) (
 // successful exchanges, so failed requests never enter the reuse library.
 // Anthropic responses are translated to OpenAI chat.completion shape first
 // (the client surface is always OpenAI-compatible).
-func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, vendor string, jc *judgeCollector) {
+func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector) {
+	vendor := up.Vendor
 	out, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 	if err != nil {
 		writeAPIError(w, http.StatusBadGateway, "upstream_error",
@@ -256,15 +258,27 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 	w.WriteHeader(resp.StatusCode)
 	_, _ = w.Write(out)
 
-	g.recordUsage(usage.Event{
+	// Real provider accounting when the upstream carried usage (GLM-P0-3 /
+	// #291); the bytes/4 estimate stays as the fallback, marked Exact=false.
+	ev := usage.Event{
 		SessionID:      sessionID,
+		Provider:       up.Name,
+		Vendor:         vendor,
+		Model:          req.Model,
 		TokensIn:       int64(len(query)/4) + injectedTokens,
 		TokensOut:      int64(len(out) / 4),
 		InjectedTokens: injectedTokens,
 		SliceHits:      sliceHits,
 		JudgeDecisions: jc.drain(),
 		At:             g.now().Unix(),
-	})
+	}
+	if nu, ok := parseUsageBody(out); ok {
+		ev.TokensIn = nu.Prompt
+		ev.TokensOut = nu.Completion
+		ev.CacheHitToken = nu.CacheHit
+		ev.Exact = true
+	}
+	g.recordUsage(ev)
 }
 
 // streamThrough relays a streaming upstream response chunk by chunk (SSE),
@@ -277,7 +291,7 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 // failed exchanges are not recorded (design §0.3 documented debt, now paid).
 // If the upstream ends without a [DONE] marker (abnormal disconnect), the
 // gateway appends one so the client never hangs on an unterminated stream.
-func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, jc *judgeCollector) {
+func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 		writeAPIError(w, resp.StatusCode, "upstream_error",
@@ -342,15 +356,28 @@ func (g *Gateway) streamThrough(w http.ResponseWriter, resp *http.Response, sess
 	if agg.Complete() {
 		tokensOut = int64(len(agg.Content()) / 4)
 	}
-	g.recordUsage(usage.Event{
+	ev := usage.Event{
 		SessionID:      sessionID,
+		Provider:       up.Name,
+		Vendor:         up.Vendor,
+		Model:          req.Model,
 		TokensIn:       int64(len(query)/4) + injectedTokens,
 		TokensOut:      tokensOut,
 		InjectedTokens: injectedTokens,
 		SliceHits:      sliceHits,
 		JudgeDecisions: jc.drain(),
 		At:             g.now().Unix(),
-	})
+	}
+	// The relayed stream's own usage frame is the real provider accounting
+	// (GLM-P0-3 / #291): prefer it over the bytes/4 estimate. writeUsageChunk
+	// syntheses never land here — the aggregator only captured upstream frames.
+	if nu, ok := parseUsageRaw(agg.UsageRaw()); ok {
+		ev.TokensIn = nu.Prompt
+		ev.TokensOut = nu.Completion
+		ev.CacheHitToken = nu.CacheHit
+		ev.Exact = true
+	}
+	g.recordUsage(ev)
 }
 
 // isHopByHopHeader reports connection-scoped headers that must never be

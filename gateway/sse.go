@@ -41,6 +41,7 @@ type sseAggregator struct {
 	overflow     bool
 	done         bool
 	sawUsage     bool   // a data event carried a top-level "usage" field
+	usageRaw     []byte // raw bytes of the last non-null usage object seen
 	eventID      string // id of the first chat.completion.chunk event
 	limit        int    // content aggregation bound
 	lineMax      int    // per-line buffer bound
@@ -136,6 +137,10 @@ func (a *sseAggregator) flushEvent() {
 	}
 	if len(evt.Usage) > 0 && string(evt.Usage) != "null" {
 		a.sawUsage = true
+		// Keep the raw object (last frame wins: OpenAI-style streams put the
+		// authoritative usage on the terminal chunk) so the relay can meter
+		// real provider accounting instead of bytes/4 (GLM-P0-3 / #291).
+		a.usageRaw = append(a.usageRaw[:0], evt.Usage...)
 	}
 	if len(evt.Choices) == 0 {
 		return // usage-only (or empty) event
@@ -170,6 +175,13 @@ func (a *sseAggregator) Complete() bool {
 // must not synthesize a usage chunk.
 func (a *sseAggregator) SawUsage() bool {
 	return a.sawUsage
+}
+
+// UsageRaw returns the raw JSON of the last non-null usage object relayed,
+// or nil when the stream carried none. Callers normalize it with
+// parseUsageRaw for real provider accounting (GLM-P0-3 / #291).
+func (a *sseAggregator) UsageRaw() []byte {
+	return a.usageRaw
 }
 
 // Overflowed reports whether an aggregation bound was crossed. Callers

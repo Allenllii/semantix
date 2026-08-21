@@ -59,6 +59,57 @@ func TestRecorderAppendAndSummarize(t *testing.T) {
 	}
 }
 
+// TestSummarizeByProvider covers the #291 per-endpoint grouping: exact
+// events feed the calibration figures, estimated events count presence only
+// (they never observed provider cache accounting), and pre-#291 lines land
+// under the "" key.
+func TestSummarizeByProvider(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	r, err := NewRecorder(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := []Event{
+		{Provider: "tokenhub", Vendor: "openai", Model: "glm-5.3", Exact: true,
+			TokensIn: 2620, TokensOut: 15, CacheHitToken: 2560},
+		{Provider: "tokenhub", Vendor: "anthropic", Model: "glm-5.3", Exact: true,
+			TokensIn: 2620, TokensOut: 15, CacheHitToken: 2556},
+		{Provider: "tokenhub", TokensIn: 999, TokensOut: 9}, // estimated turn
+		{Provider: "tokenhub", TokensIn: 40, L3Reuse: true, CacheHitToken: 30},
+		{TokensIn: 500, TokensOut: 50}, // pre-#291 line: no provider
+	}
+	for _, e := range evs {
+		if err := r.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := Summarize(path, DefaultCostMissPerMTok, DefaultCostHitPerMTok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := s.ByProvider["tokenhub"]
+	if th == nil || th.Events != 4 || th.ExactEvents != 2 {
+		t.Fatalf("tokenhub stats = %+v, want 4 events / 2 exact", th)
+	}
+	// Estimated + L3 turns must not pollute the exact-metered figures.
+	if th.TokensIn != 5240 || th.CacheHitTokens != 5116 || th.TokensOut != 30 {
+		t.Fatalf("tokenhub exact meters = %+v", th)
+	}
+	if th.L3Reuses != 1 {
+		t.Fatalf("tokenhub L3 = %d, want 1", th.L3Reuses)
+	}
+	if got := th.L1HitRate(); got <= 0.97 || got >= 0.98 {
+		t.Fatalf("L1HitRate = %v, want ≈0.976 (5116/5240)", got)
+	}
+	legacy := s.ByProvider[""]
+	if legacy == nil || legacy.Events != 1 || legacy.ExactEvents != 0 || legacy.TokensIn != 0 {
+		t.Fatalf("legacy bucket = %+v", legacy)
+	}
+	if (&ProviderStats{}).L1HitRate() != 0 {
+		t.Fatal("empty stats hit rate must be 0")
+	}
+}
+
 func TestSummarizeToleratesBadLines(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "usage.jsonl")
 	if _, err := NewRecorder(path); err != nil {
