@@ -66,6 +66,8 @@ type Bridge struct {
 	// attribute the incremental per-turn delta in Reuse.
 	lastSavings float64
 	evolution   *EvolutionLoop
+	statsWG     sync.WaitGroup
+	closing     bool
 }
 
 // NewBridge builds a Bridge from cfg.
@@ -148,10 +150,11 @@ func (b *Bridge) InjectDetailed(ctx context.Context, query string) InjectResult 
 	if !b.Enabled() || !b.cfg.Inject {
 		return InjectResult{}
 	}
-	idx, err := b.kernelIndex()
+	store, idx, err := b.kernelIndex()
 	if err != nil {
 		return InjectResult{}
 	}
+	closeSliceStore(store)
 	z := zone.Default()
 	inj, err := (&inject.Injector{
 		Index:  idx,
@@ -170,7 +173,43 @@ func (b *Bridge) InjectDetailed(ctx context.Context, query string) InjectResult 
 		}
 	}
 	sort.Strings(targets)
+	b.recordInjection(targets, inj.Bytes)
 	return InjectResult{Text: inj.Text, Targets: targets}
+}
+
+func (b *Bridge) recordInjection(ids []string, bytes int) {
+	if len(ids) == 0 {
+		return
+	}
+	ids = append([]string(nil), ids...)
+	now := time.Now().UTC()
+	projectDB := filepath.Join(b.projectDir(), ".semantix", "project.db")
+	b.mu.Lock()
+	if b.closing {
+		b.mu.Unlock()
+		return
+	}
+	b.statsWG.Add(1)
+	session := b.label
+	b.mu.Unlock()
+
+	data, err := json.Marshal(kernelevent.SliceInjectPayload{SliceIDs: ids, Bytes: bytes})
+	if err == nil {
+		b.events.Emit(kernelevent.Event{Kind: kernelevent.SliceInject, SessionID: session, At: now, Data: data})
+	}
+	go func() {
+		defer b.statsWG.Done()
+		store, err := slice.NewFileStore(projectDB)
+		if err != nil {
+			return
+		}
+		defer closeSliceStore(store)
+		deltas := make(map[string]slice.SliceStats, len(ids))
+		for _, id := range ids {
+			deltas[id] = slice.SliceStats{Injected: 1, LastUsed: now.Unix()}
+		}
+		_ = slice.ApplyStats(store, deltas)
+	}()
 }
 
 // RecordPrefetch emits one terminal outcome for a warmed result.
@@ -205,10 +244,11 @@ func (b *Bridge) Reuse(ctx context.Context, query string) ReuseSummary {
 	if !b.Enabled() || query == "" {
 		return ReuseSummary{}
 	}
-	idx, err := b.kernelIndex()
+	store, idx, err := b.kernelIndex()
 	if err != nil {
 		return ReuseSummary{}
 	}
+	defer closeSliceStore(store)
 	hits, err := idx.Search(query, 5, slice.Project)
 	if err != nil {
 		return ReuseSummary{}
@@ -236,24 +276,32 @@ func (b *Bridge) Reuse(ctx context.Context, query string) ReuseSummary {
 // covering every scope (kernel CLI lookup/inject parity). Rebuilt per call:
 // the store is a small JSONL file and indexing is millisecond-scale; caching
 // is deferred to the kernel wiring follow-up (U40).
-func (b *Bridge) kernelIndex() (slice.Index, error) {
+func (b *Bridge) kernelIndex() (slice.Store, slice.Index, error) {
 	store, err := slice.NewFileStore(filepath.Join(b.projectDir(), ".semantix", "project.db"))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	idx := bm25.New()
 	for _, scope := range []slice.Scope{slice.Session, slice.Project, slice.User} {
 		items, err := store.List(scope)
 		if err != nil {
-			return nil, err
+			closeSliceStore(store)
+			return nil, nil, err
 		}
 		for _, sl := range items {
 			if err := idx.Insert(sl); err != nil {
-				return nil, err
+				closeSliceStore(store)
+				return nil, nil, err
 			}
 		}
 	}
-	return idx, nil
+	return store, idx, nil
+}
+
+func closeSliceStore(store slice.Store) {
+	if closer, ok := store.(interface{ Close() error }); ok {
+		_ = closer.Close()
+	}
 }
 
 // projectDir resolves the kernel project directory for in-process store and
@@ -343,6 +391,10 @@ func (b *Bridge) sessionSink() *HarnessSink {
 
 // Close flushes and closes the mirror sink, if created.
 func (b *Bridge) Close() error {
+	b.mu.Lock()
+	b.closing = true
+	b.mu.Unlock()
+	b.statsWG.Wait()
 	if b.evolution != nil {
 		b.evolution.Close()
 	}
