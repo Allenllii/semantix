@@ -71,6 +71,13 @@ type Config struct {
 	WasteHitLimit float64
 	// Decay is the EWMA smoothing for hit/waste rates (default 0.2).
 	Decay float64
+	// Epsilon is the absorbing-state escape probability (default 0 =
+	// disabled). When every candidate falls below MinConf and the plan
+	// would be empty, Plan probes the highest-probability excluded candidate
+	// with probability Epsilon to keep a trickle of hit/waste signal flowing
+	// (Issue #254). Applicable only when there is any learned transition; an
+	// empty transition table still yields an empty plan.
+	Epsilon float64
 }
 
 // Defaults returns the built-in configuration.
@@ -82,6 +89,7 @@ func Defaults() Config {
 		BaseCost:      512,
 		WasteHitLimit: 3.0,
 		Decay:         0.2,
+		Epsilon:       0, // disabled by default; enabled by evolve wiring
 	}
 }
 
@@ -117,6 +125,9 @@ func NewMatrixPrefetcher(cfg Config) *MatrixPrefetcher {
 	}
 	if cfg.Decay <= 0 || cfg.Decay > 1 {
 		cfg.Decay = def.Decay
+	}
+	if cfg.Epsilon < 0 || cfg.Epsilon > 1 {
+		cfg.Epsilon = def.Epsilon
 	}
 	return &MatrixPrefetcher{
 		cfg:      cfg,
