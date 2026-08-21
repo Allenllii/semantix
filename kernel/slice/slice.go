@@ -47,6 +47,28 @@ func (t SliceType) String() string {
 	return "unknown"
 }
 
+// EvictPriorityOf returns the type's eviction priority: lower values are
+// evicted first when the library cap overflows. The v1 table is fixed and
+// deterministic (Issue #277 typed context eviction): result/tool_pattern go
+// stale fastest, prompt/context are project knowledge worth keeping, memory
+// sits in between, and unknown types take the most conservative slot so a
+// future type is never prioritized for removal.
+func EvictPriorityOf(t SliceType) int {
+	switch t {
+	case Result:
+		return 0
+	case ToolPattern:
+		return 1
+	case Memory:
+		return 2
+	case Prompt:
+		return 3
+	case Context:
+		return 4
+	}
+	return 5
+}
+
 // String returns the stable wire name of a Scope.
 func (s Scope) String() string {
 	switch s {

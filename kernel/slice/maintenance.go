@@ -173,19 +173,25 @@ type GCResult struct {
 	Removed         int      // slices removed (or that would be, in dry-run)
 	Expired         []string // ids expired by retention
 	LowScore        []string // ids below the weight threshold
-	OverCap         []string // ids evicted by the capacity cap
-	Capacity        int      // effective MaxSlices (0 = unlimited)
-	Archived        int      // slices appended to ArchivePath
-	RescoredWeights int      // weights that changed in the rescore pass
+	OverCap []string // ids evicted by the capacity cap
+	// EvictedByType counts the capacity-cap evictions per type wire name
+	// (result/tool_pattern/memory/prompt/context; Issue #277). Same source
+	// of truth as OverCap — retention/low-score removals never mix in.
+	// nil when the pass evicted nothing by cap.
+	EvictedByType   map[string]int
+	Capacity        int // effective MaxSlices (0 = unlimited)
+	Archived        int // slices appended to ArchivePath
+	RescoredWeights int // weights that changed in the rescore pass
 }
 
 // GC is the scoring + eviction pass over the store. Pipeline: optional
 // rescore → threshold criteria (retention OR min-weight; legacy exemptions
-// preserved) → capacity cap (deterministic order: unprotected-by-grace
-// first, then Weight asc, CreatedAt asc with 0 oldest, ID asc) → archive →
-// apply. On stores supporting CompactWith the apply is a single fold that
-// also persists new weights and keeps raw embedding bytes intact; otherwise
-// it falls back to per-ID Delete/Put. With DryRun nothing is persisted.
+// preserved) → capacity cap (deterministic five-tuple order:
+// unprotected-by-grace first, then type priority asc (Issue #277), Weight
+// asc, CreatedAt asc with 0 oldest, ID asc) → archive → apply. On stores
+// supporting CompactWith the apply is a single fold that also persists new
+// weights and keeps raw embedding bytes intact; otherwise it falls back to
+// per-ID Delete/Put. With DryRun nothing is persisted.
 func GC(store Store, opts GCOptions) (GCResult, error) {
 	res := GCResult{Capacity: opts.MaxSlices}
 	all, err := store.ListAll()
@@ -234,6 +240,14 @@ func GC(store Store, opts GCOptions) (GCResult, error) {
 				if pa, pb := protected(a), protected(b); pa != pb {
 					return !pa // grace-protected sort last (evicted last)
 				}
+				// Type dimension (Issue #277): lower EvictPriorityOf sorts
+				// first — result/tool_pattern go before prompt/context when
+				// value ties. Independent of Weight on purpose (spec
+				// issue-277 §7): type policy changes never require a
+				// rescore, and Weight keeps its pure value semantics.
+				if pa, pb := EvictPriorityOf(a.Type), EvictPriorityOf(b.Type); pa != pb {
+					return pa < pb
+				}
 				if a.Weight != b.Weight {
 					return a.Weight < b.Weight
 				}
@@ -245,6 +259,10 @@ func GC(store Store, opts GCOptions) (GCResult, error) {
 			for _, sl := range live[:over] {
 				evict[sl.ID] = true
 				res.OverCap = append(res.OverCap, sl.ID)
+				if res.EvictedByType == nil {
+					res.EvictedByType = make(map[string]int)
+				}
+				res.EvictedByType[sl.Type.String()]++
 			}
 		}
 	}
