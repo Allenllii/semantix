@@ -19,12 +19,13 @@ Rules run in this order before the existing Prompt/Result byte limit is applied:
 
 1. Normalize CRLF and CR line endings to LF.
 2. Remove trailing spaces and tabs from every line.
-3. Collapse consecutive blank lines to one blank line.
-4. Collapse consecutive identical non-empty lines to one line.
-5. Remove lines made only from at least three Markdown decoration characters
+3. Detect backtick and tilde code fences.
+4. Remove lines made only from at least three Markdown decoration characters
    (`-`, `*`, `_`, `=`, `~`, or `#`). Content inside backtick or tilde code
-   fences is exempt from rules 3-5 so code and log evidence remain exact.
-6. If the result still exceeds the slice byte limit, retain a UTF-8-safe head
+   fences is exempt from rules 4-6 so code and log evidence remain exact.
+5. Collapse consecutive blank lines to one blank line.
+6. Collapse consecutive identical non-empty lines to one line.
+7. If the result still exceeds the slice byte limit, retain a UTF-8-safe head
    and tail separated by the fixed marker `\n...[content compacted]...\n`.
 
 The output is trimmed at its outer edges. The compressor is a pure function and
@@ -46,10 +47,10 @@ compression metadata.
 ## Observability
 
 `semantix extract` reports aggregate `raw_bytes`, `stored_bytes`, and
-`compression_ratio` for the slices it successfully stores. `compression_ratio` is the
-fraction saved, `(raw_bytes - stored_bytes) / raw_bytes`, from 0 to 1. Slices
-without compression metadata count their current content bytes as both raw and
-stored bytes.
+`compression_ratio` for the slices it successfully stores. `compression_ratio`
+is the fraction saved, `(raw_bytes - stored_bytes) / raw_bytes`, from 0 to 1.
+Slices without compression metadata count their current content bytes as both
+raw and stored bytes.
 
 The model-call usage log remains unchanged: extraction compression is not an
 LLM request and must not be mixed into token or billing statistics.
