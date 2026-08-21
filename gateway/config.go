@@ -67,6 +67,10 @@ type CacheConfig struct {
 	JudgeBaseURL  string           `toml:"judge_base_url"`
 	JudgeModel    string           `toml:"judge_model"`
 	JudgeProtocol string           `toml:"judge_protocol"`
+	// LexicalFloor is the L3 lexical-support floor (Issue #260): a zone-Hit
+	// with less term overlap is downgraded to Grey (judge-gated). nil keeps
+	// the kernel default (0.05); explicit 0 disables the gate.
+	LexicalFloor *float64 `toml:"lexical_floor"`
 }
 
 // IngestConfig controls the session-sidecar write path.

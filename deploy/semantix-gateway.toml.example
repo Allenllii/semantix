@@ -29,6 +29,7 @@ judge_api_key = ""                        # 可选：grey 区 LLM judge（GW6 #1
 # GW4 实测（Issue #184）：不启用 judge 时 L3 命中率 1/10，启用后 7/10。
 judge_base_url = ""                       # 例：https://api.deepseek.com/v1
 judge_model = ""                          # 例：deepseek-chat
+# lexical_floor = 0.05                      # Issue #260：L3 Hit 词面支持下限（0 = 关闭词面门）
 
 [ingest]
 sessions_dir = "/data/sessions"           # 会话旁路落盘目录（0600）
