@@ -63,9 +63,9 @@ type HarnessSink struct {
 	first  string // user text of the current turn
 	text   string // assistant text buffer
 	reason string // reasoning buffer
-	tools  []toolCallLine
-	output string // last tool output (filled by ToolResult)
-	err    error
+	tools   []toolCallLine
+	outputs map[string]string // tool output keyed by tool call ID (filled by ToolResult)
+	err     error
 }
 
 // NewHarnessSink creates the sink, creating the sessions dir (0700).
@@ -126,10 +126,14 @@ func (s *HarnessSink) Emit(e event.Event) {
 		}
 		s.tools = append(s.tools, toolCallLine{ID: e.Tool.ID, Name: e.Tool.Name, Arguments: args})
 	case event.ToolResult:
-		s.output = e.Tool.Output
+		out := e.Tool.Output
 		if e.Tool.Err != "" {
-			s.output = e.Tool.Err
+			out = e.Tool.Err
 		}
+		if s.outputs == nil {
+			s.outputs = make(map[string]string)
+		}
+		s.outputs[e.Tool.ID] = out
 	case event.TurnDone:
 		s.flushLocked()
 		s.turn = false
@@ -149,14 +153,14 @@ func (s *HarnessSink) flushLocked() {
 		lines = append(lines, sessionLine{Role: "assistant", Content: s.text, ToolCalls: s.tools})
 	}
 	for _, t := range s.tools {
-		content := s.output
+		content := s.outputs[t.ID]
 		if content == "" {
 			content = "(tool output)"
 		}
 		lines = append(lines, sessionLine{Type: "tool", ToolCall: t.ID, Name: t.Name, Content: content})
 	}
 	s.first = ""
-	s.output = ""
+	s.outputs = nil
 	for _, ln := range lines {
 		b, err := json.Marshal(ln)
 		if err != nil {
