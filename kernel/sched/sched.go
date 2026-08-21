@@ -15,6 +15,16 @@ type RoundInput struct {
 	Concurrency    int // available slots
 	SuspendedTools []string
 	Budget         BudgetState
+	PrefetchLoad   PrefetchLoadHint
+}
+
+// PrefetchLoadHint is the scheduler-facing, dependency-neutral load snapshot.
+// Millisecond fields are zero when the harness has no history yet.
+type PrefetchLoadHint struct {
+	ConcurrencyUsed  int
+	ConcurrencyLimit int
+	WaitWindowMS     int64
+	TaskEstimateMS   int64
 }
 
 // BudgetState is the scheduler's read-only view of the resource catalog.
@@ -41,6 +51,7 @@ type RoundPlan struct {
 	TierReason     string     `json:"tierReason,omitempty"` // stable explanation; does not affect execution
 	InjectIDs      []string   // L2 slice IDs in canonical order
 	PrefetchIDs    []string   // prefetch targets (may be empty)
+	PrefetchReason string     `json:"prefetchReason,omitempty"`
 	SuspendTools   []string   `json:"suspendTools,omitempty"`
 	MaxParallel    int        `json:"maxParallel,omitempty"`  // 0 = harness default; >0 = forced cap
 	BudgetAction   string     `json:"budgetAction,omitempty"` // one of BudgetAction* below
