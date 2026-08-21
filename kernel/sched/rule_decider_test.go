@@ -3,6 +3,7 @@ package sched
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -10,6 +11,30 @@ import (
 
 	"semantix/kernel/slice"
 )
+
+func TestApplyEvolutionChangesNextRoundBehaviorGate(t *testing.T) {
+	d := NewRuleDecider(Config{MinSamples: 2, SuccessFloor: 0.7})
+	d.Observe("grep", true, 10)
+	d.Observe("grep", false, 10)
+	in := RoundInput{ToolCalls: []ToolCallInfo{call("a", "grep", true), call("b", "read_file", true)}}
+	before, _ := d.DecideRound(context.Background(), in)
+	if len(before.ParallelGroups) != 2 {
+		t.Fatalf("before tuning: want unreliable grep serialized, got %v", before.ParallelGroups)
+	}
+	if err := d.ApplyEvolution(0.4); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := d.DecideRound(context.Background(), in)
+	if len(after.ParallelGroups) != 1 || len(after.ParallelGroups[0]) != 2 {
+		t.Fatalf("after tuning: want next round parallel, got %v", after.ParallelGroups)
+	}
+}
+
+func TestApplyEvolutionRejectsNonFiniteThreshold(t *testing.T) {
+	if err := NewRuleDecider(Config{}).ApplyEvolution(math.NaN()); err == nil {
+		t.Fatal("want NaN rejected")
+	}
+}
 
 // helpers
 

@@ -1,0 +1,67 @@
+ISSUE: #194 U43 C4 prefetch/evolve closed loop
+BRANCH: codex/issue-194-u43
+CHANGED_BRANCH_FIELD: prefetchedInject string pointer -> exactly-once prefetchedInjectResult; evolve Params tau_l2/prefetch_conf -> next-round RuleDecider/MatrixPrefetcher tuning
+ORIGINAL_HASH: b1746312de353da7b15ecba74f0191512bc3ce7b
+RESTORED_BEHAVIOR_STATUS: rollback copy has no diff and baseline focused packages pass
+
+ARTIFACTS:
+MODIFIED_FILE=D:/semantix/.worktrees/issue-194-u43/artifacts/issue-194/MODIFIED_FILE
+DIFF_FILE=D:/semantix/.worktrees/issue-194-u43/artifacts/issue-194/DIFF_FILE
+VERIFICATION.txt=D:/semantix/.worktrees/issue-194-u43/artifacts/issue-194/VERIFICATION.txt
+ROLLBACK.sh=D:/semantix/.worktrees/issue-194-u43/artifacts/issue-194/ROLLBACK.sh
+
+BASELINE
+command: go test ./...
+input: upstream/harness-integration @ b1746312de353da7b15ecba74f0191512bc3ce7b
+literal result: all listed packages passed; representative terminal lines:
+ok semantix/harness/agent 3.488s
+ok semantix/harness/semantix 2.725s
+ok semantix/kernel/evolve 2.532s
+ok semantix/kernel/prefetch 2.697s
+ok semantix/kernel/sched 3.283s
+exit status: 0
+
+MODIFIED
+command: go build ./... && go test ./...
+input: codex/issue-194-u43 working tree
+literal result: build produced no output; all packages passed; representative terminal lines:
+ok semantix/harness/agent 3.070s
+ok semantix/harness/semantix (cached)
+ok semantix/kernel/evolve (cached)
+ok semantix/kernel/prefetch (cached)
+ok semantix/kernel/sched (cached)
+? semantix/scripts/evolution-curve [no test files]
+exit status: 0
+
+MODIFIED SEARCH
+command: go run ./cmd/semantix extract --input docs/reports/data/agile2-evolution-curve/sessions.jsonl --db tmp/u43-search-verify.db --scope project --session u43-evidence
+literal output: extracted=4 stored=4 scope=project db=tmp/u43-search-verify.db
+command/input/result: searches for "prefetch hit", "prefetch waste", and "evolution tick" each returned its corresponding projected C4 evidence as result #1
+exit status: 0
+
+MODIFIED RACE
+command: CGO_ENABLED=1 go test -race ./kernel/evolve ./kernel/prefetch ./kernel/sched ./harness/semantix ./harness/agent
+input: Windows amd64 host
+literal output: cgo: C compiler "gcc" not found: exec: "gcc": executable file not found in %PATH%
+exit status: 1 (host toolchain prerequisite absent; ordinary tests, vet and build pass)
+
+ROLLBACK
+command: C:/Program Files/Git/bin/sh.exe D:/semantix/.worktrees/issue-194-u43/artifacts/issue-194/ROLLBACK.sh D:/semantix/.worktrees/issue-194-rollback
+input: separate copy with DIFF_FILE applied to b1746312de353da7b15ecba74f0191512bc3ce7b
+literal output: ROLLBACK_RESULT=restored upstream/harness-integration behavior
+exit status: 0
+command: go test ./kernel/evolve ./kernel/prefetch ./kernel/sched ./harness/semantix ./harness/agent
+literal output:
+ok semantix/kernel/evolve 0.842s
+ok semantix/kernel/prefetch 1.669s
+ok semantix/kernel/sched 1.004s
+ok semantix/harness/semantix 1.837s
+ok semantix/harness/agent 2.938s
+exit status: 0
+restored behavior/status: git status --short produced empty output; base behavior restored
+
+REPORT
+command: go run ./scripts/evolution-curve
+input: 20 controlled independent session_ids, fixed grep -> read_file task family
+literal result: first-five hit rate 0.900, last-five 1.000; first-five cost USD 0.0154, last-five 0.0150; task success 1.000 -> 1.000
+exit status: 0

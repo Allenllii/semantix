@@ -591,6 +591,7 @@ func (a *Agent) decideRound(ctx context.Context, calls []provider.ToolCall) sche
 		info[i] = sched.ToolCallInfo{CallID: c.ID, Name: c.Name, ReadOnly: ro}
 	}
 	suspended, budget := a.resourceSchedulingState()
+	a.observePrefetchTransitions(info)
 	plan, err := a.sched.DecideRound(ctx, sched.RoundInput{
 		ToolCalls:      info,
 		SuspendedTools: suspended,
@@ -606,6 +607,22 @@ func (a *Agent) decideRound(ctx context.Context, calls []provider.ToolCall) sche
 		a.resources.setSuspended(a.svc.tools, plan.SuspendTools)
 	}
 	return plan
+}
+
+func (a *Agent) observePrefetchTransitions(calls []sched.ToolCallInfo) {
+	if a.prefetcher == nil || len(calls) == 0 {
+		return
+	}
+	a.prefetchMu.Lock()
+	defer a.prefetchMu.Unlock()
+	prev := a.prefetchLast
+	for _, call := range calls {
+		if prev != "" {
+			a.prefetcher.Observe(prev, call.Name, call.ReadOnly)
+		}
+		prev = call.Name
+	}
+	a.prefetchLast = prev
 }
 
 // planBatches converts a scheduler plan into the same toolCallBatch shape

@@ -20,12 +20,32 @@ package sched
 
 import (
 	"context"
+	"errors"
+	"math"
 	"sort"
 	"strings"
 	"sync"
 
 	"semantix/kernel/slice"
 )
+
+// ApplyEvolution installs the online behavior-gate threshold used by the next
+// DecideRound call. Static scheduler configuration is left unchanged.
+func (d *RuleDecider) ApplyEvolution(successFloor float64) error {
+	if math.IsNaN(successFloor) || math.IsInf(successFloor, 0) {
+		return errors.New("sched: non-finite evolution threshold")
+	}
+	if successFloor < 0 {
+		successFloor = 0
+	}
+	if successFloor > 1 {
+		successFloor = 1
+	}
+	d.mu.Lock()
+	d.cfg.SuccessFloor = successFloor
+	d.mu.Unlock()
+	return nil
+}
 
 // SerialToolNames are the built-in tools that never join a parallel group
 // (kept in sync with the reasonix harness partitionToolCalls blacklist:

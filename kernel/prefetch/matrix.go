@@ -28,9 +28,30 @@
 package prefetch
 
 import (
+	"errors"
+	"math"
 	"sort"
 	"sync"
 )
+
+// ApplyEvolution installs the transition-confidence weight used by the next
+// Plan call. Learned transitions and the remaining budget/penalty knobs stay
+// intact.
+func (m *MatrixPrefetcher) ApplyEvolution(minConf float64) error {
+	if math.IsNaN(minConf) || math.IsInf(minConf, 0) {
+		return errors.New("prefetch: non-finite evolution confidence")
+	}
+	if minConf <= 0 {
+		minConf = math.SmallestNonzeroFloat64
+	}
+	if minConf > 1 {
+		minConf = 1
+	}
+	m.mu.Lock()
+	m.cfg.MinConf = minConf
+	m.mu.Unlock()
+	return nil
+}
 
 // Config carries operator knobs; zero values select documented defaults.
 type Config struct {

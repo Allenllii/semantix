@@ -5,6 +5,34 @@ import (
 	"testing"
 )
 
+func TestPrefetchWasteRaisesConfidenceThreshold(t *testing.T) {
+	e := New(Config{MinSamples: 2, FreezeEpochs: 1})
+	before := e.Params().PrefetchConf
+	if err := e.RecordSignal(Signal{Name: "prefetch_waste", Value: 1, Epoch: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.RecordSignal(Signal{Name: "prefetch_waste", Value: 1, Epoch: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.Params().PrefetchConf; got <= before {
+		t.Fatalf("prefetch confidence = %v, want > %v after waste", got, before)
+	}
+}
+
+func TestPrefetchHitLowersConfidenceThreshold(t *testing.T) {
+	e := New(Config{MinSamples: 2, FreezeEpochs: 1})
+	before := e.Params().PrefetchConf
+	if err := e.RecordSignal(Signal{Name: "prefetch_hit", Value: 1, Epoch: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.RecordSignal(Signal{Name: "prefetch_hit", Value: 1, Epoch: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.Params().PrefetchConf; got >= before {
+		t.Fatalf("prefetch confidence = %v, want < %v after hits", got, before)
+	}
+}
+
 func TestNewDefaults(t *testing.T) {
 	e := New(Config{})
 	p := e.Params()

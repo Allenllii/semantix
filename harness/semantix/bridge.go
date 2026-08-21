@@ -5,13 +5,17 @@ package semantix
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
+	"time"
 
 	"semantix/harness/event"
 	"semantix/kernel/bm25"
 	kernelevent "semantix/kernel/event"
+	"semantix/kernel/evolve"
 	"semantix/kernel/inject"
 	"semantix/kernel/slice"
 	"semantix/kernel/usage"
@@ -61,6 +65,7 @@ type Bridge struct {
 	// lastSavings is the last observed cumulative usage savings, used to
 	// attribute the incremental per-turn delta in Reuse.
 	lastSavings float64
+	evolution   *EvolutionLoop
 }
 
 // NewBridge builds a Bridge from cfg.
@@ -68,7 +73,25 @@ func NewBridge(cfg Config) *Bridge {
 	if cfg.Budget <= 0 {
 		cfg.Budget = 4096
 	}
-	return &Bridge{cfg: cfg, events: kernelevent.NewSyncBus()}
+	bus := kernelevent.NewSyncBus()
+	b := &Bridge{cfg: cfg, events: bus}
+	bus.Subscribe(b.mirrorKernel)
+	b.evolution = NewEvolutionLoop(bus, evolve.New(evolve.Config{}))
+	return b
+}
+
+// AttachEvolution connects the live scheduler and prefetcher to the online loop.
+func (b *Bridge) AttachEvolution(scheduler, prefetcher EvolutionTuner) {
+	if b != nil && b.evolution != nil {
+		b.evolution.Attach(scheduler, prefetcher)
+	}
+}
+
+// InjectResult carries the stable block and the canonical slice identities it
+// represents, allowing prefetch feedback to retain the existing targets wire.
+type InjectResult struct {
+	Text    string
+	Targets []string
 }
 
 // Events is the in-process kernel event bus shared by the harness and kernel
@@ -118,12 +141,16 @@ func (b *Bridge) SetLabel(label string) {
 // degrade — the harness never blocks on the kernel). Semantics match the
 // kernel CLI `semantix inject` defaults (U39 in-process data source).
 func (b *Bridge) Inject(ctx context.Context, query string) string {
+	return b.InjectDetailed(ctx, query).Text
+}
+
+func (b *Bridge) InjectDetailed(ctx context.Context, query string) InjectResult {
 	if !b.Enabled() || !b.cfg.Inject {
-		return ""
+		return InjectResult{}
 	}
 	idx, err := b.kernelIndex()
 	if err != nil {
-		return ""
+		return InjectResult{}
 	}
 	z := zone.Default()
 	inj, err := (&inject.Injector{
@@ -133,10 +160,40 @@ func (b *Bridge) Inject(ctx context.Context, query string) string {
 		Budget: b.cfg.Budget,
 		Zones:  &z,
 	}).Build(query)
-	if err != nil || inj == nil {
-		return ""
+	if err != nil || inj == nil || len(inj.Slices) == 0 {
+		return InjectResult{}
 	}
-	return inj.Text
+	targets := make([]string, 0, len(inj.Slices))
+	for _, sl := range inj.Slices {
+		if sl != nil {
+			targets = append(targets, sl.ID)
+		}
+	}
+	sort.Strings(targets)
+	return InjectResult{Text: inj.Text, Targets: targets}
+}
+
+// RecordPrefetch emits one terminal outcome for a warmed result.
+func (b *Bridge) RecordPrefetch(hit bool, targets []string, turn int) {
+	if b == nil || !b.Enabled() || len(targets) == 0 {
+		return
+	}
+	targets = append([]string(nil), targets...)
+	sort.Strings(targets)
+	kind := kernelevent.PrefetchWaste
+	var payload any = kernelevent.PrefetchWastePayload{Targets: targets}
+	if hit {
+		kind = kernelevent.PrefetchHit
+		payload = kernelevent.PrefetchHitPayload{Targets: targets}
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	b.mu.Lock()
+	session := b.label
+	b.mu.Unlock()
+	b.events.Emit(kernelevent.Event{Kind: kind, SessionID: session, Turn: turn, At: time.Now().UTC(), Data: data})
 }
 
 // Reuse gathers the per-turn reuse panel data (U33/H4a) in-process: the
@@ -249,30 +306,45 @@ func (s *mirrorSink) Emit(e event.Event) {
 // label is known, then forwards. Failures are non-fatal: a write error is
 // surfaced once via the inner sink and never blocks emission.
 func (b *Bridge) mirror(e event.Event) {
-	b.mu.Lock()
-	if b.hs == nil {
-		if b.label == "" {
-			b.mu.Unlock()
-			return // no session id yet; skip this event
-		}
-		dir := b.cfg.SessionsDir
-		if dir == "" {
-			dir = "" // caller resolves the controller session dir before SetLabel
-		}
-		hs, err := NewHarnessSink(dirOrFallback(dir), b.label, "")
-		if err != nil {
-			b.mu.Unlock()
-			return // sink unavailable: drop the mirror, keep the harness alive
-		}
-		b.hs = hs
+	hs := b.sessionSink()
+	if hs == nil {
+		return
 	}
-	hs := b.hs
-	b.mu.Unlock()
 	hs.Emit(e)
+}
+
+func (b *Bridge) mirrorKernel(e kernelevent.Event) {
+	if e.Kind != kernelevent.PrefetchHit && e.Kind != kernelevent.PrefetchWaste && e.Kind != kernelevent.EvolutionTick {
+		return
+	}
+	hs := b.sessionSink()
+	if hs != nil {
+		hs.EmitKernel(e)
+	}
+}
+
+func (b *Bridge) sessionSink() *HarnessSink {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.hs != nil {
+		return b.hs
+	}
+	if b.label == "" {
+		return nil
+	}
+	hs, err := NewHarnessSink(dirOrFallback(b.cfg.SessionsDir), b.label, "")
+	if err != nil {
+		return nil
+	}
+	b.hs = hs
+	return hs
 }
 
 // Close flushes and closes the mirror sink, if created.
 func (b *Bridge) Close() error {
+	if b.evolution != nil {
+		b.evolution.Close()
+	}
 	b.mu.Lock()
 	hs := b.hs
 	b.hs = nil
