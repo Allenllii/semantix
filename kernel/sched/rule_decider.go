@@ -9,8 +9,8 @@
 //   - behavior learning: a read-only tool whose recent success history is
 //     below the floor is treated as unsafe to parallelize (candidates must
 //     pass the behavior gate, per N04 "候选须过静态数据依赖检查");
-//   - tier: writer presence or a large round → pro, otherwise the default
-//     (flash) tier;
+//   - tier: the frozen turn intent is considered before writer presence and
+//     round size; every decision carries a stable explanation;
 //   - injection list: SliceHits ids in canonical (ID-ascending) order, so the
 //     byte-stable prefix-cache invariant is preserved.
 //
@@ -21,6 +21,7 @@ package sched
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -176,9 +177,11 @@ func (d *RuleDecider) DecideRound(ctx context.Context, in RoundInput) (RoundPlan
 	suspended := canonicalNames(in.SuspendedTools)
 	active := withoutSuspended(in.ToolCalls, suspended)
 	action := decideBudgetAction(in.Budget)
+	tier, tierReason := decideTier(in.Intent, active, d.cfg)
 	plan := RoundPlan{
 		ParallelGroups: d.partition(active),
-		Tier:           decideTier(active, d.cfg),
+		Tier:           tier,
+		TierReason:     tierReason,
 		InjectIDs:      canonicalInjectIDs(in.SliceHits, d.cfg.InjectMax),
 		SuspendTools:   suspended,
 		MaxParallel:    d.cfg.MaxParallel,
@@ -192,6 +195,7 @@ func (d *RuleDecider) DecideRound(ctx context.Context, in RoundInput) (RoundPlan
 	}
 	if action == BudgetActionDegradeTier {
 		plan.Tier = d.cfg.DefaultTier
+		plan.TierReason = "budget:" + BudgetActionDegradeTier
 	}
 	return plan, nil
 }
@@ -370,18 +374,22 @@ func (d *RuleDecider) passesBehaviorGate(name string) bool {
 	return st.successRate() >= d.cfg.SuccessFloor
 }
 
-// decideTier maps a round to a model tier: any writer or a large round goes
-// to the pro tier, everything else to the default (flash) tier.
-func decideTier(calls []ToolCallInfo, cfg Config) string {
+// decideTier maps the turn's frozen intent and current round to a model tier.
+// The first matching rule wins so TierReason remains stable and auditable.
+func decideTier(intent string, calls []ToolCallInfo, cfg Config) (string, string) {
+	intent = strings.ToLower(strings.TrimSpace(intent))
+	if intent == "mutation" || intent == "persistent_action" {
+		return cfg.ProTier, "intent:" + intent
+	}
 	for _, c := range calls {
 		if !c.ReadOnly {
-			return cfg.ProTier
+			return cfg.ProTier, "writer:" + c.Name
 		}
 	}
 	if len(calls) > cfg.ComplexTools {
-		return cfg.ProTier
+		return cfg.ProTier, fmt.Sprintf("complex:%d", len(calls))
 	}
-	return cfg.DefaultTier
+	return cfg.DefaultTier, "default"
 }
 
 // canonicalInjectIDs returns hit slice ids in canonical (ID-ascending)
