@@ -240,7 +240,7 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 	// nothing ran, probe the best excluded candidate with probability Epsilon
 	// to keep a trickle of hit/waste signal flowing back into the evolve loop
 	// so PrefetchConf can recover (Issue #254).
-	if len(tasks) == 0 && probe != nil &&
+	if len(tasks) == 0 && probe != nil && m.cfg.TopK > 0 &&
 		m.cfg.Epsilon > 0 && rand.Float64() < m.cfg.Epsilon {
 		if m.cfg.BaseCost <= m.cfg.MaxCost {
 			tasks = append(tasks, PrefetchTask{
