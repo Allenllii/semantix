@@ -10,9 +10,12 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"semantix/kernel/cache"
+	kernelevent "semantix/kernel/event"
 	"semantix/kernel/inject"
+	"semantix/kernel/slice"
 	"semantix/kernel/usage"
 )
 
@@ -58,12 +61,18 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	// the dep-fingerprint chain. TTL is vendor-aware (design §3.5).
 	if !g.disabled {
 		if res, lerr := g.decider.DecideL3(ctx, q); lerr == nil && res != nil && g.l3Eligible(res.SliceID, up.Vendor) {
+			now := g.now()
 			g.recordUsage(usage.Event{
 				SessionID: sessionID, Provider: up.Name, Vendor: up.Vendor, Model: req.Model,
-				TokensIn: int64(len(query)/4) + int64(len(res.Response)/4),
+				TokensIn:  int64(len(query)/4) + int64(len(res.Response)/4),
 				TokensOut: 0, CacheHitToken: int64(len(res.Response) / 4),
-				L3Reuse: true, JudgeDecisions: jc.drain(), At: g.now().Unix(),
+				L3Reuse: true, JudgeDecisions: jc.drain(), At: now.Unix(),
 			})
+			g.recordSliceStats(map[string]slice.SliceStats{
+				res.SliceID: {Hits: 1, LastUsed: now.Unix()},
+			})
+			g.recordSliceEvent(sessionID, chash, req.Model, kernelevent.SliceHit,
+				kernelevent.SliceHitPayload{Layer: "L3", SliceIDs: []string{res.SliceID}}, now)
 			g.replyFromCache(w, r, req, res)
 			return
 		}
@@ -79,6 +88,23 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
 	if inj != nil {
 		injectedTokens = int64(inj.Bytes / 4)
 		sliceHits = len(inj.Slices)
+		if len(inj.Slices) > 0 {
+			now := g.now()
+			ids := make([]string, 0, len(inj.Slices))
+			deltas := make(map[string]slice.SliceStats, len(inj.Slices))
+			for _, sl := range inj.Slices {
+				if sl == nil {
+					continue
+				}
+				ids = append(ids, sl.ID)
+				deltas[sl.ID] = slice.SliceStats{Injected: 1, LastUsed: now.Unix()}
+			}
+			if len(ids) > 0 {
+				g.recordSliceStats(deltas)
+				g.recordSliceEvent(sessionID, chash, req.Model, kernelevent.SliceInject,
+					kernelevent.SliceInjectPayload{SliceIDs: ids, Bytes: inj.Bytes}, now)
+			}
+		}
 	}
 	if up.Vendor == "anthropic" {
 		// Anthropic hop (design §0.5): translate the OpenAI body to the
@@ -537,6 +563,38 @@ func (g *Gateway) replyFromCache(w http.ResponseWriter, r *http.Request, req *ch
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(raw)
+}
+
+// recordSliceStats applies one request's per-slice deltas off the HTTP hot
+// path. Close waits for these tasks through the same lifecycle gate used by
+// asynchronous session ingestion, so accepted observations are not dropped.
+func (g *Gateway) recordSliceStats(deltas map[string]slice.SliceStats) {
+	if len(deltas) == 0 {
+		return
+	}
+	g.shutdownMu.Lock()
+	if g.closing {
+		g.shutdownMu.Unlock()
+		return
+	}
+	g.ingestWG.Add(1)
+	g.shutdownMu.Unlock()
+	go func() {
+		defer g.ingestWG.Done()
+		if err := slice.ApplyStats(g.store, deltas); err != nil {
+			log.Printf("gateway: slice stats: %v", err)
+		}
+	}()
+}
+
+func (g *Gateway) recordSliceEvent(sessionID, ctxHash, model string, kind kernelevent.Kind, payload any, at time.Time) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	g.recordKernelEvent(sessionID, ctxHash, model, kernelevent.Event{
+		Kind: kind, SessionID: sessionID, At: at.UTC(), Data: data,
+	})
 }
 
 // replayStream rebuilds an SSE stream from the cached response, chunking the

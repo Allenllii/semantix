@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"semantix/kernel/cache"
+	kernelevent "semantix/kernel/event"
 	"semantix/kernel/ingest"
 	"semantix/kernel/inject"
 	"semantix/kernel/judge"
@@ -315,6 +316,21 @@ func (g *Gateway) recordSession(sessionID string, ctxHash, model string, turns [
 		defer g.ingestWG.Done()
 		g.ingestSession(path, ctxHash, model)
 	}()
+}
+
+// recordKernelEvent writes one kernel event into the same session JSONL used
+// by the transcript ingest path. Keeping the original wire object makes the
+// observation available both to event consumers and to searchable projections.
+func (g *Gateway) recordKernelEvent(sessionID, ctxHash, model string, e kernelevent.Event) {
+	raw, err := kernelevent.ToJSON(e)
+	if err != nil {
+		return
+	}
+	var line map[string]any
+	if err := json.Unmarshal(raw, &line); err != nil {
+		return
+	}
+	g.recordSession(sessionID, ctxHash, model, []map[string]any{line})
 }
 
 // ingestSession drains one sidecar file into the slice library via the
