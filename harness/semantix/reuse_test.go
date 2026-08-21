@@ -269,3 +269,21 @@ func TestBridgeReuseEmptySources(t *testing.T) {
 		t.Errorf("Sources = %v, want empty (legacy slices)", sum.Sources)
 	}
 }
+// TestBridgeInjectDegradedShrinksBlock (Issue #270 step 2): the
+// degrade_inject tier halves the block budget. The degraded block must
+// never exceed the full-budget one (whole-slice truncation is monotone
+// in budget), so a tight window still gets reuse context without the
+// full injection cost.
+func TestBridgeInjectDegradedShrinksBlock(t *testing.T) {
+	dir := writeKernelDir(t, reuseFixtureSlices(), nil)
+	b := NewBridge(Config{Enabled: true, Inject: true, ProjectDir: dir, Budget: 4096})
+	defer b.Close()
+	full := b.InjectDetailed(context.Background(), "修复 go 测试")
+	degraded := b.InjectDegraded(context.Background(), "修复 go 测试")
+	if full.Text == "" {
+		t.Fatal("full injection unexpectedly empty")
+	}
+	if len(degraded) > len(full.Text) {
+		t.Fatalf("degraded block (%d bytes) exceeds full block (%d bytes)", len(degraded), len(full.Text))
+	}
+}

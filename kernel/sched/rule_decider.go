@@ -241,6 +241,11 @@ func decideBudgetAction(b BudgetState) string {
 		return BudgetActionHardStop
 	case ratio >= 0.9:
 		return BudgetActionDegradeTier
+	case ratio >= 0.8:
+		// Issue #270 step 2: shrink injection before dropping it. The tier
+		// stays on the default — only the injector budget is halved at the
+		// execution point.
+		return BudgetActionDegradeInject
 	case ratio >= 0.7:
 		return BudgetActionHaltPrefetch
 	default:

@@ -143,10 +143,30 @@ func (b *Bridge) SetLabel(label string) {
 // degrade — the harness never blocks on the kernel). Semantics match the
 // kernel CLI `semantix inject` defaults (U39 in-process data source).
 func (b *Bridge) Inject(ctx context.Context, query string) string {
-	return b.InjectDetailed(ctx, query).Text
+	return b.inject(ctx, query, b.cfg.Budget)
+}
+
+// InjectDegraded builds a halved-budget injection block (Issue #270 step
+// 2): the harness calls this when the window budget crosses the
+// degrade_inject tier — shrink the injection instead of dropping it.
+func (b *Bridge) InjectDegraded(ctx context.Context, query string) string {
+	budget := b.cfg.Budget / 2
+	if budget <= 0 {
+		budget = 1 // never fall back to the full DefaultBudget via the <=0 path
+	}
+	return b.inject(ctx, query, budget)
+}
+
+// inject is the shared injection path with an explicit block budget.
+func (b *Bridge) inject(ctx context.Context, query string, budget int) string {
+	return b.injectResult(ctx, query, budget).Text
 }
 
 func (b *Bridge) InjectDetailed(ctx context.Context, query string) InjectResult {
+	return b.injectResult(ctx, query, b.cfg.Budget)
+}
+
+func (b *Bridge) injectResult(ctx context.Context, query string, budget int) InjectResult {
 	if !b.Enabled() || !b.cfg.Inject {
 		return InjectResult{}
 	}
@@ -160,7 +180,7 @@ func (b *Bridge) InjectDetailed(ctx context.Context, query string) InjectResult 
 		Index:  idx,
 		Scope:  slice.Project,
 		K:      5,
-		Budget: b.cfg.Budget,
+		Budget: budget,
 		Zones:  &z,
 	}).Build(query)
 	if err != nil || inj == nil || len(inj.Slices) == 0 {

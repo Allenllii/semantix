@@ -47,6 +47,10 @@ type RoundPlan struct {
 
 const (
 	BudgetActionDegradeTier  = "degrade_tier"
+	// BudgetActionDegradeInject shrinks L2 injection instead of dropping it
+	// (Issue #270 step 2): inject half the block budget, keep the harness
+	// running. Sits between halt_prefetch (0.7) and degrade_tier (0.9).
+	BudgetActionDegradeInject = "degrade_inject"
 	BudgetActionHaltPrefetch = "halt_prefetch"
 	BudgetActionHardStop     = "hard_stop"
 )
