@@ -7,6 +7,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -33,6 +34,7 @@ type File struct {
 	Inject    fileInject    `toml:"inject"`
 	Verify    fileVerify    `toml:"verify"`
 	Cost      fileCost      `toml:"cost"`
+	Doctor    fileDoctor    `toml:"doctor"`
 }
 
 type fileProject struct {
@@ -66,6 +68,26 @@ type fileCost struct {
 	InputPriceUSD  *float64 `toml:"input_price_usd"`
 	CachePriceUSD  *float64 `toml:"cache_price_usd"`
 	OutputPriceUSD *float64 `toml:"output_price_usd"`
+	// Providers holds per-endpoint price overrides (GLM-P0-4, Issue #292):
+	// cloud-hosted GLM stacks price identically per model but differ per
+	// vendor, so hit-savings must be priced per provider key (the usage
+	// log's Event.Provider). Keys flatten to
+	// cost.providers.<name>.{input,cache,output}_price_usd.
+	Providers map[string]fileProviderCost `toml:"providers"`
+}
+
+type fileProviderCost struct {
+	InputPriceUSD  *float64 `toml:"input_price_usd"`
+	CachePriceUSD  *float64 `toml:"cache_price_usd"`
+	OutputPriceUSD *float64 `toml:"output_price_usd"`
+}
+
+// fileDoctor configures the optional doctor network checks (GLM-P0-4).
+// models_url unset ⇒ the model-catalog check reports SKIP (doctor stays
+// fully offline by default).
+type fileDoctor struct {
+	ModelsURL   *string  `toml:"models_url"`
+	WatchModels []string `toml:"watch_models"`
 }
 
 // Kind classifies a config error so the CLI can map it to an exit code.
@@ -191,10 +213,59 @@ func Load(opts Options) (*Resolved, error) {
 		return nil, err
 	}
 
+	// Per-provider price overrides flatten to dotted keys in sorted-name
+	// order so Fields stays deterministic (config list output, tests). Only
+	// present sub-keys are added: absent prices fall back to the global
+	// cost.* figures at the consumer.
+	providerNames := make([]string, 0, len(file.Cost.Providers))
+	for name := range file.Cost.Providers {
+		providerNames = append(providerNames, name)
+	}
+	sort.Strings(providerNames)
+	for _, name := range providerNames {
+		pc := file.Cost.Providers[name]
+		prefix := "cost.providers." + name + "."
+		for key, ptr := range map[string]*float64{
+			"input_price_usd":  pc.InputPriceUSD,
+			"cache_price_usd":  pc.CachePriceUSD,
+			"output_price_usd": pc.OutputPriceUSD,
+		} {
+			if ptr != nil {
+				r.Fields = append(r.Fields, Field{Key: prefix + key, Value: *ptr, Source: SourceFile})
+			}
+		}
+	}
+	// Map-range order is random; re-sort the provider block for determinism.
+	sort.SliceStable(r.Fields, func(i, j int) bool {
+		pi := strings.HasPrefix(r.Fields[i].Key, "cost.providers.")
+		pj := strings.HasPrefix(r.Fields[j].Key, "cost.providers.")
+		if pi != pj {
+			return !pi // non-provider fields keep their declaration order first
+		}
+		if !pi {
+			return false // stable: leave non-provider relative order alone
+		}
+		return r.Fields[i].Key < r.Fields[j].Key
+	})
+
+	if err := add(mergePtr("doctor.models_url", "", "SEMANTIX_DOCTOR_MODELS_URL", file.Doctor.ModelsURL, (*string)(nil))); err != nil {
+		return nil, err
+	}
+	watch := strings.Join(file.Doctor.WatchModels, ",")
+	r.Fields = append(r.Fields, Field{Key: "doctor.watch_models", Value: watch, Source: sourceOf(len(file.Doctor.WatchModels) > 0)})
+
 	if err := r.validate(); err != nil {
 		return nil, invalidErr(err)
 	}
 	return r, nil
+}
+
+// sourceOf maps "was it set in the file" to the Field source label.
+func sourceOf(fromFile bool) Source {
+	if fromFile {
+		return SourceFile
+	}
+	return SourceDefault
 }
 
 // configPath resolves the config file path and whether it was explicitly
