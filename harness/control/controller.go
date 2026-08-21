@@ -685,7 +685,7 @@ func New(opts Options) *Controller {
 	if c.jobs != nil && c.workspaceRoot != "" {
 		taskStore := opts.TaskStore
 		if taskStore == nil {
-			taskStore = taskmonitor.NewFileStore(filepath.Join(".reasonix", "tasks"))
+			taskStore = taskmonitor.NewFileStore(filepath.Join(".semantix", "tasks"))
 		}
 		c.jobs.SetTaskRecorder(taskmonitor.NewTaskRecorder(
 			taskStore,
@@ -788,7 +788,7 @@ func (c *Controller) ApplyExtensionSystemPrompt(prompt string) {
 // SetOnSessionRecovered installs the ownership handoff invoked before the
 // controller commits to an automatically created recovery branch. Frontends
 // that acquire their session owner after controller construction (for example
-// reasonix serve) use this before publishing the controller.
+// semantix-agent serve) use this before publishing the controller.
 func (c *Controller) SetOnSessionRecovered(fn func(SessionRecoveryInfo) error) {
 	if c == nil {
 		return
@@ -1065,7 +1065,7 @@ const (
 const SandboxEscapeApprovalTool = "sandbox_escape"
 
 // ManagedConfigWriteApprovalTool is the internal Tool name used for per-write
-// approval when a file tool targets a Reasonix-managed config file outside the
+// approval when a file tool targets a Semantix-managed config file outside the
 // workspace write roots. It is a fresh human decision: config files control
 // providers, sandbox rules, permissions, and MCP servers for future sessions,
 // so YOLO/auto approval must never answer it.
@@ -1541,7 +1541,7 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 			return
 		}
 		// A custom command wins over a skill of the same name; both resolve to a
-		// turn. Built-ins and their explicit Reasonix namespace are handled above.
+		// turn. Built-ins and their explicit Semantix namespace are handled above.
 		if sent, ok := c.CustomCommand(trimmed); ok {
 			c.runGuarded(func(ctx context.Context) error {
 				return runGoalLoop(ctx, sent, sent, display)
@@ -1945,7 +1945,7 @@ func (c *Controller) noticeDetail(text, detail string) {
 }
 
 // Run executes a turn synchronously, returning the agent's error. Used by the
-// headless `reasonix run` path, where the Sink renders to stdout and the caller
+// headless `semantix-agent run` path, where the Sink renders to stdout and the caller
 // just needs the exit status — no TurnDone event, no cancel bookkeeping.
 func (c *Controller) runReady(ctx context.Context, input string) (err error) {
 	ctx = extension.ContextWithRuntimeOwner(ctx, c.RuntimeOwner())
@@ -1999,7 +1999,7 @@ func (c *Controller) runReady(ctx context.Context, input string) (err error) {
 // returns only its final answer. It is the headless CLI counterpart to explicit
 // slash invocation: the child keeps an isolated session, while the caller owns
 // stdout rendering and exit status. readOnly selects the preview-safe runner
-// used by `reasonix subagent try`.
+// used by `semantix-agent subagent try`.
 func (c *Controller) RunSubagentProfile(ctx context.Context, name, task string, readOnly bool) (string, error) {
 	name = strings.TrimSpace(name)
 	task = strings.TrimSpace(task)
@@ -2373,7 +2373,7 @@ func rulesWithoutFreshHumanApproval(rules []permission.Rule) []permission.Rule {
 }
 
 // ApplyHeadlessApprovalMode configures the executor gate for a non-interactive
-// (`reasonix run`) session from an explicit --permission-mode. Unlike
+// (`semantix-agent run`) session from an explicit --permission-mode. Unlike
 // EnableInteractiveApproval it installs no blocking approver, asker, or
 // fresh-approval prompt: there is no key loop to answer them, and the default
 // infinite approval timeout would wedge the run forever on an Ask rule, the
@@ -3934,7 +3934,7 @@ func (c *Controller) recoverExternallyRemovedSession(path string, saveErr error)
 	slog.Warn("controller: active session was removed externally; moved runtime to stable recovery path",
 		"path", path, "recovery", info.Path, "existing", info.Existing)
 	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryForked,
-		"the open session file was removed outside Reasonix; your active conversation was preserved as one recovery copy"))
+		"the open session file was removed outside Semantix; your active conversation was preserved as one recovery copy"))
 	return info.Path, nil
 }
 
@@ -5171,7 +5171,7 @@ func (c *Controller) AddMCPServer(e config.PluginEntry) (int, error) {
 
 // ConnectMCPServer connects an MCP server entry for this session without writing
 // it to config. Desktop owns config placement so it can keep user-level settings
-// out of project reasonix.toml while preserving the CLI AddMCPServer semantics.
+// out of project semantix-agent.toml while preserving the CLI AddMCPServer semantics.
 func (c *Controller) ConnectMCPServer(e config.PluginEntry) (int, error) {
 	return c.connectMCPServer(e)
 }
@@ -5770,7 +5770,7 @@ func (c *Controller) Bypass() bool {
 // the SessionAPI surface; each is a thin delegation. See memory.go.
 
 // QuickAdd appends a one-line note to the doc-memory file for scope (project
-// REASONIX.md by default) — the write side of "#<note>". Returns the file written.
+// SEMANTIX.md by default) — the write side of "#<note>". Returns the file written.
 func (c *Controller) QuickAdd(scope memory.Scope, note string) (string, error) {
 	return c.memory.quickAdd(scope, note)
 }
@@ -5945,7 +5945,7 @@ func sandboxEscapeApprovalReason(reason string) string {
 	return reason
 }
 
-// managedConfigWriteApprover routes a file tool's Reasonix-managed config write
+// managedConfigWriteApprover routes a file tool's Semantix-managed config write
 // through the fresh-human approval prompt (see ManagedConfigWriteApprovalTool).
 // A session grant is tool-wide (mirroring sandbox_escape): one "allow for this
 // session" covers the rest of the repair flow across the handful of managed
@@ -6236,11 +6236,11 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 	// Claude's PermissionRequest contract answers the dialog on the plugin's
 	// behalf (auto-allow/auto-deny) instead of merely observing it, so a
 	// decision here must preempt the prompt rather than just notify — this
-	// runs synchronously and before the dialog is shown. Native Reasonix
+	// runs synchronously and before the dialog is shown. Native Semantix
 	// PermissionRequest hooks stay advisory-only (see claudePermissionBlocking).
 	//
 	// A hook's auto-allow must never stand in for a human-required decision:
-	// sandbox escapes, Reasonix config writes, memory remember/forget, and
+	// sandbox escapes, Semantix config writes, memory remember/forget, and
 	// plan approval (RequiresFreshHumanApprovalTool) are deliberately excluded
 	// from YOLO/auto-approval and Guardian too, so a broadly-matched plugin
 	// hook returning "allow" can't silently rubber-stamp them. A deny still

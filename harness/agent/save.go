@@ -35,7 +35,7 @@ const (
 	sessionLeaseInfoSidecarSuffix = ".jsonl.lease.json"
 	guardianSidecarSuffix         = ".guardian.jsonl"
 	// nameMaxBytes is the single-component filename limit shared by the
-	// filesystems Reasonix targets (APFS, ext4, NTFS all cap at 255).
+	// filesystems Semantix targets (APFS, ext4, NTFS all cap at 255).
 	nameMaxBytes = 255
 	// maxSessionBasenameBytes bounds transcript basenames that reconciliation
 	// leaves in place. Sidecars append up to ~16 bytes to the transcript name
@@ -1354,7 +1354,7 @@ func lockSessionFile(path string) (func(), error) {
 }
 
 // LockSessionMetaPath serializes a complete branch-meta read-modify-write
-// cycle with both goroutines in this process and other Reasonix processes.
+// cycle with both goroutines in this process and other Semantix processes.
 // Callers must hold it from the first read through the final replace.
 func LockSessionMetaPath(path string) (func(), error) {
 	if strings.TrimSpace(path) == "" {

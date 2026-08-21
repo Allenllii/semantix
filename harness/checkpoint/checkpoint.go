@@ -1,4 +1,4 @@
-// Package checkpoint is reasonix's snapshot-based edit safety net. Before a writer
+// Package checkpoint is semantix's snapshot-based edit safety net. Before a writer
 // tool changes a file, the agent records the file's pre-edit content here, keyed
 // to the current user turn; a frontend can then rewind the workspace (and, via the
 // controller, the conversation) to an earlier turn.
@@ -574,7 +574,7 @@ func (s *Store) persist(c *Checkpoint) error {
 	if s.dir == "" || c == nil {
 		return nil
 	}
-	// Keep inline Content even when BlobRef is present. Previous Reasonix builds
+	// Keep inline Content even when BlobRef is present. Previous Semantix builds
 	// ignore BlobRef and interpret nil Content as "the file did not exist";
 	// omitting it would make an older concurrently running binary delete files.
 	wire := *c

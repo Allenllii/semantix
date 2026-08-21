@@ -9,18 +9,18 @@ import (
 
 // Remote-SSH module naming: the canonical file names for the state a
 // bootstrapped remote serve leaves under the remote host's
-// ~/.reasonix/remote/. Only name derivation lives here (this package is the
+// ~/.semantix/remote/. Only name derivation lives here (this package is the
 // path authority and does no I/O); reads and writes happen over SFTP in
 // internal/remote. Local-side absolute paths (managed known_hosts) are
-// derived in internal/config/paths.go, which owns REASONIX_HOME resolution.
+// derived in internal/config/paths.go, which owns SEMANTIX_HOME resolution.
 
-// RemoteDirName is the directory under the remote ~/.reasonix that holds all
-// remote-module state, and under the local Reasonix home that holds the
+// RemoteDirName is the directory under the remote ~/.semantix that holds all
+// remote-module state, and under the local Semantix home that holds the
 // managed known_hosts file.
 const RemoteDirName = "remote"
 
-// RemoteBinDirName holds an uploaded reasonix binary on the remote host:
-// ~/.reasonix/remote/bin/reasonix.
+// RemoteBinDirName holds an uploaded semantix binary on the remote host:
+// ~/.semantix/remote/bin/semantix.
 const RemoteBinDirName = "bin"
 
 // RemoteWorkspaceSlug flattens a remote (POSIX) workspace path into a

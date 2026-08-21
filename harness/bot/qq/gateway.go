@@ -260,8 +260,8 @@ func (a *adapter) connectGateway(ctx context.Context, token string) error {
 		Shard:   [2]int{0, 1},
 		Properties: properties{
 			OS:      "linux",
-			Browser: "reasonix",
-			Device:  "reasonix-bot",
+			Browser: "semantix",
+			Device:  "semantix-bot",
 		},
 	}
 	identifyJSON, _ := json.Marshal(identify)

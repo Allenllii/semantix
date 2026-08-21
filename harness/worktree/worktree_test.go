@@ -26,8 +26,8 @@ func initRepo(t *testing.T) string {
 		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
 		cmd.Env = append(os.Environ(),
 			"GIT_CONFIG_NOSYSTEM=1",
-			"GIT_AUTHOR_NAME=Reasonix Test", "GIT_AUTHOR_EMAIL=reasonix@example.invalid",
-			"GIT_COMMITTER_NAME=Reasonix Test", "GIT_COMMITTER_EMAIL=reasonix@example.invalid")
+			"GIT_AUTHOR_NAME=Semantix Test", "GIT_AUTHOR_EMAIL=semantix@example.invalid",
+			"GIT_COMMITTER_NAME=Semantix Test", "GIT_COMMITTER_EMAIL=semantix@example.invalid")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -61,14 +61,14 @@ func TestCreateManagedWorktreeFromRepositoryFolder(t *testing.T) {
 	if result.WorkspaceRoot != result.WorktreeRoot {
 		t.Fatalf("workspace root = %q, worktree root = %q", result.WorkspaceRoot, result.WorktreeRoot)
 	}
-	if !strings.HasPrefix(result.Branch, "reasonix/delivery-") {
+	if !strings.HasPrefix(result.Branch, "semantix/delivery-") {
 		t.Fatalf("branch = %q", result.Branch)
 	}
 	if _, err := os.Stat(filepath.Join(result.WorktreeRoot, "README.md")); err != nil {
 		t.Fatalf("created worktree missing committed file: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(result.WorktreeRoot, ".reasonix-source")); !os.IsNotExist(err) {
-		t.Fatalf("worktree must not contain a Reasonix marker, stat err = %v", err)
+	if _, err := os.Stat(filepath.Join(result.WorktreeRoot, ".semantix-source")); !os.IsNotExist(err) {
+		t.Fatalf("worktree must not contain a Semantix marker, stat err = %v", err)
 	}
 	branchCmd := exec.Command("git", "-C", result.WorktreeRoot, "branch", "--show-current")
 	branchOut, err := branchCmd.Output()
@@ -91,7 +91,7 @@ func TestCreatePreservesSelectedRepositorySubdirectory(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git add: %v %s", err, out)
 	}
-	cmd = exec.Command("git", "-C", repo, "-c", "user.name=Reasonix Test", "-c", "user.email=reasonix@example.invalid", "commit", "-m", "subdir")
+	cmd = exec.Command("git", "-C", repo, "-c", "user.name=Semantix Test", "-c", "user.email=semantix@example.invalid", "commit", "-m", "subdir")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git commit: %v %s", err, out)
 	}
@@ -112,7 +112,7 @@ func TestInspectRejectsUncommittedSelectedSubdirectoryWithoutGitMutation(t *test
 	if err := os.MkdirAll(untracked, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	before, _, err := runGit(context.Background(), repo, "for-each-ref", "--format=%(refname)", "refs/heads/reasonix/delivery-")
+	before, _, err := runGit(context.Background(), repo, "for-each-ref", "--format=%(refname)", "refs/heads/semantix/delivery-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestInspectRejectsUncommittedSelectedSubdirectoryWithoutGitMutation(t *test
 	if got.Available || !strings.Contains(got.Reason, "committed HEAD") {
 		t.Fatalf("availability = %+v", got)
 	}
-	after, _, err := runGit(context.Background(), repo, "for-each-ref", "--format=%(refname)", "refs/heads/reasonix/delivery-")
+	after, _, err := runGit(context.Background(), repo, "for-each-ref", "--format=%(refname)", "refs/heads/semantix/delivery-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestCreateSupportsPathsWithSpaces(t *testing.T) {
 	}
 	git := func(args ...string) {
 		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
-		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Reasonix Test", "GIT_AUTHOR_EMAIL=reasonix@example.invalid", "GIT_COMMITTER_NAME=Reasonix Test", "GIT_COMMITTER_EMAIL=reasonix@example.invalid")
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=Semantix Test", "GIT_AUTHOR_EMAIL=semantix@example.invalid", "GIT_COMMITTER_NAME=Semantix Test", "GIT_COMMITTER_EMAIL=semantix@example.invalid")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}

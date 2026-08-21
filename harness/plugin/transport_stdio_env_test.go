@@ -18,9 +18,9 @@ func TestStdioShellPATHProbeFiltersEnvWhenEnabled(t *testing.T) {
 	}
 	secrets.SetFilterSubprocessEnv(true)
 	t.Cleanup(func() { secrets.SetFilterSubprocessEnv(false) })
-	t.Setenv("REASONIX_TEST_SECRET_TOKEN", "ghp_abcdefghijklmnopqrstuvwxyz")
+	t.Setenv("SEMANTIX_TEST_SECRET_TOKEN", "ghp_abcdefghijklmnopqrstuvwxyz")
 
-	out := runShellPATHCommand(context.Background(), "/bin/sh", []string{"-c", `printf 'tok=%s' "${REASONIX_TEST_SECRET_TOKEN:-none}"`})
+	out := runShellPATHCommand(context.Background(), "/bin/sh", []string{"-c", `printf 'tok=%s' "${SEMANTIX_TEST_SECRET_TOKEN:-none}"`})
 	if !strings.Contains(string(out), "tok=none") {
 		t.Fatalf("stdio shell PATH probe leaked filtered env: %q", out)
 	}

@@ -34,14 +34,14 @@ type supersededAppUpdateFixture struct {
 func prepareSupersededAppUpdateFixture(t *testing.T, withBackup, withBackupIdentity bool) supersededAppUpdateFixture {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_HOME", home)
 	root := t.TempDir()
 	if resolved, err := filepath.EvalSymlinks(root); err == nil {
 		root = resolved
 	}
-	target := filepath.Join(root, "Reasonix.app")
+	target := filepath.Join(root, "Semantix.app")
 	marker := filepath.Join(target, "Contents", "Resources", "release.txt")
-	executable := filepath.Join(target, "Contents", "MacOS", "reasonix-desktop")
+	executable := filepath.Join(target, "Contents", "MacOS", "semantix-agent-desktop")
 	for _, path := range []string{marker, executable} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
@@ -50,7 +50,7 @@ func prepareSupersededAppUpdateFixture(t *testing.T, withBackup, withBackupIdent
 			t.Fatal(err)
 		}
 	}
-	backup := target + ".reasonix-update-backup"
+	backup := target + ".semantix-update-backup"
 	if withBackup {
 		backupMarker := filepath.Join(backup, "Contents", "Resources", "release.txt")
 		if err := os.MkdirAll(filepath.Dir(backupMarker), 0o755); err != nil {
@@ -105,7 +105,7 @@ func TestArchiveSupersededPendingAppBundleUpdatePreservesLegacyBackup(t *testing
 	if _, err := os.Lstat(fixture.backup); !os.IsNotExist(err) {
 		t.Fatalf("public rollback path survived: %v", err)
 	}
-	backups, err := filepath.Glob(fixture.backup + ".reasonix-retired-*")
+	backups, err := filepath.Glob(fixture.backup + ".semantix-retired-*")
 	if err != nil || len(backups) != 1 {
 		t.Fatalf("archived backups=%v err=%v", backups, err)
 	}
@@ -151,7 +151,7 @@ func TestArchiveSupersededPendingAppBundleUpdateLeavesCurrentProcessHandoff(t *t
 	fixture := prepareSupersededAppUpdateFixture(t, false, false)
 	fixture.transaction.HandoffOwnerPID = os.Getpid()
 	fixture.transaction.HandoffStagingPath = filepath.Join(filepath.Dir(fixture.target), "handoff-stage")
-	fixture.transaction.HandoffAppPath = filepath.Join(fixture.transaction.HandoffStagingPath, "Reasonix.app")
+	fixture.transaction.HandoffAppPath = filepath.Join(fixture.transaction.HandoffStagingPath, "Semantix.app")
 	fixture.transaction.HandoffAppTreeID = strings.Repeat("b", 64)
 	fixture.transaction.HandoffStagingTreeID = strings.Repeat("c", 64)
 	if err := overwritePendingUpdateForTest(fixture.transaction); err != nil {
@@ -220,7 +220,7 @@ func TestArchiveSupersededPendingAppBundleUpdatePreservesRecreatedBackupPath(t *
 	if body, err := os.ReadFile(filepath.Join(fixture.backup, "Contents", "Resources", "release.txt")); err != nil || string(body) != "concurrently recreated backup" {
 		t.Fatalf("recreated public backup changed=%q err=%v", body, err)
 	}
-	backups, err := filepath.Glob(fixture.backup + ".reasonix-retired-*")
+	backups, err := filepath.Glob(fixture.backup + ".semantix-retired-*")
 	if err != nil || len(backups) != 1 {
 		t.Fatalf("preserved archived backups=%v err=%v", backups, err)
 	}
@@ -232,7 +232,7 @@ func TestArchiveSupersededPendingAppBundleUpdatePreservesRecreatedBackupPath(t *
 func prepareSupersededUpdateFixture(t *testing.T, pendingVersion, runningVersion string) supersededUpdateFixture {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_HOME", home)
 	root := t.TempDir()
 	originalExecutable := repairExecutable
 	t.Cleanup(func() { repairExecutable = originalExecutable })
@@ -241,7 +241,7 @@ func prepareSupersededUpdateFixture(t *testing.T, pendingVersion, runningVersion
 	if err := os.WriteFile(target, []byte("old desktop"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	guardName := "reasonix-guard"
+	guardName := "semantix-agent-guard"
 	if runtime.GOOS == "windows" {
 		guardName += ".exe"
 	}
@@ -498,7 +498,7 @@ func TestArchiveSupersededPendingFileUpdateSerializesConcurrentRecovery(t *testi
 }
 
 func TestArchiveSupersededPendingFileUpdateRejectsMalformedTransaction(t *testing.T) {
-	t.Setenv("REASONIX_HOME", t.TempDir())
+	t.Setenv("SEMANTIX_HOME", t.TempDir())
 	body := `{"schemaVersion":1,"toVersion":`
 	writePendingUpdateRaw(t, body)
 	if archived, err := ArchiveSupersededPendingFileUpdate("v1.20.0", t.TempDir()); err == nil || archived {

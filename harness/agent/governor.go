@@ -14,7 +14,7 @@ import (
 // governorEnabled gates enforcement for the A/B experiment; eligibility is
 // always recorded so baseline arms carry the same shadow. Env-scoped on
 // purpose — graduation to config waits on the experiment's verdict.
-var governorEnabled = os.Getenv("REASONIX_EXPERIMENT_GOVERNOR") == "1"
+var governorEnabled = os.Getenv("SEMANTIX_EXPERIMENT_GOVERNOR") == "1"
 
 // governorEffort is the reduced depth the engaged governor asks of the
 // provider; endpoints whose vocabulary lacks it silently keep their default.

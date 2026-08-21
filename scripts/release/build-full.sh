@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
-# build-full.sh — package the complete downloadable agent (v0.3.0+):
-#   reasonix (coding-agent harness, from the semantix fork) + semantix
-#   (memory kernel) + example configs + install.sh + README, per platform.
+# build-full.sh — package the complete downloadable agent:
+#   semantix-agent (coding-agent harness) + semantix (memory kernel)
+#   + example configs + install.sh + README, per platform.
 #
-# Usage: build-full.sh --version v0.3.0 [--platforms darwin-arm64,linux-amd64]
+# Everything builds from this repository — the harness is vendored under
+# harness/ and compiled via ./cmd/semantix-agent (no external fork checkout).
+#
+# Usage: build-full.sh --version v0.5.1 [--platforms darwin-arm64,linux-amd64]
 # Default platforms: darwin-arm64, darwin-amd64, linux-amd64, linux-arm64
-# Output: dist/semantix-agent-<version>-<platform>.tar.gz + SHA256SUMS
+# Output (dist/):
+#   semantix-agent-<version>-<platform>.tar.gz   full bundle for humans
+#   semantix-agent-<platform>.tar.gz             flat single-binary asset the
+#                                                self-updater downloads
+#                                                (`semantix-agent upgrade`)
+#   semantix-<version>-<platform>                raw kernel binary for the
+#                                                agent-skill curl installer
+#   SHA256SUMS + SHA256SUMS.txt                  same checksums, both names
+#                                                (updater reads the former,
+#                                                install.sh the latter)
 set -euo pipefail
 
 VERSION=""
@@ -30,8 +42,7 @@ if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-FORK_ROOT="${FORK_ROOT:-$ROOT/../DeepSeek-Reasonix}"
-GO="${GO:-/tmp/go2/go/bin/go}"
+GO="${GO:-go}"
 OUT="$ROOT/dist"
 rm -rf "$OUT"
 mkdir -p "$OUT"
@@ -45,33 +56,36 @@ for plat in ${PLATFORMS//,/ }; do
   D="$OUT/$PKG"
   mkdir -p "$D"
 
-  echo "building reasonix ($os/$arch)..."
-  (cd "$FORK_ROOT" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-    "$GO" build -trimpath -ldflags "-s -w" -o "$OUT/reasonix-$plat" ./cmd/reasonix)
+  echo "building semantix-agent ($os/$arch)..."
+  (cd "$ROOT" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+    "$GO" build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$D/semantix-agent" ./cmd/semantix-agent)
 
   echo "building semantix ($os/$arch)..."
   (cd "$ROOT" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-    "$GO" build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$OUT/semantix-$plat" ./cmd/semantix)
+    "$GO" build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$D/semantix" ./cmd/semantix)
 
-  mv "$OUT/reasonix-$plat" "$D/reasonix"
-  mv "$OUT/semantix-$plat" "$D/semantix"
-  cp "$FORK_ROOT/reasonix.example.toml" "$D/" 2>/dev/null || true
+  cp "$ROOT/semantix-agent.example.toml" "$D/" 2>/dev/null || true
   cp "$ROOT/semantix.example.toml" "$D/" 2>/dev/null || true
   cp "$ROOT/agent-skill/scripts/install.sh" "$D/semantix-install.sh" 2>/dev/null || true
   cat > "$D/README.md" <<EOF
 # Semantix Agent $VERSION ($plat)
 
 Complete downloadable coding agent with cross-session memory:
-- \`reasonix\` — the coding-agent harness (fork of Reasonix, single-session
-  prefix-cache discipline inherited, ~90%+ cache-hit on long sessions)
+- \`semantix-agent\` — the coding-agent harness (single-session prefix-cache
+  discipline, ~90%+ cache-hit on long sessions)
 - \`semantix\` — the self-evolving memory kernel (L2 semantic injection,
   L3 verified reuse, evolution engine, cost dashboard)
 
 ## Quick start
-1. ./semantix-install.sh v$VERSION   # installs both binaries + configs
-2. edit reasonix.example.toml → set your provider + [semantix] section
-3. reasonix --config reasonix.toml   # start the agent
-4. semantix usage                    # cost dashboard after a session
+1. install -m 0755 semantix-agent semantix ~/.local/bin/
+2. semantix-agent setup                 # interactive provider wizard, or:
+   cp semantix-agent.example.toml semantix-agent.toml && edit it
+3. semantix-agent                       # start the agent
+4. semantix usage                       # cost dashboard after a session
+
+Data lives in ~/.semantix (user) and .semantix/ (project).
+semantix-install.sh is the standalone curl installer that drops only the
+semantix memory kernel into another agent environment.
 
 ## Memory
 Sessions are captured by the harness sink; run
@@ -79,13 +93,22 @@ Sessions are captured by the harness sink; run
 to build the memory library, and the agent will inject relevant slices
 automatically on similar tasks.
 EOF
-  chmod +x "$D/reasonix" "$D/semantix" "$D/semantix-install.sh" 2>/dev/null || true
+  chmod +x "$D/semantix-agent" "$D/semantix" "$D/semantix-install.sh" 2>/dev/null || true
 
   (cd "$OUT" && tar -czf "$PKG.tar.gz" "$PKG")
+
+  # Flat single-binary archive for `semantix-agent upgrade`: the updater
+  # expects semantix-agent-<os>-<arch>.tar.gz with the binary at the root.
+  (cd "$D" && tar -czf "$OUT/semantix-agent-$plat.tar.gz" semantix-agent)
+  # Raw kernel binary for agent-skill/scripts/install.sh (curl flow).
+  cp "$D/semantix" "$OUT/semantix-$VERSION-$plat"
   rm -rf "$D"
-  echo "packed $PKG.tar.gz"
+  echo "packed $PKG.tar.gz + semantix-agent-$plat.tar.gz + semantix-$VERSION-$plat"
 done
 
-(cd "$OUT" && shasum -a 256 semantix-agent-*.tar.gz > SHA256SUMS.txt)
+# One checksum set over every asset, published under both names: the
+# self-updater downloads the asset literally named SHA256SUMS, while the
+# agent-skill install.sh fetches SHA256SUMS.txt.
+(cd "$OUT" && shasum -a 256 semantix-agent-*.tar.gz semantix-"$VERSION"-* > SHA256SUMS && cp SHA256SUMS SHA256SUMS.txt)
 echo "---"
 ls -lh "$OUT" | awk '{print $5, $9}'

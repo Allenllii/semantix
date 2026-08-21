@@ -48,7 +48,7 @@ func (d *RuleDecider) ApplyEvolution(successFloor float64) error {
 }
 
 // SerialToolNames are the built-in tools that never join a parallel group
-// (kept in sync with the reasonix harness partitionToolCalls blacklist:
+// (kept in sync with the semantix harness partitionToolCalls blacklist:
 // complete_step, todo_write, wait, bash_output, use_capability, compress).
 var SerialToolNames = map[string]struct{}{
 	"complete_step":  {},

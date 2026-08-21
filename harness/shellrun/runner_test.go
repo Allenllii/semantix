@@ -147,7 +147,7 @@ func TestRunForegroundTimeout(t *testing.T) {
 
 func TestRunForegroundLaunchFailure(t *testing.T) {
 	res := RunForeground(context.Background(), Request{
-		Argv:  []string{"/nonexistent/reasonix-shell-binary-xyz", "-c", "echo hi"},
+		Argv:  []string{"/nonexistent/semantix-shell-binary-xyz", "-c", "echo hi"},
 		Track: false,
 		Run: func(ctx context.Context, cmd *exec.Cmd, opts proc.RunOptions) (*proc.TrackedCommand, error) {
 			return nil, errors.New("exec: no such file")

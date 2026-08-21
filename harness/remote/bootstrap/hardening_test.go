@@ -25,8 +25,8 @@ func TestEnsureServeRejectsStalePortFile(t *testing.T) {
 		switch {
 		case strings.Contains(cmd, "uname"):
 			return ok("Linux x86_64\n")
-		case strings.Contains(cmd, "command -v reasonix"):
-			return ok("/usr/bin/reasonix\nreasonix v9.9.0\nportfile:yes\n")
+		case strings.Contains(cmd, "command -v semantix"):
+			return ok("/usr/bin/semantix\nsemantix v9.9.0\nportfile:yes\n")
 		case strings.Contains(cmd, "nohup"):
 			if strings.Contains(cmd, "rm -f "+shellQuote(paths.PortFile)) {
 				_ = os.Remove(paths.PortFile) // model the generated launch command
@@ -52,8 +52,8 @@ func TestEnsureServeSerializesConcurrentClients(t *testing.T) {
 		switch {
 		case strings.Contains(cmd, "uname"):
 			return ok("Linux x86_64\n")
-		case strings.Contains(cmd, "command -v reasonix"):
-			return ok("/usr/bin/reasonix\nreasonix v9.9.0\nportfile:yes\n")
+		case strings.Contains(cmd, "command -v semantix"):
+			return ok("/usr/bin/semantix\nsemantix v9.9.0\nportfile:yes\n")
 		case strings.Contains(cmd, "nohup"):
 			launches.Add(1)
 			_ = os.WriteFile(paths.PortFile, []byte("127.0.0.1:45123\n"), 0o600)
@@ -98,9 +98,9 @@ func TestAutoInstallPreservesNPMFailureWhenNoUploadBinaryExists(t *testing.T) {
 	root := t.TempDir()
 	conn := newFakeConn(t, root, func(cmd string) (remote.ExecResult, error) {
 		switch {
-		case strings.Contains(cmd, "command -v reasonix"):
+		case strings.Contains(cmd, "command -v semantix"):
 			return ok("\n")
-		case strings.Contains(cmd, "npm i -g reasonix"):
+		case strings.Contains(cmd, "npm i -g semantix"):
 			return remote.ExecResult{Stdout: []byte("permission denied"), ExitCode: 1}, nil
 		default:
 			return ok("")
@@ -111,7 +111,7 @@ func TestAutoInstallPreservesNPMFailureWhenNoUploadBinaryExists(t *testing.T) {
 		t.Fatal("auto install unexpectedly succeeded")
 	}
 	message := err.Error()
-	if !strings.Contains(message, "npm install failed: permission denied") || !strings.Contains(message, "no local Reasonix CLI") {
+	if !strings.Contains(message, "npm install failed: permission denied") || !strings.Contains(message, "no local Semantix CLI") {
 		t.Fatalf("auto install hid the actionable failures: %v", err)
 	}
 }
@@ -122,11 +122,11 @@ func TestAutoInstallDownloadsVerifiedCrossPlatformBinaryAfterNPMFailure(t *testi
 	uploaded := uploadedBinPath(root)
 	conn := newFakeConn(t, root, func(cmd string) (remote.ExecResult, error) {
 		switch {
-		case strings.Contains(cmd, "npm i -g reasonix"):
+		case strings.Contains(cmd, "npm i -g semantix"):
 			return remote.ExecResult{Stdout: []byte("npm: command not found"), ExitCode: 127}, nil
-		case strings.Contains(cmd, "command -v reasonix"):
+		case strings.Contains(cmd, "command -v semantix"):
 			if _, err := os.Stat(uploaded); err == nil {
-				return ok(uploaded + "\nreasonix v1.2.3\nportfile:yes\n")
+				return ok(uploaded + "\nsemantix v1.2.3\nportfile:yes\n")
 			}
 			return ok("\n")
 		default:
@@ -135,7 +135,7 @@ func TestAutoInstallDownloadsVerifiedCrossPlatformBinaryAfterNPMFailure(t *testi
 	})
 	fetched := false
 	bin, _, err := ensureBinary(context.Background(), conn, conn.fs, Options{
-		Install: InstallAuto, LocalBinary: "/local/reasonix", LocalGOOS: "darwin", LocalGOARCH: "arm64",
+		Install: InstallAuto, LocalBinary: "/local/semantix", LocalGOOS: "darwin", LocalGOARCH: "arm64",
 		ProductVersion: "v1.2.3",
 		FetchBinary: func(_ context.Context, version, goos, goarch string) ([]byte, error) {
 			fetched = true

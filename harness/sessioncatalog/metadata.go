@@ -7,7 +7,7 @@ import (
 
 // SyncMetadata projects the small desktop project/topic registries. It never
 // removes session-derived topics: an older CLI or a concurrently running
-// Reasonix process may have written authoritative sidecars not yet reflected in
+// Semantix process may have written authoritative sidecars not yet reflected in
 // desktop-projects.json.
 func (c *Catalog) SyncMetadata(ctx context.Context, projects []ProjectRecord, topics []TopicMetadata) error {
 	if c == nil || c.db == nil {

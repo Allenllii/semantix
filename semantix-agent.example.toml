@@ -1,0 +1,21 @@
+# semantix-agent.example.toml — project-level config for the semantix-agent
+# harness. Copy to semantix-agent.toml in your project root, or skip this file
+# entirely and run `semantix-agent setup` (interactive wizard; user-level
+# config lives in the OS user-config dir as semantix/config.toml).
+#
+# The memory kernel CLI has its own separate config: semantix.example.toml.
+
+# default_model = "deepseek-pro"
+
+# Providers are easiest to configure through `semantix-agent setup`, which
+# writes a [[providers]] block for your vendor (API base, key env, models).
+# [[providers]]
+# name = "..."
+
+# Semantix memory kernel wiring: mirror session events into the kernel's
+# session sink and inject relevant memory slices into the prompt.
+[semantix]
+enabled = true
+inject = true
+# binary = "semantix"   # kernel CLI path; empty resolves "semantix" on PATH
+# budget = 4096         # max bytes for the L2 injection block

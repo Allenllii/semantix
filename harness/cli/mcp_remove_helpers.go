@@ -20,7 +20,7 @@ func reconcileRemovedMCPOAuth(workspace, name string) error {
 		break
 	}
 	_, err = plugin.ReconcileHTTPMCPOAuthAfterRemoval(plugin.Spec{
-		Name: name, StateDir: plugin.MCPStateDir(config.ReasonixHomeDir(), workspace, name),
+		Name: name, StateDir: plugin.MCPStateDir(config.SemantixHomeDir(), workspace, name),
 	}, remainingResource)
 	return err
 }

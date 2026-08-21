@@ -1,5 +1,5 @@
 {
-  "apiVersion": "reasonix.io/plugin/v2",
+  "apiVersion": "semantix.io/plugin/v2",
   "name": "full-sidecar",
   "version": "1.0.0",
   "description": "Conformance sidecar for Extension Protocol + plugin v2",
@@ -32,7 +32,7 @@
     }
   ],
   "runtime": {
-    "command": "${REASONIX_PLUGIN_ROOT}/bin/full-sidecar",
+    "command": "${SEMANTIX_PLUGIN_ROOT}/bin/full-sidecar",
     "required": false,
     "intercepts": ["input.receive", "tool.before", "system_prompt.build", "session.start"],
     "replaces": ["system_prompt"],

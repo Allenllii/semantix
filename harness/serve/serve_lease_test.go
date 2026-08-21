@@ -68,7 +68,7 @@ func TestResumeRefusedWhenSessionLeaseHeld(t *testing.T) {
 	if resp.StatusCode != http.StatusConflict {
 		t.Fatalf("held resume status = %d, want 409 (body %q)", resp.StatusCode, respBody)
 	}
-	if !strings.Contains(respBody, "in use by another Reasonix") {
+	if !strings.Contains(respBody, "in use by another Semantix") {
 		t.Fatalf("held resume body = %q, want holder wording", respBody)
 	}
 	if strings.Contains(respBody, held) {

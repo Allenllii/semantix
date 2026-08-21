@@ -30,7 +30,7 @@ func TestClientFallsBackFromEmptyAgentToIdentityFile(t *testing.T) {
 	// A running but empty agent reproduces the desktop failure: the first
 	// publickey source has no signers, so the explicit identity must be tried
 	// as a second publickey attempt.
-	agentDir, err := os.MkdirTemp("", "reasonix-agent-")
+	agentDir, err := os.MkdirTemp("", "semantix-agent-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestIdentitiesOnlyUsesOnlyConfiguredAgentIdentity(t *testing.T) {
 		}
 	}
 
-	agentDir, err := os.MkdirTemp("", "reasonix-identities-only-")
+	agentDir, err := os.MkdirTemp("", "semantix-identities-only-")
 	if err != nil {
 		t.Fatal(err)
 	}

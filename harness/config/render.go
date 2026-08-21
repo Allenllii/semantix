@@ -19,7 +19,7 @@ const (
 	RenderScopeProject RenderScope = "project"
 )
 
-// RenderTOML renders the config as annotated TOML in the `reasonix setup` house style:
+// RenderTOML renders the config as annotated TOML in the `semantix-agent setup` house style:
 // comments preserved, system_prompt as a multi-line string, helpful hints. The
 // output round-trips back through Load (see render_test.go).
 func RenderTOML(c *Config) string {
@@ -28,7 +28,7 @@ func RenderTOML(c *Config) string {
 
 // RenderTOMLForScope renders an annotated TOML file for a specific persistence
 // target. User configs can carry desktop and account-level preferences; project
-// reasonix.toml stays focused on project behavior and intentionally excludes
+// semantix-agent.toml stays focused on project behavior and intentionally excludes
 // desktop-only preferences.
 func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	if c == nil {
@@ -45,28 +45,28 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	defaults := Default()
 	var b strings.Builder
 
-	b.WriteString("# Reasonix configuration.\n")
-	fmt.Fprintf(&b, "# Resolution order: flag > ./reasonix.toml > %s > built-in defaults.\n", userConfigDisplayPath())
-	b.WriteString("# Fields marked user/global only are not overridden by ./reasonix.toml.\n")
-	b.WriteString("# Secrets are named via api_key_env and stored in Reasonix's global .env; never put keys here.\n\n")
+	b.WriteString("# Semantix configuration.\n")
+	fmt.Fprintf(&b, "# Resolution order: flag > ./semantix-agent.toml > %s > built-in defaults.\n", userConfigDisplayPath())
+	b.WriteString("# Fields marked user/global only are not overridden by ./semantix-agent.toml.\n")
+	b.WriteString("# Secrets are named via api_key_env and stored in Semantix's global .env; never put keys here.\n\n")
 
 	fmt.Fprintf(&b, "config_version = %d   # schema marker for diagnostics; old versions may ignore it\n", configVersion(c))
 	fmt.Fprintf(&b, "default_model = %q\n", c.DefaultModel)
 	if c.Language != "" {
-		fmt.Fprintf(&b, "language      = %q   # ui/model language; empty = auto-detect from $LANG / $REASONIX_LANG\n", c.Language)
+		fmt.Fprintf(&b, "language      = %q   # ui/model language; empty = auto-detect from $LANG / $SEMANTIX_LANG\n", c.Language)
 	} else {
-		b.WriteString("# language      = \"zh\"   # ui/model language; empty = auto-detect from $LANG / $REASONIX_LANG\n")
+		b.WriteString("# language      = \"zh\"   # ui/model language; empty = auto-detect from $LANG / $SEMANTIX_LANG\n")
 	}
 	if scope != RenderScopeProject {
-		fmt.Fprintf(&b, "credentials_store = %q   # legacy compatibility; provider keys are saved in Reasonix's global .env\n", normalizeCredentialsStore(c.CredentialsStore))
+		fmt.Fprintf(&b, "credentials_store = %q   # legacy compatibility; provider keys are saved in Semantix's global .env\n", normalizeCredentialsStore(c.CredentialsStore))
 	}
 	b.WriteString("\n")
 
 	if shouldRenderUI(c, defaults, scope) {
 		b.WriteString("[ui]\n")
-		fmt.Fprintf(&b, "theme = %q   # auto|dark|light; CLI colors only; REASONIX_THEME can override per run\n", c.UITheme())
+		fmt.Fprintf(&b, "theme = %q   # auto|dark|light; CLI colors only; SEMANTIX_THEME can override per run\n", c.UITheme())
 		if style := c.UIThemeStyle(); style != "" {
-			fmt.Fprintf(&b, "theme_style = %q   # CLI accent palette; REASONIX_THEME_STYLE can override per run\n", style)
+			fmt.Fprintf(&b, "theme_style = %q   # CLI accent palette; SEMANTIX_THEME_STYLE can override per run\n", style)
 		} else {
 			b.WriteString("# theme_style = \"graphite\"   # graphite|aurora|slate|carbon|nocturne|amber and legacy aliases\n")
 		}
@@ -146,7 +146,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		b.WriteString("\n")
 	} else if c.Desktop.ProviderAccess != nil {
 		// provider_access is intentionally mergeable across user and project
-		// configs. It is the only desktop field written to reasonix.toml: local
+		// configs. It is the only desktop field written to semantix-agent.toml: local
 		// providers then appear in that workspace's desktop model switcher without
 		// copying user-global appearance or security preferences into the project.
 		b.WriteString("[desktop]\n")
@@ -204,7 +204,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		if c.Network.Proxy.Password != "" {
 			fmt.Fprintf(&b, "password = %q   # supports ${VAR} expansion\n", c.Network.Proxy.Password)
 		} else {
-			b.WriteString("# password = \"${REASONIX_PROXY_PASSWORD}\"   # optional; supports ${VAR} expansion\n")
+			b.WriteString("# password = \"${SEMANTIX_PROXY_PASSWORD}\"   # optional; supports ${VAR} expansion\n")
 		}
 		b.WriteString("\n")
 	}
@@ -223,7 +223,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	if c.Agent.SystemPromptFile != "" {
 		fmt.Fprintf(&b, "system_prompt_file = %q\n", c.Agent.SystemPromptFile)
 	} else {
-		b.WriteString("# system_prompt_file = \"prompts/system.md\"   # project paths stay in <workspace>; user paths may fall back to <reasonix home>\n")
+		b.WriteString("# system_prompt_file = \"prompts/system.md\"   # project paths stay in <workspace>; user paths may fall back to <semantix home>\n")
 	}
 	fmt.Fprintf(&b, "temperature       = %s\n", formatFloat(c.Agent.Temperature))
 	if strings.TrimSpace(c.Agent.RecoveryModel) != "" {
@@ -569,7 +569,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		if strings.TrimSpace(c.Bot.Control.TokenEnv) != "" {
 			fmt.Fprintf(&b, "token_env = %q\n", c.Bot.Control.TokenEnv)
 		} else {
-			b.WriteString("# token_env = \"REASONIX_BOT_CONTROL_TOKEN\"\n")
+			b.WriteString("# token_env = \"SEMANTIX_BOT_CONTROL_TOKEN\"\n")
 		}
 		if len(c.Bot.Routes) > 0 {
 			for _, route := range c.Bot.Routes {
@@ -688,7 +688,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// user's saved toggles survive config rewrites (WriteFile re-renders the
 	// whole file from the struct).
 	if scope != RenderScopeProject {
-		b.WriteString("[secrets]   # credential protection; user/global only, ./reasonix.toml cannot override\n")
+		b.WriteString("[secrets]   # credential protection; user/global only, ./semantix-agent.toml cannot override\n")
 		if c.Secrets.FilterSubprocessEnv {
 			b.WriteString("filter_subprocess_env = true   # strip credential-named env vars from tool/hook/LSP/MCP subprocesses\n")
 		} else {
@@ -706,9 +706,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// values so a cloned repo can never inject SSH hosts. Rendered here so
 	// saved hosts survive full-file config rewrites.
 	if scope != RenderScopeProject && (c.Remote.ImportSSHConfig || len(c.Remote.Hosts) > 0) {
-		b.WriteString("[remote]   # SSH remote hosts; user/global only, ./reasonix.toml cannot override\n")
+		b.WriteString("[remote]   # SSH remote hosts; user/global only, ./semantix-agent.toml cannot override\n")
 		if c.Remote.ImportSSHConfig {
-			b.WriteString("import_ssh_config = true   # surface ~/.ssh/config aliases in `reasonix remote import`\n")
+			b.WriteString("import_ssh_config = true   # surface ~/.ssh/config aliases in `semantix-agent remote import`\n")
 		}
 		for _, h := range c.Remote.Hosts {
 			b.WriteString("\n[[remote.hosts]]\n")
@@ -721,13 +721,13 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 				fmt.Fprintf(&b, "user = %q\n", h.User)
 			}
 			if h.IdentityFile != "" {
-				fmt.Fprintf(&b, "identity_file = %q   # key file path; Reasonix never stores key material\n", h.IdentityFile)
+				fmt.Fprintf(&b, "identity_file = %q   # key file path; Semantix never stores key material\n", h.IdentityFile)
 			}
 			if h.PassphraseEnv != "" {
-				fmt.Fprintf(&b, "passphrase_env = %q   # env var name; value lives in Reasonix's global .env\n", h.PassphraseEnv)
+				fmt.Fprintf(&b, "passphrase_env = %q   # env var name; value lives in Semantix's global .env\n", h.PassphraseEnv)
 			}
 			if h.PasswordEnv != "" {
-				fmt.Fprintf(&b, "password_env = %q   # env var name; value lives in Reasonix's global .env\n", h.PasswordEnv)
+				fmt.Fprintf(&b, "password_env = %q   # env var name; value lives in Semantix's global .env\n", h.PasswordEnv)
 			}
 			if h.ProxyJump != "" {
 				fmt.Fprintf(&b, "proxy_jump = %q   # OpenSSH ProxyJump chain\n", h.ProxyJump)
@@ -757,7 +757,7 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	if len(plugins) == 0 {
 		b.WriteString("# [[plugins]]\n")
 		b.WriteString("# name    = \"example\"\n")
-		b.WriteString("# command = \"reasonix-plugin-example\"\n")
+		b.WriteString("# command = \"semantix-plugin-example\"\n")
 		b.WriteString("# startup_timeout_seconds = 60    # optional initialize + tools/list cap\n")
 		b.WriteString("# call_timeout_seconds = 600       # optional per-server MCP call timeout\n")
 		b.WriteString("# tool_timeout_seconds = { \"generate_video\" = 1800 }   # raw MCP tool names\n")
@@ -1787,7 +1787,7 @@ func renderBotDesktopWatcher(b *strings.Builder, watcher BotDesktopWatcherConfig
 }
 
 // renderRuleList emits a permission rule list. A populated list renders as an
-// active TOML array; an empty one renders as a commented example so `reasonix setup`
+// active TOML array; an empty one renders as a commented example so `semantix-agent setup`
 // scaffolds discoverable guidance without imposing surprising rules.
 func renderRuleList(key string, rules []string, example string) string {
 	if len(rules) == 0 {

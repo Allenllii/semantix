@@ -90,7 +90,7 @@ Provider 接口已定义：
 - `CompactionCapabilities`；
 - `ErrCompactionUnsupported`。
 
-当前 Responses vendor 明确返回 unsupported，并回退到 Reasonix 的摘要路径。摘要首次失败后的重试会聚合两次 attempt 的 usage 与 request count，供成本和 telemetry 使用。
+当前 Responses vendor 明确返回 unsupported，并回退到 Semantix 的摘要路径。摘要首次失败后的重试会聚合两次 attempt 的 usage 与 request count，供成本和 telemetry 使用。
 
 Anthropic、DeepSeek 等原生 compaction endpoint 尚未接入；能力接口不代表这些 endpoint 已经可用。
 

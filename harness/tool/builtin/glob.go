@@ -91,7 +91,7 @@ func (g globTool) Execute(ctx context.Context, args json.RawMessage) (string, er
 	displayPattern := rp.DisplayPath
 
 	// If the pattern contains **, use recursive matching via doublestar semantics
-	// while retaining Reasonix's cancellation and read-forbid pruning.
+	// while retaining Semantix's cancellation and read-forbid pruning.
 	if strings.Contains(p.Pattern, "**") {
 		return g.globRecursive(ctx, p.Pattern, displayPattern, rp, to)
 	}

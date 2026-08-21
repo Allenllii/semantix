@@ -60,7 +60,7 @@ type Theme struct {
     Dim        lipgloss.Color // 次要信息
     Accent     lipgloss.Color // 语义绿 #2F967F（品牌强调）
     Success    lipgloss.Color // 成功/命中（= Accent 派生或同值）
-    Warn       lipgloss.Color // 警告（保留 reasonix 语义，仅风格化）
+    Warn       lipgloss.Color // 警告（保留 semantix 语义，仅风格化）
     Error      lipgloss.Color // 错误
 }
 ```
@@ -132,7 +132,7 @@ fork 侧 `Bridge.Reuse` 的两次子进程调用（`lookup --json` / `usage --js
 
 | spec 原文 | 实施 | 原因 |
 |---|---|---|
-| `harness/tui/theme.go`（或等价落点） | 等价落点 `harness/cli/theme.go`：新增 `semantix` 主题风格（dark + #2F967F accent/success），`REASONIX_THEME=semantix` 切换 | vendor 后 TUI 主题层在 `harness/cli`（`cliPalette`/`cliThemeStyle` 已是完整 token 集，复用既有模式，不另起并行体系） |
+| `harness/tui/theme.go`（或等价落点） | 等价落点 `harness/cli/theme.go`：新增 `semantix` 主题风格（dark + #2F967F accent/success），`SEMANTIX_THEME=semantix` 切换 | vendor 后 TUI 主题层在 `harness/cli`（`cliPalette`/`cliThemeStyle` 已是完整 token 集，复用既有模式，不另起并行体系） |
 | 删 `--json` 子进程调用 | `Bridge.Inject`/`Bridge.Reuse` 已进程内化（kernel/slice + bm25 + inject + usage + zone 直读），删除 `protocol.go`/`inject.go`（envelope/runCLI/3s cap 全部移除）；`semantix_lookup` 工具保留自身 CLI exec（U8 工具契约，U40 处理） | #190 checklist "inject 返回值 + usage 直读" |
 | 资源仪表挂点 | `harness/cli/resource_gauge.go`：`resourceGauge` 接口 + `nilGauge` 空实现，挂入 `chatTUI.gauge` 字段 | 本期空实现 |
 | 成本价格来源 | `SemantixConfig` 新增 `cost_input_price_usd`/`cost_cache_price_usd`（镜像 semantix.toml `[cost]` 键），默认 kernel 价格 | 进程内无法让子进程 CLI 读 semantix.toml |

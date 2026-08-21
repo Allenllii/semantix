@@ -2,7 +2,7 @@
 
 > 场景：客户的 agent 基于 LangChain 构建，想把 semantix 作为记忆中间件。
 > 结论：**两个环节都要**——它们分别是记忆的「写」和「读」，
-> 挂在不同位置，缺一不可。Reasonix fork（H1）已按同一模型在 harness
+> 挂在不同位置，缺一不可。Semantix fork（H1）已按同一模型在 harness
 > 内部实现（事件级），LangChain 集成是同一模型的**消息级**实现。
 
 ## 架构总览
@@ -96,9 +96,9 @@ def persist_session(session_id: str, messages: list, project: str):
 - `CallbackHandler.on_chain_end`（每个 chain 结束；建议只对顶层 chain 落盘，防重复）
 - 周期任务（跑批）
 
-## 与 Reasonix fork 挂载的关系（同一模型，两种粒度）
+## 与 Semantix fork 挂载的关系（同一模型，两种粒度）
 
-| | LangChain 中间件（消息级） | Reasonix fork（事件级，H1 已实现） |
+| | LangChain 中间件（消息级） | Semantix fork（事件级，H1 已实现） |
 |---|---|---|
 | ① 读记忆 | `inject`/`lookup` 子进程，拼进消息 | `systemPrompt()` hook + `semantix_lookup` 工具注册 |
 | ② 写记忆 | 会话结束转 JSONL + `extract` | `HarnessSink` 事件旁路实时写 JSONL（`[semantix] enabled=true`） |

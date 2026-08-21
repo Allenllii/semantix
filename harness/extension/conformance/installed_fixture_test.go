@@ -78,7 +78,7 @@ func TestInstallableFixtureManifestCoversEveryRuntimeSurface(t *testing.T) {
 		t.Fatalf("manifest identity = %q/%q", pkg.Manifest.Name, pkg.Manifest.Version)
 	}
 	rt := pkg.Manifest.Runtime
-	if rt == nil || rt.Command != "${REASONIX_PLUGIN_ROOT}/bin/full-sidecar" {
+	if rt == nil || rt.Command != "${SEMANTIX_PLUGIN_ROOT}/bin/full-sidecar" {
 		t.Fatalf("runtime = %+v", rt)
 	}
 	wantIntercepts := map[string]bool{"input.receive": true, "tool.before": true, "system_prompt.build": true, "session.start": true}

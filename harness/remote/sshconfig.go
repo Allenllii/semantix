@@ -31,7 +31,7 @@ type SSHConfigSource struct {
 	effectiveErr    map[string]error
 }
 
-// EffectiveSSHConfig is the subset of `ssh -G` output consumed by Reasonix.
+// EffectiveSSHConfig is the subset of `ssh -G` output consumed by Semantix.
 // Keeping every IdentityFile is important: OpenSSH permits the directive to be
 // repeated and probes the resulting identities in order.
 type EffectiveSSHConfig struct {
@@ -106,7 +106,7 @@ func (s *SSHConfigSource) get(alias, key string) string {
 // Effective resolves alias through the user's installed OpenSSH client. This
 // is the same source of truth used by VS Code Remote-SSH and covers Include,
 // Host wildcards, Match rules, token expansion, and OpenSSH's precedence. If
-// ssh is unavailable, Reasonix falls back to its embedded parser so existing
+// ssh is unavailable, Semantix falls back to its embedded parser so existing
 // installations without the executable keep working.
 func (s *SSHConfigSource) Effective(alias string) EffectiveSSHConfig {
 	effective, _ := s.EffectiveWithError(alias)

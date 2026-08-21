@@ -83,7 +83,7 @@ The host then delivers your reply directly instead of starting the executor.
 Never emit that marker when any workspace change, command, verification, or
 follow-up action remains.`
 
-const executorHandoffMarker = "Reasonix executor handoff"
+const executorHandoffMarker = "Semantix executor handoff"
 
 // plannerFallbackNotice is shown when the planner fails and the turn degrades
 // to executor-only instead of failing outright.
@@ -106,7 +106,7 @@ const noChangesMarker = "[no_changes]"
 const plannerRequiresApprovalMarker = "[planner_requires_approval]"
 
 // PlannerPromptWithContext appends cache-stable standing context, such as loaded
-// REASONIX.md / AGENTS.md memory, to the planner's smaller system prompt.
+// SEMANTIX.md / AGENTS.md memory, to the planner's smaller system prompt.
 func PlannerPromptWithContext(context string) string {
 	context = strings.TrimSpace(context)
 	if context == "" {
@@ -305,7 +305,7 @@ func (c *Coordinator) SetSandboxEscapeApprover(g sandbox.EscapeApprover) {
 	}
 }
 
-// SetConfigWriteApprover propagates Reasonix-managed config write approvals to
+// SetConfigWriteApprover propagates Semantix-managed config write approvals to
 // both tool-using agents in two-model mode.
 func (c *Coordinator) SetConfigWriteApprover(g tool.ConfigWriteApprover) {
 	if c == nil {

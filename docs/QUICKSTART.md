@@ -8,13 +8,13 @@
 
 ### 方式一：GitHub Release（推荐）
 
-**完整产品（v0.3.0+）**：`semantix-agent-v0.3.0-<platform>.tar.gz`——reasonix（coding-agent harness）+ semantix（记忆内核）+ 示例配置 + 安装脚本：
+**完整产品（v0.3.0+）**：`semantix-agent-v0.3.0-<platform>.tar.gz`——semantix-agent（coding-agent harness）+ semantix（记忆内核）+ 示例配置 + 安装脚本：
 
 ```bash
 tar -xzf semantix-agent-v0.3.0-darwin-arm64.tar.gz
 cd semantix-agent-v0.3.0-darwin-arm64
 ./semantix-install.sh v0.3.0   # 安装两个二进制 + 配置
-reasonix --config reasonix.toml   # 启动完整 agent
+semantix-agent --config semantix-agent.toml   # 启动完整 agent
 ```
 
 **仅内核**：从 [Releases](https://github.com/Gnosil/semantix/releases) 下载对应平台二进制：
@@ -43,7 +43,7 @@ go build -o semantix ./cmd/semantix   # 需要 Go 1.26+
 ## 30 秒体验
 
 ```bash
-# 1. 从历史会话提取切片（Reasonix/Claude Code 风格 JSONL：每行 {role,content,tool_calls}）
+# 1. 从历史会话提取切片（Semantix/Claude Code 风格 JSONL：每行 {role,content,tool_calls}）
 semantix extract --input session.jsonl --db .semantix/project.db --project demo
 
 # 2. 语义检索（三模式）
@@ -87,7 +87,7 @@ semantix verify --session <会话目录> --project demo > eval.tsv
 
 | 目标 | 默认落盘位置 | 说明 |
 |---|---|---|
-| `reasonix` | `~/.semantix/agent-skill/` | fork 已内置集成；落参考文档 + 打印 `[semantix] enabled=true` 配置步骤 |
+| `semantix-agent` | `~/.semantix/agent-skill/` | 内置集成（vendored harness）；落参考文档 + 打印 `[semantix] enabled=true` 配置步骤 |
 | `claude-code` | `~/.claude/skills/semantix/` | Claude Code agent skills 目录，重启后生效 |
 | `custom` | `--dir` 必填 | 任意目录；`--source`/`SEMANTIX_SKILL_DIR` 指定 agent-skill 源 |
 

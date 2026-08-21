@@ -9,7 +9,7 @@ import (
 	"semantix/harness/config"
 )
 
-// BillingReport is the structured output of `reasonix doctor billing`.
+// BillingReport is the structured output of `semantix-agent doctor billing`.
 type BillingReport struct {
 	DisplayCurrencyPref string                `json:"display_currency_pref"`
 	DisplayCurrency     string                `json:"display_currency"`

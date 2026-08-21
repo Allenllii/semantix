@@ -1,14 +1,14 @@
 # Extension Runtime v2 (Spatiotemporal Composability)
 
-English overview of the Reasonix plugin/runtime v2 model. Chinese: [EXTENSION_RUNTIME_V2.zh-CN.md](./EXTENSION_RUNTIME_V2.zh-CN.md).
+English overview of the Semantix plugin/runtime v2 model. Chinese: [EXTENSION_RUNTIME_V2.zh-CN.md](./EXTENSION_RUNTIME_V2.zh-CN.md).
 
 ## Protocol and manifest
 
-- Plugin manifest: exact `apiVersion: reasonix.io/plugin/v2` only (no `v2.0`/`v2.1` aliases; v1 and legacy native rejected).
+- Plugin manifest: exact `apiVersion: semantix.io/plugin/v2` only (no `v2.0`/`v2.1` aliases; v1 and legacy native rejected).
 - Compatibility boundary: no v1 dual-read or automatic migration. Extension
   manifests were not publicly released on v1, so v2 is the first supported
   runtime manifest.
-- Extension wire protocol: `reasonix.extension.v2` (major 2).
+- Extension wire protocol: `semantix.extension.v2` (major 2).
 - Handshake `provides` must be a subset of the manifest provides ceiling.
 
 ## Runtime model
@@ -41,9 +41,9 @@ Component states: `Inactive → Preparing → Active → Draining → Inactive` 
 ## Diagnostics
 
 ```bash
-reasonix doctor runtime
-reasonix doctor runtime --json
-reasonix plugin doctor <name>
+semantix-agent doctor runtime
+semantix-agent doctor runtime --json
+semantix-agent plugin doctor <name>
 ```
 
 Reports component status, plan, effect receipts, recoverability, lifecycle

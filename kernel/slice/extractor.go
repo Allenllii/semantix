@@ -20,7 +20,7 @@ type Extractor interface {
 	Extract(sessionJSONL []byte, meta SliceMeta) ([]*Slice, error)
 }
 
-// transcriptLine is one line of a session JSONL transcript (Reasonix-style).
+// transcriptLine is one line of a session JSONL transcript (Semantix-style).
 // Only the fields the extractor needs are decoded; unknown fields are ignored.
 type transcriptLine struct {
 	Role      string `json:"role"`

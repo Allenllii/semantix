@@ -13,7 +13,7 @@ import (
 	"semantix/harness/sessioninbox"
 )
 
-const botInboxMessageExtraKey = "reasonix.bot.inbound.v1"
+const botInboxMessageExtraKey = "semantix.bot.inbound.v1"
 
 type durableBotMessage struct {
 	Platform     Platform `json:"platform"`

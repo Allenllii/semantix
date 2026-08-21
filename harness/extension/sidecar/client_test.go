@@ -40,7 +40,7 @@ func TestInitializeParamsCarryManifestV2DependencyIdentity(t *testing.T) {
 			Capabilities: []string{"interceptors", "strategies", "providers", "ui"},
 		},
 		requires: []pluginpkg.CapabilityRef{{
-			Namespace: "reasonix", Kind: "provider", ID: "base", VersionRange: ">=1.0.0", Optional: true,
+			Namespace: "semantix", Kind: "provider", ID: "base", VersionRange: ">=1.0.0", Optional: true,
 		}},
 		provides: []pluginpkg.CapabilityRef{
 			{Namespace: "plugin/example", Kind: "provider", ID: "fake/echo", Version: "1.0.0", SchemaHash: "sha256:provider"},

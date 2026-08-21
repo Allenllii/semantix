@@ -1,4 +1,4 @@
-# Reasonix Bot Guide
+# Semantix Bot Guide
 
 <a href="../README.md">README</a>
 &nbsp;·&nbsp;
@@ -7,7 +7,7 @@
 <a href="./GUIDE.md">General guide</a>
 
 > For desktop and CLI users. This guide explains how to connect Feishu, Lark,
-> WeChat, and QQ bots, how to use Reasonix from IM, and how approvals, Ask
+> WeChat, and QQ bots, how to use Semantix from IM, and how approvals, Ask
 > questions, YOLO, and bot commands work.
 
 ## Contents
@@ -25,14 +25,14 @@
 
 ## What the bot does
 
-After a bot is connected, you can send Reasonix messages from Feishu, Lark,
-WeChat, or QQ. The desktop app or `reasonix bot start` process handles the
+After a bot is connected, you can send Semantix messages from Feishu, Lark,
+WeChat, or QQ. The desktop app or `semantix-agent bot start` process handles the
 model, tools, permissions, sandboxing, and local context, then sends progress
 and results back to the IM channel.
 
 Common uses:
 
-- Ask Reasonix to inspect code, read docs, explain errors, or summarize findings.
+- Ask Semantix to inspect code, read docs, explain errors, or summarize findings.
 - Trigger tool calls from IM and receive progress or final results in the chat.
 - Approve or deny sensitive actions such as file writes or shell commands.
 - Enable YOLO for trusted temporary work so ordinary tool approvals are skipped.
@@ -51,17 +51,17 @@ There are two supported entry points:
 - **Desktop runtime**: configure bots in **Settings -> Bots**. The desktop app
   starts the gateway, keeps status in the app, persists per-connection tool
   approval mode changes, and lets you open matching local IM sessions.
-- **CLI runtime**: run `reasonix bot start` for a headless long-lived process.
+- **CLI runtime**: run `semantix-agent bot start` for a headless long-lived process.
   It uses the same config, allowlist, routes, queue settings, pairing store,
   adapters, and project/session index as the desktop runtime.
 
-The normal `reasonix run` command does not automatically start the IM gateway.
+The normal `semantix-agent run` command does not automatically start the IM gateway.
 Remote bot behavior is active only while the desktop bot runtime is running or
-while a `reasonix bot start` process is alive.
+while a `semantix-agent bot start` process is alive.
 
 ## Connect the four channels
 
-Open the Reasonix desktop app and go to **Settings -> Bots**. In **Add IM Bot**,
+Open the Semantix desktop app and go to **Settings -> Bots**. In **Add IM Bot**,
 choose a channel and scan the QR code.
 
 ```mermaid
@@ -101,7 +101,7 @@ Feishu and Lark share the same capability set, but they are saved as separate
 connections. You can give them different models, working directories, or tool
 approval modes. Bot text replies are sent as standalone Interactive Card JSON
 2.0 markdown, which avoids Feishu/Lark platform quote prefixes while preserving
-CommonMark formatting. If a card is too large for the platform limit, Reasonix
+CommonMark formatting. If a card is too large for the platform limit, Semantix
 falls back to plain text automatically.
 
 For webhook mode, configure a verification token. Incoming webhook events are
@@ -146,9 +146,9 @@ The desktop app is the easiest way to create and test bot connections, but the
 runtime itself can also run as a long-lived headless gateway:
 
 ```sh
-reasonix bot doctor
-reasonix bot doctor --deep
-reasonix bot start --channels qq,feishu,lark,weixin --dir /path/to/project
+semantix-agent bot doctor
+semantix-agent bot doctor --deep
+semantix-agent bot start --channels qq,feishu,lark,weixin --dir /path/to/project
 ```
 
 Use `--channels` to choose which configured IM inputs to accept. `feishu` and
@@ -164,7 +164,7 @@ The headless gateway uses the same config records as the desktop app:
   such as Feishu vs Lark.
 - `credential.app_id`, `credential.app_secret_env`, `credential.account_id`,
   and `credential.token_env` point to app IDs, app secrets, saved accounts, and
-  tokens. Secrets stay in environment variables or the Reasonix user credentials
+  tokens. Secrets stay in environment variables or the Semantix user credentials
   store.
 - `workspace_root`, `model`, and `tool_approval_mode` can be set per
   connection. This lets different IM channels route to different local projects
@@ -194,7 +194,7 @@ older configs and for connections without active per-bot access. You can
 deliberately set `allow_all = true`, or enable `pairing_enabled` for a single
 bot / `[bot.pairing]` globally so an unknown DM sender receives a one-time
 pairing code. That code must be approved locally with
-`reasonix bot pairing approve <code>` before the sender can drive the bot; when
+`semantix-agent bot pairing approve <code>` before the sender can drive the bot; when
 the request is tied to a connection, approval adds the sender to that
 connection's access list. Users listed in `admins` / `approvers` or the legacy
 `*_admins` / `*_approvers` also receive base bot admission, so they do not need
@@ -203,9 +203,9 @@ pairing or role admission; group IDs remain an additional narrowing layer.
 Use these commands to manage pending requests:
 
 ```sh
-reasonix bot pairing list
-reasonix bot pairing approve CODE
-reasonix bot pairing reject CODE
+semantix-agent bot pairing list
+semantix-agent bot pairing approve CODE
+semantix-agent bot pairing reject CODE
 ```
 
 If `qq_admins`, `feishu_admins`, `weixin_admins`, or the matching
@@ -243,13 +243,13 @@ configured connection.
 Example:
 
 ```sh
-export REASONIX_BOT_CONTROL_TOKEN="change-me"
+export SEMANTIX_BOT_CONTROL_TOKEN="change-me"
 
-curl -H "Authorization: Bearer $REASONIX_BOT_CONTROL_TOKEN" \
+curl -H "Authorization: Bearer $SEMANTIX_BOT_CONTROL_TOKEN" \
   http://127.0.0.1:37913/status
 
 curl -X POST http://127.0.0.1:37913/send \
-  -H "Authorization: Bearer $REASONIX_BOT_CONTROL_TOKEN" \
+  -H "Authorization: Bearer $SEMANTIX_BOT_CONTROL_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "connection_id": "feishu-lark",
@@ -266,7 +266,7 @@ curl -X POST http://127.0.0.1:37913/send \
 sequenceDiagram
   participant U as "User"
   participant IM as "Feishu / Lark / WeChat / QQ"
-  participant R as "Reasonix desktop or bot start"
+  participant R as "Semantix desktop or bot start"
   participant T as "Local tools and model"
 
   U->>IM: "Send a request"
@@ -343,7 +343,7 @@ These commands work in Feishu, Lark, WeChat, and QQ.
 | `/queue followup` | Queue mid-run messages as later turns | `/queue followup` |
 | `/queue collect` | Merge queued messages into one later turn | `/queue collect` |
 | `/queue interrupt` | Cancel the current task and keep the newest message | `/queue interrupt` |
-| `/projects [query]` | List indexed project workspaces | `/projects reasonix` |
+| `/projects [query]` | List indexed project workspaces | `/projects semantix` |
 | `/use project <id\|name>` | Route this remote session to an indexed project | `/use project p1` |
 | `/use project default` | Clear the project override and return to configured routing | `/use project default` |
 | `/sessions search <query>` | Search indexed desktop/bot sessions | `/sessions search release bug` |
@@ -363,7 +363,7 @@ Shortcut replies:
 The default queue mode is `steer`: when the same session is already running, a
 new message is injected as mid-turn guidance instead of waiting for the whole
 turn to finish. `queue_cap` and `queue_drop` bound backlog growth in config.
-`reasonix bot doctor --deep` reports queue, pairing, and role diagnostics.
+`semantix-agent bot doctor --deep` reports queue, pairing, and role diagnostics.
 
 Queue modes:
 
@@ -383,21 +383,21 @@ Project and session navigation:
 - `/attach session <id|query>` continues the remote session from an indexed
   `path:` transcript.
 - `/search all <query>` searches file contents across indexed project roots.
-  Reasonix uses `rg` when available and falls back to a bounded Go scanner.
+  Semantix uses `rg` when available and falls back to a bounded Go scanner.
 
 These navigation commands never accept arbitrary paths typed from IM. They only
 jump to indexed targets and, when role lists are configured, require an admin.
 
 When an adapter supplies media URLs, the gateway downloads those files into the
-current workspace's `.reasonix/attachments` directory and passes them to
-Reasonix as `@.reasonix/attachments/...` references. If an attachment cannot be
+current workspace's `.semantix/attachments` directory and passes them to
+Semantix as `@.semantix/attachments/...` references. If an attachment cannot be
 saved, the bot sends a short warning and continues with the available text. The
 built-in Feishu, Weixin, and QQ adapters currently focus on text events; ordinary
 IM attachment extraction can be added at the adapter layer.
 
 ## Approvals and YOLO
 
-Reasonix bots use the same permission system as the desktop app. Ask mode is the
+Semantix bots use the same permission system as the desktop app. Ask mode is the
 default: sensitive tool calls such as file writes and shell commands request
 confirmation first.
 
@@ -432,16 +432,16 @@ Recommendations:
 
 ## Do upgrades require rebinding?
 
-No. A normal Reasonix app upgrade or overwrite install does not require
+No. A normal Semantix app upgrade or overwrite install does not require
 rebinding.
 
-Bindings are stored in the user's Reasonix data, not inside the app bundle:
+Bindings are stored in the user's Semantix data, not inside the app bundle:
 
 - Bot connections, remote IDs, allowlists, model choices, and approval modes are
   stored in the user config.
-- Feishu and Lark secrets are stored in Reasonix's global
-  `<Reasonix home>/.env`, shared by CLI and desktop.
-- The WeChat scanned account token is stored in the Reasonix user data
+- Feishu and Lark secrets are stored in Semantix's global
+  `<Semantix home>/.env`, shared by CLI and desktop.
+- The WeChat scanned account token is stored in the Semantix user data
   directory.
 - The QQ App ID is stored in user config; the App Secret is stored under the
   configured env var, `QQ_BOT_APP_SECRET` by default, in the global credentials
@@ -449,7 +449,7 @@ Bindings are stored in the user's Reasonix data, not inside the app bundle:
 
 You may need to bind again if:
 
-- The Reasonix user config directory was deleted.
+- The Semantix user config directory was deleted.
 - You changed machines or OS users.
 - Authorization was revoked on the platform side.
 - The WeChat token expired.
@@ -461,7 +461,7 @@ You may need to bind again if:
 | Symptom | What to check |
 | --- | --- |
 | QR code says the link expired | Generate a new QR code in Settings; QR codes expire (Feishu, Lark, WeChat only — QQ uses manual setup and has no QR code). |
-| Connected but no reply | Make sure the desktop bot runtime or `reasonix bot start` process is running, the bot connection is enabled, and the sender ID is allowlisted, paired, or access is open. |
+| Connected but no reply | Make sure the desktop bot runtime or `semantix-agent bot start` process is running, the bot connection is enabled, and the sender ID is allowlisted, paired, or access is open. |
 | Feishu or Lark button action fails | Send the text command from the card, such as `/approve <id>` or `/deny <id>`. |
 | QQ button action fails | Same as Feishu/Lark — send the text command from the card, such as `/approve <id>` or `/deny <id>`. |
 | WeChat reply `1` does nothing | Numeric shortcuts only work when an approval or Ask is pending; use the full command if needed. |

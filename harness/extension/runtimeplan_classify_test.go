@@ -8,7 +8,7 @@ import (
 
 func TestClassifySubgraphNone(t *testing.T) {
 	g, err := BuildDependencyGraph([]ComponentDescriptor{
-		{ID: "host", Provides: []extensioncontract.Capability{cap("reasonix", "provider", "p", "1.0.0", "sha256:p")}},
+		{ID: "host", Provides: []extensioncontract.Capability{cap("semantix", "provider", "p", "1.0.0", "sha256:p")}},
 	})
 	if err != nil {
 		t.Fatal(err)

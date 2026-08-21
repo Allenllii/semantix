@@ -1,4 +1,4 @@
-// Package sessioncatalog maintains a disposable SQLite projection of Reasonix
+// Package sessioncatalog maintains a disposable SQLite projection of Semantix
 // session sidecars. Session JSONL/event/meta files remain authoritative; every
 // row in this package may be discarded and rebuilt.
 package sessioncatalog

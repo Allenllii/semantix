@@ -158,7 +158,7 @@ $ semantix search --query "fix failing go test"
 
 ### 安装
 
-**方式一：GitHub Release（推荐）**——[Releases](https://github.com/Gnosil/semantix/releases) 提供 6 平台二进制（macOS / Linux / Windows，amd64 + arm64），完整产品包含 reasonix（编程助手本体）+ semantix（记忆内核）：
+**方式一：GitHub Release（推荐）**——[Releases](https://github.com/Gnosil/semantix/releases) 提供 6 平台二进制（macOS / Linux / Windows，amd64 + arm64），完整产品包含 semantix（编程助手本体）+ semantix（记忆内核）：
 
 ```bash
 tar -xzf semantix-agent-<version>-<platform>.tar.gz
@@ -176,7 +176,7 @@ go build -o semantix ./cmd/semantix
 ### 30 秒体验
 
 ```bash
-# 1. 从历史会话提取切片（Reasonix/Claude Code 风格 JSONL）
+# 1. 从历史会话提取切片（Semantix/Claude Code 风格 JSONL）
 semantix extract --input session.jsonl --db .semantix/project.db --project demo
 
 # 2. 语义检索（bm25 / vector / hybrid 三模式）
@@ -196,7 +196,7 @@ semantix dashboard
 
 ```bash
 semantix install --target claude-code   # 安装 agent skill 到 ~/.claude/skills/semantix/
-semantix install --target reasonix      # Reasonix fork 已内置集成
+semantix install --target semantix-agent      # 内置集成（vendored harness），零步骤
 ```
 
 全部命令（`extract` / `search` / `verify` / `eval` / `eval-judge` / `usage` / `lookup` / `inject` / `doctor` / `install` / `completion` / `gc` / `export` / `import` / `dashboard` …）见 `semantix help`；CLI v2 起统一 `--json` 信封输出（`{ok, command, data, error, version}`），退出码契约统一（0 成功 / 1 运行错误 / 2 用法错误 / 3 门禁未达标）。详见 [docs/QUICKSTART.md](./docs/QUICKSTART.md)。
@@ -211,7 +211,7 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 模块 | 路径 | 职责 | 聚焦验证 |
 |---|---|---|---|
 | CLI | [`cmd/semantix`](./cmd/semantix) | 命令注册、统一 JSON 信封、退出码契约、维护与评估命令。 | `go test ./cmd/semantix -race` |
-| Agent 可执行入口 | [`cmd/semantix-agent`](./cmd/semantix-agent) | 打包后的 Reasonix 衍生 Agent 入口，包含崩溃捕获与构建版本接线。 | `go test ./cmd/semantix-agent` |
+| Agent 可执行入口 | [`cmd/semantix-agent`](./cmd/semantix-agent) | 打包后的 Semantix 衍生 Agent 入口，包含崩溃捕获与构建版本接线。 | `go test ./cmd/semantix-agent` |
 | Gateway | [`gateway`](./gateway)、[`cmd/semantix-gateway`](./cmd/semantix-gateway) | OpenAI 兼容代理、Anthropic 转换、SSE 转发、检索注入与 fail-open 上游路由。 | `go test ./gateway ./cmd/semantix-gateway -race` |
 | 配置 | [`kernel/config`](./kernel/config) | 按内置值、TOML、环境变量、CLI 覆盖顺序解析配置，并保留来源与类型化错误。 | `go test ./kernel/config -race` |
 | 事件摄取 | [`kernel/ingest`](./kernel/ingest) | 读取 harness JSONL 事件流，将规范化会话送入提取流程，无需依赖在线 harness。 | `go test ./kernel/ingest -race` |
@@ -230,13 +230,13 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 | 参数演化 | [`kernel/evolve`](./kernel/evolve) | 使用 EWMA 调整检索阈值和注入预算，参数变化有边界且可检查。 | `go test ./kernel/evolve -race` |
 | 事件契约 | [`kernel/event`](./kernel/event) | 类型化 kernel 事件、payload、wire format 与同步进程内总线。 | `go test ./kernel/event -race` |
 | 用量核算 | [`kernel/usage`](./kernel/usage) | 记录逐轮 token/cache 事件，汇总基线成本、实际成本与估算节省。 | `go test ./kernel/usage -race` |
-| Reasonix harness | [`harness`](./harness) | 随仓 Agent runtime：provider、工具、权限、扩展、会话、恢复、远程执行和 UI 契约。 | `go test ./harness/... -race` |
+| Semantix harness | [`harness`](./harness) | 随仓 Agent runtime：provider、工具、权限、扩展、会话、恢复、远程执行和 UI 契约。 | `go test ./harness/... -race` |
 | Harness 桥接 | [`harness/semantix`](./harness/semantix) | 将 harness 事件镜像为会话 JSONL，并输出复用摘要，同时保持 Semantix fail-open。 | `go test ./harness/semantix -race` |
 | Agent Skill | [`agent-skill`](./agent-skill) | 面向外部 harness 的自助安装、工具 schema、会话绕行 hook 与自测。 | `bash agent-skill/scripts/selftest.sh` |
 | 部署 | [`deploy`](./deploy) | Gateway Docker 镜像、Compose 拓扑与支持环境变量展开的示例配置。 | `docker compose -f deploy/docker-compose.yml config` |
 | 自动化脚本 | [`scripts`](./scripts) | 跨会话 demo、发布构建器和 Go 引导工具，供本地与发布流程使用。 | 在干净工作区运行对应 demo 或发布脚本。 |
 | 规范与证据 | [`docs`](./docs) | 架构、安全、路线图、规格与验收报告，用于区分设计目标和实测结果。 | 每个已交付单元均核对对应验收报告。 |
-| 集成补丁 | [`patches`](./patches) | 面向外部 Reasonix fork 的版本化交付补丁，包含漂移说明和明确预检步骤。 | `git apply --check patches/semantix-sched-prefetch.patch` |
+| 集成补丁 | [`patches`](./patches) | 面向外部 Semantix fork 的版本化交付补丁，包含漂移说明和明确预检步骤。 | `git apply --check patches/semantix-sched-prefetch.patch` |
 | 博客源文件 | [`blog`](./blog) | 技术文章的版本化 Markdown 源；网站内容测试校验元数据、链接和编码。 | `cd site && npm run test:content` |
 | 官网 | [`site`](./site) | Next.js 产品站、文档、博客渲染、结构化数据、生成的 `llms-full.txt` 与内容质量测试。 | `cd site && npm run check` |
 | CI 与工作流 | [`.github/workflows`](./.github/workflows) | 运行 Go vet/race 测试、完整网站检查和站点部署流程，并配置并发控制。 | GitHub 必需检查：`Go checks` 与 `Website checks`。 |

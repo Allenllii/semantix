@@ -27,9 +27,9 @@ import (
 	goldmarktext "github.com/yuin/goldmark/text"
 
 	productcontent "semantix/harness/docs"
+	releasenotes "semantix/harness/release-notes"
 	"semantix/harness/retrieval"
 	"semantix/harness/tool"
-	releasenotes "semantix/harness/release-notes"
 )
 
 const (
@@ -154,7 +154,7 @@ func CommandOverview(language string) (string, error) {
 }
 
 // CommandOverviewFor is CommandOverview with the invocation name selected by
-// the runtime resolver (for example /reasonix:docs when /docs is occupied).
+// the runtime resolver (for example /semantix:docs when /docs is occupied).
 func CommandOverviewFor(language, commandName string) (string, error) {
 	c, err := loadDefaultCatalog()
 	if err != nil {
@@ -169,11 +169,11 @@ func CommandOverviewFor(language, commandName string) (string, error) {
 	stats := fmt.Sprintf("documents=%d sections=%d releases=%d", m.Documents, m.Sections, m.ReleaseNotes)
 	switch strings.ToLower(strings.TrimSpace(language)) {
 	case "zh", "zh-cn":
-		return fmt.Sprintf("内置 Semantix 文档\n%s\n%s\n\n用法：%s <问题>\n示例：%s 1.19.5 更新日志\n\n搜索在本地完成，命中的版本匹配资料会交给当前配置的 AI 组织答案。", identity, stats, commandName, commandName), nil
+		return fmt.Sprintf("内置 Semantix 文档\n%s\n%s\n\n用法：%s <问题>\n示例：%s 0.5.1 更新日志\n\n搜索在本地完成，命中的版本匹配资料会交给当前配置的 AI 组织答案。", identity, stats, commandName, commandName), nil
 	case "zh-tw":
-		return fmt.Sprintf("內建 Semantix 文件\n%s\n%s\n\n用法：%s <問題>\n範例：%s 1.19.5 更新日誌\n\n搜尋在本機完成，命中的版本匹配資料會交給目前設定的 AI 組織答案。", identity, stats, commandName, commandName), nil
+		return fmt.Sprintf("內建 Semantix 文件\n%s\n%s\n\n用法：%s <問題>\n範例：%s 0.5.1 更新日誌\n\n搜尋在本機完成，命中的版本匹配資料會交給目前設定的 AI 組織答案。", identity, stats, commandName, commandName), nil
 	default:
-		return fmt.Sprintf("Embedded Semantix documentation\n%s\n%s\n\nUsage: %s <question>\nExample: %s 1.19.5 changelog\n\nSearch runs locally, then the version-matched evidence is passed to the configured AI to compose the answer.", identity, stats, commandName, commandName), nil
+		return fmt.Sprintf("Embedded Semantix documentation\n%s\n%s\n\nUsage: %s <question>\nExample: %s 0.5.1 changelog\n\nSearch runs locally, then the version-matched evidence is passed to the configured AI to compose the answer.", identity, stats, commandName, commandName), nil
 	}
 }
 
@@ -461,7 +461,7 @@ func loadCatalogWithReleaseNotes(docsFS, releaseNotesFS fs.FS) (*catalog, error)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	hash := sha256.New()
-	_, _ = hash.Write([]byte("reasonix-product-docs-v1\x00"))
+	_, _ = hash.Write([]byte("semantix-product-docs-v1\x00"))
 	markdownParser := goldmark.DefaultParser()
 	c := &catalog{byPath: map[string]*document{}, byID: map[string]*section{}}
 	for _, entry := range entries {

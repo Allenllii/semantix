@@ -1,8 +1,8 @@
 {
-  "apiVersion": "reasonix.io/plugin/v2",
+  "apiVersion": "semantix.io/plugin/v2",
   "name": "starter-extension",
   "version": "0.1.0",
-  "description": "Minimal Reasonix Extension Protocol sidecar",
+  "description": "Minimal Semantix Extension Protocol sidecar",
   "provides": [
     {
       "namespace": "plugin/starter-extension",
@@ -13,7 +13,7 @@
   ],
   "contributes": {},
   "runtime": {
-    "command": "${REASONIX_PLUGIN_ROOT}/bin/starter-extension.exe",
+    "command": "${SEMANTIX_PLUGIN_ROOT}/bin/starter-extension.exe",
     "args": [],
     "env": {},
     "required": false,

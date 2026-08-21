@@ -762,7 +762,7 @@ func Rebuild(ctx context.Context, path string, targets []DirectoryTarget) (Statu
 }
 
 // Inspect is read-only. It never migrates, repairs, quarantines, or rewrites a
-// catalog, making it suitable for `reasonix doctor sessions`.
+// catalog, making it suitable for `semantix-agent doctor sessions`.
 func Inspect(ctx context.Context, path string) (Status, error) {
 	if strings.TrimSpace(path) == "" {
 		path = DefaultPath()

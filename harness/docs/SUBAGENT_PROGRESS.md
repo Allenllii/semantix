@@ -23,10 +23,10 @@ provider-visible tool names:
 
 | Name | Payload |
 |---|---|
-| `reasonix.subagent.status` | exactly one of `queued`, `running`, `reasoning`, `responding`, `tool`, `retrying`, `completed`, `failed`, `cancelled` |
-| `reasonix.subagent.reasoning` | bounded UTF-8 text delta (the child's thinking) |
-| `reasonix.subagent.text` | bounded UTF-8 text delta (the child's response preview) |
-| `reasonix.subagent.notice` | bounded UTF-8 text delta (the child's notices) |
+| `semantix.subagent.status` | exactly one of `queued`, `running`, `reasoning`, `responding`, `tool`, `retrying`, `completed`, `failed`, `cancelled` |
+| `semantix.subagent.reasoning` | bounded UTF-8 text delta (the child's thinking) |
+| `semantix.subagent.text` | bounded UTF-8 text delta (the child's response preview) |
+| `semantix.subagent.notice` | bounded UTF-8 text delta (the child's notices) |
 
 Field conventions:
 
@@ -119,6 +119,6 @@ What is **not** done:
 
 ## Contract stability
 
-Frontends match the reserved names by the `reasonix.subagent.` prefix, so a
+Frontends match the reserved names by the `semantix.subagent.` prefix, so a
 future channel added by a newer agent is ignored (never appended to ordinary
 tool output) by older frontends.

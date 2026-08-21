@@ -241,8 +241,8 @@ func (m *chatTUI) commitTranscriptSource(source transcriptSource) {
 }
 
 const (
-	copyMathStartPrefix = "\x1b]1337;reasonix-copy-math="
-	copyMathEndPrefix   = "\x1b]1337;reasonix-copy-math-end="
+	copyMathStartPrefix = "\x1b]1337;semantix-copy-math="
+	copyMathEndPrefix   = "\x1b]1337;semantix-copy-math-end="
 	copyMathTerminator  = "\x07"
 )
 

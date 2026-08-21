@@ -7,7 +7,7 @@
 > 的请求在到达上游 LLM 之前先过语义缓存——**L3 命中零上游调用、L2 注入跳过重复探索**，
 > 达成省 token、省成本的效果。
 >
-> 与既有集成方式的关系：LangChain 中间件是「消息级」读/写记忆，Reasonix fork 是「事件级」，
+> 与既有集成方式的关系：LangChain 中间件是「消息级」读/写记忆，Semantix fork 是「事件级」，
 > 本设计是**「请求级」的 HTTP 网关形态**——同一个「读记忆（inject/lookup）+ 写记忆（extract）」模型，
 > 只是挂在 API 网关上，零侵入任何 agent harness，天然适配所有 OpenAI 兼容客户端。
 
@@ -154,7 +154,7 @@ Semantix Gateway（★ 本设计的核心新组件）
 
 | 层 | 机制 | 网关中的落点 | 省钱方式 |
 |---|---|---|---|
-| **L1** | 前缀字节稳定 | 网关把注入块放在 **system 提示末尾、消息尾部之前**（Reasonix KV Cache 机制研究结论：静态在前、动态在后），且注入块 ID 规范序 → 字节稳定 | 上游按**缓存价**计费（DeepSeek miss $0.27/M vs hit $0.07/M，价差约 4 倍） |
+| **L1** | 前缀字节稳定 | 网关把注入块放在 **system 提示末尾、消息尾部之前**（Semantix KV Cache 机制研究结论：静态在前、动态在后），且注入块 ID 规范序 → 字节稳定 | 上游按**缓存价**计费（DeepSeek miss $0.27/M vs hit $0.07/M，价差约 4 倍） |
 | **L2** | 语义切片注入 | 未命中时 `inject.Injector.Build(query)` 检索 top-k 切片，拼入请求后转发上游 | 模型**跳过重复探索**，少生成工具调用/中间步骤 → 省**输出 token**（演示中 80% 的重复步骤被替代，是主要节省来源） |
 | **L3** | 已验证结果复用 | 请求归一化 → 指纹校验（deps/mtime）→ `judge.RuleGate` 验证 → 命中直接返回缓存响应 | **零上游调用**，节省约 100% 的该请求成本 |
 
@@ -281,7 +281,7 @@ X-Semantix-Cache: miss
 - **deps 指纹**：复用 `fingerprint.Capture/Verify`（path → sha256）+ mtime 快速失败（`SliceMeta.Mtimes`）——**文件一变缓存即失效**（issue-08 已验收的机制）；网关条目的 deps root 由配置提供（如项目根目录），缺失文件一律视为已变更 → 失效；**网关生成且 deps 为空的结果默认不进入 L3**（`l3_safe=false`，需显式配置才启用）——否则指纹/RuleGate 验证形同虚设（空 deps 时 Chain 会跳过指纹阶段）；
 - **验证**：`judge.RuleGate.Chain`（grey zone 规则，Krites §3.1）；grey 区候选可配置 `SEMANTIX_JUDGE_API_KEY` 走 LLM judge 确认；**judge 一律异步/离主链路执行**（不阻塞响应，保持 <100ms）；
 - **提升与级联失效**：`promote.Store` 存提升条目 + 包级函数 `promote.CascadeInvalidate(store, sourceSliceID, currentContent)`——上游响应内容变化（content 版本号变更）时**级联失效**同一源切片衍生的下游缓存条目；
-- **TTL**：缓存条目按模型 vendor 差异化（DeepSeek 24h / DashScope 5m / Anthropic 5m，沿用 `reasonix-kvcache-mechanisms.md` 的 vendor-aware 结论）；Kimi/Moonshot 与 GPT 的缓存 TTL **以上游文档确认后配置**（Moonshot 历史上需显式建缓存，勿假设自动生效）；
+- **TTL**：缓存条目按模型 vendor 差异化（DeepSeek 24h / DashScope 5m / Anthropic 5m，沿用 `semantix-kvcache-mechanisms.md` 的 vendor-aware 结论）；Kimi/Moonshot 与 GPT 的缓存 TTL **以上游文档确认后配置**（Moonshot 历史上需显式建缓存，勿假设自动生效）；
 - **模型名进缓存键**：防止 Claude 的响应被 GPT 复用（跨模型语义相同但行为/风格不同，绝不混用）；
 - **只缓存可安全复用结果**：带工具调用副作用的结果默认不入 L3（R-Slice 需 `--l3-safe` 或 deps 指纹非空，见 `SliceMeta.L3Safe`）。
 

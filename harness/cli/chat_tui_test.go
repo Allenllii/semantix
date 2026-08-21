@@ -41,9 +41,9 @@ type stubbornTurnRunner struct {
 const tinyPNGBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 
 const (
-	middleClickPasteHelperFlag = "GO_WANT_REASONIX_MIDDLE_CLICK_PASTE_HELPER"
-	middleClickPasteHelperMode = "REASONIX_MIDDLE_CLICK_PASTE_HELPER_MODE"
-	middleClickPasteTestValue  = "REASONIX_MIDDLE_CLICK_TEST_VALUE"
+	middleClickPasteHelperFlag = "GO_WANT_SEMANTIX_MIDDLE_CLICK_PASTE_HELPER"
+	middleClickPasteHelperMode = "SEMANTIX_MIDDLE_CLICK_PASTE_HELPER_MODE"
+	middleClickPasteTestValue  = "SEMANTIX_MIDDLE_CLICK_TEST_VALUE"
 )
 
 func TestMiddleClickPasteCommandHelper(t *testing.T) {
@@ -75,7 +75,7 @@ func TestMain(m *testing.M) {
 
 	// Pin the UI language for the whole cli test binary. Production code
 	// (cli.Run) calls i18n.DetectLanguage("") which resolves the host locale from
-	// the environment (REASONIX_LANG/LC_ALL/LC_MESSAGES/LANG) and installs it as
+	// the environment (SEMANTIX_LANG/LC_ALL/LC_MESSAGES/LANG) and installs it as
 	// the global i18n.M. On a non-English dev machine that flips M to e.g.
 	// Chinese, and tests that exercise the CLI entry point (acp_test.go,
 	// cli_test.go) don't restore it — so later tests asserting English UI strings
@@ -83,7 +83,7 @@ func TestMain(m *testing.M) {
 	// deterministic English environment keeps the suite independent of the host
 	// locale (matching CI). Tests that need another language still set it
 	// explicitly via i18n.DetectLanguage(lang) with their own cleanup.
-	os.Unsetenv("REASONIX_LANG")
+	os.Unsetenv("SEMANTIX_LANG")
 	os.Unsetenv("LC_ALL")
 	os.Unsetenv("LC_MESSAGES")
 	os.Setenv("LANG", "en_US.UTF-8")
@@ -142,7 +142,7 @@ func writeTUIImageCapabilityConfig(t *testing.T, root string) {
 		Models:       []string{"text-only", "vision-pro"},
 		VisionModels: []string{"vision-pro"},
 	}}
-	if err := cfg.SaveTo(filepath.Join(root, "reasonix.toml")); err != nil {
+	if err := cfg.SaveTo(filepath.Join(root, "semantix-agent.toml")); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
 }
@@ -822,14 +822,14 @@ func TestMainManagerFollowsTranscriptWithoutTopPadding(t *testing.T) {
 	m := newChatTUI(ctrl, "", make(chan event.Event, 1), 80)
 	m0, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = m0.(chatTUI)
-	m.wrappedLines = []string{"reasonix", "› /mcp"}
+	m.wrappedLines = []string{"semantix", "› /mcp"}
 
 	out := ansi.Strip(m.renderTranscriptWithMainManager("Manage MCP servers\n1 servers"))
 	lines := strings.Split(out, "\n")
 	if len(lines) < 4 {
 		t.Fatalf("rendered manager area too short:\n%s", out)
 	}
-	if !strings.Contains(lines[0], "reasonix") || !strings.Contains(lines[1], "/mcp") {
+	if !strings.Contains(lines[0], "semantix") || !strings.Contains(lines[1], "/mcp") {
 		t.Fatalf("transcript lines should stay above manager:\n%s", out)
 	}
 	if strings.TrimSpace(lines[2]) != "" {
@@ -2363,7 +2363,7 @@ func isolateUserConfig(t *testing.T) {
 	t.Helper()
 	root := t.TempDir()
 	t.Setenv("HOME", root)
-	t.Setenv("REASONIX_CREDENTIALS_STORE", "file")
+	t.Setenv("SEMANTIX_CREDENTIALS_STORE", "file")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("AppData", filepath.Join(root, "AppData")) // os.UserConfigDir reads AppData on Windows
 	t.Chdir(root)
@@ -2465,7 +2465,7 @@ func TestReasoningLanguageCommandPersistsAndUpdatesController(t *testing.T) {
 
 func TestReasoningLanguageCommandWritesUserConfigNotProjectConfig(t *testing.T) {
 	isolateUserConfig(t)
-	projectPath := filepath.Join(mustGetwd(t), "reasonix.toml")
+	projectPath := filepath.Join(mustGetwd(t), "semantix-agent.toml")
 	if err := os.WriteFile(projectPath, []byte("[agent]\nreasoning_language = \"en\"\n"), 0o644); err != nil {
 		t.Fatalf("write project config: %v", err)
 	}
@@ -2627,7 +2627,7 @@ func TestLanguageCommandAutoClearsPinnedLanguage(t *testing.T) {
 
 func TestLanguageCommandAutoClearsLowerPriorityUserOverride(t *testing.T) {
 	isolateUserConfig(t)
-	t.Setenv("REASONIX_LANG", "")
+	t.Setenv("SEMANTIX_LANG", "")
 	t.Setenv("LC_ALL", "")
 	t.Setenv("LC_MESSAGES", "")
 	t.Setenv("LANG", "")
@@ -2643,7 +2643,7 @@ func TestLanguageCommandAutoClearsLowerPriorityUserOverride(t *testing.T) {
 		t.Fatalf("save user config: %v", err)
 	}
 	projectCfg := config.Default()
-	if err := projectCfg.SaveTo("reasonix.toml"); err != nil {
+	if err := projectCfg.SaveTo("semantix-agent.toml"); err != nil {
 		t.Fatalf("save project config: %v", err)
 	}
 
@@ -3587,14 +3587,14 @@ func TestQualifiedSlashDocsBypassesConflictingCustomCommand(t *testing.T) {
 	m.ctrl = ctrl
 	m.commands = commands
 
-	if cmd := m.runSlashCommand("/reasonix:docs"); cmd != nil {
-		t.Fatal("bare /reasonix:docs should complete locally")
+	if cmd := m.runSlashCommand("/semantix:docs"); cmd != nil {
+		t.Fatal("bare /semantix:docs should complete locally")
 	}
 	if len(r.inputs) != 0 {
-		t.Fatalf("bare /reasonix:docs should not start a model turn, inputs=%q", r.inputs)
+		t.Fatalf("bare /semantix:docs should not start a model turn, inputs=%q", r.inputs)
 	}
 	transcript := strings.Join(m.transcript, "\n")
-	if !strings.Contains(transcript, "digest=sha256:") || !strings.Contains(transcript, "Usage: /reasonix:docs <question>") || strings.Contains(transcript, "legacy docs") {
+	if !strings.Contains(transcript, "digest=sha256:") || !strings.Contains(transcript, "Usage: /semantix:docs <question>") || strings.Contains(transcript, "legacy docs") {
 		t.Fatalf("qualified built-in docs was shadowed:\n%s", transcript)
 	}
 }
@@ -3718,7 +3718,7 @@ func TestDynamicMCPFreshApprovalHidesRememberedChoices(t *testing.T) {
 }
 
 func TestDynamicBashApprovalChoicesUseExactLiteralRules(t *testing.T) {
-	const command = "git status $(touch /tmp/reasonix-dynamic-approval)"
+	const command = "git status $(touch /tmp/semantix-dynamic-approval)"
 	approval := &event.Approval{Tool: "bash", Subject: command}
 	choices := approvalChoices(approval)
 	if len(choices) != 4 {

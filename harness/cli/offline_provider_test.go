@@ -26,10 +26,10 @@ func pinProviderOffline(t *testing.T) {
 [[providers]]
 name = "offline-test"
 kind = "openai"
-base_url = "https://reasonix-tests.invalid/v1"
+base_url = "https://semantix-tests.invalid/v1"
 models = ["model-a"]
 default = "model-a"
-api_key_env = "REASONIX_TEST_ABSENT_KEY"
+api_key_env = "SEMANTIX_TEST_ABSENT_KEY"
 `
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)

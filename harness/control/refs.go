@@ -47,7 +47,7 @@ type refKind int
 const (
 	refResource refKind = iota // an MCP resource: @<server>:<uri>
 	refFile                    // a local file or directory: @<path>
-	refImage                   // a local image attachment: @.reasonix/attachments/<file>
+	refImage                   // a local image attachment: @.semantix/attachments/<file>
 )
 
 // ref is a resolved @reference found in a submitted line.
@@ -74,7 +74,7 @@ type ExternalFolderRefEntry struct {
 
 var pathLocationSuffixRe = regexp.MustCompile(`:\d+(?::\d+)?:?$`)
 
-const externalFolderRefPrefix = "__reasonix_external_folder"
+const externalFolderRefPrefix = "__semantix_external_folder"
 
 // parseRefTokens extracts the deduped, punctuation-trimmed tokens following '@'
 // in a line. A token is a run of non-whitespace bytes, except that a
@@ -184,7 +184,7 @@ func classifyRef(token string, known map[string]bool, exists func(string) bool) 
 }
 
 func isAttachmentRef(token string) bool {
-	return strings.HasPrefix(filepath.ToSlash(token), ".reasonix/attachments/")
+	return strings.HasPrefix(filepath.ToSlash(token), ".semantix/attachments/")
 }
 
 func isImageAttachmentRef(token string) bool {
@@ -725,7 +725,7 @@ func FileRefLine(line string) (string, bool) {
 }
 
 // SlashCodeCommentLine reports whether a slash-prefixed line is ordinary source
-// text rather than a Reasonix slash command.
+// text rather than a Semantix slash command.
 func SlashCodeCommentLine(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	return strings.HasPrefix(trimmed, "//") || strings.HasPrefix(trimmed, "/*")

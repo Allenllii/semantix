@@ -214,7 +214,7 @@ var ChineseTraditional = Messages{
 	SkillPickerStatusNotDir:      "非目錄",
 	SkillPickerStatusUnreadable:  "無權限",
 	SlashPromptEmpty:             "該 MCP prompt 沒有返回可傳送的內容",
-	SlashMCPNone:                 "沒有設定 MCP 伺服器 — 在 reasonix.toml 加一個 [[plugins]] 條目",
+	SlashMCPNone:                 "沒有設定 MCP 伺服器 — 在 semantix-agent.toml 加一個 [[plugins]] 條目",
 	CtrlCQuitHint:                "再按一次 Ctrl+C 退出",
 	CompHintSlash:                "↑/↓ 移動 · Tab/Enter 選中 · Esc 關閉",
 	CompHintFile:                 "↑/↓ 移動 · Tab/Enter 進入資料夾或選中檔案 · Esc 關閉",
@@ -294,7 +294,7 @@ var ChineseTraditional = Messages{
 	ArgEffortXHigh:      "超高推理",
 	ArgEffortMax:        "最高推理",
 	ArgThemeCurrent:     "當前",
-	ArgLanguageAuto:     "從 REASONIX_LANG / 系統 locale 自動偵測",
+	ArgLanguageAuto:     "從 SEMANTIX_LANG / 系統 locale 自動偵測",
 	ArgLanguageEn:       "English",
 	ArgLanguageZh:       "中文",
 
@@ -304,9 +304,9 @@ var ChineseTraditional = Messages{
 	ListSkillsHeaderFmt: "skills（%d 個）",
 	ListSkillsNone:      "暫無 skill — 呼叫內建的（如 /init），或用 install_skill 建立一個",
 	ListHooksHeaderFmt:  "hooks（生效 %d 個）",
-	ListHooksNone:       "無生效 hooks — 在 .reasonix/settings.json（專案）或 <Semantix home>/settings.json（全域）設定",
+	ListHooksNone:       "無生效 hooks — 在 .semantix/settings.json（專案）或 <Semantix home>/settings.json（全域）設定",
 	ListMcpHeader:       "MCP 伺服器",
-	ListMcpNone:         "未連線 MCP 伺服器 — 在 reasonix.toml（[[plugins]]）或專案 .mcp.json 中新增",
+	ListMcpNone:         "未連線 MCP 伺服器 — 在 semantix-agent.toml（[[plugins]]）或專案 .mcp.json 中新增",
 
 	MemoryEditHint:               "可直接編輯記憶文件，或輸入 “/remember 內容” 快速記錄；文件變動會在下次會話生效",
 	ForgetUsage:                  "用法：/forget <name> — name 是 /memory 中顯示的條目標識",
@@ -474,7 +474,7 @@ var ChineseTraditional = Messages{
 	ReportHeaderFmt:           "CLI 當機報告 %s",
 	ReportCapturedFmt:         "擷取時間：%s",
 	ReportPreviewOnlyFmt:      "目前僅預覽。執行 `semantix-agent report send %s` 可傳送這份報告。",
-	ReportSendPrompt:          "將這份已脫敏報告傳送到 crash.reasonix.io？",
+	ReportSendPrompt:          "將這份已脫敏報告傳送到 crash.semantix.ensureok.ai？",
 	ReportKept:                "報告已保留在本機。",
 	ReportDeletedFmt:          "已刪除 CLI 當機報告 %s。",
 	ReportSentFmt:             "已傳送 CLI 當機報告 %s。",
@@ -488,7 +488,7 @@ var ChineseTraditional = Messages{
   semantix-agent report send [ID]       傳送已審閱報告，成功後刪除本機副本
   semantix-agent report delete [ID]     不傳送，直接刪除本機報告`,
 
-	CLITelemetryConsentNotice:           "Semantix 可以向 crash.reasonix.io 傳送匿名、完全不含內容的 CLI 使用統計：隨機安裝 ID、版本、作業系統和固定品質分桶。絕不會傳送 prompt、回答、程式碼、路徑、模型或工具內容、環境變數。之後可執行 `semantix-agent config telemetry off` 關閉。",
+	CLITelemetryConsentNotice:           "Semantix 可以向 crash.semantix.ensureok.ai 傳送匿名、完全不含內容的 CLI 使用統計：隨機安裝 ID、版本、作業系統和固定品質分桶。絕不會傳送 prompt、回答、程式碼、路徑、模型或工具內容、環境變數。之後可執行 `semantix-agent config telemetry off` 關閉。",
 	CLITelemetryConsentPrompt:           "允許傳送匿名 CLI 使用統計嗎？",
 	CLITelemetryConsentInvalid:          "請輸入 y 或 n。",
 	CLITelemetryConsentSaveFailedFmt:    "由於無法儲存偏好設定，CLI 使用統計仍維持關閉：%v",
@@ -505,12 +505,12 @@ var ChineseTraditional = Messages{
   semantix-agent web [--model NAME] [--addr HOST:PORT] [--no-open]  啟動本機 Web UI 並用預設瀏覽器開啟
   semantix-agent serve [--model NAME] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  透過 HTTP+SSE 提供服務（支援可選認證）
   semantix-agent acp [--model NAME]                           透過 stdio 提供 Agent Client Protocol（也可用：semantix-agent --acp）
-  semantix-agent setup [path]                                 互動式設定精靈；生成 reasonix.toml（及 .env）
+  semantix-agent setup [path]                                 互動式設定精靈；生成 semantix-agent.toml（及 .env）
   semantix-agent config reasoning-language [auto|zh|en]        設定可見思考語言
   semantix-agent config compact-ratio [--local] [65..85]       設定自動壓縮閾值
   semantix-agent config telemetry [auto|on|off]                設定不含內容的 CLI 使用統計
   semantix-agent report [list|show|send|delete] [ID]           審閱並明確傳送本機 CLI 當機報告
-  semantix-agent mcp <add|remove|list|import>                 管理 reasonix.toml 裡的 MCP 伺服器
+  semantix-agent mcp <add|remove|list|import>                 管理 semantix-agent.toml 裡的 MCP 伺服器
   semantix-agent subagent <list|create|edit|delete|try|run>   管理和執行隔離子智慧體 profile
   semantix-agent init                                         查看如何產生專案記憶（AGENTS.md）
   semantix-agent doctor [--json]                              輸出脫敏的本機診斷資訊
@@ -540,7 +540,7 @@ var ChineseTraditional = Messages{
   echo "解釋這段程式碼" | semantix-agent run
 
 設定：
-  優先順序：flag > ./reasonix.toml > <Semantix home>/config.toml > 內建預設值
+  優先順序：flag > ./semantix-agent.toml > <Semantix home>/config.toml > 內建預設值
   金鑰透過 api_key_env 從環境變數注入（如 DEEPSEEK_API_KEY）。
   執行 'semantix-agent setup' 生成設定；詳見 docs/SPEC.md。
 `,

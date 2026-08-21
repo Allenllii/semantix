@@ -2,7 +2,7 @@
 
 <a href="./TOOL_CONTRACT.md">English</a>
 
-本文记录 Reasonix 编译期内置工具的 provider-visible 合约。运行时 registry 使用同一条 canonical schema 路径；测试会校验这里列出的工具名、read-only 标记和 schema 快照不会漂移。
+本文记录 Semantix 编译期内置工具的 provider-visible 合约。运行时 registry 使用同一条 canonical schema 路径；测试会校验这里列出的工具名、read-only 标记和 schema 快照不会漂移。
 
 | 工具 | Read-only | 说明 |
 | --- | --- | --- |

@@ -10,7 +10,7 @@ import (
 
 func TestRuntimePlanNoOp(t *testing.T) {
 	g, err := BuildDependencyGraph([]ComponentDescriptor{
-		{ID: "host", Provides: []extensioncontract.Capability{cap("reasonix", "provider", "p", "1.0.0", "sha256:p")}},
+		{ID: "host", Provides: []extensioncontract.Capability{cap("semantix", "provider", "p", "1.0.0", "sha256:p")}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -29,15 +29,15 @@ func TestRuntimePlanNoOp(t *testing.T) {
 
 func TestRuntimePlanProviderOnlyChange(t *testing.T) {
 	from, err := BuildDependencyGraph([]ComponentDescriptor{
-		{ID: "host", Provides: []extensioncontract.Capability{cap("reasonix", "provider", "p", "1.0.0", "sha256:a")}},
-		{ID: "consumer", Requires: []extensioncontract.Requirement{req("reasonix", "provider", "p", ">=1.0.0", false)}},
+		{ID: "host", Provides: []extensioncontract.Capability{cap("semantix", "provider", "p", "1.0.0", "sha256:a")}},
+		{ID: "consumer", Requires: []extensioncontract.Requirement{req("semantix", "provider", "p", ">=1.0.0", false)}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	to, err := BuildDependencyGraph([]ComponentDescriptor{
-		{ID: "host", Provides: []extensioncontract.Capability{cap("reasonix", "provider", "p", "1.1.0", "sha256:b")}},
-		{ID: "consumer", Requires: []extensioncontract.Requirement{req("reasonix", "provider", "p", ">=1.0.0", false)}},
+		{ID: "host", Provides: []extensioncontract.Capability{cap("semantix", "provider", "p", "1.1.0", "sha256:b")}},
+		{ID: "consumer", Requires: []extensioncontract.Requirement{req("semantix", "provider", "p", ">=1.0.0", false)}},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -658,7 +658,7 @@ func TestSubagentProgressOrdinaryToolProgressUnaffected(t *testing.T) {
 }
 
 // TestSubagentProgressUnknownReservedChannelIgnored locks forward compatibility:
-// an older CLI must suppress a future reasonix.subagent.* channel instead of
+// an older CLI must suppress a future semantix.subagent.* channel instead of
 // treating its body as ordinary tool output.
 func TestSubagentProgressUnknownReservedChannelIgnored(t *testing.T) {
 	m := newTestChatTUI()

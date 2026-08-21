@@ -549,7 +549,7 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			_, _ = ctrl.ConsumeFinalization(a.recovery.taskID)
 		}
 		return false, &RecoveryPauseError{
-			Message:    "Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send \"continue\" to start a fresh attempt, or add instructions to change direction.",
+			Message:    "Automatic retries paused. Semantix stopped repeated attempts and kept completed work. Send \"continue\" to start a fresh attempt, or add instructions to change direction.",
 			StopReason: reason,
 		}
 	}

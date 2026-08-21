@@ -129,7 +129,7 @@ func TestInstallIdempotent(t *testing.T) {
 	writeSkillPayload(t, src)
 	dest := filepath.Join(t.TempDir(), "dest")
 
-	args := []string{"--target", "reasonix", "--dir", dest, "--source", src}
+	args := []string{"--target", "semantix", "--dir", dest, "--source", src}
 	code, _, stderr := installRuns(t, args...)
 	if code != 0 {
 		t.Fatalf("first run code = %d, stderr = %q", code, stderr)
@@ -251,7 +251,7 @@ func TestInstallJSONEnvelope(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "dest")
 
 	code, stdout, stderr := installRuns(t,
-		"--target", "reasonix", "--dir", dest, "--source", src, "--json")
+		"--target", "semantix", "--dir", dest, "--source", src, "--json")
 	if code != 0 {
 		t.Fatalf("code = %d, stderr = %q", code, stderr)
 	}
@@ -262,11 +262,11 @@ func TestInstallJSONEnvelope(t *testing.T) {
 	if !env.OK || env.Command != "install" || env.Version != cliVersion {
 		t.Fatalf("envelope = %+v", env)
 	}
-	if env.Data.Target != "reasonix" || env.Data.Dest != dest || len(env.Data.Files) == 0 {
+	if env.Data.Target != "semantix" || env.Data.Dest != dest || len(env.Data.Files) == 0 {
 		t.Fatalf("data = %+v", env.Data)
 	}
 	if len(env.Data.Next) == 0 {
-		t.Fatal("reasonix next steps missing (must reference SKILL.md / hooks/session-bypass.md)")
+		t.Fatal("semantix next steps missing (must reference SKILL.md / hooks/session-bypass.md)")
 	}
 	if !strings.Contains(env.Data.Next[0], "SKILL.md") {
 		t.Fatalf("next steps do not reference SKILL.md: %v", env.Data.Next)

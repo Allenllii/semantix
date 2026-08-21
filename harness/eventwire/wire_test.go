@@ -135,8 +135,6 @@ func TestKindNamesComplete(t *testing.T) {
 	}
 }
 
-
-
 func TestToWireNoticeDetail(t *testing.T) {
 	w := ToWire(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "short", Detail: "diagnostics"})
 	if w.Kind != "notice" || w.Level != "warn" || w.Text != "short" || w.Detail != "diagnostics" {
@@ -244,7 +242,7 @@ func TestToWireMessageMemoryCitations(t *testing.T) {
 			Source:    "MEMORY.md",
 			LineStart: 116,
 			LineEnd:   123,
-			Note:      "reasonix workflow",
+			Note:      "semantix workflow",
 			Kind:      "memory_reference",
 		}},
 	})
@@ -252,7 +250,7 @@ func TestToWireMessageMemoryCitations(t *testing.T) {
 		t.Fatalf("memory citations = %+v, want one citation", w.MemoryCitations)
 	}
 	got := w.MemoryCitations[0]
-	if got.Source != "MEMORY.md" || got.LineStart != 116 || got.LineEnd != 123 || got.Note != "reasonix workflow" {
+	if got.Source != "MEMORY.md" || got.LineStart != 116 || got.LineEnd != 123 || got.Note != "semantix workflow" {
 		t.Fatalf("citation = %+v, want source/line/note preserved", got)
 	}
 	b, err := json.Marshal(w)
@@ -263,7 +261,6 @@ func TestToWireMessageMemoryCitations(t *testing.T) {
 		t.Fatalf("wire JSON missing memoryCitations: %s", string(b))
 	}
 }
-
 
 func TestToWireToolPayloadJSON(t *testing.T) {
 	w := ToWire(event.Event{Kind: event.ToolDispatch, Tool: event.Tool{

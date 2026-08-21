@@ -20,8 +20,8 @@ import (
 
 // Load builds the configuration: defaults, then user config, then project
 // config, then MCP servers from Claude Code's .mcp.json, then (lowest priority)
-// the v0.x ~/.reasonix/config.json's mcpServers. Provider api_key_env values
-// resolve from Reasonix's global .env, not from project .env files.
+// the v0.x ~/.semantix/config.json's mcpServers. Provider api_key_env values
+// resolve from Semantix's global .env, not from project .env files.
 func Load() (*Config, error) {
 	return LoadForRoot(".")
 }
@@ -29,8 +29,8 @@ func Load() (*Config, error) {
 // LoadForRoot builds the configuration with project files resolved from root
 // instead of the current working directory. When root is "" or ".", it behaves
 // like Load(). This is the workspace-aware entry point: desktop tabs use it so
-// each project's reasonix.toml + .mcp.json are resolved independently without
-// changing the process cwd, while provider keys stay rooted in Reasonix home.
+// each project's semantix-agent.toml + .mcp.json are resolved independently without
+// changing the process cwd, while provider keys stay rooted in Semantix home.
 //
 // Note: LoadForRoot may rewrite legacy MCP `tier` lines on disk (see
 // mergeRuntimeTOMLFileSnapshot). Callers that must not mutate config files should use
@@ -47,7 +47,7 @@ func LoadForRootReadOnly(root string) (*Config, error) {
 }
 
 // LoadUserConfigReadOnly loads only the trusted user-global config. It never
-// reads project reasonix.toml files and never performs on-disk migrations.
+// reads project semantix-agent.toml files and never performs on-disk migrations.
 // Host-owned features that may execute a configured binary should use this
 // instead of LoadForRoot so an untrusted checkout cannot choose the process.
 func LoadUserConfigReadOnly() (*Config, error) {
@@ -72,9 +72,9 @@ func loadForRoot(root string, migrateOnDisk bool) (*Config, error) {
 	cfg.setExpansionEnv(expansionEnv)
 	cfg.CredentialsStore = credentialsStoreMode()
 
-	projectTOML := "reasonix.toml"
+	projectTOML := "semantix-agent.toml"
 	if root != "." {
-		projectTOML = filepath.Join(root, "reasonix.toml")
+		projectTOML = filepath.Join(root, "semantix-agent.toml")
 	}
 	if primary := userConfigPath(); primary != "" {
 		if _, err := resolveConfigAccessPath(primary, true); err != nil {
@@ -151,15 +151,15 @@ func loadForRoot(root string, migrateOnDisk bool) (*Config, error) {
 		cfg.systemPromptFileSource = promptFileSourceProject
 	}
 	// The native CLI update channel controls the one user-installed binary.
-	// A repository-local reasonix.toml must never switch that global choice.
+	// A repository-local semantix-agent.toml must never switch that global choice.
 	cfg.CLI = globalCLI
 	// Secret protection is a user-global security control: a cloned repo's
-	// reasonix.toml must not be able to flip on the workflow-breaking env/path
+	// semantix-agent.toml must not be able to flip on the workflow-breaking env/path
 	// protections.
 	cfg.Secrets = globalSecrets
-	// Remote SSH hosts are equally user-global: a cloned repo's reasonix.toml
+	// Remote SSH hosts are equally user-global: a cloned repo's semantix-agent.toml
 	// must not be able to inject hosts, jump chains, or port forwards that
-	// steer where Reasonix opens connections.
+	// steer where Semantix opens connections.
 	cfg.Remote = globalRemote
 	// Desktop language and pricing currency are user-level regional preferences.
 	// A repository must not be able to alter how the user's spend is shown.
@@ -171,7 +171,7 @@ func loadForRoot(root string, migrateOnDisk bool) (*Config, error) {
 	cfg.Telemetry = globalTelemetry
 	// TOML decoding replaces [[plugins]] wholesale, so cfg.Plugins now holds
 	// only the last file's. Re-merge by name across all sources (later wins) so a
-	// project reasonix.toml doesn't drop the global config's MCP servers.
+	// project semantix-agent.toml doesn't drop the global config's MCP servers.
 	// mergeTOMLPlugins only reads files; it does not run on-disk migrations.
 	plugins, err := mergeTOMLPlugins(tomlSources)
 	if err != nil {
@@ -194,7 +194,7 @@ func loadForRoot(root string, migrateOnDisk bool) (*Config, error) {
 
 	// Claude Code's .mcp.json (project root) is read last and merged into
 	// [[plugins]], so a server configured for Claude works here unchanged.
-	// Project reasonix.toml wins on a name collision; project .mcp.json wins
+	// Project semantix-agent.toml wins on a name collision; project .mcp.json wins
 	// over a same-name user-global entry (see mergeMCPJSON).
 	mcpFile := mcpJSONFile
 	if root != "." {
@@ -208,7 +208,7 @@ func loadForRoot(root string, migrateOnDisk bool) (*Config, error) {
 	}
 
 	// Lowest priority before the one-time v1.9.1 MCP migration: the v0.x
-	// ~/.reasonix/config.json's mcpServers. Once the migration marker exists, the
+	// ~/.semantix/config.json's mcpServers. Once the migration marker exists, the
 	// current config is authoritative even when it is empty; reading the legacy
 	// source again would resurrect servers the user removed from current config.
 	if !mcpGlobalMigrationComplete() {
@@ -248,7 +248,7 @@ func loadForRoot(root string, migrateOnDisk bool) (*Config, error) {
 // without reading or migrating user/project TOML. Diagnostic and recovery tools
 // use it when configuration is malformed; it does not put the process into any
 // degraded product "mode". Provider credentials still resolve only from
-// Reasonix's global credential store.
+// Semantix's global credential store.
 func LoadBuiltinDefaultsForRoot(root string) *Config {
 	cfg := Default()
 	cfg.Plugins = nil
@@ -290,9 +290,9 @@ func cloneStringMap(in map[string]string) map[string]string {
 }
 
 // restoreUnresolvableProjectDefaultModel falls back to the user/global
-// default_model when a project reasonix.toml overrides it with a reference no
+// default_model when a project semantix-agent.toml overrides it with a reference no
 // configured provider serves (#4218). Pre-v1.11 persistence paths (e.g. the
-// "always allow" writer) full-rendered ./reasonix.toml and pinned the built-in
+// "always allow" writer) full-rendered ./semantix-agent.toml and pinned the built-in
 // default_model ("deepseek-flash") into it; once the user's [[providers]]
 // replaced the built-in presets, that stale name resolved to nothing and boot
 // hard-failed in every launch from that folder. In-memory only — the project
@@ -683,10 +683,10 @@ func DesktopProviderAccessDeclared(path string) (bool, error) {
 	return declarations.DesktopProviderAccessDeclared, err
 }
 
-// LoadForEdit returns a config to seed the `reasonix setup` wizard when reconfiguring:
+// LoadForEdit returns a config to seed the `semantix-agent setup` wizard when reconfiguring:
 // the built-in defaults with the file at path (if present) decoded on top, so a
 // reconfigure preserves the user's existing providers and agent settings instead
-// of resetting to defaults. Reasonix's global .env is loaded so api_key_env
+// of resetting to defaults. Semantix's global .env is loaded so api_key_env
 // resolution works while the wizard decides which keys are still missing.
 func LoadForEdit(path string) *Config {
 	return loadForEdit(path, true, false)
@@ -967,9 +967,9 @@ func MigrateLegacyAgentStepLimitsForRoot(root string) (bool, error) {
 	if userPath := userConfigLoadPath(); userPath != "" {
 		paths = append(paths, userPath)
 	}
-	projectPath := "reasonix.toml"
+	projectPath := "semantix-agent.toml"
 	if root != "." {
-		projectPath = filepath.Join(root, "reasonix.toml")
+		projectPath = filepath.Join(root, "semantix-agent.toml")
 	}
 	paths = append(paths, projectPath)
 
@@ -1012,9 +1012,9 @@ func MigrateLegacyRedactToolOutputForRoot(root string) (bool, error) {
 	if userPath := userConfigLoadPath(); userPath != "" {
 		paths = append(paths, userPath)
 	}
-	projectPath := "reasonix.toml"
+	projectPath := "semantix-agent.toml"
 	if root != "." {
-		projectPath = filepath.Join(root, "reasonix.toml")
+		projectPath = filepath.Join(root, "semantix-agent.toml")
 	}
 	paths = append(paths, projectPath)
 
@@ -1054,9 +1054,9 @@ func MigrateLegacyMemoryCompilerForRoot(root string) (bool, error) {
 	if userPath := userConfigLoadPath(); userPath != "" {
 		paths = append(paths, userPath)
 	}
-	projectPath := "reasonix.toml"
+	projectPath := "semantix-agent.toml"
 	if root != "." {
-		projectPath = filepath.Join(root, "reasonix.toml")
+		projectPath = filepath.Join(root, "semantix-agent.toml")
 	}
 	paths = append(paths, projectPath)
 
@@ -1123,9 +1123,9 @@ func MigrateLegacyMultiThresholdCompactionForRoot(root string) (bool, error) {
 	if userPath := userConfigLoadPath(); userPath != "" {
 		paths = append(paths, userPath)
 	}
-	projectPath := "reasonix.toml"
+	projectPath := "semantix-agent.toml"
 	if root != "." {
-		projectPath = filepath.Join(root, "reasonix.toml")
+		projectPath = filepath.Join(root, "semantix-agent.toml")
 	}
 	paths = append(paths, projectPath)
 
@@ -1717,7 +1717,7 @@ func normalizeLegacyMimoCustomProviders(c *Config) bool {
 }
 
 // NormalizeLegacyMimoCustomProvidersForRefs appends custom OpenAI-compatible
-// MiMo providers needed by legacy refs that live outside reasonix.toml, such as
+// MiMo providers needed by legacy refs that live outside semantix-agent.toml, such as
 // restored desktop tab state.
 func NormalizeLegacyMimoCustomProvidersForRefs(c *Config, refs ...string) bool {
 	return normalizeLegacyMimoCustomProvidersForRefs(c, refs...)
