@@ -45,29 +45,57 @@ func TestProbationRestoresDemotedCandidateThroughPlanOnly(t *testing.T) {
 	}
 }
 
-func TestProbationKeepsWastingCandidateDemoted(t *testing.T) {
-	m := seedDemoted(t, Config{WasteHitLimit: 0.5, ProbationInterval: 3})
+// A candidate that keeps wasting must never graduate back to competing
+// normally. It is still proposed on probation rounds — that is the mechanism —
+// so the property under test is the RATE, not "never proposed": one probe per
+// ProbationInterval rounds and no more.
+func TestProbationKeepsWastingCandidateOnProbeRoundsOnly(t *testing.T) {
+	const interval, rounds = 3, 60
+	m := seedDemoted(t, Config{WasteHitLimit: 0.5, ProbationInterval: interval})
 
-	// The tool is genuinely useless: every probe is wasted.
-	for i := 0; i < 60; i++ {
+	// seedDemoted already spent one eligible Plan call.
+	probed, plans := 0, 1
+	for i := 0; i < rounds; i++ {
 		tasks, _ := m.Plan([]string{"bash"})
+		plans++
+		onProbeRound := plans%interval == 0
+		if len(tasks) > 0 != onProbeRound {
+			t.Fatalf("plans=%d: probe fired=%v, want %v (tasks=%v)",
+				plans, len(tasks) > 0, onProbeRound, tasks)
+		}
 		for _, task := range tasks {
+			probed++
 			m.ObserveWaste(task.Key)
 		}
 	}
 
-	if tasks, _ := m.Plan([]string{"bash"}); len(tasks) != 0 {
-		t.Fatalf("a candidate that keeps wasting must stay demoted, got %v", tasks)
+	if want := rounds / interval; probed != want {
+		t.Fatalf("wasting candidate probed %d times, want exactly %d", probed, want)
+	}
+	if !m.demoted("read_file") {
+		t.Fatal("a candidate that keeps wasting must stay demoted")
 	}
 }
 
 func TestProbationDisabledKeepsAbsorbingBehaviour(t *testing.T) {
-	m := seedDemoted(t, Config{WasteHitLimit: 0.5, ProbationInterval: -1})
+	for _, off := range []int{-1, -2, -10} {
+		m := seedDemoted(t, Config{WasteHitLimit: 0.5, ProbationInterval: off})
 
-	drive(m, 60)
+		drive(m, 60)
 
-	if tasks, _ := m.Plan([]string{"bash"}); len(tasks) != 0 {
-		t.Fatalf("probation disabled must keep the previous behaviour, got %v", tasks)
+		if tasks, _ := m.Plan([]string{"bash"}); len(tasks) != 0 {
+			t.Fatalf("ProbationInterval=%d must disable probation, got %v", off, tasks)
+		}
+	}
+}
+
+// A negative interval must be normalized to an explicit off state, not left as
+// a modulus that only happens to never divide. Without normalization the guard
+// in Plan could be deleted without any test noticing.
+func TestProbationNegativeIntervalNormalizedToOff(t *testing.T) {
+	m := NewMatrixPrefetcher(Config{ProbationInterval: -1})
+	if m.cfg.ProbationInterval != 0 {
+		t.Fatalf("negative interval must normalize to 0 (off), got %d", m.cfg.ProbationInterval)
 	}
 }
 

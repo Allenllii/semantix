@@ -91,6 +91,40 @@ decision rule needs:
 Recovery therefore costs at most one slot per `ProbationInterval` rounds per
 tool and requires sustained evidence, not a single lucky hit.
 
+## Known cost: probe outcomes drive the global evolve knob
+
+A probe is an ordinary `PrefetchTask`, so its outcome is settled like any
+other: `harness/agent/prefetch_feedback.go` emits `PrefetchWaste`, which
+`harness/semantix/evolution.go` turns into `evolve.RecordSignal("prefetch_waste")`,
+which does `PrefetchConf += 0.05` and is pushed back through
+`ApplyEvolution` into `cfg.MinConf` for **every** candidate on **every**
+transition edge.
+
+A demoted candidate is by construction mostly-waste, so probation's expected
+output is a stream of global tightening steps. Measured on the U43 controlled
+experiment (`scripts/evolution-curve`, evolve-ON run, 25 sessions):
+
+```
+prefetch_conf trajectory
+  main:        … 0.250 0.300 0.350 0.350 0.350 0.350 … 0.350
+  + probation: … 0.250 0.300 0.350 0.350 0.400 0.450 … 0.500
+waste count 6 → 9, total cost 0.486 → 0.504 USD
+```
+
+The evolve loop's entire learned relaxation is undone by probe wastes.
+
+This is the exploration/exploitation confusion in its plainest form: the cost
+of an *explore* action is fed back as evidence that the *exploit* threshold
+should tighten. It is **not** specific to probation — the `Epsilon` escape of
+Issue 254 has the same property, since its probe tasks also become
+`PrefetchWaste` events. Separating probe outcomes from real outcomes requires
+distinguishing them along the event path, which is outside `kernel/prefetch`
+and outside this change. Tracked separately.
+
+The mitigation that *is* in scope here is the ordering fix above: probation
+ignores `MinConf`, so a ratcheted `PrefetchConf` can no longer strand a
+demoted candidate in the region neither probe reaches.
+
 ## Determinism
 
 The probe is driven by a counter and a totally-ordered rotation, not by
