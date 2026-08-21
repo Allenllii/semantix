@@ -14,7 +14,8 @@
   - **M1 · U11-U18**（U11-U18 已实现，验收见各 issue）：真实数据/embedding/fork 闭环/evolve/L3/成本仪表。m0-gate 建议清单里的 U19/U20（灰色地带、LLM judge）已作为 M1 一部分实现，**编号作废不再使用**
   - **M2 · U19-U27**（2026-08-14 起，issue #113-#121）：CLI v2 产品化（命令树/config/--json/completion/doctor/install/gc/serve）——✅ 全部完成（含补强 U28-U36）
   - **GW 编号**（网关线，先例 #133 M2-GW1）：Semantix Gateway（New API 套壳）独立编号，不占 U 序列
-  - **Agile 2 · U37-U43**（2026-08-17 起）：H2/H3/H5 资源编排批次，契约 spec 见 `docs/specs/h2h3-resource-orchestration.md`
+  - **Agile 2 · U37-U43**（2026-08-17 起，**2026-08-21 关账**）：H2/H3/H5 资源编排批次，契约 spec 见 `docs/specs/h2h3-resource-orchestration.md`
+  - **GLM P0-P2**（Agile 2 关账后开工，2026-08-21 起）：GLM-5.x 云厂商适配（前缀卫生/命中遥测→tier 映射/质量门→TTL 对策/自托管），spec 见 `docs/specs/semantix-glm-optimization.md`（Spec-Required R4/R7，实施按批次开 issue）
 
 ---
 
@@ -89,9 +90,16 @@
 
 ### 验收标准（蓝图 §5）
 
-- [x] 工具可挂起/恢复 + 预算配额生效（H2）——U40/U41 落地，证据见 `docs/reports/agile2-scheduling-demo.md` S3/S4
+- [x] 工具可挂起/恢复 + 预算配额生效（H2）——U40/U41 落地，证据见 `docs/reports/agile2-scheduling-demo.md` S3/S4；
+      kernel 侧 hard_stop 执行点缺口（#250）收尾时补上（PR #285：plan 携带 hard_stop 在工具执行前拦截整轮）
 - [x] 调度演示：kernel 决策改变 harness 行为 + 可量化收益（H3）——**U42 完成（2026-08-20）**：挂起执行省 79.5% 轮时延、预算三档阶梯生效、硬停阻断，报告 `docs/reports/agile2-scheduling-demo.md`（#193）
-- [ ] 命中率/成本随使用提升曲线（H5，自进化证据）——U43/#194 重开待 PR #228 合入 + 采数
+- [x] 命中率/成本随使用提升曲线（H5，自进化证据）——**U43 完成（2026-08-21，#194/#253）**：因果对照（evolve on/off 同负载同反馈）证明制度性变更下 evolve ON 浪费预取 10 vs OFF 15、25 会话总成本 $0.510 vs $0.540，报告 `docs/reports/agile2-evolution-curve.md`
+
+### Agile 2 收尾（2026-08-21）
+
+DoD 三项验收全绿，Agile 2 关账。落地过程中发现的品质缺陷不阻塞收尾、挂账如下：
+#245（RuleGate 统计口径）、#252（HarnessSink 多工具结果归因）、#254（evolve 闭环吸收态：conf 关停预取后参数冻结）、
+#255（prefetch demoted() 免疫缺陷）——#254/#255 与 GLM 方案 P1 的 prefetch 门控同域，宜并入该批次处理。
 
 ### 前置依赖
 
@@ -144,7 +152,7 @@
 | Agile | 目标 | 当前状态 | DoD 摘要 |
 |---|---|---|---|
 | 1 | 首个可下载品牌化 agent | M0 ✅ · M1 遗留 #58（唯一 P0 门禁）· CLI v2 ✅（U19-U36）· TUI 可视化 ✅（U33/#168）· 桌面端 #158 | v1.0 发布 + 命中率 ≥70% + 复用可视化 |
-| 2 | 自进化闭环（kernel 调配 harness） | 🚧 **v0.5.0 已发布（2026-08-20，合体首发）**：U37 spec ✅ · U38 vendor ✅ · U39 测试面+H4 ✅（#227/#230）· U40 编排 ✅（#213）· U41 预算 ✅（#223）——全部随 #231 回合 main；U42 ✅（调度演示报告已入库）；剩 U43 自进化曲线（#194，PR #228 评审中） | 调度演示 + 自进化曲线 |
+| 2 | 自进化闭环（kernel 调配 harness） | ✅ **完成（2026-08-21 关账）**：v0.5.0 已发布（2026-08-20，合体首发）；U37-U41 随 #231 回合 main；U42 ✅（#193 调度演示）；U43 ✅（#194/#253 自进化因果对照曲线）；#250 hard_stop 执行点随收尾补上（PR #285）；遗留品质缺陷挂账 #245/#252/#254/#255（见 Agile 2 收尾节） | 调度演示 + 自进化曲线 |
 | 3 | 多 harness 生态 | 路径已文档化；serve/watch ✅（U27/U36） | ≥3 harness 正式接入 |
 
 **v0.5.0（2026-08-20，合体首发）**：semantix-agent（harness+kernel 单进程）+ semantix + semantix-gateway，
