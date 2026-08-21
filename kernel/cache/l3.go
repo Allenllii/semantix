@@ -69,6 +69,7 @@ type Obs struct {
 	FingerprintReject int // fingerprint gate error / mtime|sha256 changed / L3Safe=false
 	IsolatedReject    int // context/model isolation mismatch (Issue #133)
 	JudgeReject       int // judge declined
+	JudgeError        int // judge call failed/timed out — unavailable, not a verdict (Issue #245)
 	JudgeApproved     int // judge approved (later gates may still reject)
 	Reused            int // finally reused (all gates passed)
 }
@@ -97,6 +98,7 @@ func (a *ObsAccum) add(o Obs) {
 	a.n.FingerprintReject += o.FingerprintReject
 	a.n.IsolatedReject += o.IsolatedReject
 	a.n.JudgeReject += o.JudgeReject
+	a.n.JudgeError += o.JudgeError
 	a.n.JudgeApproved += o.JudgeApproved
 	a.n.Reused += o.Reused
 	a.mu.Unlock()
@@ -321,15 +323,17 @@ func (d *L3Decider) zones() zone.Zones {
 // (fingerprint gate → rules → judge). The L3Decider already re-verifies
 // dependency fingerprints after this (verified), so a judge "yes" still
 // cannot surface stale data. A nil judge, a judge error, or a judge "no"
-// all reject conservatively (fail-closed).
-//
-// rel is the score/top1 ratio that classified the candidate as grey; it is
-// reported through OnJudge so a rejection can later be explained without
-// re-running retrieval (Issue #242 gap 1). No observation is emitted when
-// no judge is wired: that path is deterministic and costs nothing, so
-// recording it would only add noise to the host's usage log.
 // all reject conservatively (fail-closed). The per-call observer o is
 // folded with the rule-gate counters (Issue #262).
+//
+// Two of judge.Stats' six counters are deliberately NOT folded, because the
+// caller already accounts for them: Confirmed is redundant with o.Reused
+// (set on the DecideL3 success path) and NeedJudge is redundant with o.Grey
+// (incremented at the top of this function). The omission is intentional.
+//
+// Callers: both the zone.Grey arm and the Issue #260 lexical-support
+// downgrade inside the zone.Hit arm reach this, so JudgeError is not a
+// grey-verdict-only counter (Issue #245).
 //
 // rel is the score/top1 ratio that classified the candidate as grey; it is
 // reported through OnJudge so a rejection can later be explained without
@@ -358,6 +362,7 @@ func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice, rel 
 	o.RulesReject += gs.RulesReject
 	o.FingerprintReject += gs.Fingerprint
 	o.JudgeReject += gs.JudgeReject
+	o.JudgeError += gs.JudgeError
 	o.JudgeApproved += gs.JudgeApproved
 	ok := err == nil && v == judge.Confirm
 	if d.OnJudge != nil {

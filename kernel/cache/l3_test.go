@@ -652,6 +652,33 @@ func TestL3DeciderObsCounters(t *testing.T) {
 		}
 		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeApproved: 1, Reused: 1}, "judge approved")
 	})
+
+	// Issue #245: a judge that cannot be reached is unavailability, not a
+	// rule rejection and not a decline. wantObs compares the whole struct,
+	// so these also assert RulesReject == 0 and JudgeReject == 0 for free.
+	t.Run("judge error counts judge error not rules reject", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		mj := &mockJudge{confirm: true, err: context.DeadlineExceeded}
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("judge error must fail closed")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeError: 1}, "grey-arm judge error")
+	})
+
+	// The second arm that reaches judgeGrey: an Issue #260 lexical-support
+	// downgrade of a zone.Hit. JudgeError is therefore not a grey-verdict-only
+	// counter, and the spec's definition depends on both arms feeding it.
+	t.Run("lexical-gate judge error counts judge error", func(t *testing.T) {
+		root, sl := l3Fixture(t)
+		idx := &fakeIndex{hits: []slice.Hit{{Slice: sl, Score: 0.9, Lexical: 0, LexicalValid: true}}}
+		mj := &mockJudge{confirm: true, err: context.DeadlineExceeded}
+		d := &L3Decider{Index: idx, Root: root, Judge: mj, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("lexical-downgraded hit with an erroring judge must fail closed")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeError: 1}, "lexical-arm judge error")
+	})
 }
 
 func TestL3DeciderOnDecidePerCallDelta(t *testing.T) {
@@ -685,14 +712,14 @@ func TestL3ObsAccumSnapshotIsThreadSafe(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for j := 0; j < 100; j++ {
-				acc.add(Obs{Candidates: 1, JudgeReject: 1})
+				acc.add(Obs{Candidates: 1, JudgeReject: 1, JudgeError: 1})
 				_ = acc.Snapshot()
 			}
 		}()
 	}
 	wg.Wait()
 	got := acc.Snapshot()
-	want := Obs{Candidates: 800, JudgeReject: 800}
+	want := Obs{Candidates: 800, JudgeReject: 800, JudgeError: 800}
 	if got != want {
 		t.Fatalf("accumulated = %+v, want %+v", got, want)
 	}

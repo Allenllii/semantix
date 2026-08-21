@@ -590,6 +590,7 @@ func (g *Gateway) recordL3Reuse(sessionID, query, sliceID string) {
 func (g *Gateway) withL3Obs(e usage.Event, o cache.Obs, falseHit bool) usage.Event {
 	e.L3GreyCandidates = o.Grey
 	e.L3JudgeReject = o.JudgeReject
+	e.L3JudgeError = o.JudgeError
 	e.L3JudgeApproved = o.JudgeApproved
 	e.L3RulesReject = o.RulesReject
 	e.L3FingerprintReject = o.FingerprintReject

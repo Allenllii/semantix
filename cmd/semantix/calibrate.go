@@ -123,9 +123,13 @@ func runCalibrate(args []string, stdout io.Writer) int {
 	}
 	if runtime != nil {
 		fmt.Fprintln(stdout, "# runtime (usage log): gateway L3 decisions")
-		fmt.Fprintln(stdout, "l3_reuses\tl3_grey\tjudge_reject\tjudge_approved\trules_reject\tfingerprint_reject\tisolated_reject\tfalse_hits\tfalse_hit_rate_pct")
-		fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
-			runtime.L3Reuses, runtime.L3GreyCandidates, runtime.L3JudgeReject,
+		// judge_error is a separate column from judge_reject on purpose: a judge
+		// that could not be reached is unavailability, not a verdict (Issue #245).
+		// Header, format string and argument list are three hand-maintained
+		// parallel lists with no compiler check — keep the positions aligned.
+		fmt.Fprintln(stdout, "l3_reuses\tl3_grey\tjudge_reject\tjudge_error\tjudge_approved\trules_reject\tfingerprint_reject\tisolated_reject\tfalse_hits\tfalse_hit_rate_pct")
+		fmt.Fprintf(stdout, "%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",
+			runtime.L3Reuses, runtime.L3GreyCandidates, runtime.L3JudgeReject, runtime.L3JudgeError,
 			runtime.L3JudgeApproved, runtime.L3RulesReject, runtime.L3FingerprintReject,
 			runtime.L3IsolatedReject, runtime.L3FalseHits, runtime.rateText())
 	}
@@ -255,6 +259,7 @@ func runCalibrateRuntime(path string) (*calibrateRuntime, error) {
 		L3Reuses:            s.L3Reuses,
 		L3GreyCandidates:    s.L3GreyCandidates,
 		L3JudgeReject:       s.L3JudgeReject,
+		L3JudgeError:        s.L3JudgeError,
 		L3JudgeApproved:     s.L3JudgeApproved,
 		L3RulesReject:       s.L3RulesReject,
 		L3FingerprintReject: s.L3FingerprintReject,
@@ -310,6 +315,7 @@ type calibrateRuntime struct {
 	L3Reuses            int      `json:"l3_reuses"`
 	L3GreyCandidates    int      `json:"l3_grey_candidates"`
 	L3JudgeReject       int      `json:"l3_judge_reject"`
+	L3JudgeError        int      `json:"l3_judge_error"`
 	L3JudgeApproved     int      `json:"l3_judge_approved"`
 	L3RulesReject       int      `json:"l3_rules_reject"`
 	L3FingerprintReject int      `json:"l3_fingerprint_reject"`

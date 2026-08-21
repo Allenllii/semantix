@@ -34,6 +34,7 @@ type usageJSON struct {
 	// aggregates from the usage log.
 	L3GreyCandidates    int                 `json:"l3_grey_candidates"`
 	L3JudgeReject       int                 `json:"l3_judge_reject"`
+	L3JudgeError        int                 `json:"l3_judge_error"`
 	L3JudgeApproved     int                 `json:"l3_judge_approved"`
 	L3RulesReject       int                 `json:"l3_rules_reject"`
 	L3FingerprintReject int                 `json:"l3_fingerprint_reject"`
@@ -120,6 +121,7 @@ func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 			CostPaidUSD: s.CostPaidUSD, CostNoCacheUSD: s.CostNoCacheUSD,
 			SavingsUSD: s.SavingsUSD, SavingsRate: s.SavingsRate,
 			L3GreyCandidates: s.L3GreyCandidates, L3JudgeReject: s.L3JudgeReject,
+			L3JudgeError: s.L3JudgeError,
 			L3JudgeApproved: s.L3JudgeApproved, L3RulesReject: s.L3RulesReject,
 			L3FingerprintReject: s.L3FingerprintReject, L3IsolatedReject: s.L3IsolatedReject,
 			L3FalseHits: s.L3FalseHits,
@@ -157,6 +159,7 @@ func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 	// cache must be distinguishable from a missing log via the events row.
 	fmt.Fprintf(stdout, "l3_grey_candidates\t%d\n", s.L3GreyCandidates)
 	fmt.Fprintf(stdout, "l3_judge_reject\t%d\n", s.L3JudgeReject)
+	fmt.Fprintf(stdout, "l3_judge_error\t%d\n", s.L3JudgeError)
 	fmt.Fprintf(stdout, "l3_judge_approved\t%d\n", s.L3JudgeApproved)
 	fmt.Fprintf(stdout, "l3_rules_reject\t%d\n", s.L3RulesReject)
 	fmt.Fprintf(stdout, "l3_fingerprint_reject\t%d\n", s.L3FingerprintReject)

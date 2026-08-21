@@ -19,7 +19,7 @@
 | 文件 | 变更 |
 |---|---|
 | `docs/specs/issue-262-l3-negative-observability.md` | 新增 spec v1:负向观测语义(拒绝四分类 + 误命中双口径)、usage.Event additive 契约、calibrate 契约、c1-c6 |
-| `kernel/cache/l3.go` | `Obs`(纯值快照)+ `ObsAccum`(线程安全累计)+ `OnDecide`(per-call 回调);`DecideL3` 全路径计数;Candidates/Grey/RulesReject/FingerprintReject/IsolatedReject/JudgeReject/JudgeApproved/Reused;`judgeGrey` 挂局部 `judge.Stats` 合并 |
+| `kernel/cache/l3.go` | `Obs`(纯值快照)+ `ObsAccum`(线程安全累计)+ `OnDecide`(per-call 回调);`DecideL3` 全路径计数;Candidates/Grey/RulesReject/FingerprintReject/IsolatedReject/JudgeReject/JudgeError/JudgeApproved/Reused;`judgeGrey` 挂局部 `judge.Stats` 合并 |
 | `kernel/usage/usage.go` | `Event` 新增 7 个 additive 字段(L3GreyCandidates/L3JudgeReject/L3JudgeApproved/L3RulesReject/L3FingerprintReject/L3IsolatedReject/L3FalseHit);`Summary` 对应聚合 |
 | `gateway/config.go` | `[cache] false_hit_sim`(默认 0.6,-1 关闭,validate 校验 NaN/Inf/越界) |
 | `gateway/gateway.go` | `l3Reuses map` + `reuseMu`(有界 1024 LRU);`New()` 初始化 |
