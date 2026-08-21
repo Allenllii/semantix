@@ -45,8 +45,10 @@ compression metadata.
 ## Observability
 
 `semantix extract` reports aggregate `raw_bytes`, `stored_bytes`, and
-`compression_ratio` for the slices it extracted. Slices without compression
-metadata count their current content bytes as both raw and stored bytes.
+`compression_ratio` for the slices it extracted. `compression_ratio` is the
+fraction saved, `(raw_bytes - stored_bytes) / raw_bytes`, from 0 to 1. Slices
+without compression metadata count their current content bytes as both raw and
+stored bytes.
 
 The model-call usage log remains unchanged: extraction compression is not an
 LLM request and must not be mixed into token or billing statistics.

@@ -132,8 +132,31 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 		stored++
 	}
 
-	fmt.Fprintf(stdout, "extracted=%d stored=%d scope=%s db=%s\n", len(items), stored, scopeName(scope), dbPath)
+	rawBytes, storedBytes, compressionRatio := extractionCompression(items)
+	fmt.Fprintf(stdout, "extracted=%d stored=%d scope=%s db=%s raw_bytes=%d stored_bytes=%d compression_ratio=%.4f\n",
+		len(items), stored, scopeName(scope), dbPath, rawBytes, storedBytes, compressionRatio)
 	return nil
+}
+
+func extractionCompression(items []*slice.Slice) (rawBytes, storedBytes int, ratio float64) {
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		stored := len(item.Content)
+		raw := stored
+		meta := item.Meta
+		if meta.CompressionVersion != "" && meta.OriginalBytes > 0 &&
+			meta.StoredBytes == stored && meta.OriginalBytes >= meta.StoredBytes {
+			raw = meta.OriginalBytes
+		}
+		rawBytes += raw
+		storedBytes += stored
+	}
+	if rawBytes > 0 {
+		ratio = float64(rawBytes-storedBytes) / float64(rawBytes)
+	}
+	return rawBytes, storedBytes, ratio
 }
 
 func readInput(path string) ([]byte, error) {
