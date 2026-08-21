@@ -59,12 +59,13 @@ func (NoopJudge) Confirm(context.Context, Candidate) (bool, error) { return fals
 // Stats accumulates verification observability (waste++ tracking, Issue #8):
 // every rejection is a wasted reuse opportunity to be monitored.
 type Stats struct {
-	Confirmed    int // clear hits + judge-approved
-	RulesReject  int // miss / grey-without-judge
-	Fingerprint  int // dependency fingerprint changed (stage ① gate)
-	JudgeReject  int // judge declined
-	JudgeApproved int
-	NeedJudge    int // routed to judge
+	Confirmed     int // clear hits + judge-approved
+	RulesReject   int // miss / grey-without-judge
+	Fingerprint   int // dependency fingerprint changed (stage ① gate)
+	JudgeReject   int // judge declined
+	JudgeError    int // judge call failed/timed out — unavailable, not a verdict (Issue #245)
+	JudgeApproved int // judge approved
+	NeedJudge     int // routed to judge
 }
 
 func (s *Stats) add(o Stats) {
@@ -72,6 +73,7 @@ func (s *Stats) add(o Stats) {
 	s.RulesReject += o.RulesReject
 	s.Fingerprint += o.Fingerprint
 	s.JudgeReject += o.JudgeReject
+	s.JudgeError += o.JudgeError
 	s.JudgeApproved += o.JudgeApproved
 	s.NeedJudge += o.NeedJudge
 }
@@ -128,15 +130,15 @@ func (g RuleGate) Chain(ctx context.Context, c Candidate) (Verdict, string, erro
 	if v != NeedJudge {
 		return v, reason, nil
 	}
-	if g.Judge == nil {
-		// Keep the Check contract: grey without a judge is a conservative
-		// reject, never an ambiguous NeedJudge.
-		g.count(Stats{RulesReject: 1})
-		return Reject, "grey zone: no judge wired, conservative reject", nil
-	}
+	// v == NeedJudge implies g.Judge != nil (Check's only NeedJudge arm is
+	// guarded by it, and RuleGate's value receiver forbids mutation between
+	// the two reads). Grey without a judge already returned above, via Check.
 	ok, err := g.Judge.Confirm(ctx, c)
 	if err != nil {
-		g.count(Stats{RulesReject: 1})
+		// A judge that is unreachable is not a rule rejection and not a
+		// decline — it is unavailability, counted on its own (Issue #245).
+		// The verdict stays fail-closed and the reason string is unchanged.
+		g.count(Stats{JudgeError: 1})
 		return Reject, "judge error: conservative reject", err
 	}
 	if ok {

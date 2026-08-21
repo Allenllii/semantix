@@ -43,6 +43,7 @@ L3 运行时决策(DecideL3)
 | `FingerprintReject` | 依赖失效:指纹门错误、mtime/sha256 变更、`L3Safe=false` 无 deps 拒绝 | `RuleGate.Chain` 指纹门 + `L3Decider.verified` |
 | `IsolatedReject` | 上下文/model 隔离拒绝(Issue #133):带 stamp 查询与条目 stamp 不匹配 | `DecideL3` ContextHash/Model 校验 |
 | `JudgeReject` | judge 判定拒绝(approve=false) | `RuleGate.Chain` judge 分支 |
+| `JudgeError` | judge 调用失败:不可用,不是判决(Issue #245) | `RuleGate.Chain` judge 错误分支 |
 | `JudgeApproved` | judge 判定批准 | 同上 |
 | `Reused` | 最终复用(全部 gate 通过) | `DecideL3` 返回处 |
 
@@ -66,6 +67,7 @@ type Obs struct {
     FingerprintReject int // 指纹门错误 / mtime/sha256 变更 / L3Safe=false
     IsolatedReject    int // 上下文/model 隔离拒绝
     JudgeReject       int // judge 判定拒绝
+    JudgeError        int // judge 调用失败(Issue #245)
     JudgeApproved     int // judge 判定批准(后续 gate 仍可能兜底拒绝)
     Reused            int // 最终复用
 }
@@ -81,7 +83,7 @@ type Obs struct {
 计数规则:
 
 1. `judgeGrey` 内改为 `gate := judge.RuleGate{Judge: d.Judge, Stats: &gs}`(局部
-   `judge.Stats`),Chain 返回后把 `gs` 的 RulesReject/Fingerprint/JudgeReject/
+   `judge.Stats`),Chain 返回后把 `gs` 的 RulesReject/Fingerprint/JudgeReject/JudgeError/
    JudgeApproved 合并进 `d.Obs`,并 `Obs.Grey++`;
 2. `DecideL3` 检索循环内:`s.Type == Result` 时 `Candidates++`;zone.Miss 时
    `RulesReject++`;ContextHash/Model 不匹配时 `IsolatedReject++`;
@@ -96,6 +98,7 @@ type Obs struct {
 ```go
 L3GreyCandidates    int  `json:"l3_grey_candidates,omitempty"`
 L3JudgeReject       int  `json:"l3_judge_reject,omitempty"`
+L3JudgeError        int  `json:"l3_judge_error,omitempty"`   // Issue #245
 L3JudgeApproved     int  `json:"l3_judge_approved,omitempty"`
 L3RulesReject       int  `json:"l3_rules_reject,omitempty"`
 L3FingerprintReject int  `json:"l3_fingerprint_reject,omitempty"`
@@ -208,7 +211,7 @@ consistency_pct  false_approve_pct  false_reject_pct  precision  recall  f1  del
 **运行时汇总块**(usage 日志,仅 `--usage`):
 
 ```
-l3_reuses  l3_grey  judge_reject  judge_approved  rules_reject  fingerprint_reject  isolated_reject  false_hits  false_hit_rate_pct
+l3_reuses  l3_grey  judge_reject  judge_error  judge_approved  rules_reject  fingerprint_reject  isolated_reject  false_hits  false_hit_rate_pct
 12         5        2             3               40            1                    2                1           8.3
 ```
 
@@ -234,7 +237,7 @@ JSON 输出 `runtime.na=true`,不退出 1(运行时观测失败开放,网关新�
 ## 5. 验收标准
 
 - [ ] **c1 运行时负向统计可查询**:`semantix usage --json` 输出含
-  `l3_grey_candidates/judge_reject/judge_approved/rules_reject/fingerprint_reject/isolated_reject/false_hits`
+  `l3_grey_candidates/judge_reject/judge_error/judge_approved/rules_reject/fingerprint_reject/isolated_reject/false_hits`
   聚合(usage 日志为空时输出零值,不报错);
 - [ ] **c2 拒绝分原因可见**:gateway 端到端(或单测)验证 L3Decider 各拒绝路径
   分别计数,规则/指纹/隔离/judge 四类拒绝互不混淆;

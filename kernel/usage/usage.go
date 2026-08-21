@@ -63,6 +63,11 @@ type Event struct {
 	// All fields are additive — older logs without them read as zero.
 	L3GreyCandidates    int  `json:"l3_grey_candidates,omitempty"`
 	L3JudgeReject       int  `json:"l3_judge_reject,omitempty"`
+	// L3JudgeError counts judge calls that FAILED (transport/timeout/parse) —
+	// the judge was unavailable, which is not a verdict (Issue #245). The same
+	// physical incident is also recorded on the Issue #242 channel as a
+	// JudgeDecision with Verdict=="fail_closed"; the two must never be summed.
+	L3JudgeError        int  `json:"l3_judge_error,omitempty"`
 	L3JudgeApproved     int  `json:"l3_judge_approved,omitempty"`
 	L3RulesReject       int  `json:"l3_rules_reject,omitempty"`
 	L3FingerprintReject int  `json:"l3_fingerprint_reject,omitempty"`
@@ -176,6 +181,10 @@ type Summary struct {
 	// L3 negative observability (Issue #262): sums of the per-turn fields.
 	L3GreyCandidates    int
 	L3JudgeReject       int
+	// L3JudgeError counts judge unavailability (Issue #245). NOTE: this and
+	// JudgeFailClosed (Issue #242) count the same events through different
+	// channels — report them separately, never add them together.
+	L3JudgeError        int
 	L3JudgeApproved     int
 	L3RulesReject       int
 	L3FingerprintReject int
@@ -303,6 +312,7 @@ func Summarize(path string, costMiss, costHit float64) (*Summary, error) {
 		// older logs read as zero via the additive fields.
 		s.L3GreyCandidates += e.L3GreyCandidates
 		s.L3JudgeReject += e.L3JudgeReject
+		s.L3JudgeError += e.L3JudgeError
 		s.L3JudgeApproved += e.L3JudgeApproved
 		s.L3RulesReject += e.L3RulesReject
 		s.L3FingerprintReject += e.L3FingerprintReject
