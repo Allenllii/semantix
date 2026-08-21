@@ -9,6 +9,7 @@ package gateway
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -120,7 +121,15 @@ type CacheConfig struct {
 	// with less term overlap is downgraded to Grey (judge-gated). nil keeps
 	// the kernel default (0.05); explicit 0 disables the gate.
 	LexicalFloor *float64 `toml:"lexical_floor"`
+	// FalseHitSim is the suspected-false-hit retry similarity threshold
+	// (normalized edit ratio in [0,1], Issue #262 §3.3). 0/unspecified →
+	// DefaultFalseHitSim (0.6); -1 disables the retry detection.
+	FalseHitSim float64 `toml:"false_hit_sim"`
 }
+
+// DefaultFalseHitSim is the built-in retry-similarity threshold when
+// [cache] false_hit_sim is unspecified.
+const DefaultFalseHitSim = 0.6
 
 // IngestConfig controls the session-sidecar write path.
 type IngestConfig struct {
@@ -324,6 +333,13 @@ func (c *Config) validate() error {
 	if c.Cache.TTLSeconds < 0 {
 		return fmt.Errorf("gateway config: [cache] ttl_seconds must be >= 0 (0 disables the time window)")
 	}
+	if c.Cache.FalseHitSim != 0 {
+		// -1 disables the retry detection; otherwise a similarity in [0,1].
+		if c.Cache.FalseHitSim != -1 && (math.IsNaN(c.Cache.FalseHitSim) || math.IsInf(c.Cache.FalseHitSim, 0) ||
+			c.Cache.FalseHitSim < 0 || c.Cache.FalseHitSim > 1) {
+			return fmt.Errorf("gateway config: [cache] false_hit_sim must be -1 (disabled) or in [0,1], got %v", c.Cache.FalseHitSim)
+		}
+	}
 	if c.Server.HealthTimeoutSeconds < 0 {
 		return fmt.Errorf("gateway config: [server] health_timeout_seconds must be >= 0 (0 disables the upstream probe)")
 	}
@@ -380,7 +396,7 @@ func DefaultConfig() *Config {
 		Server:    ServerConfig{Addr: ":8080", GatewayKey: "dev-key", HealthTimeoutSeconds: 3},
 		Store:     StoreConfig{DB: ".semantix/gateway.jsonl", Scope: "project", DepsRoot: "."},
 		Retrieval: RetrievalConfig{Retriever: "bm25", TopK: 5, Budget: 4096},
-		Cache:     CacheConfig{TTLSeconds: 86400},
+		Cache:     CacheConfig{TTLSeconds: 86400, FalseHitSim: DefaultFalseHitSim},
 		Ingest:    IngestConfig{SessionsDir: ".semantix/sessions", UsageLog: ".semantix/gateway-usage.jsonl"},
 	}
 }

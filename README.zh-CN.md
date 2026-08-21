@@ -199,7 +199,7 @@ semantix install --target claude-code   # 安装 agent skill 到 ~/.claude/skill
 semantix install --target reasonix      # Reasonix fork 已内置集成
 ```
 
-全部命令（`extract` / `search` / `verify` / `eval` / `eval-judge` / `usage` / `lookup` / `inject` / `doctor` / `install` / `completion` / `gc` / `export` / `import` / `dashboard` …）见 `semantix help`；CLI v2 起统一 `--json` 信封输出（`{ok, command, data, error, version}`），退出码契约统一（0 成功 / 1 运行错误 / 2 用法错误 / 3 门禁未达标）。详见 [docs/QUICKSTART.md](./docs/QUICKSTART.md)。
+全部命令（`extract` / `search` / `verify` / `eval` / `eval-judge` / `calibrate` / `usage` / `lookup` / `inject` / `doctor` / `install` / `completion` / `gc` / `export` / `import` / `dashboard` …）见 `semantix help`；CLI v2 起统一 `--json` 信封输出（`{ok, command, data, error, version}`），退出码契约统一（0 成功 / 1 运行错误 / 2 用法错误 / 3 门禁未达标）。详见 [docs/QUICKSTART.md](./docs/QUICKSTART.md)。
 
 另有 **Semantix Gateway**（`cmd/semantix-gateway`）：OpenAI 兼容网关，为任意支持自定义 base URL 的客户端透明加上跨会话复用层。
 

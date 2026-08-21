@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -112,11 +113,11 @@ func TestDecideL3SkipsNonResultSlices(t *testing.T) {
 	idx := bm25.New()
 	// A Prompt slice with identical content: not reusable as L3 outcome.
 	idx.Insert(&slice.Slice{
-		ID:    "l3-p",
-		Type:  slice.Prompt,
-		Scope: slice.Project,
+		ID:      "l3-p",
+		Type:    slice.Prompt,
+		Scope:   slice.Project,
 		Content: []byte("已复用的验证结果：修复 go 测试失败需要先跑 go vet"),
-		Meta:  slice.SliceMeta{SourceSession: "s1", Deps: deps},
+		Meta:    slice.SliceMeta{SourceSession: "s1", Deps: deps},
 	})
 	d := &L3Decider{Index: idx, Root: root}
 	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
@@ -472,6 +473,7 @@ func TestDecideL3GreyZoneJudgeErrorFailsClosed(t *testing.T) {
 		t.Fatalf("judge error must fail closed, got %+v", res)
 	}
 }
+
 // fakeIndex returns a fixed hit list; used to exercise the lexical gate
 // independent of a real retriever.
 type fakeIndex struct {
@@ -479,7 +481,7 @@ type fakeIndex struct {
 }
 
 func (f *fakeIndex) Insert(*slice.Slice) error { return nil }
-func (f *fakeIndex) Remove(string) error        { return nil }
+func (f *fakeIndex) Remove(string) error       { return nil }
 func (f *fakeIndex) Search(string, int, slice.Scope) ([]slice.Hit, error) {
 	return f.hits, nil
 }
@@ -573,5 +575,125 @@ func TestL3LexicalGateObservations(t *testing.T) {
 	}
 	if obs[1].Blocked || obs[1].Zone != "hit" || obs[1].Lexical != 1 {
 		t.Fatalf("obs[1] = %+v, want allowed hit lexical=1", obs[1])
+	}
+}
+
+// --- Issue #262: negative observability (Obs / OnDecide / ObsAccum) ---
+
+// wantObs asserts every field of the observed snapshot. Zero expectations
+// are meaningful: each rejection class must be counted separately and
+// nothing may leak across classes.
+func wantObs(t *testing.T, got, want Obs, what string) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s: obs = %+v, want %+v", what, got, want)
+	}
+}
+
+func TestL3DeciderObsCounters(t *testing.T) {
+	t.Run("reuse counts candidate+reused", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		d := &L3Decider{Index: idx, Root: root, Obs: &ObsAccum{}}
+		res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+		if err != nil || res == nil {
+			t.Fatalf("reuse failed: res=%v err=%v", res, err)
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Reused: 1}, "clear hit reuse")
+	})
+
+	t.Run("modified deps count as fingerprint reject", func(t *testing.T) {
+		root, idx, dep, _ := buildTestLib(t)
+		if err := os.WriteFile(filepath.Join(root, dep), []byte("module demo\nv2\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		d := &L3Decider{Index: idx, Root: root, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("modified deps must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, FingerprintReject: 1}, "dep modified")
+	})
+
+	t.Run("context isolation counts separately", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		d := &L3Decider{Index: idx, Root: root, Obs: &ObsAccum{}}
+		q := Query{UserInput: "修复 go 测试失败", Scope: slice.Project, ContextHash: "h-other"}
+		if res, _ := d.DecideL3(context.Background(), q); res != nil {
+			t.Fatal("context mismatch must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, IsolatedReject: 1}, "context isolation")
+	})
+
+	t.Run("grey without judge counts rules reject", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("grey without judge must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, RulesReject: 1}, "grey no judge")
+	})
+
+	t.Run("judge declined counts judge reject", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		mj := &mockJudge{confirm: false}
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("judge declined must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeReject: 1}, "judge declined")
+	})
+
+	t.Run("judge approved then verified counts approve+reused", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		mj := &mockJudge{confirm: true}
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj, Obs: &ObsAccum{}}
+		res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+		if err != nil || res == nil {
+			t.Fatalf("judge-approved grey must reuse: res=%v err=%v", res, err)
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeApproved: 1, Reused: 1}, "judge approved")
+	})
+}
+
+func TestL3DeciderOnDecidePerCallDelta(t *testing.T) {
+	root, idx, _, _ := buildTestLib(t)
+	var calls []Obs
+	d := &L3Decider{
+		Index: idx, Root: root,
+		OnDecide: func(o Obs) { calls = append(calls, o) },
+	}
+	// Two calls with different outcomes: hit-reuse, then miss (unrelated).
+	if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res == nil {
+		t.Fatal("first call must reuse")
+	}
+	if res, _ := d.DecideL3(context.Background(), Query{UserInput: "完全不相关的主题", Scope: slice.Project}); res != nil {
+		t.Fatal("second call must miss")
+	}
+	if len(calls) != 2 {
+		t.Fatalf("OnDecide calls = %d, want 2", len(calls))
+	}
+	wantObs(t, calls[0], Obs{Candidates: 1, Reused: 1}, "delta call 1")
+	// The unrelated query still retrieves the Result slice but the zone
+	// verdict is miss → rules reject (Candidates + RulesReject, no reuse).
+	wantObs(t, calls[1], Obs{Candidates: 1, RulesReject: 1}, "delta call 2 (clear miss)")
+}
+
+func TestL3ObsAccumSnapshotIsThreadSafe(t *testing.T) {
+	acc := &ObsAccum{}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				acc.add(Obs{Candidates: 1, JudgeReject: 1})
+				_ = acc.Snapshot()
+			}
+		}()
+	}
+	wg.Wait()
+	got := acc.Snapshot()
+	want := Obs{Candidates: 800, JudgeReject: 800}
+	if got != want {
+		t.Fatalf("accumulated = %+v, want %+v", got, want)
 	}
 }
