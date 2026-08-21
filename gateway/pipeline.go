@@ -171,6 +171,11 @@ func (g *Gateway) rewriteOutgoing(body []byte, req *chatRequest, up UpstreamConf
 	}
 	raw["model"] = up.UpstreamModel
 	g.sanitizeOutgoing(raw, up)
+	// OpenAI-style path forwards reasoning_effort verbatim; surface a
+	// vocabulary drift in the log instead of an unattributable upstream 400.
+	if effort, _ := raw["reasoning_effort"].(string); effort != "" {
+		validateEffortForOpenAIPath(effort)
+	}
 	if inj != nil && inj.Text != "" {
 		if msgs, ok := raw["messages"].([]any); ok {
 			raw["messages"] = attachBlockRaw(msgs, inj.Text)
