@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestSemantixLookupSchemaAndName(t *testing.T) {
@@ -53,6 +54,13 @@ func TestSemantixLookupFailsSoft(t *testing.T) {
 // TestSemantixLookupSubprocess verifies the exact argv by putting a fake
 // `semantix` script first on PATH.
 func TestSemantixLookupSubprocess(t *testing.T) {
+	// Under a loaded `go test ./...` run, fork+exec of the fake script can
+	// blow the production 3s budget and flip Execute into soft degrade
+	// (empty output). Widen the budget: this test asserts argv, not latency.
+	old := semantixLookupTimeout
+	semantixLookupTimeout = time.Minute
+	t.Cleanup(func() { semantixLookupTimeout = old })
+
 	bin := t.TempDir()
 	script := filepath.Join(bin, "semantix")
 	if err := os.WriteFile(script, []byte("#!/bin/sh\necho \"$@\"\n"), 0o755); err != nil {

@@ -35,6 +35,13 @@ func (semantixLookup) Schema() json.RawMessage {
 
 func (semantixLookup) ReadOnly() bool { return true }
 
+// semantixLookupTimeout bounds the lookup subprocess; overrun degrades soft.
+// A package var rather than an inline constant so tests asserting on the
+// subprocess argv can widen it — a loaded machine can push fork+exec past
+// the budget and flip Execute into soft degrade mid-assert. The 3s default
+// is part of the fail-soft contract and must not change.
+var semantixLookupTimeout = 3 * time.Second
+
 // SnipHint keeps the top hits intact — the head of the JSON result carries
 // the ranked answers, which is what matters for reuse.
 func (semantixLookup) SnipHint() SnipHint {
@@ -55,7 +62,7 @@ func (semantixLookup) Execute(ctx context.Context, args json.RawMessage) (string
 	if p.Limit <= 0 || p.Limit > 50 {
 		p.Limit = 5
 	}
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, semantixLookupTimeout)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "semantix",
 		"lookup", "--query", p.Query, "--limit", fmt.Sprint(p.Limit), "--json").Output()
