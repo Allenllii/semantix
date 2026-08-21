@@ -22,7 +22,8 @@ Rules run in this order before the existing Prompt/Result byte limit is applied:
 3. Collapse consecutive blank lines to one blank line.
 4. Collapse consecutive identical non-empty lines to one line.
 5. Remove lines made only from at least three Markdown decoration characters
-   (`-`, `*`, `_`, `=`, `~`, or `#`). Backtick code fences are never decoration.
+   (`-`, `*`, `_`, `=`, `~`, or `#`). Content inside backtick or tilde code
+   fences is exempt from rules 3-5 so code and log evidence remain exact.
 6. If the result still exceeds the slice byte limit, retain a UTF-8-safe head
    and tail separated by the fixed marker `\n...[content compacted]...\n`.
 

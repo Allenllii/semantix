@@ -21,6 +21,16 @@ func TestCompressTextRulesAreDeterministic(t *testing.T) {
 	}
 }
 
+func TestCompressTextPreservesFencedContent(t *testing.T) {
+	for _, fence := range []string{"```", "~~~"} {
+		input := fence + "text\nrepeat\nrepeat\n\n\n---\n" + fence
+		got := string(compressText(input, maxPromptLen))
+		if got != input {
+			t.Fatalf("fence %q content changed:\ngot  %q\nwant %q", fence, got, input)
+		}
+	}
+}
+
 func TestCompressTextNoisyFixtureSavesAtLeastThirtyPercent(t *testing.T) {
 	input := strings.Repeat("useful result   \nuseful result   \n\n\n***\n", 40)
 	got := compressText(input, maxResultLen)

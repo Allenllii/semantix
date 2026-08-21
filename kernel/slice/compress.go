@@ -19,8 +19,22 @@ func compressText(content string, max int) []byte {
 
 	lines := strings.Split(content, "\n")
 	kept := make([]string, 0, len(lines))
+	var fence byte
 	for _, line := range lines {
 		line = strings.TrimRight(line, " \t")
+		if delimiter := markdownFenceDelimiter(line); delimiter != 0 {
+			kept = append(kept, line)
+			if fence == 0 {
+				fence = delimiter
+			} else if fence == delimiter {
+				fence = 0
+			}
+			continue
+		}
+		if fence != 0 {
+			kept = append(kept, line)
+			continue
+		}
 		blank := strings.TrimSpace(line) == ""
 		if isMarkdownDecoration(line) {
 			continue
@@ -42,6 +56,20 @@ func compressText(content string, max int) []byte {
 		return compacted
 	}
 	return retainHeadAndTail(compacted, max)
+}
+
+func markdownFenceDelimiter(line string) byte {
+	line = strings.TrimSpace(line)
+	if len(line) < 3 {
+		return 0
+	}
+	if line[0] == '`' && line[1] == '`' && line[2] == '`' {
+		return '`'
+	}
+	if line[0] == '~' && line[1] == '~' && line[2] == '~' {
+		return '~'
+	}
+	return 0
 }
 
 func isMarkdownDecoration(line string) bool {
