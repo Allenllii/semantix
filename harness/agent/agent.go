@@ -2974,7 +2974,7 @@ func (a *Agent) startInjectWarm(ctx context.Context) {
 			a.prefetchTaskMS.Store(elapsed)
 		}()
 		if result := a.semantix.InjectDetailed(warmCtx, input); result.Text != "" {
-			a.storePrefetch(&prefetchedInjectResult{Text: result.Text, Targets: result.Targets, Turn: a.semantixTurn.Load()})
+			a.storePrefetch(&prefetchedInjectResult{Text: result.Text, Targets: result.Targets, Turn: a.semantixTurn.Load(), WarmAt: time.Now()})
 		}
 	}()
 }

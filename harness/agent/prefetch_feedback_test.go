@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
 
 	"semantix/harness/semantix"
 	kernelevent "semantix/kernel/event"
@@ -91,5 +93,33 @@ func TestPrefetchGateControlsWarmWithoutCreatingFeedback(t *testing.T) {
 	a.semantixTurn.Add(1)
 	if !a.prefetchAllowed() {
 		t.Fatal("a stale prior-turn gate must not block a new turn")
+	}
+}
+
+// TestRecordPrefetchLeadTime pins the Markov timeliness pipeline (Issue
+// #272, c5): warm-up completion is stamped on store, the consumption
+// decision carries lead_ms = consume − warm-up-completion on the hit event
+// (positive = finished in time).
+func TestRecordPrefetchLeadTime(t *testing.T) {
+	b := semantix.NewBridge(semantix.Config{Enabled: true})
+	defer b.Close()
+	var leadMs int64 = -1
+	b.Events().Subscribe(func(e kernelevent.Event) {
+		if e.Kind != kernelevent.PrefetchHit {
+			return
+		}
+		var p kernelevent.PrefetchHitPayload
+		if json.Unmarshal(e.Data, &p) == nil {
+			leadMs = p.LeadMs
+		}
+	})
+	a := &Agent{semantix: b}
+	warmAt := time.Now().Add(-time.Second) // warmed one second before consumption
+	a.storePrefetch(&prefetchedInjectResult{Text: "block", Targets: []string{"s1"}, Turn: 1, WarmAt: warmAt})
+	if got := a.takePrefetch(1); got == nil {
+		t.Fatal("take must consume the warmed block")
+	}
+	if leadMs < 900 || leadMs > 3000 {
+		t.Fatalf("lead_ms=%d, want ≈1000 (positive, consumed after warm-up)", leadMs)
 	}
 }
