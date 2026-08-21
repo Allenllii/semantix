@@ -26,6 +26,7 @@ func TestRoundTripAllKinds(t *testing.T) {
 		{PrefetchHit, PrefetchHitPayload{Targets: []string{"f1.go"}}},
 		{PrefetchWaste, PrefetchWastePayload{Targets: []string{"f2.go"}}},
 		{Compact, CompactPayload{Trigger: "prune", Before: 100000, After: 70000}},
+		{Compact, CompactPayload{Trigger: "evict", Before: 9, After: 6, EvictedByType: map[string]int{"result": 2, "tool_pattern": 1}}},
 		{EvolutionTick, EvolutionTickPayload{ParamsJSON: json.RawMessage(`{"tau":0.8}`)}},
 		{ResourceCatalog, ResourceCatalogPayload{
 			Tools:  []ResourceTool{{Name: "read_file", ReadOnly: true}, {Name: "bash", Suspended: true}},
