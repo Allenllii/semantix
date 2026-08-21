@@ -101,7 +101,7 @@ func TestBudgetHardStopErrorNoController(t *testing.T) {
 	if err := (&Agent{}).budgetHardStopError(); err == nil {
 		t.Fatal("expected a fallback error without a controller")
 	}
-	if err := (&Agent{}).budgetHardStopError(); err.Error() != "budget exhausted" {
+	if err := (&Agent{}).budgetHardStopError(); err.Error() != "budget exhausted: scheduler issued hard_stop; no further tool calls will be issued" {
 		t.Errorf("fallback error = %q", err.Error())
 	}
 }

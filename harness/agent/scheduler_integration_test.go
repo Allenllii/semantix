@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -73,6 +74,52 @@ func TestSchedulerSuspendThenRecover(t *testing.T) {
 	recovered := a.executeBatch(context.Background(), &turnRuntime{}, []provider.ToolCall{{ID: "c2", Name: "read_file", Arguments: `{}`}})
 	if recovered.results[0] != "ok" || target.runs.Load() != 1 {
 		t.Fatalf("tool did not recover: result=%q runs=%d", recovered.results[0], target.runs.Load())
+	}
+}
+
+// TestPlanHardStopBlocksRound is the Issue #250 regression: a hard_stop
+// carried on the scheduler's RoundPlan must block every call in the round
+// before any tool executes — not just be copied into the batch and ignored.
+func TestPlanHardStopBlocksRound(t *testing.T) {
+	reg := tool.NewRegistry()
+	target := &testTool{name: "read_file"}
+	reg.Add(target)
+	d := &sequenceDecider{plans: []sched.RoundPlan{
+		{BudgetAction: sched.BudgetActionHardStop},
+		{}, // control round: no budget action
+	}}
+	a := New(nil, reg, NewSession(""), Options{Decider: d}, event.Discard)
+
+	calls := []provider.ToolCall{
+		{ID: "c1", Name: "read_file", Arguments: `{}`},
+		{ID: "c2", Name: "read_file", Arguments: `{}`},
+	}
+	stopped := a.executeBatch(context.Background(), &turnRuntime{}, calls)
+	if stopped.BudgetAction != sched.BudgetActionHardStop {
+		t.Fatalf("batch did not carry hard_stop: %+v", stopped.BudgetAction)
+	}
+	if target.runs.Load() != 0 {
+		t.Fatalf("hard_stop round executed %d tool calls", target.runs.Load())
+	}
+	for i, o := range stopped.outcomes {
+		if !o.blocked || o.errMsg == "" {
+			t.Fatalf("call %d not blocked under hard_stop: %+v", i, o)
+		}
+	}
+
+	control := a.executeBatch(context.Background(), &turnRuntime{}, []provider.ToolCall{{ID: "c3", Name: "read_file", Arguments: `{}`}})
+	if control.results[0] != "ok" || target.runs.Load() != 1 {
+		t.Fatalf("control round did not execute: result=%q runs=%d", control.results[0], target.runs.Load())
+	}
+}
+
+// TestPlanHardStopError covers the kernel-only wiring: no local controller,
+// so the terminal error names the scheduler as the source.
+func TestPlanHardStopError(t *testing.T) {
+	a := New(nil, tool.NewRegistry(), NewSession(""), Options{}, event.Discard)
+	err := a.budgetHardStopError()
+	if err == nil || !strings.Contains(err.Error(), "scheduler issued hard_stop") {
+		t.Fatalf("kernel-path error missing scheduler attribution: %v", err)
 	}
 }
 

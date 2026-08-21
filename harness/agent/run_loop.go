@@ -642,10 +642,11 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 		return false, boundaryErr
 	}
 
-	// U41 C3 hard_stop: the window budget is exhausted — refuse the new tool
-	// round and surface a user-visible error (never swallowed silently). The
-	// local controller is the fallback; the kernel scheduler may have already
-	// issued the same action via DecideRound (whoever fires first wins).
+	// U41 C3 hard_stop, local-account path: the window budget is exhausted —
+	// refuse the new tool round before dispatch and surface a user-visible
+	// error (never swallowed silently). The kernel path is separate: a
+	// hard_stop carried on the RoundPlan blocks the round inside executeBatch
+	// and terminates below, after the paired tool results are stored.
 	if a.budgetCtrl != nil && a.budgetCtrl.Action() == sched.BudgetActionHardStop {
 		return false, a.budgetHardStopError()
 	}
@@ -655,7 +656,7 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 		receiptMark = a.task.ledger.Len()
 	}
 	batch := a.executeBatch(ctx, state, calls)
-	if batch.Tier != "" {
+	if batch.Tier != "" && batch.BudgetAction != sched.BudgetActionHardStop {
 		a.applyScheduledTier(batch.Tier, batch.BudgetAction)
 	}
 	results, images := batch.results, batch.images
@@ -682,6 +683,13 @@ func (a *Agent) handleToolRound(ctx context.Context, state *turnRuntime, step in
 	if ctx.Err() != nil {
 		a.recordInterruptedDisplay("", "", nil, true, state.workDurationMs())
 		return false, ctx.Err()
+	}
+	// U41 C3 hard_stop, kernel path: the scheduler's RoundPlan carried
+	// hard_stop, so executeBatch blocked every call in this round without
+	// executing tools. Paired tool results are stored above; terminate the
+	// run with the same user-visible budget error as the local path.
+	if batch.BudgetAction == sched.BudgetActionHardStop {
+		return false, a.budgetHardStopError()
 	}
 	if len(unavailableContextTools) > 0 {
 		if hasVisibleFinalAnswer(text) {
