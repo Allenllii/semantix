@@ -59,7 +59,10 @@ func (d *L3Decider) DecideL2(ctx context.Context, q Query) ([]slice.Hit, error) 
 // DecideL3 returns a verified reusable result, or nil when any gate fails
 // (fail-closed). Verification chain, cheapest first:
 //
-//	1. retrieval: Result-typed slice, zone Hit
+//	1. retrieval: Result-typed slice, zone Hit — classified with the
+//	   two-axis L3 verdict (Issue #241): prominence among Result peers
+//	   (resultTop1) plus a scale anchor to the raw top-1 hit (globalTop1,
+//	   usually the byte-identical Prompt twin)
 //	2. mtime fast-fail: every captured dep's mtime unchanged
 //	3. fingerprint authority: Verify reports zero changed paths
 //
@@ -75,21 +78,41 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 	if len(hits) == 0 {
 		return nil, nil // no candidate → no reuse
 	}
-	top1 := hits[0].Score
-
+	// Two-axis denominator split (Issue #241). globalTop1 is the scale
+	// anchor over the whole hit list (the Prompt twin usually leads it);
+	// resultTop1 is the max among the Result candidates L3 actually
+	// considers. ClassifyL3 needs both — scoping to resultTop1 alone would
+	// make the best Result's ratio 1.0 unconditionally and gut the relative
+	// axis (the refuted option 1, see Allenllii's review on the issue).
+	globalTop1 := hits[0].Score
+	cands := make([]slice.Hit, 0, len(hits))
+	resultTop1 := 0.0
 	for _, h := range hits {
-		s := h.Slice
-		if s.Type != slice.Result {
+		if h.Score > globalTop1 {
+			globalTop1 = h.Score // max, not hits[0]: never assume Search sorted
+		}
+		if h.Slice == nil || h.Slice.Type != slice.Result {
 			continue // only Result slices carry reusable outcomes
 		}
-		switch z.Classify(h.Score, top1) {
+		cands = append(cands, h)
+		if h.Score > resultTop1 {
+			resultTop1 = h.Score
+		}
+	}
+	if len(cands) == 0 {
+		return nil, nil // no reusable candidate → no reuse
+	}
+
+	for _, h := range cands {
+		s := h.Slice
+		switch z.ClassifyL3(h.Score, resultTop1, globalTop1) {
 		case zone.Hit:
 			// clear hit: reuse after the remaining gates below
 		case zone.Grey:
 			// Ambiguous: reuse only when the judge confirms (spec §3.5
 			// RuleGate.Chain; nil judge → conservative reject). Fingerprint
 			// re-verification below still applies to grey-approved slices.
-			if !d.judgeGrey(ctx, q, s, relConfidence(h.Score, top1)) {
+			if !d.judgeGrey(ctx, q, s, relConfidence(h.Score, resultTop1)) {
 				continue
 			}
 		default: // zone.Miss
