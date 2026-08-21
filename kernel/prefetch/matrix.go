@@ -106,19 +106,26 @@ type Config struct {
 	// MaxLoad is the slot-occupancy ratio at which speculative work yields
 	// to normal execution (default 0.8).
 	MaxLoad float64
+	// ProbationInterval admits one demoted candidate as a probe every Nth
+	// eligible Plan call, so demotion stops being an absorbing state
+	// (default 10). A negative value disables probation. This is a separate
+	// channel from Epsilon: Epsilon escapes the MinConf exclusion, probation
+	// escapes the demote exclusion (Issue #282).
+	ProbationInterval int
 }
 
 // Defaults returns the built-in configuration.
 func Defaults() Config {
 	return Config{
-		TopK:          3,
-		MinConf:       0.5,
-		MaxCost:       2000,
-		BaseCost:      512,
-		WasteHitLimit: 3.0,
-		Decay:         0.2,
-		Epsilon:       0, // disabled by default; enabled by evolve wiring
-		MaxLoad:       DefaultMaxLoad,
+		TopK:              3,
+		MinConf:           0.5,
+		MaxCost:           2000,
+		BaseCost:          512,
+		WasteHitLimit:     3.0,
+		Decay:             0.2,
+		Epsilon:           0, // disabled by default; enabled by evolve wiring
+		MaxLoad:           DefaultMaxLoad,
+		ProbationInterval: 10, // every 10th eligible Plan probes a demoted candidate (#282)
 	}
 }
 
@@ -153,7 +160,10 @@ type MatrixPrefetcher struct {
 	readOnlyCalls int
 	coveredCalls  int
 	gate          gateCounter // load-aware outcome counters (Issue #273)
-
+	// plans counts eligible Plan calls per last tool, the probation round
+	// counter (Issue #282): keyed by the transition table so alternating
+	// tools cannot starve each other's demoted candidates.
+	plans map[string]uint64
 }
 
 // betaPrior is the uniform prior strength α₀=β₀ for the per-candidate Beta
@@ -188,6 +198,12 @@ func NewMatrixPrefetcher(cfg Config) *MatrixPrefetcher {
 	if cfg.MaxLoad <= 0 || cfg.MaxLoad > 1 {
 		cfg.MaxLoad = def.MaxLoad
 	}
+	if cfg.ProbationInterval == 0 {
+		cfg.ProbationInterval = def.ProbationInterval
+	}
+	if cfg.ProbationInterval < 0 {
+		cfg.ProbationInterval = 0 // normalized "off"; never a modulus
+	}
 	return &MatrixPrefetcher{
 		cfg:        cfg,
 		bigrams:    make(map[string]map[string]int),
@@ -198,6 +214,7 @@ func NewMatrixPrefetcher(cfg Config) *MatrixPrefetcher {
 		wasteW:     make(map[string]float64),
 		hitCount:   make(map[string]int),
 		wasteCount: make(map[string]int),
+		plans:      make(map[string]uint64),
 	}
 }
 
@@ -245,30 +262,44 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 		return nil, nil
 	}
 
+	// Probation is scheduled per transition table: the demoted set is rebuilt
+	// from m.bigrams[last], so the round counter must be keyed by last too.
+	// A single global counter would put each tool in its own residue class and
+	// starve whole tables under any periodic interleaving (#282).
+	m.plans[last]++
+	plans := m.plans[last]
+
 	type cand struct {
 		key  string
 		prob float64
 	}
 	var cands []cand
-	var probe *cand // highest-probability candidate excluded only by MinConf (#254)
+	var probe *cand        // highest-probability candidate excluded only by MinConf (#254)
+	var onProbation []cand // candidates excluded only by demotion (#282)
 	for next, cnt := range transitions {
 		if !m.readOnly[next] {
 			continue // never prefetch a writer
 		}
 		prob := float64(cnt) / float64(total)
+		if m.demoted(next) {
+			// waste/hit penalty. Collected regardless of MinConf: probation
+			// is the only channel that reaches a demoted candidate, and the
+			// #254 escape below deliberately skips demoted ones, so gating
+			// this on MinConf would leave demoted+below-MinConf candidates
+			// unreachable by both probes (#282).
+			onProbation = append(onProbation, cand{key: next, prob: prob})
+			continue
+		}
 		if prob < m.cfg.MinConf {
 			// absorb into the escape probe when it is the best (but
-			// still-threshold-eligible) excluded candidate; skip demoted
-			// ones so the probe never channels a known-bad bet. The key
-			// tie-break keeps probe selection deterministic despite Go's
-			// randomized map iteration (Issue #272 c6).
-			if !m.demoted(next) && (probe == nil || prob > probe.prob || (prob == probe.prob && next < probe.key)) {
+			// still-threshold-eligible) excluded candidate; demoted ones
+			// never reach here, so the probe never channels a known-bad bet.
+			// The key tie-break keeps probe selection deterministic despite
+			// Go's randomized map iteration (Issue #272 c6).
+			if probe == nil || prob > probe.prob || (prob == probe.prob && next < probe.key) {
 				probe = &cand{key: next, prob: prob}
 			}
 			continue
-		}
-		if m.demoted(next) {
-			continue // waste/hit penalty
 		}
 		cands = append(cands, cand{key: next, prob: prob})
 	}
@@ -282,10 +313,36 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 		return cands[i].key < cands[j].key
 	})
 
+	// Probation: demotion is otherwise an absorbing state — a demoted key is
+	// never planned, so it never receives the feedback that would clear the
+	// penalty. Every Nth eligible Plan reserves one slot for a demoted
+	// candidate; the slot rotates through the demoted set in probability
+	// order so a leader that never recovers cannot starve the rest (#282).
+	var probation *cand
+	// interval == 0 means probation is off; the guard is load-bearing because
+	// plans%0 would panic, so it cannot be dropped silently.
+	if interval := uint64(m.cfg.ProbationInterval); interval > 0 &&
+		len(onProbation) > 0 && m.cfg.TopK > 0 && plans%interval == 0 {
+		// key breaks probability ties: sort.Slice is not stable and map
+		// iteration order is randomized, so probability alone would make the
+		// rotation nondeterministic.
+		sort.Slice(onProbation, func(i, j int) bool {
+			if onProbation[i].prob != onProbation[j].prob {
+				return onProbation[i].prob > onProbation[j].prob
+			}
+			return onProbation[i].key < onProbation[j].key
+		})
+		probation = &onProbation[(plans/interval-1)%uint64(len(onProbation))]
+	}
+	topK := m.cfg.TopK
+	if probation != nil {
+		topK-- // the probe is appended last, keeping healthy candidates first
+	}
+
 	var tasks []PrefetchTask
 	cost := 0
 	for _, c := range cands {
-		if len(tasks) >= m.cfg.TopK {
+		if len(tasks) >= topK {
 			break
 		}
 		if cost+m.cfg.BaseCost > m.cfg.MaxCost {
@@ -294,6 +351,14 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 		tasks = append(tasks, PrefetchTask{
 			Kind: "slice-assembly",
 			Key:  c.key,
+			Cost: m.cfg.BaseCost,
+		})
+		cost += m.cfg.BaseCost
+	}
+	if probation != nil && cost+m.cfg.BaseCost <= m.cfg.MaxCost {
+		tasks = append(tasks, PrefetchTask{
+			Kind: "slice-assembly",
+			Key:  probation.key,
 			Cost: m.cfg.BaseCost,
 		})
 		cost += m.cfg.BaseCost
