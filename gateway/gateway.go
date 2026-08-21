@@ -193,6 +193,26 @@ func New(cfg *Config) (*Gateway, error) {
 	g.decider.OnJudge = g.observeJudge
 	g.decider.OnLexicalGate = g.observeLexicalGate
 	g.healthProbe = g.probeUpstreams
+	if gcErr == nil && gcRes.Removed > 0 {
+		// Type-aware eviction observation (Issue #277): a library-level
+		// Compact event makes the startup eviction visible to kernel/event
+		// consumers. "maintenance" is a fixed library-scope session id, not
+		// a real conversation. Best-effort — a failed write only drops the
+		// observation.
+		data, merr := json.Marshal(kernelevent.CompactPayload{
+			Trigger:       "evict",
+			Before:        gcRes.Checked,
+			After:         gcRes.Checked - gcRes.Removed,
+			EvictedByType: gcRes.EvictedByType,
+		})
+		if merr == nil {
+			g.recordKernelEvent("maintenance", "", "", kernelevent.Event{
+				Kind: kernelevent.Compact,
+				At:   time.Now(),
+				Data: data,
+			})
+		}
+	}
 	return g, nil
 }
 
