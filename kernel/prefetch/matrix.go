@@ -244,9 +244,10 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 		m.cfg.Epsilon > 0 && rand.Float64() < m.cfg.Epsilon {
 		if m.cfg.BaseCost <= m.cfg.MaxCost {
 			tasks = append(tasks, PrefetchTask{
-				Kind: "slice-assembly",
-				Key:  probe.key,
-				Cost: m.cfg.BaseCost,
+				Kind:     "slice-assembly",
+				Key:      probe.key,
+				Cost:     m.cfg.BaseCost,
+				Locality: LocalityLocal, // in-process slice-library read (Issue #273)
 			})
 		}
 	}
