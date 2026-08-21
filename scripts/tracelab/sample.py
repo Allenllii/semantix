@@ -45,16 +45,25 @@ def sample(src: pathlib.Path, out: pathlib.Path, n: int, seed: int) -> None:
         strata.setdefault(session_key(rows), []).append(sid)
 
     rng = random.Random(seed)
-    picked: list[str] = []
-    # Round-robin across strata proportional to natural frequency.
+    # Distribute n across strata proportional to natural frequency using the
+    # largest-remainder method so the quotas sum exactly to min(n, available)
+    # and no small stratum silently disappears.
     counts = {k: len(v) for k, v in strata.items()}
     total = sum(counts.values()) or 1
+    quota = {k: n * c / total for k, c in counts.items()}   # float ideal
+    base = {k: int(q) for k, q in quota.items()}
+    remainder = {k: q - int(q) for k, q in quota.items()}
+    left = min(n, total) - sum(base.values())
+    # Grant the largest fractional remainders first; ties broken by seed order.
+    for k in sorted(remainder, key=lambda k: (-remainder[k], k)):
+        if left <= 0:
+            break
+        take = min(left, counts[k] - base[k])
+        base[k] += take
+        left -= take
+    picked: list[str] = []
     for strat, ids in strata.items():
-        want = max(1, round(n * len(ids) / total))
-        picked += rng.sample(ids, min(want, len(ids)))
-
-    if len(picked) > n:
-        picked = rng.sample(picked, n)
+        picked += rng.sample(ids, base[strat])
 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(picked) + "\n")
