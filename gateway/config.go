@@ -24,7 +24,55 @@ type Config struct {
 	Retrieval RetrievalConfig  `toml:"retrieval"`
 	Cache     CacheConfig      `toml:"cache"`
 	Ingest    IngestConfig     `toml:"ingest"`
+	Sanitize  SanitizeConfig   `toml:"sanitize"`
 	Upstreams []UpstreamConfig `toml:"upstreams"`
+}
+
+// SanitizeConfig is the prefix-hygiene middleware (GLM-P0-2, Issue #290).
+// Third-party GLM-style caches are byte-exact over the whole prefix
+// (glm-spike-week.md §3), and unlike first-party endpoints they do not strip
+// harness billing markers server-side — a per-request marker in the system
+// head breaks the cache from the first token (133× hit-rate difference
+// reported for Claude Code's attribution header, spec §3.3/§4.1-1).
+type SanitizeConfig struct {
+	// StripAttribution removes attribution/billing marker lines from the head
+	// of the first system message before the body reaches the upstream.
+	// Default ON (nil = true); set strip_attribution = false to forward the
+	// client request untouched (documented cost: cache spend up to 4-5×).
+	StripAttribution *bool `toml:"strip_attribution"`
+	// AttributionMarkers are the line prefixes recognized as attribution
+	// segments. Merged with the built-in defaults (x-anthropic-billing-header).
+	AttributionMarkers []string `toml:"attribution_markers"`
+	// SortTools canonicalizes the request tools array by tool name so client
+	// enumeration order cannot break byte-exact prefix caches. Default ON
+	// (nil = true). Semantically neutral: tool choice is name-addressed.
+	SortTools *bool `toml:"sort_tools"`
+}
+
+// StripAttributionEnabled reports the effective default-on switch.
+func (s SanitizeConfig) StripAttributionEnabled() bool {
+	return s.StripAttribution == nil || *s.StripAttribution
+}
+
+// SortToolsEnabled reports the effective default-on switch.
+func (s SanitizeConfig) SortToolsEnabled() bool {
+	return s.SortTools == nil || *s.SortTools
+}
+
+// builtinAttributionMarkers match the known harness billing markers that
+// third-party endpoints do not strip server-side.
+var builtinAttributionMarkers = []string{"x-anthropic-billing-header"}
+
+// EffectiveAttributionMarkers merges configured markers with the built-ins.
+func (s SanitizeConfig) EffectiveAttributionMarkers() []string {
+	out := append([]string(nil), builtinAttributionMarkers...)
+	for _, m := range s.AttributionMarkers {
+		m = strings.TrimSpace(m)
+		if m != "" {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // ServerConfig is the listener and gateway-key settings.
@@ -87,6 +135,11 @@ type UpstreamConfig struct {
 	ModelAlias    []string `toml:"model_alias"`
 	UpstreamModel string   `toml:"upstream_model"`
 	Vendor        string   `toml:"vendor"`
+	// StripCacheControl removes cache_control fields from the outgoing body
+	// for this upstream. Default OFF: both measured GLM-hosting stacks accept
+	// cache_control without error (glm-spike-week.md §2/§3A.2), so the gateway
+	// forwards it untouched unless a provider is known to reject it.
+	StripCacheControl bool `toml:"strip_cache_control"`
 }
 
 // vendor names accepted by the v1 gateway. anthropic needs message-format
