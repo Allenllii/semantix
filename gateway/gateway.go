@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"semantix/kernel/cache"
@@ -52,6 +53,10 @@ type Gateway struct {
 	disabled   bool // SEMANTIX_GATEWAY_DISABLE ablation switch
 
 	now func() time.Time
+
+	// lexicalBlocks counts zone-Hit candidates downgraded by the lexical
+	// support gate (Issue #260), for hit-rate-loss accounting.
+	lexicalBlocks atomic.Int64
 }
 
 // disableEnv reports the ablation switch SEMANTIX_GATEWAY_DISABLE. Only
@@ -139,11 +144,17 @@ func New(cfg *Config) (*Gateway, error) {
 		}
 	}
 
+	decider := &cache.L3Decider{Index: idx, Store: store, Root: root, K: topK, Judge: llmJudge}
+	// Issue #260: lexical support floor for the L3 Hit path (0 disables the
+	// gate; nil keeps the kernel default).
+	if cfg.Cache.LexicalFloor != nil {
+		decider.LexicalFloor = cfg.Cache.LexicalFloor
+	}
 	g := &Gateway{
 		cfg:      cfg,
 		store:    store,
 		index:    idx,
-		decider:  &cache.L3Decider{Index: idx, Store: store, Root: root, K: topK, Judge: llmJudge},
+		decider:  decider,
 		injector: &inject.Injector{Index: idx, Store: store, Scope: scope, K: topK, Budget: budget, Zones: &z},
 		usageLog: rec,
 		client:   &http.Client{Timeout: 120 * time.Second},
@@ -154,6 +165,7 @@ func New(cfg *Config) (*Gateway, error) {
 	// one structured log line plus a field on the turn's usage event, so a
 	// non-hit can be explained and the judge's own model call can be costed.
 	g.decider.OnJudge = g.observeJudge
+	g.decider.OnLexicalGate = g.observeLexicalGate
 	g.healthProbe = g.probeUpstreams
 	return g, nil
 }

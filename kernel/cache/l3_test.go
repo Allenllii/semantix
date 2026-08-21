@@ -472,3 +472,106 @@ func TestDecideL3GreyZoneJudgeErrorFailsClosed(t *testing.T) {
 		t.Fatalf("judge error must fail closed, got %+v", res)
 	}
 }
+// fakeIndex returns a fixed hit list; used to exercise the lexical gate
+// independent of a real retriever.
+type fakeIndex struct {
+	hits []slice.Hit
+}
+
+func (f *fakeIndex) Insert(*slice.Slice) error { return nil }
+func (f *fakeIndex) Remove(string) error        { return nil }
+func (f *fakeIndex) Search(string, int, slice.Scope) ([]slice.Hit, error) {
+	return f.hits, nil
+}
+
+// l3Fixture is a dependency-captured Result slice that passes the
+// fingerprint gates when nothing changed. It returns the dep root so the
+// decider can verify against it.
+func l3Fixture(t *testing.T) (string, *slice.Slice) {
+	root := t.TempDir()
+	dep := "dep.txt"
+	if err := os.WriteFile(filepath.Join(root, dep), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps, err := fingerprint.Capture(root, []string{dep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root, &slice.Slice{ID: "l3-g", Type: slice.Result, Scope: slice.Project,
+		Content: []byte("复用结果：修复 go 测试失败"), Meta: slice.SliceMeta{SourceSession: "s1", Deps: deps}}
+}
+
+func TestL3LexicalGateBlocksPureVectorHit(t *testing.T) {
+	root, sl := l3Fixture(t)
+	idx := &fakeIndex{hits: []slice.Hit{{Slice: sl, Score: 0.9, Lexical: 0, LexicalValid: true}}}
+	d := &L3Decider{Index: idx, Root: root}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != nil {
+		t.Fatal("pure-vector hit without judge must be downgraded and rejected")
+	}
+}
+func TestL3LexicalGateAllowsLexicalHit(t *testing.T) {
+	root, sl := l3Fixture(t)
+	idx := &fakeIndex{hits: []slice.Hit{{Slice: sl, Score: 0.9, Lexical: 1, LexicalValid: true}}}
+	d := &L3Decider{Index: idx, Root: root}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil || res.SliceID != "l3-g" {
+		t.Fatalf("lexically supported Hit must reuse, got %+v", res)
+	}
+}
+
+func TestL3LexicalGateIgnoresUnmeasured(t *testing.T) {
+	root, sl := l3Fixture(t)
+	// Zero-value LexicalValid=false: legacy/third-party index, not measured.
+	idx := &fakeIndex{hits: []slice.Hit{{Slice: sl, Score: 0.9}}}
+	d := &L3Decider{Index: idx, Root: root}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("unmeasured lexical support must not block reuse")
+	}
+}
+
+func TestL3LexicalGateJudgeApprovesDowngrade(t *testing.T) {
+	root, sl := l3Fixture(t)
+	idx := &fakeIndex{hits: []slice.Hit{{Slice: sl, Score: 0.9, Lexical: 0, LexicalValid: true}}}
+	d := &L3Decider{Index: idx, Root: root, Judge: &mockJudge{confirm: true}}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("judge-approved downgrade must reuse")
+	}
+}
+
+func TestL3LexicalGateObservations(t *testing.T) {
+	root, sl := l3Fixture(t)
+	idx := &fakeIndex{hits: []slice.Hit{
+		{Slice: sl, Score: 0.9, Lexical: 0, LexicalValid: true},
+		{Slice: sl, Score: 0.8, Lexical: 1, LexicalValid: true},
+	}}
+	var obs []LexicalGateObservation
+	d := &L3Decider{Index: idx, Root: root,
+		OnLexicalGate: func(_ context.Context, o LexicalGateObservation) { obs = append(obs, o) }}
+	if _, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); err != nil {
+		t.Fatal(err)
+	}
+	if len(obs) != 2 {
+		t.Fatalf("observations = %d, want 2 (blocked + allowed)", len(obs))
+	}
+	if !obs[0].Blocked || obs[0].Zone != "grey" || obs[0].Lexical != 0 {
+		t.Fatalf("obs[0] = %+v, want blocked grey lexical=0", obs[0])
+	}
+	if obs[1].Blocked || obs[1].Zone != "hit" || obs[1].Lexical != 1 {
+		t.Fatalf("obs[1] = %+v, want allowed hit lexical=1", obs[1])
+	}
+}
