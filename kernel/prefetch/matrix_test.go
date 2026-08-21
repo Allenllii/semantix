@@ -156,6 +156,46 @@ func TestWastePenaltyAllowsHealthyCandidate(t *testing.T) {
 	}
 }
 
+func TestWastePenaltyDemotesStaleHealthyCandidate(t *testing.T) {
+	m := NewMatrixPrefetcher(Config{WasteHitLimit: 3.0})
+	for i := 0; i < 10; i++ {
+		m.Observe("bash", "read_file", true)
+	}
+	for i := 0; i < 5; i++ {
+		m.ObserveHit("read_file")
+	}
+	if tasks, _ := m.Plan([]string{"bash"}); len(tasks) != 1 {
+		t.Fatalf("healthy candidate must start eligible, got %v", tasks)
+	}
+
+	for i := 0; i < 15; i++ {
+		m.ObserveWaste("read_file")
+	}
+	if tasks, _ := m.Plan([]string{"bash"}); len(tasks) != 0 {
+		t.Fatalf("sustained waste must age stale hits and demote candidate, got %v", tasks)
+	}
+}
+
+func TestWastePenaltyRecoversAfterSustainedHits(t *testing.T) {
+	m := NewMatrixPrefetcher(Config{WasteHitLimit: 0.5})
+	for i := 0; i < 10; i++ {
+		m.Observe("bash", "read_file", true)
+	}
+	for i := 0; i < 5; i++ {
+		m.ObserveWaste("read_file")
+	}
+	if tasks, _ := m.Plan([]string{"bash"}); len(tasks) != 0 {
+		t.Fatalf("waste-only candidate must start demoted, got %v", tasks)
+	}
+
+	for i := 0; i < 15; i++ {
+		m.ObserveHit("read_file")
+	}
+	if tasks, _ := m.Plan([]string{"bash"}); len(tasks) != 1 {
+		t.Fatalf("sustained hits must age stale waste and restore candidate, got %v", tasks)
+	}
+}
+
 // --- determinism & concurrency ---
 
 func TestPlanDeterministicOrder(t *testing.T) {

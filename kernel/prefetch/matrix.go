@@ -210,6 +210,7 @@ func (m *MatrixPrefetcher) ObserveHit(key string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.hit[key] = ewma(m.hit[key], 1, m.cfg.Decay)
+	m.waste[key] = ewma(m.waste[key], 0, m.cfg.Decay)
 }
 
 // ObserveWaste marks a planned prefetch as wasted (the predicted tool was
@@ -217,6 +218,7 @@ func (m *MatrixPrefetcher) ObserveHit(key string) {
 func (m *MatrixPrefetcher) ObserveWaste(key string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.hit[key] = ewma(m.hit[key], 0, m.cfg.Decay)
 	m.waste[key] = ewma(m.waste[key], 1, m.cfg.Decay)
 }
 
