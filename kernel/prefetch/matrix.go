@@ -54,6 +54,22 @@ func (m *MatrixPrefetcher) ApplyEvolution(minConf float64) error {
 	return nil
 }
 
+// SetEpsilon enables or disables the absorbing-state escape probe at
+// runtime (Issue #254). It is separate from ApplyEvolution because Epsilon
+// is a closed-loop escape knob, not a per-snapshot confidence threshold.
+func (m *MatrixPrefetcher) SetEpsilon(epsilon float64) error {
+	if math.IsNaN(epsilon) || math.IsInf(epsilon, 0) {
+		return errors.New("prefetch: non-finite epsilon rejected")
+	}
+	if epsilon < 0 || epsilon > 1 {
+		return errors.New("prefetch: epsilon out of range [0,1]")
+	}
+	m.mu.Lock()
+	m.cfg.Epsilon = epsilon
+	m.mu.Unlock()
+	return nil
+}
+
 // Config carries operator knobs; zero values select documented defaults.
 type Config struct {
 	// TopK caps the number of tasks returned per Plan (default 3).
