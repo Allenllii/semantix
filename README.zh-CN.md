@@ -7,8 +7,8 @@
 **语义缓存 · 自适应调度 · 投机预取 · 跨会话学习**
 
 [![License: FSL-1.1-MIT](https://img.shields.io/badge/License-FSL--1.1--MIT-blue.svg?style=flat-square)](./LICENSE)
-[![Status](https://img.shields.io/badge/status-v0.3.1-green?style=flat-square)](#项目状态)
-[![Version](https://img.shields.io/badge/release-0.3.1-blue?style=flat-square)](https://github.com/Gnosil/semantix/releases)
+[![Status](https://img.shields.io/badge/status-v0.6.0-green?style=flat-square)](#项目状态)
+[![Version](https://img.shields.io/badge/release-0.6.0-blue?style=flat-square)](https://github.com/Gnosil/semantix/releases)
 [![GitHub stars](https://img.shields.io/github/stars/Gnosil/semantix?style=flat-square\&logo=github)](https://github.com/Gnosil/semantix/stargazers)
 [![Website](https://img.shields.io/badge/website-semantix.ensureok.ai-168b6d?style=flat-square)](https://semantix.ensureok.ai)
 
@@ -246,15 +246,15 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 
 ## 项目状态
 
-> **v0.3.1 已发布**，M2 CLI v2（命令树 / config / `--json` 信封 / completion / doctor / install / gc）已交付。规模化之前剩余的门槛是**真实数据的跨会话命中率验证**。
+> **v0.6.0 已发布**（2026-08-21，「Agile 2 完整落地」）：打包 `semantix-agent` + `semantix` + `semantix-gateway`，覆盖四平台。**Agile 2（自进化闭环）已收尾**——内核编排调度、投机预取、进化闭环接线（U37–U43）全部落地，并带上 GLM-5.x 缓存适配首批（前缀卫生 + per-provider 命中计量，GLM P0）。规模化之前剩余的门槛是**真实数据的跨会话命中率验证**（#58，Agile 1 的 v1.0 门禁）。
 
 | Agile | 里程碑 | 状态 |
 |---|---|---|
 | **1** | 首个可下载、可品牌化的 agent（v1.0） | 🚧 M0 ✅ · M1 接近完成（门禁 [#58](https://github.com/Gnosil/semantix/issues/58)）· CLI v2 ✅ · 复用可视化 CLI 侧 ✅ |
-| **2** | 自进化闭环——内核反向调配助手的并发 / 预算 / 模型档位 | 🚧 内核侧 MVP 已落地（sched/prefetch/evolve）；助手侧待接 |
+| **2** | 自进化闭环——内核反向调配助手的并发 / 预算 / 模型档位 | ✅ 完成并发布（v0.6.0，2026-08-21）：H2/H3 编排 + 进化闭环接线（U37–U43） |
 | **3** | 多助手生态——任意编程助手都能接入 | ⏳ 路径已文档化，未开始 |
 
-技术阶段 P0（可观测）✅ · P1（切片库）🚧 · P2（语义缓存）🚧 · P3（调度）✅ MVP · P4（预取）✅ MVP · P5（进化）✅ MVP。完整路线图见 [docs/Agile路线图.md](./docs/Agile路线图.md)。
+技术阶段 P0（可观测）✅ · P1（切片库）🚧 · P2（语义缓存）🚧 · P3（调度）✅ MVP · P4（预取）✅ MVP · P5（进化）✅ 闭环已接线（U43）。GLM-5.x 已作为一等 provider 接入（可与 DeepSeek 通过 `semantix setup` 切换），缓存适配 P0 已随 v0.6.0 落地，P1/P2 规划中。完整路线图见 [docs/Agile路线图.md](./docs/Agile路线图.md)。
 
 ### 参与验证（社区第一入口 👋）
 
