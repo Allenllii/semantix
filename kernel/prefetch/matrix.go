@@ -30,6 +30,7 @@ package prefetch
 import (
 	"errors"
 	"math"
+	"math/rand"
 	"sort"
 	"sync"
 )
@@ -181,12 +182,19 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 		prob float64
 	}
 	var cands []cand
+	var probe *cand // highest-probability candidate excluded only by MinConf (#254)
 	for next, cnt := range transitions {
 		if !m.readOnly[next] {
 			continue // never prefetch a writer
 		}
 		prob := float64(cnt) / float64(total)
 		if prob < m.cfg.MinConf {
+			// absorb into the escape probe when it is the best (but
+			// still-threshold-eligible) excluded candidate; skip demoted
+			// ones so the probe never channels a known-bad bet
+			if !m.demoted(next) && (probe == nil || prob > probe.prob) {
+				probe = &cand{key: next, prob: prob}
+			}
 			continue
 		}
 		if m.demoted(next) {
@@ -211,6 +219,20 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 			Cost: m.cfg.BaseCost,
 		})
 		cost += m.cfg.BaseCost
+	}
+	// Absorbing-state escape: if all candidates were excluded by MinConf and
+	// nothing ran, probe the best excluded candidate with probability Epsilon
+	// to keep a trickle of hit/waste signal flowing back into the evolve loop
+	// so PrefetchConf can recover (Issue #254).
+	if len(tasks) == 0 && probe != nil &&
+		m.cfg.Epsilon > 0 && rand.Float64() < m.cfg.Epsilon {
+		if m.cfg.BaseCost <= m.cfg.MaxCost {
+			tasks = append(tasks, PrefetchTask{
+				Kind: "slice-assembly",
+				Key:  probe.key,
+				Cost: m.cfg.BaseCost,
+			})
+		}
 	}
 	return tasks, nil
 }
