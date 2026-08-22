@@ -15,7 +15,7 @@ import (
 func TestEvalComparesPolicies(t *testing.T) {
 	set := filepath.Join("testdata", "eval-greyzone.tsv")
 	var out bytes.Buffer
-	if code := runEval([]string{"--set", set}, &out); code != 0 {
+	if code := runEval([]string{"--set", set}, &out, dependencies{}); code != 0 {
 		t.Fatalf("runEval code = %d, want 0; out:\n%s", code, out.String())
 	}
 	text := out.String()
@@ -36,7 +36,7 @@ func TestEvalComparesPolicies(t *testing.T) {
 func TestEvalAlarm(t *testing.T) {
 	set := filepath.Join("testdata", "eval-greyzone.tsv")
 	var out bytes.Buffer
-	if code := runEval([]string{"--set", set, "--grey-target", "10"}, &out); code != 0 {
+	if code := runEval([]string{"--set", set, "--grey-target", "10"}, &out, dependencies{}); code != 0 {
 		t.Fatalf("code = %d, want 0 (WARN but non-strict); out:\n%s", code, out.String())
 	}
 	if !strings.Contains(out.String(), "WARN: grey_ratio") {
@@ -44,12 +44,12 @@ func TestEvalAlarm(t *testing.T) {
 	}
 
 	out.Reset()
-	if code := runEval([]string{"--set", set, "--grey-target", "10", "--strict"}, &out); code != 3 {
+	if code := runEval([]string{"--set", set, "--grey-target", "10", "--strict"}, &out, dependencies{}); code != 3 {
 		t.Fatalf("strict code = %d, want 3; out:\n%s", code, out.String())
 	}
 
 	out.Reset()
-	if code := runEval([]string{"--set", set, "--grey-target", "0", "--strict"}, &out); code != 0 {
+	if code := runEval([]string{"--set", set, "--grey-target", "0", "--strict"}, &out, dependencies{}); code != 0 {
 		t.Fatalf("disabled alarm code = %d, want 0; out:\n%s", code, out.String())
 	}
 	if strings.Contains(out.String(), "WARN") {
@@ -59,10 +59,10 @@ func TestEvalAlarm(t *testing.T) {
 
 func TestEvalRejectsBadSet(t *testing.T) {
 	var out bytes.Buffer
-	if code := runEval([]string{"--set", "does-not-exist.tsv"}, &out); code != 1 {
+	if code := runEval([]string{"--set", "does-not-exist.tsv"}, &out, dependencies{}); code != 1 {
 		t.Fatalf("code = %d, want 1", code)
 	}
-	if code := runEval(nil, &out); code != 2 {
+	if code := runEval(nil, &out, dependencies{}); code != 2 {
 		t.Fatalf("no --set code = %d, want 2", code)
 	}
 }
@@ -86,7 +86,7 @@ func TestEvalRejectsNaNInFlags(t *testing.T) {
 	set := filepath.Join("testdata", "eval-greyzone.tsv")
 	for _, frac := range []string{"NaN", "Inf", "-Inf"} {
 		var out bytes.Buffer
-		if code := runEval([]string{"--set", set, "--train-frac", frac}, &out); code != 2 {
+		if code := runEval([]string{"--set", set, "--train-frac", frac}, &out, dependencies{}); code != 2 {
 			t.Errorf("--train-frac %s: code = %d, want usage error 2", frac, code)
 		}
 	}
@@ -97,7 +97,7 @@ func TestEvalRejectsNaNInFlags(t *testing.T) {
 func TestEvalJSONEnvelope(t *testing.T) {
 	set := filepath.Join("testdata", "eval-greyzone.tsv")
 	var out bytes.Buffer
-	if code := runEval([]string{"--set", set, "--json"}, &out); code != 0 {
+	if code := runEval([]string{"--set", set, "--json"}, &out, dependencies{}); code != 0 {
 		t.Fatalf("runEval --json code = %d, want 0; out:\n%s", code, out.String())
 	}
 	var env envelope
@@ -137,7 +137,7 @@ func TestEvalJSONEnvelope(t *testing.T) {
 func TestEvalJSONStrictGate(t *testing.T) {
 	set := filepath.Join("testdata", "eval-greyzone.tsv")
 	var out bytes.Buffer
-	if code := runEval([]string{"--set", set, "--grey-target", "10", "--strict", "--json"}, &out); code != 3 {
+	if code := runEval([]string{"--set", set, "--grey-target", "10", "--strict", "--json"}, &out, dependencies{}); code != 3 {
 		t.Fatalf("strict --json code = %d, want 3; out:\n%s", code, out.String())
 	}
 	var env envelope

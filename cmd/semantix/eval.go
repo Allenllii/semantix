@@ -42,7 +42,7 @@ type evalOptions struct {
 	zf         zoneFlagSet
 }
 
-func runEval(args []string, stdout io.Writer) int {
+func runEval(args []string, stdout io.Writer, deps dependencies) int {
 	fs := flag.NewFlagSet("eval", flag.ContinueOnError)
 	jsonOut := fs.Bool("json", false, "write JSON envelope output (§4.2)")
 	var opt evalOptions
@@ -74,6 +74,9 @@ func runEval(args []string, stdout io.Writer) int {
 			fmt.Fprintf(stdout, "eval: %s\n", msg)
 		}
 		return code
+	}
+	if err := opt.zf.applyConfigZones(fs, deps.resolved); err != nil {
+		return fail(2, err.Error())
 	}
 	if err := opt.zf.validate(); err != nil {
 		return fail(2, err.Error())

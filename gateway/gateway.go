@@ -25,7 +25,6 @@ import (
 	"semantix/kernel/judge"
 	"semantix/kernel/slice"
 	"semantix/kernel/usage"
-	"semantix/kernel/zone"
 )
 
 // Gateway is the assembled Semantix Gateway v1. All semantic behavior is
@@ -159,7 +158,15 @@ func New(cfg *Config) (*Gateway, error) {
 	if budget <= 0 {
 		budget = inject.DefaultBudget
 	}
-	z := zone.Default()
+	// Grey-zone thresholds (Issue #259 阶段 1): explicit [retrieval]
+	// tau_*/abs_* keys, else the evolve-tuned TauL2 (evolve_db), else the
+	// tuned defaults. zoneConfig is validated by Load, so a non-nil error
+	// here means the evolve state file itself is unreadable/corrupt.
+	z, err := cfg.zoneConfig()
+	if err != nil {
+		_ = closeStore(store)
+		return nil, err
+	}
 
 	var rec *usage.Recorder
 	if cfg.Ingest.UsageLog != "" {

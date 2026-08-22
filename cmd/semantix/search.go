@@ -43,6 +43,9 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	if err := flags.Parse(args); err != nil {
 		return usageWrap(err)
 	}
+	if err := zf.applyConfigZones(flags, deps.resolved); err != nil {
+		return usagef("%v", err)
+	}
 	if err := zf.validate(); err != nil {
 		return usagef("%v", err)
 	}

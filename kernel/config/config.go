@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"semantix/kernel/zone"
+
 	"github.com/BurntSushi/toml"
 )
 
@@ -55,6 +57,12 @@ type fileRetrieval struct {
 	Fusion     *string  `toml:"fusion"`      // hybrid 融合策略: weighted | rrf (Issue #274)
 	RrfK       *int     `toml:"rrf_k"`       // RRF 常数,默认 60
 	BM25Weight *float64 `toml:"bm25_weight"` // weighted 模式 BM25 路权重,默认 0.5
+	// Grey-zone 四阈值 (Issue #259 阶段 1): semantix.toml 键,被
+	// --tau-*/--abs-* flag 覆盖;值域 (0,1] / >= 0,且 tau_high > tau_low。
+	TauHigh *float64 `toml:"tau_high"`
+	TauLow  *float64 `toml:"tau_low"`
+	AbsHigh *float64 `toml:"abs_high"`
+	AbsLow  *float64 `toml:"abs_low"`
 }
 
 type fileInject struct {
@@ -205,6 +213,21 @@ func Load(opts Options) (*Resolved, error) {
 		return nil, err
 	}
 	if err := add(mergePtr("retrieval.bm25_weight", 0.5, "", file.Retrieval.BM25Weight, (*float64)(nil))); err != nil {
+		return nil, err
+	}
+	// Grey-zone 四阈值 (Issue #259 阶段 1): 默认值与 zone.Default() 单真源
+	// 对齐;flag > env > file > default 优先级由 mergePtr 统一处理。
+	defZ := zone.Default()
+	if err := add(mergePtr("retrieval.tau_high", defZ.TauHigh, "", file.Retrieval.TauHigh, (*float64)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("retrieval.tau_low", defZ.TauLow, "", file.Retrieval.TauLow, (*float64)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("retrieval.abs_high", defZ.AbsHigh, "", file.Retrieval.AbsHigh, (*float64)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("retrieval.abs_low", defZ.AbsLow, "", file.Retrieval.AbsLow, (*float64)(nil))); err != nil {
 		return nil, err
 	}
 	if err := add(mergePtr("inject.budget", 4096, "SEMANTIX_INJECT_BUDGET", file.Inject.Budget, (*int)(nil))); err != nil {
@@ -403,6 +426,14 @@ func (r *Resolved) validate() error {
 			if v, ok := f.Value.(float64); ok && (v < 0 || v > 1) {
 				errs = append(errs, "retrieval.bm25_weight: must be in [0,1]")
 			}
+		case "retrieval.tau_high", "retrieval.tau_low":
+			if v, ok := f.Value.(float64); ok && (v <= 0 || v > 1) {
+				errs = append(errs, fmt.Sprintf("%s: must be in (0,1]", f.Key))
+			}
+		case "retrieval.abs_high", "retrieval.abs_low":
+			if v, ok := f.Value.(float64); ok && v < 0 {
+				errs = append(errs, fmt.Sprintf("%s: must be >= 0", f.Key))
+			}
 		case "inject.budget":
 			if v, ok := f.Value.(int); ok && v <= 0 {
 				errs = append(errs, "inject.budget: must be > 0")
@@ -410,6 +441,17 @@ func (r *Resolved) validate() error {
 		case "verify.holdout":
 			if v, ok := f.Value.(float64); ok && (v < 0 || v >= 1) {
 				errs = append(errs, "verify.holdout: must be in [0,1)")
+			}
+		}
+	}
+	// Cross-key invariant (Issue #259 阶段 1): the clear-hit floor must sit
+	// above the grey floor, otherwise the classifier degenerates.
+	if th, _, ok := r.Get("retrieval.tau_high"); ok {
+		if tl, _, ok2 := r.Get("retrieval.tau_low"); ok2 {
+			thv, thOK := th.(float64)
+			tlv, tlOK := tl.(float64)
+			if thOK && tlOK && thv <= tlv {
+				errs = append(errs, fmt.Sprintf("retrieval.tau_high (%v) must be > retrieval.tau_low (%v)", thv, tlv))
 			}
 		}
 	}

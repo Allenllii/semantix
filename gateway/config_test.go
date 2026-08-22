@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"semantix/kernel/evolve"
 	"semantix/kernel/fuse"
+	"semantix/kernel/zone"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -17,6 +19,29 @@ func writeConfig(t *testing.T, body string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// loadZoneTestConfig loads a config body with the env vars validConfig
+// references, so tests do not depend on other tests' env state.
+func loadZoneTestConfig(t *testing.T, body string) (*Config, error) {
+	t.Helper()
+	t.Setenv("GW_KEY", "k1")
+	t.Setenv("DS_KEY", "k2")
+	return Load(writeConfig(t, body))
+}
+
+// tomlPath escapes a Windows path for use inside a double-quoted TOML
+// string (backslash sequences such as \U are otherwise parsed as escapes).
+func tomlPath(p string) string {
+	return strings.ReplaceAll(p, "\\", "\\\\")
+}
+
+// configWithoutRetrieval returns validConfig with the [retrieval] section
+// removed, so tests can inject their own retrieval block without toml
+// duplicate-key errors.
+func configWithoutRetrieval() string {
+	return strings.Replace(validConfig,
+		"[retrieval]\nretriever = \"bm25\"\ntop_k = 5\nbudget = 4096\n\n", "", 1)
 }
 
 const validConfig = `
@@ -53,7 +78,7 @@ vendor = "deepseek"
 func TestLoadExpandsEnvAndHome(t *testing.T) {
 	t.Setenv("GW_KEY", "k1")
 	t.Setenv("DS_KEY", "k2")
-	cfg, err := Load(writeConfig(t, validConfig))
+	cfg, err := loadZoneTestConfig(t, validConfig)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -159,7 +184,7 @@ func TestModelAliasEnvSubstitution(t *testing.T) {
 	t.Setenv("ALIAS_EXTRA", "ds-chat")
 	body := strings.Replace(validConfig, `model_alias = ["deepseek-chat", "ds-chat"]`,
 		`model_alias = ["deepseek-chat", "${ALIAS_EXTRA}"]`, 1)
-	cfg, err := Load(writeConfig(t, body))
+	cfg, err := loadZoneTestConfig(t, body)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -424,5 +449,181 @@ func TestFusionConfigMapping(t *testing.T) {
 	c.Retrieval.RrfK = 30
 	if fc := c.fusionConfig(); fc.Strategy != fuse.RRF || fc.RrfK != 30 {
 		t.Fatalf("rrf fusionConfig = %+v, want rrf/30", fc)
+	}
+}
+
+func TestZoneConfigExplicitTauKeys(t *testing.T) {
+	body := configWithoutRetrieval() + `
+[retrieval]
+retriever = "bm25"
+top_k = 5
+budget = 4096
+tau_high = 0.9
+tau_low = 0.6
+abs_high = 0.8
+abs_low = 0.5
+`
+	cfg, err := loadZoneTestConfig(t, body)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	z, err := cfg.zoneConfig()
+	if err != nil {
+		t.Fatalf("zoneConfig: %v", err)
+	}
+	if z.TauHigh != 0.9 || z.TauLow != 0.6 || z.AbsHigh != 0.8 || z.AbsLow != 0.5 {
+		t.Fatalf("zones = %+v, want explicit values", z)
+	}
+}
+
+func TestZoneConfigDefaultsWithoutKeys(t *testing.T) {
+	cfg, err := loadZoneTestConfig(t, validConfig)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	z, err := cfg.zoneConfig()
+	if err != nil {
+		t.Fatalf("zoneConfig: %v", err)
+	}
+	def := zone.Default()
+	if z != def {
+		t.Fatalf("zones = %+v, want default %+v", z, def)
+	}
+}
+
+func TestZoneConfigEvolveDBDrivesTauLow(t *testing.T) {
+	dir := t.TempDir()
+	// params.json with a tuned TauL2 (0.70) — as `usage --evolve-db` writes it.
+	state := `{"params":{"tau_l2":0.70,"tau_l3":0.0,"inject_cap":0.3,"prefetch_conf":0.5,"success_floor":0.7,"freeze_epochs":60},"epoch":42}`
+	if err := os.WriteFile(filepath.Join(dir, "params.json"), []byte(state), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body := configWithoutRetrieval() + `
+[retrieval]
+retriever = "bm25"
+evolve_db = "` + tomlPath(dir) + `"
+`
+	cfg, err := loadZoneTestConfig(t, body)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	z, err := cfg.zoneConfig()
+	if err != nil {
+		t.Fatalf("zoneConfig: %v", err)
+	}
+	if z.TauLow != 0.70 {
+		t.Fatalf("TauLow = %v, want evolve-tuned 0.70", z.TauLow)
+	}
+	if z.TauHigh != zone.Default().TauHigh {
+		t.Fatalf("TauHigh = %v, want default %v", z.TauHigh, zone.Default().TauHigh)
+	}
+}
+
+func TestZoneConfigExplicitTauLowBeatsEvolve(t *testing.T) {
+	dir := t.TempDir()
+	state := `{"params":{"tau_l2":0.70,"inject_cap":0.3,"prefetch_conf":0.5,"success_floor":0.7,"freeze_epochs":60},"epoch":1}`
+	if err := os.WriteFile(filepath.Join(dir, "params.json"), []byte(state), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body := configWithoutRetrieval() + `
+[retrieval]
+retriever = "bm25"
+tau_low = 0.62
+evolve_db = "` + tomlPath(dir) + `"
+`
+	cfg, err := loadZoneTestConfig(t, body)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	z, err := cfg.zoneConfig()
+	if err != nil {
+		t.Fatalf("zoneConfig: %v", err)
+	}
+	if z.TauLow != 0.62 {
+		t.Fatalf("TauLow = %v, want explicit 0.62 to win over evolve", z.TauLow)
+	}
+}
+
+func TestZoneConfigEvolveClampedToBand(t *testing.T) {
+	dir := t.TempDir()
+	// A hand-edited or stale file must not push the classifier outside
+	// what evolve itself could produce (same contract as CLI flags.go).
+	state := `{"params":{"tau_l2":0.99,"inject_cap":0.3,"prefetch_conf":0.5,"success_floor":0.7,"freeze_epochs":60},"epoch":1}`
+	if err := os.WriteFile(filepath.Join(dir, "params.json"), []byte(state), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body := configWithoutRetrieval() + `
+[retrieval]
+retriever = "bm25"
+evolve_db = "` + tomlPath(dir) + `"
+`
+	cfg, err := loadZoneTestConfig(t, body)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	z, err := cfg.zoneConfig()
+	if err != nil {
+		t.Fatalf("zoneConfig: %v", err)
+	}
+	if z.TauLow != evolve.DefaultMaxTau {
+		t.Fatalf("TauLow = %v, want clamped to %v", z.TauLow, evolve.DefaultMaxTau)
+	}
+}
+
+func TestZoneConfigEvolveMissingFileFallsBack(t *testing.T) {
+	body := configWithoutRetrieval() + `
+[retrieval]
+retriever = "bm25"
+evolve_db = "` + tomlPath(filepath.Join(t.TempDir(), "no-such-dir")) + `"
+`
+	cfg, err := loadZoneTestConfig(t, body)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	z, err := cfg.zoneConfig()
+	if err != nil {
+		t.Fatalf("zoneConfig with missing evolve state must fall back, got %v", err)
+	}
+	if z != zone.Default() {
+		t.Fatalf("zones = %+v, want default", z)
+	}
+}
+
+func TestZoneConfigCorruptEvolveFileFails(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "params.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	body := configWithoutRetrieval() + `
+[retrieval]
+retriever = "bm25"
+evolve_db = "` + tomlPath(dir) + `"
+`
+	cfg, err := loadZoneTestConfig(t, body)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if _, err := cfg.zoneConfig(); err == nil {
+		t.Fatal("zoneConfig must fail on a corrupt evolve state file")
+	}
+}
+
+func TestValidateTauKeys(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"tau_high zero", validConfig + "\n[retrieval]\ntau_high = 0\n"},
+		{"tau_high over one", validConfig + "\n[retrieval]\ntau_high = 1.2\n"},
+		{"tau_low negative", validConfig + "\n[retrieval]\ntau_low = -0.1\n"},
+		{"abs_high negative", validConfig + "\n[retrieval]\nabs_high = -0.01\n"},
+		{"tau_high not above tau_low", validConfig + "\n[retrieval]\ntau_high = 0.6\ntau_low = 0.6\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := loadZoneTestConfig(t, tc.body); err == nil {
+				t.Fatalf("Load must reject: %s", tc.name)
+			}
+		})
 	}
 }

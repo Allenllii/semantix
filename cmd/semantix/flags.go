@@ -6,7 +6,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"semantix/kernel/config"
 	"semantix/kernel/evolve"
 	"semantix/kernel/slice"
 	"semantix/kernel/zone"
@@ -38,6 +40,38 @@ func (zf *zoneFlagSet) zones() zone.Zones {
 		AbsHigh: *zf.absHigh,
 		AbsLow:  *zf.absLow,
 	}
+}
+
+// applyConfigZones lets semantix.toml [retrieval] tau_*/abs_* keys drive
+// the grey-zone thresholds (Issue #259 阶段 1). An explicit --tau-*/--abs-*
+// flag always wins; config values were validated by the config layer. Call
+// between flag.Parse and applyEvolveParams/validate. Effective priority:
+// flag > toml > evolve > default.
+func (zf *zoneFlagSet) applyConfigZones(fs *flag.FlagSet, c *config.Resolved) error {
+	if c == nil {
+		return nil
+	}
+	explicit := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) {
+		if strings.HasPrefix(f.Name, "tau-") || strings.HasPrefix(f.Name, "abs-") {
+			explicit[f.Name] = true
+		}
+	})
+	set := func(name, key string, ptr **float64) {
+		if explicit[name] {
+			return
+		}
+		if v, _, ok := c.Get(key); ok {
+			if f, ok := v.(float64); ok {
+				**ptr = f
+			}
+		}
+	}
+	set("tau-high", "retrieval.tau_high", &zf.tauHigh)
+	set("tau-low", "retrieval.tau_low", &zf.tauLow)
+	set("abs-high", "retrieval.abs_high", &zf.absHigh)
+	set("abs-low", "retrieval.abs_low", &zf.absLow)
+	return nil
 }
 
 // applyEvolveParams lets the evolved TauL2 drive the grey-zone floor

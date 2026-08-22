@@ -412,6 +412,10 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 		}
 		return 2
 	}
+	if err := zf.applyConfigZones(fs, deps.resolved); err != nil {
+		fmt.Fprintf(stdout, "verify: %v\n", err)
+		return 2
+	}
 	if err := zf.validate(); err != nil {
 		fmt.Fprintf(stdout, "verify: %v\n", err)
 		return 2
