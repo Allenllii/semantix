@@ -12,7 +12,9 @@ import (
 // CLI subprocess. It is read-only and fails soft: when the kernel binary is
 // unavailable or times out, Execute returns an empty result instead of an
 // error, so a kernel outage never breaks the agent's turn.
-type semantixLookup struct{}
+type semantixLookup struct {
+	timeout time.Duration
+}
 
 func init() { RegisterBuiltin(semantixLookup{}) }
 
@@ -35,20 +37,13 @@ func (semantixLookup) Schema() json.RawMessage {
 
 func (semantixLookup) ReadOnly() bool { return true }
 
-// semantixLookupTimeout bounds the lookup subprocess; overrun degrades soft.
-// A package var rather than an inline constant so tests asserting on the
-// subprocess argv can widen it — a loaded machine can push fork+exec past
-// the budget and flip Execute into soft degrade mid-assert. The 3s default
-// is part of the fail-soft contract and must not change.
-var semantixLookupTimeout = 3 * time.Second
-
 // SnipHint keeps the top hits intact — the head of the JSON result carries
 // the ranked answers, which is what matters for reuse.
 func (semantixLookup) SnipHint() SnipHint {
 	return SnipHint{Head: 20, Tail: 0}
 }
 
-func (semantixLookup) Execute(ctx context.Context, args json.RawMessage) (string, error) {
+func (s semantixLookup) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		Query string `json:"query"`
 		Limit int    `json:"limit"`
@@ -62,7 +57,11 @@ func (semantixLookup) Execute(ctx context.Context, args json.RawMessage) (string
 	if p.Limit <= 0 || p.Limit > 50 {
 		p.Limit = 5
 	}
-	ctx, cancel := context.WithTimeout(ctx, semantixLookupTimeout)
+	timeout := s.timeout
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "semantix",
 		"lookup", "--query", p.Query, "--limit", fmt.Sprint(p.Limit), "--json").Output()

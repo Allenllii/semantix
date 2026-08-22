@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -54,26 +56,30 @@ func TestSemantixLookupFailsSoft(t *testing.T) {
 // TestSemantixLookupSubprocess verifies the exact argv by putting a fake
 // `semantix` script first on PATH.
 func TestSemantixLookupSubprocess(t *testing.T) {
-	// Under a loaded `go test ./...` run, fork+exec of the fake script can
-	// blow the production 3s budget and flip Execute into soft degrade
-	// (empty output). Widen the budget: this test asserts argv, not latency.
-	old := semantixLookupTimeout
-	semantixLookupTimeout = time.Minute
-	t.Cleanup(func() { semantixLookupTimeout = old })
-
 	bin := t.TempDir()
-	script := filepath.Join(bin, "semantix")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\necho \"$@\"\n"), 0o755); err != nil {
+	scriptName := "semantix"
+	scriptBody := "#!/bin/sh\necho \"$@\"\n"
+	if runtime.GOOS == "windows" {
+		scriptName = "semantix.bat"
+		scriptBody = "@echo off\r\necho %*\r\n"
+	}
+	script := filepath.Join(bin, scriptName)
+	if err := os.WriteFile(script, []byte(scriptBody), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	out, err := semantixLookup{}.Execute(context.Background(),
+	// This test asserts argv, not the production subprocess time budget. Give
+	// fork+exec enough room when the full race-enabled suite loads the runner.
+	out, err := (semantixLookup{timeout: time.Minute}).Execute(context.Background(),
 		json.RawMessage(`{"query":"修复 go 测试","limit":7}`))
 	if err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	want := "lookup --query 修复 go 测试 --limit 7 --json"
-	if out != want+"\n" {
+	if runtime.GOOS == "windows" {
+		want = `lookup --query "修复 go 测试" --limit 7 --json`
+	}
+	if got := strings.ReplaceAll(out, "\r\n", "\n"); got != want+"\n" {
 		t.Errorf("argv mismatch:\n got %q\nwant %q", out, want+"\n")
 	}
 }
