@@ -1692,8 +1692,8 @@ func TestReaderIntentRefusesDispatchAfterSafetyDrift(t *testing.T) {
 	// bytes land in the next session rather than interrupting this call.
 	rt.client.toolsMu.Lock()
 	rt.readOnly = true
-	rt.client.toolsMu.Unlock()
 	rt.schema = json.RawMessage(`{"type":"object","properties":{"msg":{"type":"number"}}}`)
+	rt.client.toolsMu.Unlock()
 	if _, _, err := rt.ExecuteWithImages(readerCtx, json.RawMessage(`{"msg":"schema-changed","z":"ok"}`)); err != nil {
 		t.Fatalf("schema-only reader change should execute: %v", err)
 	}
