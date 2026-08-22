@@ -1,25 +1,34 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { isValidElement, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { geoDocuments, getGeoDocument, readGeoDocument } from "@/lib/geo-docs";
+import CopyCode from "@/components/CopyCode";
+import { documents, getDocument, readDocument } from "@/lib/docs";
 import { siteIdentity } from "@/lib/site-identity";
 import { getContentAuthor, personJsonLd } from "@/lib/content-authors";
 
-type GeoPageProps = {
+type DocsPageProps = {
   params: Promise<{ slug: string }>;
 };
+
+function extractCodeText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(extractCodeText).join("");
+  if (isValidElement<{ children?: ReactNode }>(node)) return extractCodeText(node.props.children);
+  return "";
+}
 
 export const dynamicParams = false;
 
 export function generateStaticParams() {
-  return geoDocuments.map(({ slug }) => ({ slug }));
+  return documents.map(({ slug }) => ({ slug }));
 }
 
-export async function generateMetadata({ params }: GeoPageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: DocsPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const document = getGeoDocument(slug);
+  const document = getDocument(slug);
 
   if (!document) return {};
 
@@ -29,14 +38,14 @@ export async function generateMetadata({ params }: GeoPageProps): Promise<Metada
   };
 }
 
-export default async function GeoDocumentPage({ params }: GeoPageProps) {
+export default async function DocsDocumentPage({ params }: DocsPageProps) {
   const { slug } = await params;
-  const document = getGeoDocument(slug);
+  const document = getDocument(slug);
 
   if (!document) notFound();
 
-  const content = await readGeoDocument(document);
-  const sourceUrl = `${siteIdentity.repositoryUrl}/blob/main/site/content/geo/${document.fileName}`;
+  const content = await readDocument(document);
+  const sourceUrl = `${siteIdentity.repositoryUrl}/blob/main/site/content/docs/${document.fileName}`;
   const isEnglish = document.language === "English";
   const author = getContentAuthor(`docs/${document.slug}`);
 
@@ -68,7 +77,7 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Link href="/docs" className="font-medium hover:text-accent">文档</Link>
             <span aria-hidden="true">/</span>
-            <span>{document.depth}</span>
+            <span>{document.section}</span>
           </div>
           <div className="flex flex-wrap items-center gap-3 font-mono text-xs text-muted-foreground">
             <a href={author.url} target="_blank" rel="author noopener noreferrer" className="hover:text-accent">
@@ -81,11 +90,11 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
         </div>
 
         <aside className="mb-8 max-w-3xl border-l-2 border-accent bg-muted/40 px-5 py-4 text-sm leading-6 text-muted-foreground">
-          <p>
-            {isEnglish
-              ? "Evidence and limitations: implementation claims should be checked against the current main branch. This document explains the design; it is not an independent production benchmark."
-              : "证据与限制：实现状态应以 main 分支的代码与测试为准。本文用于解释设计，不代表独立生产环境基准。"}
-          </p>
+          <p>{isEnglish
+            ? "Evidence and limitations: check implementation claims against the current main branch. Repository tests and design documents are not independent production benchmarks."
+            : document.evidence === "E0"
+              ? "证据与限制：本文解释设计与机制边界。实现状态应回到 main 分支代码和测试核对，设计说明不等于生产效果。"
+              : "证据与限制：本文依据当前仓库实现、命令和测试整理。它证明的是可检查的产品路径，不代表独立生产环境收益。"}</p>
           <a
             href={sourceUrl}
             target="_blank"
@@ -94,7 +103,7 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
           >
             {isEnglish ? "View source and revision history ↗" : "查看原文与修订记录 ↗"}
           </a>
-          <p className="mt-3 text-xs">{isEnglish ? "Evidence label: E0 design or editorial context. " : "证据等级：E0，设计或编辑背景。"}{isEnglish ? "See the benchmark boundary before treating an implementation statement as measured evidence." : "如需查看已复现的仓库测试与实验夹具，请先阅读证据页。"} <Link href="/benchmarks" className="underline underline-offset-4 hover:text-accent">{isEnglish ? "Evidence page ↗" : "证据页 ↗"}</Link></p>
+          <p className="mt-3 text-xs">{isEnglish ? `Evidence label: ${document.evidence}. ` : `证据等级：${document.evidence}。`}{isEnglish ? "Read the evidence boundary before treating an implementation statement as a measured result." : "如需查看已复现的仓库测试与实验夹具，请先阅读证据页。"} <Link href="/benchmarks" className="underline underline-offset-4 hover:text-accent">{isEnglish ? "Evidence page ↗" : "证据页 ↗"}</Link></p>
         </aside>
 
         <article className="geo-prose max-w-3xl">
@@ -102,6 +111,13 @@ export default async function GeoDocumentPage({ params }: GeoPageProps) {
             remarkPlugins={[remarkGfm]}
             components={{
               h1: () => <h1>{document.title}</h1>,
+              pre: ({ children }) => (
+                <CopyCode
+                  code={extractCodeText(children).replace(/\n$/, "")}
+                  className="my-6"
+                  tone="dark"
+                />
+              ),
             }}
           >
             {content}
