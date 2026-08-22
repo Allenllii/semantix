@@ -80,8 +80,7 @@ semantix verify --session <会话目录> --project demo > eval.tsv
 | `inject` | L2 注入块（规范序/预算截断） | `--query` `--budget` `--k` `--evolve-db` |
 
 **产品与管理**：`doctor` 健康检查（db / config / embedder / judge，任一 FAIL 退出码 3）、
-`install` 一键安装、`completion` 生成 shell 补全脚本（bash / zsh / fish，加载方式见下文）、
-`init` `config` `version` 已实现。
+`install` 一键安装、`version`。
 
 `semantix install` 按 `agent-skill/` 现有文档（SKILL.md + tools/ + hooks/ + config/ + scripts/）
 落盘到目标 harness，幂等可重跑，`--uninstall` 精确移除安装的文件：
@@ -98,9 +97,9 @@ semantix install --target custom --dir ./agent  # 自定义目录
 semantix install --target claude-code --uninstall   # 卸载（仅移除 install 记录的文件）
 ```
 
-**维护**：`export`（JSONL 备份）`import`（恢复）`gc`（清理过期/低权重切片）已实现。
-
-**服务模式**：`serve` `watch` 为规划中命令（执行会报 unknown command）。
+**维护**：`gc`（清理过期/低权重切片）。切片库是单个 JSONL 文件，备份/恢复直接
+`cp`（`slice.Export`/`Import` 的行格式仍是库内归档与 harness ccswitch 的内部机制，
+不再暴露为独立 CLI 命令）。
 
 **退出码契约**（所有命令统一）：
 
@@ -110,27 +109,6 @@ semantix install --target claude-code --uninstall   # 卸载（仅移除 install
 | 1 | 运行错误（IO、db、检索失败） |
 | 2 | 用法错误（未知命令、flag 非法） |
 | 3 | 门禁未达标（`verify --strict`、`eval-judge` 一致性） |
-
-## Shell completion（bash / zsh / fish）
-
-`semantix completion bash|zsh|fish` 输出对应 shell 的补全脚本，覆盖全部子命令、
-主要 flag 及枚举值（`--scope`、`--retriever`、`--embedder`、`--stub`、
-`--judge-protocol`）。加载方式：
-
-```bash
-# bash：追加到 ~/.bashrc
-source <(semantix completion bash)
-
-# zsh：追加到 ~/.zshrc（需已启用 compinit）
-autoload -Uz compinit && compinit
-source <(semantix completion zsh)
-
-# fish：追加到 ~/.config/fish/config.fish
-semantix completion fish | source
-```
-
-脚本由命令树注册表直接生成（与 `semantix help` 同一真源），新增命令或 flag
-后重新执行一次即可刷新。
 
 ## 配置
 
