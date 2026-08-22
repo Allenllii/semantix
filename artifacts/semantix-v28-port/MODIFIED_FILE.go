@@ -1,3 +1,5 @@
+//go:build ignore
+
 // Package config loads Reasonix's runtime configuration from TOML. Resolution order:
 // flag > project ./reasonix.toml > user config.toml (in the OS user-config dir) > built-in defaults.
 // Secrets come from the environment via api_key_env and are never stored in
@@ -969,7 +971,7 @@ type SemantixConfig struct {
 	// savings delta. Zero keeps the kernel defaults — mirror semantix.toml
 	// [cost] keys here when they are customized.
 	CostInputPriceUSD float64 `toml:"cost_input_price_usd"`
-	CostCachePriceUSD float64 `toml:"cost_cache_price_usd"`
+	CostCachePriceUSD  float64 `toml:"cost_cache_price_usd"`
 	// LimitUSD caps the window's total financial spend (U41 C3). 0 = unlimited.
 	LimitUSD float64 `toml:"limit_usd"`
 	// Window is the reset window for LimitUSD: "session" | "day". Empty = "session".
@@ -2257,7 +2259,7 @@ func (c *Config) ResolveSystemPromptForRoot(root string) (string, error) {
 	}
 
 	candidates := []string{filepath.Join(resolveRoot(root), path)}
-	if home := SemantixHomeDir(); home != "" {
+	if home := ReasonixHomeDir(); home != "" {
 		homeCandidate := filepath.Join(home, path)
 		if filepath.Clean(homeCandidate) != filepath.Clean(candidates[0]) {
 			candidates = append(candidates, homeCandidate)

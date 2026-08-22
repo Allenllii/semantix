@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -52,11 +53,13 @@ import (
 	"semantix/harness/provider"
 	"semantix/harness/recovery"
 	"semantix/harness/sandbox"
+	"semantix/harness/semanticreview"
 	"semantix/harness/sessioninbox"
 	"semantix/harness/sessiontemp"
 	"semantix/harness/shellrun"
 	"semantix/harness/skill"
 	"semantix/harness/store"
+	"semantix/harness/taskintent"
 	"semantix/harness/taskmonitor"
 	"semantix/harness/tool"
 	"semantix/harness/workspacelease"
@@ -94,6 +97,9 @@ type Controller struct {
 	// recoveryGate is the shared Auto Guard state for this controller.
 	// nil when the feature is not wired for this controller.
 	recoveryGate *recovery.Gate
+	// semanticReviewer independently checks selected boundary-task diffs before
+	// headless completion. Nil keeps ordinary short-task behavior unchanged.
+	semanticReviewer *semanticreview.Session
 
 	// taskBudget is the configured spend gate, as passed at construction.
 	taskBudget agent.TaskBudget
@@ -430,8 +436,11 @@ type Options struct {
 	// when the working model submits no update_goal report. nil fails closed:
 	// the goal pauses instead of defaulting to continue.
 	GoalEvaluator goaleval.Evaluator
-	Sink          event.Sink
-	Policy        permission.Policy
+	// SemanticReviewer is an optional bounded final-diff reviewer. Selection is
+	// deterministic and happens after the actual workspace diff is available.
+	SemanticReviewer *semanticreview.Session
+	Sink             event.Sink
+	Policy           permission.Policy
 	// SubagentGate is the shared, mutable gate every headless-only sub-agent
 	// surface (task, writer-capable skill sub-agents, planner) reads from. Nil
 	// disables gating for those surfaces same as before this field existed.
@@ -592,6 +601,7 @@ func New(opts Options) *Controller {
 		guardianSess:                      opts.Guardian,
 		guardianPath:                      guardian.PathFor(opts.SessionPath),
 		evaluator:                         opts.GoalEvaluator,
+		semanticReviewer:                  opts.SemanticReviewer,
 		goalUsageTee:                      usageTee,
 		sink:                              sink,
 		policy:                            opts.Policy,
@@ -1992,7 +2002,106 @@ func (c *Controller) runReady(ctx context.Context, input string) (err error) {
 	marker = c.markInFlightTurn(startMessages, true)
 	ctx = c.withPlannerTurnMetadata(ctx, rawInput, false, startMessages)
 	err = c.runner.Run(ctx, c.withCapabilityRoute(ctx, input, rawInput))
+	if err == nil {
+		err = c.runSemanticReviewContinuation(ctx, rawInput)
+	}
 	return err
+}
+
+func (c *Controller) runSemanticReviewContinuation(ctx context.Context, task string) error {
+	if c == nil || c.semanticReviewer == nil || !taskintent.NeedsMutation(task) {
+		return nil
+	}
+	summary := lastAssistantText(c.History())
+	diff := semanticReviewDiff(ctx, c.workspaceRoot)
+	if !semanticReviewApplies(task, diff) {
+		return nil
+	}
+	if strings.TrimSpace(diff) == "" {
+		diff = summary
+	}
+	verdict, err := c.semanticReviewer.Review(ctx, semanticreview.Evidence{
+		Task: task, DiffSummary: diff, TestReceipts: semanticReviewReceipts(summary),
+	})
+	if err != nil {
+		c.noticeDetail("semantic review unavailable", err.Error())
+		return err
+	}
+	c.noticeDetail("semantic review: "+verdict.Outcome, verdict.Reason)
+	if verdict.Outcome == "pass" {
+		return nil
+	}
+	b, _ := json.Marshal(verdict)
+	prompt := `<semantic-review-result>` + string(b) + `</semantic-review-result>
+The bounded independent reviewer found concrete semantic-closure gaps. Inspect the actual diff, fix only these gaps, run focused tests, and re-check the final diff before finishing.`
+	if c.skillRunner != nil {
+		repair := skill.Skill{
+			Name: "semantic-repair", RunAs: skill.RunSubagent, Effort: "low",
+			AllowedTools: []string{"read_file", "grep", "glob", "edit_file", "multi_edit", "write_file", "bash"},
+			Body:         `You are an isolated semantic-repair worker. Inspect the existing workspace diff and the review findings. Fix only proven missing requirements, callers, invariants, or tests. Run focused verification and leave changes uncommitted. Do not redo correct work.`,
+		}
+		childTask := "Original task:\n" + task + "\n\nReviewer findings:\n" + string(b)
+		childAnswer, childErr := c.skillRunner(ctx, repair, childTask, skill.SubagentRunOptions{HostInitiated: true})
+		if childErr == nil {
+			c.noticeDetail("semantic repair completed", childAnswer)
+			second, reviewErr := c.semanticReviewer.Review(ctx, semanticreview.Evidence{
+				Task: task, DiffSummary: semanticReviewDiff(ctx, c.workspaceRoot), TestReceipts: semanticReviewReceipts(childAnswer),
+			})
+			if reviewErr == nil {
+				c.noticeDetail("semantic re-review: "+second.Outcome, second.Reason)
+				if second.Outcome == "pass" {
+					return nil
+				}
+				secondJSON, _ := json.Marshal(second)
+				prompt = `<semantic-review-result>` + string(secondJSON) + `</semantic-review-result>
+The isolated repair left concrete gaps. Fix only the remaining findings, run focused tests, and inspect the final diff.`
+			}
+		}
+	}
+	return c.runner.Run(ctx, prompt)
+}
+
+func semanticReviewDiff(ctx context.Context, root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return ""
+	}
+	cmd := exec.CommandContext(ctx, "git", "-c", "core.filemode=false", "diff", "HEAD", "--no-ext-diff")
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+func semanticReviewApplies(task, diff string) bool {
+	for _, text := range []string{task, diff} {
+		n := strings.ToLower(text)
+		for _, marker := range []string{"public api", "interface", "callers", "config option", "cookie", "samesite", "authentication", "authorization", "path traversal", "permission", "security invariant", "protocol", "公开接口", "调用方", "配置传播", "路径穿越", "权限", "安全不变量"} {
+			if strings.Contains(n, marker) {
+				return true
+			}
+		}
+		if text == diff && strings.Contains(n, "middleware") && strings.Contains(n, "config") {
+			return true
+		}
+	}
+	return false
+}
+
+func semanticReviewReceipts(summary string) []string {
+	var out []string
+	for _, line := range strings.Split(summary, "\n") {
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "test") || strings.Contains(lower, "pass") || strings.Contains(lower, "测试") {
+			out = append(out, strings.TrimSpace(line))
+			if len(out) == 6 {
+				break
+			}
+		}
+	}
+	return out
 }
 
 // RunSubagentProfile executes one named runAs=subagent skill synchronously and

@@ -58,6 +58,7 @@ import (
 	"semantix/harness/recovery"
 	"semantix/harness/sandbox"
 	"semantix/harness/secrets"
+	"semantix/harness/semanticreview"
 	"semantix/harness/semantix"
 	"semantix/harness/sessiontemp"
 	"semantix/harness/skill"
@@ -1950,6 +1951,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 					slog.Warn("goal evaluator provider construction failed — goals without an update_goal report will pause", "model", evalModel, "err", err)
 				}
 			}
+		}
+	}
+	// The independent reviewer is opt-in, then routes only selected boundary
+	// tasks from the request plus the actual final diff.
+	if strings.TrimSpace(os.Getenv("SEMANTIX_SEMANTIC_REVIEW")) == "1" {
+		ctrlOpts.SemanticReviewer = &semanticreview.Session{
+			Provider: execProv, Pricing: entry.Price, ModelRef: modelRef, Sink: sink,
 		}
 	}
 	ctrl := control.New(ctrlOpts)

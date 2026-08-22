@@ -357,3 +357,66 @@ func TestBillingConfigValidation(t *testing.T) {
 		t.Fatalf("disabled billing: %v", err)
 	}
 }
+
+// TestQuotaBalanceProbeErrorRetriesQuickly is the Issue B regression: a failed
+// wallet probe must suppress re-probing only for balanceErrorBackoff, never the
+// full balance_cache_seconds TTL. Otherwise a transient wallet error right
+// after a restart (no prior verdict) would 402 a paying customer for the whole
+// TTL. Drives quotaEngine directly with an injected clock so no real sleeping.
+func TestQuotaBalanceProbeErrorRetriesQuickly(t *testing.T) {
+	var probes atomic.Int64
+	var failing atomic.Bool
+	failing.Store(true)
+	wallet := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		probes.Add(1)
+		if failing.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = io.WriteString(w, `{"is_available":true,"balance_infos":[{"currency":"CNY","total_balance":"50.00"}]}`)
+	}))
+	defer wallet.Close()
+
+	nowT := time.Now()
+	nowFn := func() time.Time { return nowT }
+	dir := t.TempDir()
+	q, err := newQuotaEngine(BillingConfig{
+		Enabled: true, FreeTokens: 10, RechargeURL: "u",
+		BalanceURL: wallet.URL, BalanceKey: "k", BalanceCacheSeconds: 300,
+	}, filepath.Join(dir, "quota-state.json"), &http.Client{}, nowFn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := q.Consume(20); err != nil { // exhaust the free tier
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+
+	// 1) cold start, probe fails → blocked (no verdict to fall back on), 1 probe.
+	if got := q.Status(ctx).Mode; got != quotaModeBlocked {
+		t.Fatalf("failed probe: mode=%q, want blocked", got)
+	}
+	if got := probes.Load(); got != 1 {
+		t.Fatalf("probes=%d, want 1", got)
+	}
+
+	// 2) within the short backoff → cached, no re-probe.
+	nowT = nowT.Add(2 * time.Second)
+	if got := q.Status(ctx).Mode; got != quotaModeBlocked {
+		t.Fatalf("during backoff: mode=%q, want blocked", got)
+	}
+	if got := probes.Load(); got != 1 {
+		t.Fatalf("re-probed during backoff: probes=%d, want 1", got)
+	}
+
+	// 3) after the backoff (well before the 300s success TTL), wallet recovers →
+	//    re-probe → paid. This is the fix: the error was NOT cached for 300s.
+	failing.Store(false)
+	nowT = nowT.Add(balanceErrorBackoff + time.Second)
+	if got := q.Status(ctx).Mode; got != quotaModePaid {
+		t.Fatalf("after backoff: mode=%q, want paid (should have re-probed)", got)
+	}
+	if got := probes.Load(); got != 2 {
+		t.Fatalf("probes=%d, want 2 (retry after short backoff)", got)
+	}
+}
