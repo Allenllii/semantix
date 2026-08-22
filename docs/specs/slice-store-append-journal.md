@@ -153,7 +153,7 @@ journal 一行一条 JSON 对象，首行是 header：
 
 - `semantix gc`（触发 compaction）跑完后：journal 为空 header、base 是全量 v1 —— 旧二进制
   直接可读且零丢失（其首次写会孤儿化空 journal，stash 空文件无损）。
-- `semantix export` → 旧二进制 `import`：第二条通道，任何时刻可用。
+- `slice.Export` 行格式 → 旧二进制的 `slice.Import`：第二条通道，任何时刻可用。
 
 ## 9. 测试计划
 
