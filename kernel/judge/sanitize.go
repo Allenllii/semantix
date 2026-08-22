@@ -42,8 +42,12 @@ func Sanitize(s string) string {
 				return b.String()
 			}
 			s = consumeESCSeq(s)
-		case 0x90, 0x98, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f:
-			s = consumeC1Seq(s)
+		// C1 control values are intentionally NOT matched here: per the design
+		// note above, a C1 byte is only an escape when it appears as its own raw
+		// byte (handled on the RuneError path). A legally UTF-8-encoded C1 rune
+		// (e.g. 0xC2 0x9B → U+009B) is ordinary content and must survive — the
+		// old case re-entered consumeC1Seq with the UTF-8 lead byte at s[0],
+		// mis-dispatching and silently deleting unrelated text (Issue #358).
 		default:
 			b.WriteString(s[:size])
 			s = s[size:]
