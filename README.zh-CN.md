@@ -179,7 +179,7 @@ go build -o semantix ./cmd/semantix
 # 1. 从历史会话提取切片（Reasonix/Claude Code 风格 JSONL）
 semantix extract --input session.jsonl --db .semantix/project.db --project demo
 
-# 2. 语义检索（bm25 / vector / hybrid 三模式）
+# 2. 语义检索（bm25 / vector / hybrid 三模式；hybrid 融合策略 --fusion weighted|rrf 可配）
 semantix search --query "修复 go 测试失败" --db .semantix/project.db
 
 # 3. L2 注入块（会话 B 复用会话 A 的切片）

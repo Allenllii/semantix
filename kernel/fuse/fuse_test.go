@@ -195,3 +195,57 @@ func ids(hits []slice.Hit) []string {
 	}
 	return out
 }
+
+// TestWeightedVsRRFComparison is the Issue #274 c7 counterpart: the same
+// input under both strategies — weighted keeps the historical bounded
+// average (top-1 both routes → 1.0), rrf keeps the same top but spreads
+// the tail differently, and neither ever leaves [0,1].
+func TestWeightedVsRRFComparison(t *testing.T) {
+	bm := []slice.Hit{
+		{Slice: projectSlice("a", "x"), Score: 9.0},
+		{Slice: projectSlice("b", "y"), Score: 4.0},
+		{Slice: projectSlice("c", "z"), Score: 2.0},
+	}
+	vec := []slice.Hit{
+		{Slice: projectSlice("b", "y"), Score: 0.9},
+		{Slice: projectSlice("a", "x"), Score: 0.8},
+	}
+	w := Fuse(bm, vec, "", 10, Config{})
+	r := Fuse(bm, vec, "", 10, Config{Strategy: RRF})
+	wByID := map[string]slice.Hit{}
+	for _, h := range w {
+		wByID[h.Slice.ID] = h
+	}
+	rByID := map[string]slice.Hit{}
+	for _, h := range r {
+		rByID[h.Slice.ID] = h
+	}
+	// Both strategies keep the same candidate set and the shared-hit pair
+	// (a, b) ahead of the single-route c; all scores stay in [0,1].
+	for _, hits := range [][]slice.Hit{w, r} {
+		if len(hits) != 3 {
+			t.Fatalf("candidates = %d, want 3 under both strategies", len(hits))
+		}
+		if hits[2].Slice.ID != "c" {
+			t.Fatalf("last = %q, want c (single-route hit) under both strategies", hits[2].Slice.ID)
+		}
+		for _, h := range hits {
+			if h.Score < 0 || h.Score > 1 {
+				t.Fatalf("score %v out of [0,1]", h.Score)
+			}
+		}
+	}
+	// Weighted is score-strength driven: a = 0.5*1 + 0.5*(0.8/0.9) ≈ 0.944
+	// outranks b = 0.5*(4/9) + 0.5*1 ≈ 0.722.
+	if !approx(wByID["a"].Score, 0.9444444444) {
+		t.Fatalf("weighted a = %v, want 0.9444444444", wByID["a"].Score)
+	}
+	if !approx(wByID["b"].Score, 0.7222222222) {
+		t.Fatalf("weighted b = %v, want 0.7222222222", wByID["b"].Score)
+	}
+	// RRF is rank driven: a and b are both (1,2) across routes → identical
+	// score (1/61+1/62)·(61/2), tie-broken by ID.
+	if !approx(rByID["a"].Score, rByID["b"].Score) {
+		t.Fatalf("rrf a=%v b=%v, want equal (same rank pair)", rByID["a"].Score, rByID["b"].Score)
+	}
+}

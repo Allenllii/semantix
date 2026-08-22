@@ -70,7 +70,7 @@ semantix verify --session <会话目录> --project demo > eval.tsv
 | 命令 | 用途 | 关键参数 |
 |---|---|---|
 | `extract` | 会话 JSONL → 语义切片入库 | `--input` `--db` `--scope` `--project` |
-| `search` | 检索切片 | `--query` `--retriever bm25\|vector\|hybrid` `--limit` `--json` |
+| `search` | 检索切片 | `--query` `--retriever bm25\|vector\|hybrid` `--fusion weighted\|rrf` `--limit` `--json` |
 | `verify` | 离线回放命中率验证（门禁）；`--calibrate` 分桶校准报告 | `--session` `--holdout` `--db` `--strict` `--calibrate` `--labels` |
 | `eval` | 检索策略比较（单阈值 vs 三段） | `--set` `--train-frac` `--tau-*` |
 | `eval-judge` | LLM judge 真实性评估（门禁） | `--stub` `--audit` `--min-consistency` |
