@@ -16,11 +16,15 @@ import (
 
 // zoneFlagSet registers the grey-zone threshold flags (Issue #7) and rebuilds
 // a zone.Zones after flag.Parse. All four default to zone.Default().
+// Per-type overrides (Issue #259 阶段 2) arrive from semantix.toml only —
+// there are no per-type flags; byType stays nil unless the config layer
+// supplies it.
 type zoneFlagSet struct {
 	tauHigh *float64
 	tauLow  *float64
 	absHigh *float64
 	absLow  *float64
+	byType  map[string]zone.Zones
 }
 
 func addZoneFlags(fs *flag.FlagSet) *zoneFlagSet {
@@ -34,12 +38,16 @@ func addZoneFlags(fs *flag.FlagSet) *zoneFlagSet {
 }
 
 func (zf *zoneFlagSet) zones() zone.Zones {
-	return zone.Zones{
+	z := zone.Zones{
 		TauHigh: *zf.tauHigh,
 		TauLow:  *zf.tauLow,
 		AbsHigh: *zf.absHigh,
 		AbsLow:  *zf.absLow,
 	}
+	if len(zf.byType) > 0 {
+		z.ByType = zf.byType
+	}
+	return z
 }
 
 // applyConfigZones lets semantix.toml [retrieval] tau_*/abs_* keys drive
@@ -71,6 +79,46 @@ func (zf *zoneFlagSet) applyConfigZones(fs *flag.FlagSet, c *config.Resolved) er
 	set("tau-low", "retrieval.tau_low", &zf.tauLow)
 	set("abs-high", "retrieval.abs_high", &zf.absHigh)
 	set("abs-low", "retrieval.abs_low", &zf.absLow)
+	// Per-type overrides (Issue #259 阶段 2): assemble the partial toml
+	// entries into complete snapshots inheriting the current global
+	// thresholds (after the global keys above). Key shape:
+	// retrieval.by_type.<type>.<field>; validation already happened in the
+	// config layer.
+	const pfx = "retrieval.by_type."
+	for _, f := range c.Fields {
+		if !strings.HasPrefix(f.Key, pfx) {
+			continue
+		}
+		rest := strings.TrimPrefix(f.Key, pfx)
+		dot := strings.Index(rest, ".")
+		if dot <= 0 {
+			continue
+		}
+		name, field := rest[:dot], rest[dot+1:]
+		v, ok := f.Value.(float64)
+		if !ok {
+			continue
+		}
+		if zf.byType == nil {
+			zf.byType = map[string]zone.Zones{}
+		}
+		oz, ok := zf.byType[name]
+		if !ok {
+			oz = zf.zones() // inherit the current global thresholds
+			oz.ByType = nil
+		}
+		switch field {
+		case "tau_high":
+			oz.TauHigh = v
+		case "tau_low":
+			oz.TauLow = v
+		case "abs_high":
+			oz.AbsHigh = v
+		case "abs_low":
+			oz.AbsLow = v
+		}
+		zf.byType[name] = oz
+	}
 	return nil
 }
 

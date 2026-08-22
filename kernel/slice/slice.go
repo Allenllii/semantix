@@ -47,6 +47,25 @@ func (t SliceType) String() string {
 	return "unknown"
 }
 
+// TypeFromString resolves a wire name back to a SliceType (Issue #259
+// 阶段 2 per-type configuration); ok=false for unknown names so config
+// layers can fail closed instead of silently accepting a typo.
+func TypeFromString(s string) (SliceType, bool) {
+	switch s {
+	case "prompt":
+		return Prompt, true
+	case "context":
+		return Context, true
+	case "tool_pattern":
+		return ToolPattern, true
+	case "result":
+		return Result, true
+	case "memory":
+		return Memory, true
+	}
+	return 0, false
+}
+
 // EvictPriorityOf returns the type's eviction priority: lower values are
 // evicted first when the library cap overflows. The v1 table is fixed and
 // deterministic (Issue #277 typed context eviction): result/tool_pattern go

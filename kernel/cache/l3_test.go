@@ -724,3 +724,33 @@ func TestL3ObsAccumSnapshotIsThreadSafe(t *testing.T) {
 		t.Fatalf("accumulated = %+v, want %+v", got, want)
 	}
 }
+
+// Per-type thresholds participate in the real L3 decision (Issue #259
+// 阶段 2): the same Result candidate that reuses under the global
+// baseline is rejected when its type carries a stricter override.
+func TestDecideL3PerTypeOverride(t *testing.T) {
+	root, idx, _, _ := buildTestLib(t)
+	// Baseline: global defaults (nil Zones → zone.Default).
+	base := &L3Decider{Index: idx, Root: root}
+	res, err := base.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("baseline must reuse the Result candidate")
+	}
+
+	// Strict result override: unreachable thresholds for this type.
+	strict := zone.Zones{TauHigh: 1.0, TauLow: 0.99, AbsHigh: 1e9, AbsLow: 1e9,
+		ByType: map[string]zone.Zones{
+			"result": {TauHigh: 1.0, TauLow: 0.99, AbsHigh: 1e9, AbsLow: 1e9},
+		}}
+	dec := &L3Decider{Index: idx, Root: root, Zones: &strict}
+	res2, err := dec.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2 != nil {
+		t.Fatalf("strict result override must reject reuse, got %+v", res2)
+	}
+}

@@ -19,6 +19,7 @@ import (
 
 	"semantix/kernel/evolve"
 	"semantix/kernel/fuse"
+	"semantix/kernel/slice"
 	"semantix/kernel/zone"
 
 	"github.com/BurntSushi/toml"
@@ -146,6 +147,21 @@ type RetrievalConfig struct {
 	AbsHigh   *float64 `toml:"abs_high"`
 	AbsLow    *float64 `toml:"abs_low"`
 	EvolveDB  string   `toml:"evolve_db"`
+	// ByType holds per-slice-type threshold overrides (Issue #259 阶段
+	// 2), keyed by the stable wire name (prompt|context|tool_pattern|
+	// result|memory). Each entry is partial: only the keys present are
+	// set, everything else inherits the effective global thresholds when
+	// assembled into zone.Zones.ByType. Unknown type names fail startup.
+	ByType map[string]zoneOverride `toml:"by_type"`
+}
+
+// zoneOverride is the partial per-type override syntax for [retrieval]
+// by_type.<type>: absent fields inherit the global thresholds.
+type zoneOverride struct {
+	TauHigh *float64 `toml:"tau_high"`
+	TauLow  *float64 `toml:"tau_low"`
+	AbsHigh *float64 `toml:"abs_high"`
+	AbsLow  *float64 `toml:"abs_low"`
 }
 
 // CacheConfig holds L3 policy. TTL is resolved by the gateway and passed to
@@ -448,6 +464,41 @@ func (c *Config) validate() error {
 	if c.Retrieval.TauHigh != nil && c.Retrieval.TauLow != nil && *c.Retrieval.TauHigh <= *c.Retrieval.TauLow {
 		return fmt.Errorf("gateway config: [retrieval] tau_high (%v) must be > tau_low (%v)", *c.Retrieval.TauHigh, *c.Retrieval.TauLow)
 	}
+	// Per-type overrides (Issue #259 阶段 2): every by_type key must be a
+	// known slice type (fail closed on typos) and each override obeys the
+	// same value-domain rules as the global thresholds.
+	for name, o := range c.Retrieval.ByType {
+		if _, ok := slice.TypeFromString(name); !ok {
+			return fmt.Errorf("gateway config: [retrieval] by_type key %q is not a slice type (want prompt|context|tool_pattern|result|memory)", name)
+		}
+		for _, th := range []struct {
+			key string
+			v   *float64
+		}{
+			{"tau_high", o.TauHigh},
+			{"tau_low", o.TauLow},
+			{"abs_high", o.AbsHigh},
+			{"abs_low", o.AbsLow},
+		} {
+			if th.v == nil {
+				continue
+			}
+			v := *th.v
+			isTau := th.key == "tau_high" || th.key == "tau_low"
+			if math.IsNaN(v) || math.IsInf(v, 0) {
+				return fmt.Errorf("gateway config: [retrieval] by_type.%s.%s must be a finite number, got %v", name, th.key, v)
+			}
+			if isTau && (v <= 0 || v > 1) {
+				return fmt.Errorf("gateway config: [retrieval] by_type.%s.%s must be in (0,1], got %v", name, th.key, v)
+			}
+			if !isTau && v < 0 {
+				return fmt.Errorf("gateway config: [retrieval] by_type.%s.%s must be >= 0, got %v", name, th.key, v)
+			}
+		}
+		if o.TauHigh != nil && o.TauLow != nil && *o.TauHigh <= *o.TauLow {
+			return fmt.Errorf("gateway config: [retrieval] by_type.%s tau_high (%v) must be > tau_low (%v)", name, *o.TauHigh, *o.TauLow)
+		}
+	}
 	if c.Cache.JudgeAPIKey != "" && (strings.TrimSpace(c.Cache.JudgeBaseURL) == "" || strings.TrimSpace(c.Cache.JudgeModel) == "") {
 		return fmt.Errorf("gateway config: [cache] judge_api_key requires judge_base_url and judge_model")
 	}
@@ -573,6 +624,30 @@ func (c *Config) zoneConfig() (zone.Zones, error) {
 		}
 		if tau > 0 {
 			z.TauLow = tau
+		}
+	}
+	// Per-type overrides (Issue #259 阶段 2): each partial entry inherits
+	// the effective global thresholds (z, after evolve) for the fields it
+	// does not set. A configured type therefore never silently falls back
+	// mid-flight; the assembled map is a complete snapshot per type.
+	if len(c.Retrieval.ByType) > 0 {
+		z.ByType = make(map[string]zone.Zones, len(c.Retrieval.ByType))
+		for name, o := range c.Retrieval.ByType {
+			oz := z
+			if o.TauHigh != nil {
+				oz.TauHigh = *o.TauHigh
+			}
+			if o.TauLow != nil {
+				oz.TauLow = *o.TauLow
+			}
+			if o.AbsHigh != nil {
+				oz.AbsHigh = *o.AbsHigh
+			}
+			if o.AbsLow != nil {
+				oz.AbsLow = *o.AbsLow
+			}
+			oz.ByType = nil // leaf snapshot: overrides never nest
+			z.ByType[name] = oz
 		}
 	}
 	return z, nil

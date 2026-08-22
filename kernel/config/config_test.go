@@ -230,3 +230,51 @@ func TestLoadRejectsInvalidZoneThresholds(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadByTypeOverrides(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "semantix.toml")
+	content := "[retrieval]\ntau_high = 0.8\n\n[retrieval.by_type.result]\ntau_high = 0.85\ntau_low = 0.60\n\n[retrieval.by_type.context]\ntau_low = 0.50\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Load(Options{ConfigPath: path})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	assertField(t, r, "retrieval.by_type.result.tau_high", 0.85, SourceFile)
+	assertField(t, r, "retrieval.by_type.result.tau_low", 0.60, SourceFile)
+	assertField(t, r, "retrieval.by_type.context.tau_low", 0.50, SourceFile)
+	// Global key untouched by the per-type block.
+	assertField(t, r, "retrieval.tau_high", 0.8, SourceFile)
+	// Deterministic field order: context sorts before result.
+	keys := []string{}
+	for _, f := range r.Fields {
+		if f.Key == "retrieval.by_type.context.tau_low" || f.Key == "retrieval.by_type.result.tau_high" {
+			keys = append(keys, f.Key)
+		}
+	}
+	if len(keys) != 2 || keys[0] != "retrieval.by_type.context.tau_low" || keys[1] != "retrieval.by_type.result.tau_high" {
+		t.Fatalf("by_type field order = %v, want sorted by type name", keys)
+	}
+}
+
+func TestLoadRejectsInvalidByType(t *testing.T) {
+	cases := []struct{ name, content, want string }{
+		{"unknown type", "[retrieval.by_type.reslut]\ntau_low = 0.5\n", `"reslut" is not a slice type`},
+		{"bad tau", "[retrieval.by_type.result]\ntau_high = 2\n", "retrieval.by_type.result.tau_high: must be in (0,1]"},
+		{"bad abs", "[retrieval.by_type.result]\nabs_low = -0.5\n", "retrieval.by_type.result.abs_low: must be >= 0"},
+		{"tau cross", "[retrieval.by_type.result]\ntau_high = 0.5\ntau_low = 0.6\n", "retrieval.by_type.result.tau_high (0.5) must be > tau_low (0.6)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "semantix.toml")
+			if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(Options{ConfigPath: path})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want substring %q", err, tc.want)
+			}
+		})
+	}
+}

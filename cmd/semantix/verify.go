@@ -92,11 +92,24 @@ func newVerifyJudgeJSON(s judge.Stats) *verifyJudgeJSON {
 // positives (hits the oracle rejects) and precision — the P-CHR simplified
 // distribution (GPT Semantic Cache, arXiv:2411.05276).
 type verifyCalibration struct {
-	Bins    []verifyBin     `json:"bins"`
-	Current [3]int          `json:"current"` // zone counts under the current thresholds
-	Default [3]int          `json:"default"` // zone counts under zone.Default()
-	Labeled bool            `json:"labeled"` // --labels was provided
-	Marks   map[string]bool `json:"-"`       // oracle relevance marks (session\x00turn -> relevant)
+	Bins    []verifyBin               `json:"bins"`
+	Current [3]int                    `json:"current"` // zone counts under the current thresholds
+	Default [3]int                    `json:"default"` // zone counts under zone.Default()
+	ByType  map[string]verifyTypeCal  `json:"by_type,omitempty"` // Issue #259 阶段 2: per-type zone distribution
+	Labeled bool                      `json:"labeled"` // --labels was provided
+	Marks   map[string]bool           `json:"-"`       // oracle relevance marks (session\x00turn -> relevant)
+}
+
+// verifyTypeCal is the per-slice-type zone distribution (Issue #259
+// 阶段 2): how each type's top-1 candidates land under the current
+// (possibly per-type) thresholds vs the default thresholds — the input
+// for deciding whether a type deserves its own tau.
+type verifyTypeCal struct {
+	N          int   `json:"n"`
+	Hit        int   `json:"hit"`
+	Grey       int   `json:"grey"`
+	Miss       int   `json:"miss"`
+	DefaultHit int   `json:"default_hit"` // hit count under zone.Default(), for drift comparison
 }
 
 // verifyBin is one relative-confidence bucket [Lo,Hi) of the replay stream.
@@ -226,6 +239,27 @@ func printVerifyCalibration(stdout io.Writer, cal *verifyCalibration) {
 		cur := 100 * float64(cal.Current[i]) / float64(total)
 		dft := 100 * float64(cal.Default[i]) / float64(defTotal)
 		fmt.Fprintf(stdout, "#   %-6s %7.1f%% %7.1f%%  %+5.1fpt\n", names[i], cur, dft, cur-dft)
+	}
+	// Per-type distribution (Issue #259 阶段 2): how each slice type lands
+	// under the current (possibly per-type) thresholds vs the default ones
+	// — the calibration input for per-type tau decisions.
+	if len(cal.ByType) > 0 {
+		fmt.Fprintln(stdout, "# by_type: 类型分型命中分布 (current 阈值 vs default 阈值; Issue #259 阶段 2)")
+		fmt.Fprintln(stdout, "#   type          n   hit grey miss  hit%  default_hit")
+		typeNames := make([]string, 0, len(cal.ByType))
+		for name := range cal.ByType {
+			typeNames = append(typeNames, name)
+		}
+		sort.Strings(typeNames)
+		for _, name := range typeNames {
+			tc := cal.ByType[name]
+			hitPct := 0.0
+			if tc.N > 0 {
+				hitPct = 100 * float64(tc.Hit) / float64(tc.N)
+			}
+			fmt.Fprintf(stdout, "#   %-12s %4d %4d %4d %4d  %5.1f%%  %6d\n",
+				name, tc.N, tc.Hit, tc.Grey, tc.Miss, hitPct, tc.DefaultHit)
+		}
 	}
 }
 
@@ -541,7 +575,7 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	calMode := *calibrate || *labelsPath != ""
 	var cal *verifyCalibration
 	if calMode {
-		cal = &verifyCalibration{Bins: make([]verifyBin, verifyCalibBuckets)}
+		cal = &verifyCalibration{Bins: make([]verifyBin, verifyCalibBuckets), ByType: map[string]verifyTypeCal{}}
 		for i := range cal.Bins {
 			cal.Bins[i].Bin = calibBinLabel(i)
 		}
@@ -582,7 +616,14 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 				if len(hits) > 1 {
 					top2 = hits[1].Score
 				}
-				z = classifyTop1(zones, score, top2)
+				// Per-type thresholds (Issue #259 阶段 2): the top-1
+				// candidate is classified under its own type's override
+				// (falling back to the global baseline).
+				tz := zones
+				if hits[0].Slice != nil {
+					tz = zones.ForType(hits[0].Slice.Type.String())
+				}
+				z = classifyTop1(tz, score, top2)
 				if z == zone.Grey && jg != nil {
 					// Grey zone reaches the async LLM judge (off the critical path
 					// in production; here inline). Verdict only affects stats.
@@ -619,6 +660,27 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 				b.Top1Sum += score
 				cal.Current[int(z)]++
 				cal.Default[int(classifyTop1(zone.Default(), score, top2))]++
+				// Per-type distribution (Issue #259 阶段 2): where each
+				// slice type's candidates land under the current (possibly
+				// per-type) thresholds vs the defaults — the calibration
+				// input for deciding whether a type needs its own tau.
+				if len(hits) > 0 && hits[0].Slice != nil {
+					name := hits[0].Slice.Type.String()
+					tc := cal.ByType[name]
+					tc.N++
+					switch z {
+					case zone.Hit:
+						tc.Hit++
+					case zone.Grey:
+						tc.Grey++
+					default:
+						tc.Miss++
+					}
+					if classifyTop1(zone.Default(), score, top2) == zone.Hit {
+						tc.DefaultHit++
+					}
+					cal.ByType[name] = tc
+				}
 				if cal.Marks != nil {
 					if rel, ok := cal.Marks[fmt.Sprintf("%s\x00%d", t.Session, t.Turn)]; ok && z == zone.Hit && !rel {
 						b.FP++ // oracle says irrelevant but the gate would reuse

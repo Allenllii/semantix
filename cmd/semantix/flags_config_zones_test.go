@@ -121,3 +121,29 @@ func TestApplyConfigZonesThenEvolve(t *testing.T) {
 		t.Fatalf("TauLow = %v, want evolved 0.75", z.TauLow)
 	}
 }
+
+// Per-type overrides from semantix.toml assemble into complete snapshots
+// inheriting the global thresholds (Issue #259 阶段 2).
+func TestApplyConfigZonesByType(t *testing.T) {
+	r := tomlWithZones(t, "[retrieval]\ntau_low = 0.55\n\n[retrieval.by_type.result]\ntau_low = 0.60\n")
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	zf := addZoneFlags(fs)
+	if err := fs.Parse(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := zf.applyConfigZones(fs, r); err != nil {
+		t.Fatal(err)
+	}
+	z := zf.zones()
+	oz := z.ForType("result")
+	if oz.TauLow != 0.60 {
+		t.Fatalf("result TauLow = %v, want override 0.60", oz.TauLow)
+	}
+	if oz.TauHigh != z.TauHigh {
+		t.Fatalf("result TauHigh = %v, want inherited global %v", oz.TauHigh, z.TauHigh)
+	}
+	if z.ForType("prompt").TauLow != 0.55 {
+		t.Fatalf("prompt TauLow = %v, want global 0.55", z.ForType("prompt").TauLow)
+	}
+}

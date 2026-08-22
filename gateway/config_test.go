@@ -21,6 +21,13 @@ func writeConfig(t *testing.T, body string) string {
 	return path
 }
 
+// zonesEqual compares the four thresholds (ByType is derived state in
+// these tests; map fields make Zones non-comparable with ==).
+func zonesEqual(a, b zone.Zones) bool {
+	return a.TauHigh == b.TauHigh && a.TauLow == b.TauLow &&
+		a.AbsHigh == b.AbsHigh && a.AbsLow == b.AbsLow
+}
+
 // loadZoneTestConfig loads a config body with the env vars validConfig
 // references, so tests do not depend on other tests' env state.
 func loadZoneTestConfig(t *testing.T, body string) (*Config, error) {
@@ -486,7 +493,7 @@ func TestZoneConfigDefaultsWithoutKeys(t *testing.T) {
 		t.Fatalf("zoneConfig: %v", err)
 	}
 	def := zone.Default()
-	if z != def {
+	if !zonesEqual(z, def) {
 		t.Fatalf("zones = %+v, want default %+v", z, def)
 	}
 }
@@ -584,7 +591,7 @@ evolve_db = "` + tomlPath(filepath.Join(t.TempDir(), "no-such-dir")) + `"
 	if err != nil {
 		t.Fatalf("zoneConfig with missing evolve state must fall back, got %v", err)
 	}
-	if z != zone.Default() {
+	if !zonesEqual(z, zone.Default()) {
 		t.Fatalf("zones = %+v, want default", z)
 	}
 }
@@ -622,6 +629,73 @@ func TestValidateTauKeys(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := loadZoneTestConfig(t, tc.body); err == nil {
+				t.Fatalf("Load must reject: %s", tc.name)
+			}
+		})
+	}
+}
+
+func TestZoneConfigByTypePartialOverride(t *testing.T) {
+	body := configWithoutRetrieval() + `
+[retrieval]
+retriever = "bm25"
+
+[retrieval.by_type.result]
+tau_high = 0.85
+tau_low = 0.60
+`
+	cfg, err := loadZoneTestConfig(t, body)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	z, err := cfg.zoneConfig()
+	if err != nil {
+		t.Fatalf("zoneConfig: %v", err)
+	}
+	oz, ok := z.ByType["result"]
+	if !ok {
+		t.Fatal("ByType[result] missing")
+	}
+	// Partial syntax: only configured fields differ from the global.
+	if oz.TauHigh != 0.85 || oz.TauLow != 0.60 {
+		t.Fatalf("override = %+v, want tau_high 0.85 tau_low 0.60", oz)
+	}
+	if oz.AbsHigh != z.AbsHigh || oz.AbsLow != z.AbsLow {
+		t.Fatalf("override abs fields must inherit global: %+v vs %+v", oz, z)
+	}
+	// The override is a leaf snapshot.
+	if oz.ByType != nil {
+		t.Fatal("override must not nest ByType")
+	}
+	// Types without an override see the global baseline.
+	if got := z.ForType("prompt"); got.TauHigh != z.TauHigh {
+		t.Fatalf("prompt must use global baseline, got %+v", got)
+	}
+}
+
+func TestZoneConfigByTypeRejectsUnknownType(t *testing.T) {
+	body := configWithoutRetrieval() + `
+[retrieval]
+retriever = "bm25"
+
+[retrieval.by_type.reslut]
+tau_low = 0.6
+`
+	if _, err := loadZoneTestConfig(t, body); err == nil {
+		t.Fatal("Load must reject an unknown by_type key (typo fail-closed)")
+	}
+}
+
+func TestZoneConfigByTypeValueValidation(t *testing.T) {
+	cases := []struct{ name, body string }{
+		{"tau over one", "\n[retrieval.by_type.result]\ntau_high = 1.2\n"},
+		{"abs negative", "\n[retrieval.by_type.context]\nabs_low = -1\n"},
+		{"tau_high not above tau_low", "\n[retrieval.by_type.result]\ntau_high = 0.5\ntau_low = 0.6\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := configWithoutRetrieval() + "\n[retrieval]\nretriever = \"bm25\"\n" + tc.body
+			if _, err := loadZoneTestConfig(t, body); err == nil {
 				t.Fatalf("Load must reject: %s", tc.name)
 			}
 		})

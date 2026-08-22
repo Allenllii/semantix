@@ -119,7 +119,11 @@ func (d *L3Decider) DecideL2(ctx context.Context, q Query) ([]slice.Hit, error) 
 	}
 	out := hits[:0]
 	for _, h := range hits {
-		if z.Classify(h.Score, top1) == zone.Hit {
+		z2 := z
+		if h.Slice != nil {
+			z2 = z.ForType(h.Slice.Type.String()) // Issue #259 阶段 2
+		}
+		if z2.Classify(h.Score, top1) == zone.Hit {
 			out = append(out, h)
 		}
 	}
@@ -182,7 +186,10 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 
 	for _, h := range cands {
 		s := h.Slice
-		verdict := z.ClassifyL3(h.Score, resultTop1, globalTop1)
+		// Per-type thresholds (Issue #259 阶段 2): each candidate is
+		// classified with its slice type's override (or the global
+		// baseline when the type is not configured).
+		verdict := z.ForType(s.Type.String()).ClassifyL3(h.Score, resultTop1, globalTop1)
 		if fresh := q.Freshness.classify(s.CreatedAt); fresh < verdict {
 			verdict = fresh // freshness may only make reuse more conservative
 		}
