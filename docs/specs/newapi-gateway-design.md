@@ -89,7 +89,7 @@
 |---|---|---|
 | §3.8 / §7 M2 | Claude / Anthropic 适配（messages 格式转换 + `cache_control` 断点） | **配置层显式拒绝**：`vendor="anthropic"` 在 `validate()` 直接报错，避免把 Anthropic 流量误发到 OpenAI 式端点。§3.6 对 Claude 打断点同理未做 |
 | §3.5 | `promote.CascadeInvalidate` 级联失效 | gateway 零引用 `kernel/promote`。上游内容版本变化时不会级联失效下游条目（deps 指纹仍能兜住文件类变更） |
-| §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` | **GW6 已接线**（Issue #186）：`gateway/retriever.go` `newRetriever` 按配置构造索引——`bm25` 保持 `kernel/bm25`；`vector` 用 `kernel/embed` HashEmbedder + VectorIndex（cosine）；`hybrid` 双路检索、分数归一化融合（[0,1] 尺度，与 zone 绝对阈值兼容）。`vector_dim` 键（默认 256）控制 HashEmbedder 维度；非法 retriever 值 `validate()` 报错 |
+| §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` | **GW6 已接线**（Issue #186）：`gateway/retriever.go` `newRetriever` 按配置构造索引——`bm25` 保持 `kernel/bm25`；`vector` 用 `kernel/embed` HashEmbedder + VectorIndex（cosine）；`hybrid` 双路检索、`kernel/fuse` 融合（Issue #274）：weighted 等权/可配权重（默认，历史行为）或 rrf（倒数排名融合，分数线性标度化到 [0,1]，zone 绝对阈值语义保持）。`vector_dim` 键（默认 256）控制 HashEmbedder 维度；非法 retriever/fusion 值 `validate()` 报错 |
 | §3.4 | 未命中流式：上游不返回 usage 时，网关在 `[DONE]` 前补含注入统计的末块 | 已实现（Issue #187）：完整流且上游无 usage 时，在 `[DONE]` 前补发 OpenAI 格式 usage 事件（含 `prompt_tokens_details.cached_tokens` 注入统计 + `"estimator":"bytes/4"`）；异常断流只补 `[DONE]` 不补 usage（半截流不计量） |
 | §3.7 | 流式路径的**响应侧**写记忆 | **已实现**（Issue #182）：`streamThrough` 聚合 SSE 内容进旁路记忆。GW4 实机验证（Issue #184，`gateway-m1-acceptance.md` §5.2）：流式任务 t09 在切片库中有 3 条自己的 Result 切片，**流式响应确实成为可复用 Result 切片**。此前本行记载的「L3 的写入实际只来自非流式请求」已过期，据实测更正 |
 | §3.2 | `/healthz` 检查「切片库可打开 + **上游可达性**」 | 切片库在 `New()` 阶段已打开（打不开进程起不来）；上游探活已实现（Issue #183）：`GET {base_url}/models` 逐个上游探测，2xx=健康，任一失败/超时返回 503 + OpenAI envelope；`[server] health_timeout_seconds` 可配（0=禁用探活） |
@@ -333,6 +333,9 @@ scope = "project"                         # 默认切片作用域
 
 [retrieval]
 retriever = "hybrid"                      # bm25 | vector | hybrid（GW6 接线：vector/hybrid 走 kernel/embed HashEmbedder，无需外部 embedding API）
+fusion = "weighted"                      # hybrid 融合策略（Issue #274）：weighted（等权/可配权重，默认）| rrf（倒数排名融合）
+rrf_k = 60                               # RRF 常数（rrf 模式，默认 60）
+bm25_weight = 0.5                        # weighted 模式 BM25 路权重（[0,1]，默认 0.5；显式 0 = 纯向量路）
 top_k = 5
 budget = 4096                             # L2 注入块字节预算
 vector_dim = 256                          # HashEmbedder 维度（<=0 取默认 256；模型级 Embedder 接入后忽略）

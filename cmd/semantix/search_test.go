@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"semantix/kernel/bm25"
-	"semantix/kernel/embed"
 	"semantix/kernel/slice"
 )
 
@@ -55,20 +54,6 @@ func TestSearchHybridRetriever(t *testing.T) {
 	}
 }
 
-func TestRRFFuseRanksSharedHitsHigher(t *testing.T) {
-	mk := func(id string) *slice.Slice { return &slice.Slice{ID: id, Type: slice.Prompt, Scope: slice.Project, Content: []byte(id)} }
-	a, b, c := mk("a"), mk("b"), mk("c")
-	bm := []slice.Hit{{Slice: a, Score: 9}, {Slice: b, Score: 2}}
-	vec := []embed.Hit{{ID: "b", Score: 0.9}, {ID: "c", Score: 0.8}}
-	out := rrfFuse(bm, vec, []*slice.Slice{a, b, c}, 3)
-	if len(out) != 3 {
-		t.Fatalf("fused = %d, want 3", len(out))
-	}
-	// "b" ranks in both lists -> highest fused score.
-	if out[0].Slice.ID != "b" {
-		t.Fatalf("top fused = %q, want b (present in both rankings)", out[0].Slice.ID)
-	}
-}
 
 // U30: search 文本输出带 zone 图标 + 来源会话 + 命中摘要行（vibe-coder 可读）。
 // s1 与 query 全匹配（必为 🟢 hit）；s2/s3 部分匹配、分数非零，保证三行都进
@@ -110,3 +95,81 @@ type emptyStderr struct{}
 func (emptyStderr) Write(p []byte) (int, error) { return len(p), nil }
 
 var _ = bm25.New // keep import used if search tests reference it later
+
+// TestSearchHybridFusionRRFZoneTriState covers the Issue #274 search
+// wiring: hybrid with --fusion rrf emits scaled scores in [0,1] so the
+// zone classifier sees hit/grey/miss (the historical RRF path classified
+// every hit as miss — spec §1 defect), and the flags are validated.
+func TestSearchHybridFusionRRFZoneTriState(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "lib.db")
+	store, err := slice.NewFileStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, ok := store.(interface{ Close() error }); ok {
+		defer c.Close() // release the journal before TempDir cleanup (Windows)
+	}
+	for _, c := range []string{"修复 go 测试失败", "配置 CI 流水线", "部署到服务器"} {
+		sl := &slice.Slice{ID: "f-" + c[:4], Type: slice.Prompt, Scope: slice.Project, Content: []byte(c)}
+		if err := store.Put(sl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out bytes.Buffer
+	code := run([]string{"search", "--query", "修复测试失败", "--db", db, "--retriever", "hybrid",
+		"--fusion", "rrf", "--rrf-k", "60", "--limit", "5"}, &out, &emptyStderr{}, productionDependencies())
+	if code != 0 {
+		t.Fatalf("hybrid rrf search code = %d, out:\n%s", code, out.String())
+	}
+	// The repair slice matches both routes → top hit, zone must be a
+	// non-miss classification (the historical RRF path reported miss for
+	// every hit because raw RRF scores sit below AbsLow).
+	if !strings.Contains(out.String(), "修复 go 测试失败") {
+		t.Fatalf("hybrid rrf search missed the repair slice:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "❌ miss") && !strings.Contains(out.String(), "🟢 hit") {
+		t.Fatalf("hybrid rrf must not classify every hit as miss:\n%s", out.String())
+	}
+	// Invalid fusion strategy is a usage error.
+	code = run([]string{"search", "--query", "修复测试失败", "--db", db, "--retriever", "hybrid",
+		"--fusion", "avg", "--limit", "5"}, &out, &emptyStderr{}, productionDependencies())
+	if code != 2 {
+		t.Fatalf("fusion=avg code = %d, want 2 (usage error)", code)
+	}
+}
+
+// TestSearchHybridFusionBM25Weight covers the weighted share flag: an
+// explicit --bm25-weight 1 keeps the pure BM25 ordering.
+func TestSearchHybridFusionBM25Weight(t *testing.T) {
+	dir := t.TempDir()
+	db := filepath.Join(dir, "lib.db")
+	store, err := slice.NewFileStore(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, ok := store.(interface{ Close() error }); ok {
+		defer c.Close() // release the journal before TempDir cleanup (Windows)
+	}
+	for _, c := range []string{"修复 go 测试失败", "配置 CI 流水线"} {
+		sl := &slice.Slice{ID: "w-" + c[:4], Type: slice.Prompt, Scope: slice.Project, Content: []byte(c)}
+		if err := store.Put(sl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out bytes.Buffer
+	code := run([]string{"search", "--query", "修复测试失败", "--db", db, "--retriever", "hybrid",
+		"--bm25-weight", "1", "--limit", "2"}, &out, &emptyStderr{}, productionDependencies())
+	if code != 0 {
+		t.Fatalf("hybrid w=1 search code = %d, out:\n%s", code, out.String())
+	}
+	if !strings.Contains(out.String(), "修复 go 测试失败") {
+		t.Fatalf("hybrid w=1 search missed the repair slice:\n%s", out.String())
+	}
+	// Out-of-range weight is a usage error.
+	code = run([]string{"search", "--query", "修复测试失败", "--db", db, "--retriever", "hybrid",
+		"--bm25-weight", "1.5", "--limit", "2"}, &out, &emptyStderr{}, productionDependencies())
+	if code != 2 {
+		t.Fatalf("bm25-weight=1.5 code = %d, want 2 (usage error)", code)
+	}
+}

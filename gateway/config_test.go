@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"semantix/kernel/fuse"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -351,5 +353,76 @@ func TestValidateFalseHitSim(t *testing.T) {
 		if err := c.validate(); err == nil {
 			t.Errorf("false_hit_sim=%v must be rejected", v)
 		}
+	}
+}
+
+// TestValidateFusionConfig covers the Issue #274 [retrieval] fusion keys:
+// strategy names, rrf_k range, bm25_weight range, and default fallbacks.
+func TestValidateFusionConfig(t *testing.T) {
+	base := func() *Config {
+		c := DefaultConfig()
+		c.Server.GatewayKey = "k"
+		c.Store.DB = "x.jsonl"
+		c.Upstreams = []UpstreamConfig{{
+			Name: "ds", BaseURL: "https://u/v1", APIKey: "k",
+			ModelAlias: []string{"m"}, UpstreamModel: "m", Vendor: "deepseek",
+		}}
+		return c
+	}
+	// Accepted: empty (default), weighted, rrf; rrf_k 0/positive; weights in [0,1].
+	for _, fusion := range []string{"", "weighted", "rrf"} {
+		c := base()
+		c.Retrieval.Fusion = fusion
+		c.Retrieval.RrfK = 60
+		if err := c.validate(); err != nil {
+			t.Errorf("fusion %q rejected: %v", fusion, err)
+		}
+	}
+	for _, k := range []int{0, 1, 60} {
+		c := base()
+		c.Retrieval.RrfK = k
+		if err := c.validate(); err != nil {
+			t.Errorf("rrf_k=%d rejected: %v", k, err)
+		}
+	}
+	for _, w := range []float64{0, 0.5, 1} {
+		c := base()
+		c.Retrieval.BM25Weight = &w
+		if err := c.validate(); err != nil {
+			t.Errorf("bm25_weight=%v rejected: %v", w, err)
+		}
+	}
+	// Rejected: bad strategy, negative rrf_k, out-of-range/NaN/Inf weights.
+	c := base()
+	c.Retrieval.Fusion = "avg"
+	if err := c.validate(); err == nil {
+		t.Error("fusion=avg must be rejected")
+	}
+	c = base()
+	c.Retrieval.RrfK = -1
+	if err := c.validate(); err == nil {
+		t.Error("rrf_k=-1 must be rejected")
+	}
+	for _, w := range []float64{-0.1, 1.5, math.NaN(), math.Inf(1)} {
+		c := base()
+		c.Retrieval.BM25Weight = &w
+		if err := c.validate(); err == nil {
+			t.Errorf("bm25_weight=%v must be rejected", w)
+		}
+	}
+}
+
+// TestFusionConfigMapping: fusionConfig maps the toml keys onto
+// kernel/fuse.Config with default fallbacks (Issue #274).
+func TestFusionConfigMapping(t *testing.T) {
+	c := DefaultConfig()
+	fc := c.fusionConfig()
+	if fc.Strategy != fuse.Weighted || fc.RrfK != 0 || fc.BM25Weight != nil {
+		t.Fatalf("default fusionConfig = %+v, want zero-value weighted", fc)
+	}
+	c.Retrieval.Fusion = "rrf"
+	c.Retrieval.RrfK = 30
+	if fc := c.fusionConfig(); fc.Strategy != fuse.RRF || fc.RrfK != 30 {
+		t.Fatalf("rrf fusionConfig = %+v, want rrf/30", fc)
 	}
 }
