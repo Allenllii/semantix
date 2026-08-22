@@ -47,9 +47,12 @@ type fileStore struct {
 }
 
 type fileRetrieval struct {
-	Retriever *string `toml:"retriever"`
-	Limit     *int    `toml:"limit"`
-	VectorDim *int    `toml:"vector_dim"`
+	Retriever  *string  `toml:"retriever"`
+	Limit      *int     `toml:"limit"`
+	VectorDim  *int     `toml:"vector_dim"`
+	Fusion     *string  `toml:"fusion"`      // hybrid 融合策略: weighted | rrf (Issue #274)
+	RrfK       *int     `toml:"rrf_k"`       // RRF 常数,默认 60
+	BM25Weight *float64 `toml:"bm25_weight"` // weighted 模式 BM25 路权重,默认 0.5
 }
 
 type fileInject struct {
@@ -183,6 +186,15 @@ func Load(opts Options) (*Resolved, error) {
 		return nil, err
 	}
 	if err := add(mergePtr("retrieval.vector_dim", 256, "", file.Retrieval.VectorDim, (*int)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("retrieval.fusion", "weighted", "", file.Retrieval.Fusion, (*string)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("retrieval.rrf_k", 60, "", file.Retrieval.RrfK, (*int)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("retrieval.bm25_weight", 0.5, "", file.Retrieval.BM25Weight, (*float64)(nil))); err != nil {
 		return nil, err
 	}
 	if err := add(mergePtr("inject.budget", 4096, "SEMANTIX_INJECT_BUDGET", file.Inject.Budget, (*int)(nil))); err != nil {
@@ -346,6 +358,22 @@ func (r *Resolved) validate() error {
 				default:
 					errs = append(errs, fmt.Sprintf("retrieval.retriever: invalid value %q (want bm25|vector|hybrid)", s))
 				}
+			}
+		case "retrieval.fusion":
+			if s, ok := f.Value.(string); ok {
+				switch s {
+				case "weighted", "rrf":
+				default:
+					errs = append(errs, fmt.Sprintf("retrieval.fusion: invalid value %q (want weighted|rrf)", s))
+				}
+			}
+		case "retrieval.rrf_k":
+			if v, ok := f.Value.(int); ok && v <= 0 {
+				errs = append(errs, "retrieval.rrf_k: must be > 0")
+			}
+		case "retrieval.bm25_weight":
+			if v, ok := f.Value.(float64); ok && (v < 0 || v > 1) {
+				errs = append(errs, "retrieval.bm25_weight: must be in [0,1]")
 			}
 		case "inject.budget":
 			if v, ok := f.Value.(int); ok && v <= 0 {

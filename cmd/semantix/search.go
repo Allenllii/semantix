@@ -5,10 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 
 	"semantix/kernel/embed"
+	"semantix/kernel/fuse"
 	"semantix/kernel/slice"
 )
 
@@ -34,7 +34,10 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	projectDB := flags.String("project-db", cfgString(deps.resolved, "store.db", defaultProjectDB()), "project/session database path")
 	userDB := flags.String("user-db", defaultUserDB(), "user database path")
 	jsonOutput := flags.Bool("json", false, "write JSON envelope")
-	retriever := flags.String("retriever", cfgString(deps.resolved, "retrieval.retriever", "bm25"), "retriever: bm25 (default) | vector (hash-embedding) | hybrid (RRF fusion)")
+	retriever := flags.String("retriever", cfgString(deps.resolved, "retrieval.retriever", "bm25"), "retriever: bm25 (default) | vector (hash-embedding) | hybrid (fusion)")
+	fusion := flags.String("fusion", cfgString(deps.resolved, "retrieval.fusion", "weighted"), "hybrid fusion strategy: weighted (score average) | rrf (reciprocal rank fusion)")
+	rrfK := flags.Int("rrf-k", cfgInt(deps.resolved, "retrieval.rrf_k", fuse.DefaultRrfK), "RRF constant (default 60)")
+	bwFlag := flags.Float64("bm25-weight", 0, "weighted-mode BM25 route share in [0,1] (default 0.5; explicit 0 = pure vector route)")
 	embedder := flags.String("embedder", "hash", "embedder: hash (default, zero-dependency) | model (remote OpenAI-compatible API; see SEMANTIX_EMBED_* env)")
 	zf := addZoneFlags(flags)
 	if err := flags.Parse(args); err != nil {
@@ -45,6 +48,41 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	}
 	if *limit <= 0 {
 		return usagef("--limit must be greater than zero")
+	}
+	fusionCfg := fuse.Config{RrfK: *rrfK}
+	switch *fusion {
+	case "rrf":
+		fusionCfg.Strategy = fuse.RRF
+	case "", "weighted":
+	default:
+		return usagef("invalid --fusion %q (want weighted or rrf)", *fusion)
+	}
+	if *rrfK <= 0 {
+		return usagef("--rrf-k must be positive")
+	}
+	// --bm25-weight: an explicit flag value (or a configured
+	// retrieval.bm25_weight) selects the BM25 route share, including an
+	// explicit 0 = pure vector route; absent → nil (fuse default 0.5).
+	bwSet := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "bm25-weight" {
+			bwSet = true
+		}
+	})
+	if !bwSet {
+		if v, _, ok := deps.resolved.Get("retrieval.bm25_weight"); ok {
+			if f, ok := v.(float64); ok {
+				*bwFlag = f
+				bwSet = true
+			}
+		}
+	}
+	if bwSet {
+		w := *bwFlag
+		if w < 0 || w > 1 {
+			return usagef("--bm25-weight must be in [0,1]")
+		}
+		fusionCfg.BM25Weight = &w
 	}
 
 	query := strings.TrimSpace(*queryFlag)
@@ -132,7 +170,19 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 			if err != nil {
 				return fmt.Errorf("search index: %w", err)
 			}
-			hits = rrfFuse(bm25hits, vhits, items, *limit)
+			// Map the vector route (embed.Hit) onto slice.Hit for the shared
+			// fusion (Issue #274 single source of truth).
+			byID := map[string]*slice.Slice{}
+			for _, item := range items {
+				byID[item.ID] = item
+			}
+			vecHits := make([]slice.Hit, 0, len(vhits))
+			for _, vh := range vhits {
+				if sl := byID[vh.ID]; sl != nil {
+					vecHits = append(vecHits, slice.Hit{Slice: sl, Score: float64(vh.Score)})
+				}
+			}
+			hits = fuse.Fuse(bm25hits, vecHits, query, *limit, fusionCfg)
 		}
 	default: // bm25
 		hits, err = index.Search(query, *limit, scope)
@@ -171,33 +221,3 @@ func runSearch(args []string, stdout, stderr io.Writer, deps dependencies) error
 	return nil
 }
 
-// rrfFuse merges BM25 and vector rankings via Reciprocal Rank Fusion.
-// Constant 60 follows the standard RRF formulation; higher ranks dominate.
-func rrfFuse(bm25 []slice.Hit, vec []embed.Hit, items []*slice.Slice, k int) []slice.Hit {
-	byID := map[string]*slice.Slice{}
-	for _, it := range items {
-		byID[it.ID] = it
-	}
-	scores := map[string]float64{}
-	for i, h := range bm25 {
-		scores[h.Slice.ID] += 1.0 / (60 + float64(i))
-	}
-	for i, h := range vec {
-		scores[h.ID] += 1.0 / (60 + float64(i))
-	}
-	ids := make([]string, 0, len(scores))
-	for id := range scores {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return scores[ids[i]] > scores[ids[j]] })
-	out := make([]slice.Hit, 0, k)
-	for _, id := range ids {
-		if sl := byID[id]; sl != nil {
-			out = append(out, slice.Hit{Slice: sl, Score: scores[id]})
-			if len(out) >= k {
-				break
-			}
-		}
-	}
-	return out
-}
