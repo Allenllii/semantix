@@ -13,12 +13,30 @@ const jsonLdObjects = [...homepageHtml.matchAll(
   /<script type="application\/ld\+json">([\s\S]*?)<\/script>/g,
 )].map((match) => JSON.parse(match[1]));
 
-const docSlugs = ["profile", "profile-en", "guide", "guide-en"];
+const docSlugs = [
+  "quickstart", "agent-integration", "configuration", "extract-search",
+  "lookup-inject", "verify-observe", "cli-reference", "slices-and-cache",
+  "retrieval-safety", "scheduling-evolution", "gateway", "storage-maintenance",
+  "evidence-and-status", "profile", "guide", "profile-en", "guide-en",
+];
 const docTitles = [
+  "安装与首次运行",
+  "接入 Coding Agent",
+  "配置与作用域",
+  "提取与检索",
+  "Lookup 与上下文注入",
+  "验证、用量与健康检查",
+  "CLI 命令索引",
+  "语义切片与三级缓存",
+  "检索、分区与复用安全",
+  "调度、预取与参数演化",
+  "部署 OpenAI 兼容 Gateway",
+  "存储、维护与安全",
+  "实现状态与证据边界",
   "Semantix 项目速览",
+  "从零理解 Semantix",
   "Semantix Project Overview",
-  "Semantix 深度解读：从零理解这个项目",
-  "Semantix Deep Dive: Understanding the Project from Scratch",
+  "Understanding Semantix from Scratch",
 ];
 
 test("llms.txt follows the llmstxt.org link-index format", () => {
@@ -36,7 +54,7 @@ test("llms.txt follows the llmstxt.org link-index format", () => {
   }
 });
 
-test("llms-full.txt aggregates all four documents with an index", () => {
+test("llms-full.txt aggregates the complete documentation set with an index", () => {
   assert.ok(llmsFullTxt.startsWith("# "), "llms-full.txt should start with an H1 title");
   assert.ok(llmsFullTxt.includes("## Documentation"), "llms-full.txt should have a Documentation index");
   assert.ok(llmsFullTxt.includes("## Full text"), "llms-full.txt should have a Full text section");
@@ -97,8 +115,9 @@ test("docs exports ship TechArticle JSON-LD with correct dates", async () => {
 
     const article = docJsonLd.find((value) => value["@type"] === "TechArticle");
     assert.ok(article, `docs/${slug} should ship TechArticle JSON-LD`);
-    assert.equal(article.datePublished, "2026-08-10", `docs/${slug} datePublished`);
-    assert.equal(article.dateModified, "2026-08-12", `docs/${slug} dateModified`);
+    const legacyBackground = ["profile", "profile-en", "guide", "guide-en"].includes(slug);
+    assert.equal(article.datePublished, legacyBackground ? "2026-08-10" : "2026-08-22", `docs/${slug} datePublished`);
+    assert.equal(article.dateModified, "2026-08-22", `docs/${slug} dateModified`);
     assert.equal(article.author["@type"], "Person", `docs/${slug} author type`);
     assert.match(article.author.url, /^https:\/\/github\.com\//, `docs/${slug} author profile`);
     assert.equal(article.mainEntityOfPage, `https://semantix.ensureok.ai/docs/${slug}`);

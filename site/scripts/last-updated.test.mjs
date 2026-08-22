@@ -30,7 +30,13 @@ test("static homepage exposes the same date as WebPage dateModified", () => {
 });
 
 test("static docs pages expose each document's last-updated date", async () => {
-  const docSlugs = ["profile", "profile-en", "guide", "guide-en"];
+  const docsLastUpdated = "2026-08-22";
+  const docSlugs = [
+    "quickstart", "agent-integration", "configuration", "extract-search",
+    "lookup-inject", "verify-observe", "cli-reference", "slices-and-cache",
+    "retrieval-safety", "scheduling-evolution", "gateway", "storage-maintenance",
+    "evidence-and-status", "profile", "guide", "profile-en", "guide-en",
+  ];
 
   for (const slug of docSlugs) {
     const docHtml = await readFile(new URL(`../out/docs/${slug}/index.html`, import.meta.url), "utf8");
@@ -39,7 +45,7 @@ test("static docs pages expose each document's last-updated date", async () => {
     assert.match(
       crawlerVisibleDocHtml,
       new RegExp(
-        `<time dateTime="${expectedLastUpdated}"[^>]*>Last updated · ${expectedLastUpdated}</time>`,
+        `<time dateTime="${docsLastUpdated}"[^>]*>Last updated · ${docsLastUpdated}</time>`,
         "i",
       ),
       `docs/${slug} should expose the visible last-updated date`,

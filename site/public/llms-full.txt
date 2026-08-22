@@ -13,188 +13,955 @@
 
 ---
 
+> Source: https://semantix.ensureok.ai/docs/quickstart
+
+# 安装与首次运行
+
+这条路径用于验证最小闭环：**历史会话 → 语义切片 → 检索 → 注入**。先在测试目录运行，再决定是否接入真实 agent。
+
+## 选择安装方式
+
+### 下载完整产品
+
+GitHub Release 的完整包包含 coding agent 与 Semantix 内核。将 `<version>` 和 `<platform>` 替换为 Release 页面中的实际文件名：
+
+```bash
+tar -xzf semantix-agent-<version>-<platform>.tar.gz
+cd semantix-agent-<version>-<platform>
+./semantix-install.sh
+```
+
+Windows 用户可下载对应的 `windows-amd64` 或 `windows-arm64` 包，并把可执行文件所在目录加入 `PATH`。
+
+### 从源码构建内核
+
+仓库声明需要 Go 1.26 或更高版本：
+
+```bash
+git clone https://github.com/Gnosil/semantix.git
+cd semantix
+go build -o semantix ./cmd/semantix
+```
+
+Windows PowerShell 使用带扩展名的输出文件：
+
+```powershell
+go build -o semantix.exe ./cmd/semantix
+```
+
+先确认命令可以启动：
+
+```bash
+semantix version
+semantix help
+```
+
+## 准备一段会话
+
+`extract` 接收 JSONL；每行至少包含一条会话消息。下面是最小示例：
+
+```json
+{"role":"user","content":"修复 Go 测试失败"}
+{"role":"assistant","content":"先定位失败包，再运行聚焦测试。"}
+```
+
+保存为 `session.jsonl`，然后运行：
+
+```bash
+semantix extract --input session.jsonl --db .semantix/project.db --project demo
+semantix search --query "修复 Go 测试失败" --db .semantix/project.db
+semantix inject --query "修复 Go 测试失败" --db .semantix/project.db
+```
+
+成功标准不是“命令没有报错”这么简单：`search` 应返回来源切片，`inject` 应只在存在合格候选时输出 `[semantix-reuse]` 块。
+
+## 下一步
+
+- 需要接入现有 coding agent：阅读《接入 Coding Agent》。
+- 需要稳定保存项目设置：阅读《配置与作用域》。
+- 需要判断真实命中率：阅读《验证、用量与健康检查》。
+
+## 对应仓库来源
+
+- `README.zh-CN.md` 的“快速上手”
+- `docs/QUICKSTART.md`
+- `cmd/semantix/extract.go`、`search.go`、`lookup.go`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/agent-integration
+
+# 接入 Coding Agent
+
+Semantix 的内核不要求 agent 更换执行循环。最小接入面只有三件事：任务开始前检索、需要时注入、会话结束后提取。
+
+## 先选择集成层级
+
+| 场景 | 推荐路径 | 改动范围 |
+|---|---|---|
+| Semantix 完整产品 / Reasonix fork | 使用内置 harness 集成 | 无需重复注册工具 |
+| Claude Code | 安装 agent skill | 用户级 skill 目录 |
+| 支持 function calling 的 agent | 注册 `semantix_lookup`，按需注册 inject/extract | 工具层 |
+| 自定义 harness | 会话导出、事件旁路或直接调用 | 适配层 |
+
+## Claude Code
+
+```bash
+semantix install --target claude-code
+```
+
+安装目标默认是 `~/.claude/skills/semantix/`。安装完成后重启 Claude Code，并用 `semantix lookup --help` 验证二进制仍可从 `PATH` 找到。
+
+## Reasonix
+
+仓库中的 Reasonix 派生 harness 已内置 Semantix 接口。配置中启用对应段落后，harness 会暴露 lookup 能力并把会话事件旁路给内核。不要在同一轮再手工注入第二份相同内容。
+
+## 自定义 harness 的生命周期
+
+### 任务开始
+
+```bash
+semantix lookup --query "<当前任务>" --scope user --json
+```
+
+只有命中内容确实与当前任务相符时才使用。`grey` 表示需要进一步验证，不是自动执行许可。
+
+### 构造上下文
+
+```bash
+semantix inject --query "<当前任务>" --scope user
+```
+
+注入块是低权限历史材料。agent 仍需遵守当前用户请求、仓库规则和权限边界。
+
+### 会话结束
+
+```bash
+semantix extract --input <session.jsonl> --scope user --project <业务域>
+```
+
+如果 harness 的会话格式不同，先在适配层转成仓库约定的 JSONL，不要让内核直接猜测私有格式。
+
+## 验收
+
+仓库提供自测脚本，覆盖提取、lookup 命中和注入块：
+
+```bash
+bash agent-skill/scripts/selftest.sh
+```
+
+通过标准为脚本输出 `SELFTEST PASS`。这只证明最小接线成立，不代表你的真实会话命中率已经达标。
+
+## 对应仓库来源
+
+- `agent-skill/SKILL.md`
+- `agent-skill/tools/semantix-lookup.md`
+- `agent-skill/hooks/session-bypass.md`
+- `harness/semantix/`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/configuration
+
+# 配置与作用域
+
+Semantix 可以零配置运行；当路径、检索方式或成本参数需要在团队内稳定复现时，再创建 `semantix.toml`。
+
+## 从示例开始
+
+```bash
+cp semantix.example.toml semantix.toml
+```
+
+最常用的配置如下：
+
+```toml
+[project]
+name = "my-project"
+
+[store]
+db = ".semantix/project.db"
+scope = "project"
+max_slices = 5000
+
+[retrieval]
+retriever = "hybrid"
+limit = 5
+
+[inject]
+budget = 4096
+top_k = 5
+```
+
+## 优先级
+
+运行时按“内置默认值 → 配置文件 → 环境变量 → CLI flag”逐层覆盖。临时实验用 CLI flag；团队默认值放 TOML；凭据只放环境变量。
+
+配置文件不存在时命令继续使用默认值。配置文件存在但语法或字段类型非法时，CLI 返回用法错误，避免静默采用错误参数。
+
+## 三种作用域
+
+| 作用域 | 适合存放 | 注意事项 |
+|---|---|---|
+| `session` | 单次会话临时信息 | 不应期待跨会话命中 |
+| `project` | 仓库架构、命令、局部工作流 | 默认选择，避免跨项目污染 |
+| `user` | 跨项目偏好与稳定流程 | 写入前应先做敏感信息治理 |
+
+提取和检索必须使用相容作用域。最常见的“查不到”原因，是写入时使用 `project`，读取时却使用 `user`。
+
+## 哪些字段会改变数据兼容性
+
+- `store.db` 决定切片库文件。
+- `retrieval.vector_dim` 会改变 hash embedding 维度；已有向量与新维度不一致时需要重新提取。
+- `store.max_slices` 会在维护流程中触发上限淘汰与归档。
+- `cost.*` 只影响估算，不会改变模型供应商的实际账单。
+
+## 凭据边界
+
+Judge、上游模型或网关密钥只使用环境变量。不要把真实 key 放入 TOML、命令行历史、会话 JSONL 或 Git。
+
+## 对应仓库来源
+
+- `semantix.example.toml`
+- `kernel/config/config.go`
+- `cmd/semantix/cfgload.go`
+- `cmd/semantix/config_wiring_test.go`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/extract-search
+
+# 提取与检索
+
+`extract` 负责把会话转换成可复用切片，`search` 负责按当前查询排序这些切片。两者共享同一切片库，但承担不同责任。
+
+## 输入格式
+
+会话文件是 JSONL：一行一个 JSON 对象。典型字段包括 `role`、`content` 和 `tool_calls`。先用少量脱敏会话验证格式，再批量导入。
+
+```bash
+semantix extract \
+  --input session.jsonl \
+  --db .semantix/project.db \
+  --scope project \
+  --project demo
+```
+
+提取器会按会话内容生成不同类型的语义切片。它不是把整份 transcript 原样塞进数据库；上下文提取和压缩均有独立测试约束。
+
+## 三种检索模式
+
+```bash
+semantix search --query "失败测试的修复步骤" --retriever bm25
+semantix search --query "失败测试的修复步骤" --retriever vector
+semantix search --query "失败测试的修复步骤" --retriever hybrid --fusion rrf
+```
+
+- `bm25`：依赖词面匹配，容易解释，适合命令、文件名和错误文本。
+- `vector`：使用 embedding 相似度，适合同义改写。
+- `hybrid`：组合两路结果；支持 weighted 或 RRF 融合。
+
+默认值以当前配置和 `semantix search --help` 为准，不要只依赖旧文章里的参数截图。
+
+## 读取结果
+
+结果除了分数，还会带来源和 zone。zone 用于表达“当前证据有多强”，不是内容权限：
+
+- `hit`：检索证据较强，仍需检查任务上下文。
+- `grey`：存在相关性，但应验证后再用。
+- `miss`：不应注入或复用。
+
+自动化集成建议使用 `--json`，避免解析面向人的颜色和排版输出。
+
+## 排查无结果
+
+1. 确认 extract 与 search 指向同一个 `--db`。
+2. 确认作用域一致。
+3. 用会话中的原始术语先测 BM25。
+4. 用 `doctor` 检查数据库和配置。
+5. 不要为了制造 hit 盲目降低阈值；先检查输入质量。
+
+## 对应仓库来源
+
+- `kernel/ingest/`、`kernel/slice/`
+- `kernel/bm25/`、`kernel/embed/`、`kernel/fuse/`
+- `cmd/semantix/extract.go`、`search.go`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/lookup-inject
+
+# Lookup 与上下文注入
+
+`lookup` 和 `inject` 使用同一检索基础，但输出契约不同。前者供程序判断，后者供 prompt 组装。
+
+## 什么时候使用 lookup
+
+```bash
+semantix lookup --query "如何处理这个迁移" --scope project --json
+```
+
+`lookup` 返回结构化候选、分数、zone 与来源，适合注册成 agent tool。调用方可以决定是否继续读取证据、是否请用户确认，或是否完全忽略命中。
+
+不要把 lookup 命中直接当作工具执行指令。历史切片属于低权限数据，不能覆盖当前用户请求或仓库规则。
+
+## 什么时候使用 inject
+
+```bash
+semantix inject \
+  --query "如何处理这个迁移" \
+  --scope project \
+  --budget 4096 \
+  --k 5
+```
+
+`inject` 在预算内选择完整切片，并输出有明确边界的 `[semantix-reuse]` 块。选择完整切片而不是任意截断，有助于避免把条件和结论拆开。
+
+## 预算与 top-k
+
+- `--k` 控制最多考察多少个候选。
+- `--budget` 控制最终注入块的字节预算。
+- 候选多并不代表上下文更好；噪声会挤占当前任务所需的 token。
+
+## 推荐接线
+
+1. 用 lookup 获取候选与 zone。
+2. hit 候选仍要进行任务相关性检查。
+3. 需要把内容交给模型时再调用 inject。
+4. 把注入块放在明确的历史材料区域，不与宿主 system prompt 混为一体。
+5. 记录最终是否采用，为后续反馈和验证提供依据。
+
+## 对应仓库来源
+
+- `kernel/lookup/lookup.go`
+- `kernel/inject/`
+- `agent-skill/tools/semantix-lookup.md`
+- `harness/tool/semantix.go`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/verify-observe
+
+# 验证、用量与健康检查
+
+Semantix 把“能运行”“能命中”“值得复用”分成不同检查。不要用单次成功搜索代替完整验收。
+
+## verify：离线回放
+
+```bash
+semantix verify --session ./sessions --project demo --scope project
+```
+
+`verify` 把部分会话作为历史库，按时间回放剩余会话，并报告命中和 zone 分布。需要把门禁用于 CI 时，再启用 `--strict`。
+
+```bash
+semantix verify --session ./sessions --strict --calibrate
+```
+
+`--calibrate` 输出分桶分布；提供人工标签后才能进一步估计 precision。没有标签时，不应把相似度分数解释成正确率。
+
+## usage：估算成本
+
+```bash
+semantix usage --db .semantix/usage.jsonl
+```
+
+usage 根据日志中的 token/cache 事件和配置价目计算基线、实际成本与估算节省。价目是输入参数；报告不会自动核对供应商账单。
+
+## dashboard：一屏状态
+
+```bash
+semantix dashboard
+```
+
+dashboard 汇总切片库和用量日志，适合人工快速检查，不应作为机器稳定接口。自动化请使用各命令的 `--json` 输出。
+
+## doctor：运行前诊断
+
+```bash
+semantix doctor
+semantix doctor --json
+```
+
+doctor 检查配置、切片库以及已配置的外部能力。某些网络检查只有在配置端点后才执行；未配置不等于远端已通过。
+
+## 一套可执行验收顺序
+
+1. `doctor` 无关键失败。
+2. 最小 extract/search/inject 闭环成立。
+3. `verify` 使用真实、脱敏的多会话数据。
+4. 人工抽查 hit 与 grey 候选。
+5. 对照供应商账单核验 usage 估算。
+
+## 对应仓库来源
+
+- `cmd/semantix/verify.go`、`usage.go`、`dashboard.go`、`doctor.go`
+- `docs/reports/verify-rubric.md`
+- `docs/reports/m0-gate.md`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/cli-reference
+
+# CLI 命令索引
+
+运行 `semantix help` 查看当前版本命令树，运行 `semantix <command> --help` 查看完整 flags。下面按任务分类，不复制容易过期的全量参数表。
+
+## 建库与复用
+
+| 命令 | 主要用途 |
+|---|---|
+| `extract` | 从会话 JSONL 生成切片并写入库 |
+| `search` | 使用 BM25、向量或混合策略检索 |
+| `lookup` | 为 agent tool 返回结构化候选 |
+| `inject` | 在预算内生成 L2 复用块 |
+
+## 评估与观测
+
+| 命令 | 主要用途 |
+|---|---|
+| `verify` | 按时间回放会话并评估命中 |
+| `eval` | 比较检索阈值策略 |
+| `eval-judge` | 在人工 oracle 样本上评估 judge |
+| `calibrate` | 汇总 judge 与运行时负向信号 |
+| `usage` | 汇总 token、cache 和估算成本 |
+| `dashboard` | 输出面向人的状态面板 |
+
+## 安装与维护
+
+| 命令 | 主要用途 |
+|---|---|
+| `install` | 安装或卸载 agent skill |
+| `doctor` | 检查本地配置与依赖状态 |
+| `gc` | 重算价值并归档超限切片 |
+| `version` | 输出构建版本 |
+
+## JSON 输出契约
+
+支持 `--json` 的命令使用统一信封：
+
+```json
+{"ok":true,"command":"search","data":{},"error":null,"version":"..."}
+```
+
+自动化应检查 `ok` 和进程退出码，不应只判断 stdout 是否非空。
+
+## 退出码
+
+| 退出码 | 含义 |
+|---|---|
+| `0` | 成功 |
+| `1` | 运行错误，例如 IO 或检索失败 |
+| `2` | 用法错误，例如未知 flag 或非法配置 |
+| `3` | 门禁未达标，例如 strict 验证失败 |
+
+## 对应仓库来源
+
+- `cmd/semantix/main.go`
+- `cmd/semantix/contract.go`
+- `cmd/semantix/envelope.go`
+- `docs/reports/cli-v2-architecture.md`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/slices-and-cache
+
+# 语义切片与三级缓存
+
+Semantix 的核心不是“把整段聊天永久塞回 prompt”，而是把可复用经验拆成带来源、作用域和生命周期的切片，再在不同层级复用。
+
+## 语义切片
+
+切片是可独立检索的最小经验单元。仓库实现包含切片类型、作用域、元数据、文件存储、追加日志、压缩和维护。类型化切片让淘汰策略能够区分短期结果与长期上下文。
+
+## L1：供应商前缀缓存
+
+L1 发生在模型供应商或兼容网关层：当前缀字节稳定时，供应商可能复用 prompt 计算。Semantix 可以通过稳定化和观测帮助提高命中，但最终计费与有效期由上游决定。
+
+## L2：语义切片注入
+
+L2 根据当前任务检索历史切片，把合格内容注入上下文。它复用的是**经验文本**，模型仍会继续推理和执行工具。
+
+这层适合复用：仓库约定、已验证命令、用户偏好和任务流程。它不适合直接复用可能已经过期的最终结果。
+
+## L3：已验证结果复用
+
+L3 尝试跳过部分重复执行，因此风险最高。仓库将候选交给依赖指纹、规则门和可选 judge；无法证明安全时回退正常执行。
+
+“检索到了相似内容”只够支持 L2 候选，不足以单独批准 L3。
+
+## 三层关系
+
+| 层级 | 复用对象 | 仍然执行模型/工具 | 主要风险 |
+|---|---|---|---|
+| L1 | 稳定 prompt 前缀 | 是 | 上游缓存规则与字节漂移 |
+| L2 | 历史语义切片 | 是 | 注入噪声或过时背景 |
+| L3 | 已验证执行结果 | 可能跳过 | 项目状态变化导致错误复用 |
+
+## 对应仓库来源
+
+- `kernel/slice/`
+- `kernel/inject/`
+- `kernel/cache/`、`kernel/fingerprint/`、`kernel/judge/`、`kernel/promote/`
+- `docs/reports/cache-taxonomy.md`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/retrieval-safety
+
+# 检索、分区与复用安全
+
+相关性回答“像不像”，安全复用回答“在当前状态下能不能直接用”。Semantix 把这两个判断分开。
+
+## 混合检索
+
+BM25 擅长精确术语，向量检索擅长语义改写。混合检索通过 weighted 或 RRF 融合两路排名，以减少单一路径的盲区。
+
+融合后仍只是候选排序。高分不证明文件状态、依赖版本或用户意图没有改变。
+
+## 三分区
+
+`kernel/zone` 把候选分为 hit、grey、miss：
+
+- hit：相对和绝对证据都达到较高门槛。
+- grey：存在相关性，但证据不足以自动复用。
+- miss：不进入复用路径。
+
+三分区的价值是把不确定性显式保留下来，而不是强迫每个候选得到 yes/no。
+
+## L3 的附加门
+
+1. 依赖指纹检查文件状态是否仍一致。
+2. 规则门拒绝明显不安全候选。
+3. 配置了 judge 时，只对需要判断的候选请求模型。
+4. 批准后的结果才进入 promote 流程。
+
+## Fail-open 的含义
+
+Semantix 的 fail-open 是“优化层失败时恢复正常执行”，不是“安全检查失败时仍使用缓存”。读取失败、候选不确定或 judge 不可用时，coding agent 应继续原任务，只是失去这次加速。
+
+## 调参原则
+
+降低阈值通常会提高表面命中率，也可能提高错误复用。应在带人工相关性标签的数据上校准，再观察 false positive、grey traffic 和最终任务结果。
+
+## 对应仓库来源
+
+- `kernel/fuse/`、`kernel/zone/`
+- `kernel/fingerprint/`、`kernel/judge/`、`kernel/promote/`
+- `docs/specs/issue-261-l3-freshness.md`
+- `docs/specs/issue-262-l3-negative-observability.md`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/scheduling-evolution
+
+# 调度、预取与参数演化
+
+Semantix 不只保存记忆，还包含调度、预取和参数演化模块。这些模块当前有仓库级测试与演示，但不应被描述成已经证明适用于所有生产 workload。
+
+## 调度器
+
+调度器为每轮生成 round plan，包括可并行分组、预算动作、模型层级提示、注入 ID 和预取提示。它表达计划，不替代宿主 harness 的权限和工具执行逻辑。
+
+## 保守预取
+
+预取器根据历史工具转移模式预测后续可能读取的资源。runner 只执行允许的只读动作；系统负载过高、证据不足或预测进入退化状态时，应停止预取。
+
+预取的收益是降低等待时间，成本是浪费 IO、token 或缓存空间。因此命中和浪费必须成对记录。
+
+## 参数演化
+
+演化模块使用反馈更新检索阈值和注入预算。更新有边界、可检查，并使用 EWMA 降低单次异常的影响。
+
+“自我演化”在这里指**少量受约束参数的反馈更新**，不等于 agent 自动改写全部代码或无限扩张权限。
+
+## 安全不变量
+
+- 变化必须有上下界。
+- 负反馈不能被只记录不消费。
+- 长期只有单一状态时需要逃逸机制，避免吸收态。
+- 恢复后仍要保留可审计的参数与事件。
+- 优化失败不能阻塞宿主正常完成任务。
+
+## 如何验证
+
+仓库提供调度 demo、演化曲线和对应数据文件。它们适合验证实现与因果开关，不等于独立用户的生产收益证明。
+
+## 对应仓库来源
+
+- `kernel/sched/`、`kernel/prefetch/`、`kernel/evolve/`
+- `docs/specs/evolution-invariants.md`
+- `docs/reports/agile2-scheduling-demo.md`
+- `docs/reports/agile2-evolution-curve.md`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/gateway
+
+# 部署 OpenAI 兼容 Gateway
+
+Semantix Gateway 位于支持 OpenAI 兼容请求的客户端与上游模型之间，负责请求净化、检索/注入、L3 判定、SSE 转发和用量记录。
+
+## 适用条件
+
+- 客户端允许设置自定义 base URL。
+- 你能够安全管理网关密钥和上游模型密钥。
+- 你接受“优化失败时继续请求上游”的 fail-open 行为。
+
+## Docker Compose 起步
+
+```bash
+cp deploy/semantix-gateway.toml.example deploy/semantix-gateway.toml
+export SEMANTIX_GATEWAY_KEY="<gateway-key>"
+export DEEPSEEK_API_KEY="<upstream-key>"
+docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+不要把示例占位符替换成真实密钥后提交到 Git。配置中的 `${VAR}` 在启动时从环境变量展开，缺失凭据会使启动失败。
+
+## 健康检查
+
+```bash
+docker compose -f deploy/docker-compose.yml ps
+curl http://127.0.0.1:3000/
+```
+
+具体端口和拓扑以 compose 文件为准。New API 管理面板与内部 Gateway 是两个组件，不要把面板端口误当成 Gateway 监听地址。
+
+## 判断缓存命中
+
+- 非流式响应：检查 `x-semantix-cache: hit | miss`。
+- 流式响应：中间代理可能剥离自定义响应头，以 Gateway usage 日志为准。
+
+```bash
+tail -n 5 .semantix/gateway-usage.jsonl
+semantix usage --db .semantix/gateway-usage.jsonl
+```
+
+## 当前边界
+
+示例配置明确标注了尚未接线或需要额外配置的能力。例如 Gateway retrieval 段当前以实际实现注释为准，不应因为 CLI 支持 hybrid 就推断 Gateway 中同样全部生效。
+
+## 对应仓库来源
+
+- `gateway/`
+- `cmd/semantix-gateway/`
+- `deploy/docker-compose.yml`
+- `deploy/semantix-gateway.toml.example`
+- `docs/specs/newapi-gateway-design.md`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/storage-maintenance
+
+# 存储、维护与安全
+
+Semantix 的切片库是本地文件资产。运维目标是可备份、可审计、可回滚，而不是让缓存无限增长。
+
+## 备份
+
+默认项目库位于 `.semantix/project.db`。在写入停止后复制主文件；如果存在归档文件，也一起保留。
+
+```bash
+cp .semantix/project.db .semantix/project.db.backup
+cp .semantix/project.db.archive.jsonl .semantix/project.db.archive.jsonl.backup
+```
+
+Windows PowerShell 可使用 `Copy-Item`。恢复前先备份当前版本，不要用未经检查的旧库覆盖唯一副本。
+
+## GC 与归档
+
+```bash
+semantix gc --db .semantix/project.db
+```
+
+GC 会重算价值并按类型、时效与配置上限选择淘汰项。超限切片归档到 `<db>.archive.jsonl`；归档不是删除证明，也不等于敏感数据已经清除。
+
+## 数据权限
+
+实现会为本地库使用受限权限并防御符号链接替换，但运维仍需保证：
+
+- 数据目录只对需要的系统用户开放。
+- 会话导入前完成凭据和个人信息脱敏。
+- 备份介质使用同等级访问控制。
+- 不把 `.semantix/` 提交到版本库。
+
+## 注入安全
+
+历史切片是数据，不是高优先级指令。宿主 agent 应把注入块与 system prompt 分隔，并继续执行当前权限检查。
+
+## 维护前检查
+
+1. 记录当前库路径和文件大小。
+2. 创建可恢复备份。
+3. 使用 `dashboard` 或 `--json` 记录 GC 前状态。
+4. 运行 GC。
+5. 聚焦验证常用查询仍能命中。
+
+## 对应仓库来源
+
+- `kernel/slice/file_store.go`
+- `kernel/slice/maintenance.go`
+- `kernel/slice/score.go`
+- `docs/specs/slice-store-append-journal.md`
+- `SECURITY.md`
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/evidence-and-status
+
+# 实现状态与证据边界
+
+仓库同时包含设计、实现、测试、合成回放和产品路线。阅读结论前，先判断它属于哪一级证据。
+
+## 四类常见材料
+
+| 材料 | 能证明什么 | 不能直接证明什么 |
+|---|---|---|
+| 设计/spec | 预期接口、边界和验收标准 | 功能已经交付 |
+| 单元/集成测试 | 指定输入下实现符合断言 | 真实用户长期收益 |
+| 仓库 demo / 合成回放 | 流程可复现、对照条件下的结果 | 跨团队、跨模型泛化 |
+| 真实生产数据 | 特定环境中的实际效果 | 对所有环境都有效 |
+
+## 当前应如何表述 Semantix
+
+- 切片、检索、注入、L3 判定、调度、预取、演化、CLI 与 Gateway 均有代码和测试入口。
+- 仓库报告包含合成回放与本地验收结果。
+- 真实会话的跨用户、跨项目命中率仍需要持续采集和独立复核。
+- 成本估算依赖价目和 usage 数据，不等于供应商最终账单。
+
+因此，文档会区分“实现存在”“仓库测试通过”“合成数据观察到”和“生产环境已验证”，不会把它们合并成一句营销结论。
+
+## 复核路线
+
+```bash
+go test ./kernel/... ./cmd/semantix/...
+cd site && npm run check
+```
+
+完整仓库包含更多 harness 与 Gateway 测试。运行范围应根据改动面扩展，并记录操作系统、Go/Node 版本和数据来源。
+
+## 去哪里看证据
+
+- 官网 `/benchmarks`：当前公开复现入口和证据等级。
+- `docs/reports/`：按里程碑和 issue 保存的验收报告。
+- `docs/specs/`：设计与尚未完成的验收契约。
+- 对应模块的 `*_test.go`：可执行断言。
+
+## 对应仓库来源
+
+- `docs/reports/m0-gate.md`
+- `docs/reports/m0-cost-comparison.md`
+- `docs/reports/verify-rubric.md`
+- `.github/workflows/ci.yml`
+
+---
+
 > Source: https://semantix.ensureok.ai/docs/profile
 
 # Semantix 项目速览
 
-> 本文档为首次接触 Semantix 的开发者提供结构化速览，覆盖项目定位、核心术语、当前进度和常见问题。
-> 如果你想先建立整体认识，请从本文开始；需要理解设计背景与工作原理时，再继续阅读深度解读。
+Semantix 是一个用 Go 实现的 Agent Kernel 与 coding-agent 产品仓库。它把历史会话转成可检索的语义切片，并围绕这些切片提供检索、上下文注入、受约束结果复用、调度、预取和反馈演化。
 
----
+## 它解决什么问题
 
-## 一、实体定义（Entity）
+Coding agent 会重复读取同一批仓库文件、重新定位相似错误、重新组织已经验证过的步骤。普通 transcript 保存了历史，却没有提供稳定的检索、作用域、失效和验收边界。
 
-**Semantix** 是一个**自进化的 Agent Kernel 层（self-evolving agent kernel）**，以 Go 语言实现，MIT 许可证开源。
+Semantix 把问题拆成四步：
 
-- **全称**：Semantix
-- **类别**：LLM Agent 基础设施 / Agent Kernel 层 / 语义缓存与调度中间件
-- **代码仓库**：https://github.com/Gnosil/semantix
-- **编程语言**：Go（module `semantix`，Go 1.26.5）
-- **许可证**：MIT
-- **设计基线**：DeepSeek-Reasonix（MIT，Go 重写，`main-v2` 分支）
-- **当前状态**：M0 开发阶段（切片提取器 + BM25 检索 MVP 进行中），设计文档为架构 v2
+1. 从会话事件中提取可复用切片。
+2. 用词法、向量或混合检索寻找候选。
+3. 根据风险选择只注入背景，或经过附加门后复用结果。
+4. 记录命中、浪费和任务反馈，用于受约束调参。
 
-### 一句话定义（可引用）
+## 仓库里有什么
 
-Semantix 架在现有 agent harness（如 DeepSeek-Reasonix、Claude Code）与其资源之间，动态编排**并发、语义缓存、投机预取**，基于**用户使用习惯**自适应，让每一次交互都使下一次更便宜、更快。
-
-### 多维定义（从不同角度理解 Semantix）
-
-**从技术架构角度**：Semantix 是一个位于 agent harness 与底层资源（LLM API、文件系统、工具执行）之间的中间层（kernel 层），通过事件契约与 harness 解耦，通过统一接口与资源交互。
-
-**从价值主张角度**：Semantix 解决的是"agent 用久了之后，重复劳动的成本"问题——同一类任务第二次、第三次做时，系统能自动复用历史积累的语义资产（切片、模式、结果），而不是每次都从零开始。
-
-**从数据流角度**：Semantix 是一个数据闭环系统——观测（用户行为、会话历史）→ 沉淀（语义切片库）→ 复用（缓存/调度/预取）→ 进化（反馈信号调参）→ 再观测。
-
-**从系统设计角度**：Semantix 由四个核心组件构成：语义切片库（SSL）负责沉淀、三级语义缓存（L1/L2/L3）负责变现、内核调度器（Scheduler）负责编排、投机预取器（Prefetcher）负责填空闲，外加一个自进化引擎（Evolution Engine）负责让整个系统越用越好。
-
-**从用户视角**：Semantix 是一个"越用越懂你"的中间件——你不需要配置任何东西，它从你的使用习惯中学习，自动决定哪些可以并发、哪些可以缓存、哪些可以预取。
-
-**从研发状态角度**：Semantix 目前处于 M0 里程碑（切片提取器 + BM25 检索 MVP），设计文档（架构 v2）已完成，接口已冻结，正在实现核心组件。
-
-**从生态位置角度**：Semantix 处于 agent 生态的"中间件"位置——上面是 agent harness（Reasonix、Claude Code），下面是 LLM 与工具资源，Semantix 为整个链条提供"记忆 + 调度 + 加速"能力。
-
-**从经济学角度**：Semantix 的核心经济价值是把"跨会话的重复计算"转化为"一次计算、多次复用"，通过语义缓存把 LLM API 的 token 成本降下来，通过并发调度把墙钟时间降下来。
-
-**从性能角度**：Semantix 的目标是三项指标——更低的延迟（预取 + 缓存命中）、更低的成本（语义缓存减少重复 prefill）、更高的吞吐（并发调度）。
-
-**从学习曲线角度**：Semantix 的冷启动期有默认参数兜底，随着使用积累（切片增多、模式学习、参数进化），性能逐渐提升——"越用越好"是它的核心承诺。
-
-### 它解决的问题（详细展开）
-
-**问题一：字节级缓存是会话内、被动、静态的。** 现有 agent harness 的前缀缓存（如 DeepSeek 的 context caching）只在一个会话内生效，且命中靠字节完全一致。跨会话的相似任务无法复用。
-
-**问题二：跨会话的相似工作每次都从零开始。** 用户明天开新会话做相似任务，同样的项目上下文要重新读、同样的工具序列要重新跑、同样的结果要重新生成——这些成本本可以被复用。
-
-**问题三：调度是静态规则。** 现有 harness 不知道用户实际怎么干活，并发度、模型选择、资源分配都是写死的规则，不会根据任务类型和用户习惯自适应。
-
-**问题四：等待时间被浪费。** LLM 流式输出期间，agent 处于等待状态，这段墙钟时间（可达数秒到数十秒）没有被利用。
-
-Semantix 的解法：语义切片库（沉淀）→ 语义缓存（复用）→ 内核调度器（自适应）→ 投机预取（填空闲）→ 自进化（持续改进）。
-
----
-
-## 二、核心术语表（Glossary）
-
-| 术语 | 英文 | 定义 |
+| 模块 | 责任 | 主要目录 |
 |---|---|---|
-| 语义切片库 | Semantic Slice Library (SSL) | 从历史会话提取可复用语义单元并持久化的组件。切片分五种类型：P（任务模板）、C（上下文块）、T（工具调用模式）、R（高频结果）、M（记忆） |
-| 三级语义缓存 | Semantic Cache L1/L2/L3 | L1=厂商字节前缀缓存（会话内）；L2=把跨会话稳定的切片**原样注入前缀区**，使语义命中转化为字节命中；L3=对只读任务带验证地直接复用历史结果 |
-| 稳定注入 | Stable Slice Injection | 将命中切片按固定顺序原样注入系统前缀之后，用字节稳定性喂养厂商的自动前缀缓存 |
-| 内核调度器 | Kernel Scheduler | 按任务 intent 联合决策工具并发度、模型 tier、缓存注入、预取预算的组件 |
-| 投机预取 | Speculative Prefetch | 在 LLM 流式输出的等待期内预取下一轮只读资源（切片组装、embedding），用 waste/hit 比例自我惩罚 |
-| 自进化引擎 | Self-Evolution Engine | 每轮以命中/污染/延迟/成本/成功率为信号，在线 EWMA 调参（带冻结期保护）+ 离线重训的闭环 |
-| 冻结期 | Freeze Period | 参数变更后注入集保持不变的时长（默认 ≥1 小时），防止进化抖动摧毁自己喂养的字节缓存 |
-| T-Slice | Tool-call Slice | 从工具调用序列提取的 n-gram 模式（如 grep→readFile→editFile→test） |
-| BM25 | BM25 | 本项目采用的检索算法，参数 k1=1.2、b=0.75，CJK 文本按单字（unigram）切分 |
-| 双库 | Dual Stores | bbolt 持久化的项目级库与用户级库，分离不同作用域的切片 |
-| 完成点分段 | Completion-point Segmentation | 以任务完成点为边界切分上下文的提取策略 |
-| turn 边界切分 | Turn-boundary Segmentation | 以 user turn 为边界切分会话的提取策略 |
-| harness 适配层 | Harness Adapter | 连接 Semantix kernel 与具体 agent harness（Reasonix、Claude Code 等）的适配组件 |
-| 事件契约 | Event Contract | kernel 与 harness 之间的通信协议定义（事件类型、wire 格式、总线） |
-| intent 分类 | Intent Classification | 调度器对任务意图的识别（读/写/搜索/重构等），用于决策并发与 tier |
-| 污染检测 | Pollution Detection | 检测注入的切片内容被用户编辑/回滚/否决的机制，用于降权劣质切片 |
-| 切片价值 | Slice Value | 由命中率、时效衰减、用户反馈、意图相关度等计算出的切片权重 |
-| 嵌入 | Embedding | 将切片内容向量化的表示（MVP 阶段为 no-op 抽象） |
-| ANN 索引 | Approximate Nearest Neighbor Index | 用于语义检索的近似最近邻向量索引（规划中，MVP 用 BM25） |
-| 预取预算 | Prefetch Budget | 限制投机预取资源消耗的预算控制机制 |
+| CLI | 提取、检索、注入、验证、诊断和维护 | `cmd/semantix` |
+| Coding agent | Reasonix 派生 harness 与可执行入口 | `cmd/semantix-agent`、`harness` |
+| 语义切片 | 类型、作用域、存储、压缩与淘汰 | `kernel/slice` |
+| 检索 | BM25、embedding、融合与 zone | `kernel/bm25`、`kernel/embed`、`kernel/fuse`、`kernel/zone` |
+| 复用 | lookup、注入、L3 判定、指纹与提升 | `kernel/lookup`、`kernel/inject`、`kernel/cache`、`kernel/fingerprint`、`kernel/judge`、`kernel/promote` |
+| 资源编排 | round plan、预取和有界演化 | `kernel/sched`、`kernel/prefetch`、`kernel/evolve` |
+| Gateway | OpenAI 兼容代理、SSE、上游路由与用量 | `gateway`、`cmd/semantix-gateway` |
+| 外部接入 | Agent skill、工具 schema 和会话旁路 | `agent-skill` |
+
+## 核心术语
+
+**Harness** 是承载模型调用、工具、权限和会话循环的宿主。**Kernel** 是相对独立的记忆与优化层。两者通过事件和工具接口连接。
+
+**Semantic slice** 是从会话中提取、能够独立检索的经验单元。它带有类型、来源和作用域，不是完整聊天记录的别名。
+
+**L1 / L2 / L3** 分别表示供应商前缀缓存、语义切片注入和已验证结果复用。风险逐级上升，验证要求也逐级上升。
+
+**Zone** 把检索候选分为 hit、grey 和 miss，用来保留不确定性。hit 仍不是越过当前权限或项目状态检查的许可。
+
+## 当前实现边界
+
+仓库已经包含上述模块的实现和测试入口，也包含合成回放、验收报告与 Gateway 示例。它们能够证明特定代码路径和仓库夹具可运行。
+
+仍需单独验证的是：不同团队、不同模型和真实长期会话中的命中率、错误复用率、延迟与实际账单变化。因此官网文档把“实现存在”“仓库测试”“合成回放”和“生产证据”分开描述。
+
+## 建议阅读顺序
+
+1. 《安装与首次运行》：先跑通最小闭环。
+2. 《接入 Coding Agent》：选择宿主接线方式。
+3. 《语义切片与三级缓存》：理解每层能做什么。
+4. 《验证、用量与健康检查》：建立自己的验收数据。
+
+## 事实来源
+
+- `README.md` 与 `README.zh-CN.md`
+- `docs/QUICKSTART.md`
+- 各 `kernel/*`、`gateway/*`、`harness/*` 模块及其测试
+- `docs/reports/` 与 `docs/specs/`
 
 ---
 
-## 三、架构与工作流（Fact Sheet）
+> Source: https://semantix.ensureok.ai/docs/guide
 
-### 核心闭环
+# 从零理解 Semantix
 
-```
-用户使用习惯 → 语义切片库（提取/索引）→ 语义缓存 + 并发调度 + 投机预取
-                                                      ↓
-                        反馈进化（在线 EWMA + 离线重训）← 命中/污染/延迟/成本/成功率
-```
+要理解 Semantix，可以从一个约束开始：**模型上下文有限、工具执行有成本，而历史会话里并不是所有内容都值得再次使用。**
 
-### 组件职责
+## 1. 为什么 transcript 不等于记忆
 
-| 组件 | 职责 | 关键机制 |
+保存聊天记录只解决“没有丢失”。当新任务到来时，系统仍需回答：哪一段历史相关、属于哪个项目、是否已经过期、能否直接复用结果、使用后有没有帮助。
+
+如果把所有历史原样塞回 prompt，会同时增加 token、噪声和指令注入风险。因此 Semantix 选择先抽取有边界的语义切片，再做检索和分级复用。
+
+## 2. 为什么需要作用域
+
+记忆至少有三种寿命：只属于当前会话、属于某个项目、属于这个用户。把它们混在一个全局池会造成跨项目污染；全部限制在单会话又失去跨会话价值。
+
+`session`、`project`、`user` 作用域是数据隔离和召回范围的第一道边界。它不是访问控制的替代品，敏感内容仍应在导入前脱敏。
+
+## 3. 为什么检索不能直接批准复用
+
+BM25 可以找到相同错误文本，向量检索可以找到同义描述，混合检索可以降低两者各自的盲区。但它们衡量的是相关性，不是世界状态是否相同。
+
+例如，“上次依赖升级成功”与当前任务高度相关，但锁文件已经变化。直接复用上次结果可能错误；把升级步骤作为 L2 背景则通常风险较低。
+
+因此 Semantix 使用 hit、grey、miss 表达检索证据，再为 L3 增加依赖指纹、规则门和可选 judge。无法证明安全时恢复正常执行。
+
+## 4. 为什么有三级缓存
+
+三层缓存对应三种不同的复用对象：
+
+1. L1 复用供应商对稳定 prompt 前缀的计算。
+2. L2 复用历史经验文本，但模型和工具仍继续工作。
+3. L3 复用经过验证的结果，可能跳过重复执行。
+
+把三者叫作“缓存”不代表它们有相同语义。L3 的风险远高于 L1，因此不能只用一个相似度阈值控制全部路径。
+
+## 5. 调度与预取为什么属于 Kernel
+
+Harness 知道当前对话和工具，Kernel 能积累跨会话统计。调度器把这一统计转成 round plan；预取器利用历史转移模式提前读取可能需要的资源。
+
+预测会失败，所以 runner 应限制在可撤销、低风险的只读动作，并同时记录命中和浪费。预取不是越权执行未来步骤。
+
+## 6. “演化”实际指什么
+
+当前仓库中的演化是有边界的参数更新，例如根据反馈调整检索阈值和注入预算。更新使用平滑、上下界和逃逸机制，结果可检查。
+
+它不表示系统能够自动重写所有策略，也不表示使用次数越多就必然提高任务质量。是否有效必须通过真实会话、人工标签和任务结果验证。
+
+## 7. 系统的失败原则
+
+Semantix 是优化层。读取记忆失败、候选不确定、judge 不可用或预取被拒绝时，宿主应继续正常完成用户任务。这是 fail-open。
+
+Fail-open 不意味着安全检查失败后仍使用缓存；它意味着放弃本次优化，回到原始执行路径。
+
+## 8. 如何评价这个项目
+
+先分四层证据：设计文档说明要做什么，代码和测试说明指定路径如何工作，合成回放说明夹具上的效果，真实生产数据才说明某个部署中的实际收益。
+
+Semantix 已具备可运行的实现和仓库级证据。对于泛化成本和性能优势，仍应在你自己的模型、仓库和会话分布上运行 verify、人工抽查候选，并对照真实账单。
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/profile-en
+
+# Semantix Project Overview
+
+Semantix is a Go-based agent kernel and coding-agent product repository. It turns past sessions into searchable semantic slices, then uses those slices for retrieval, context injection, guarded result reuse, scheduling, prefetch, and bounded feedback-driven adaptation.
+
+## The problem it addresses
+
+Coding agents repeatedly inspect the same repository context, rediscover similar failures, and reconstruct previously verified procedures. A transcript preserves history but does not provide scope, retrieval, invalidation, or acceptance boundaries.
+
+Semantix separates the problem into four steps:
+
+1. Extract reusable slices from session events.
+2. Retrieve candidates with lexical, vector, or hybrid search.
+3. Inject background context or, behind additional gates, reuse a result.
+4. Record hits, waste, and task feedback for constrained tuning.
+
+## Repository map
+
+| Area | Responsibility | Main paths |
 |---|---|---|
-| 语义切片库 SSL | 从历史会话沉淀可复用单元 | 五种切片类型；提取器（turn 切分/完成点分段/T-Slice n-gram）；双库持久化 |
-| 语义缓存 | 把语义命中变现 | L1 字节缓存；L2 稳定注入喂养字节缓存；L3 验证后复用（fail-closed） |
-| 内核调度器 | 按意图做联合决策 | intent 分类；并发行为学习；模型 tier 映射 |
-| 投机预取器 | 填满等待时间 | T-Slice 转移矩阵预测；只读预取；waste/hit 自惩罚 |
-| 自进化引擎 | 让系统越用越好 | 在线 EWMA（冻结期保护）；离线重训（嵌入刷新/阈值网格/转移矩阵） |
+| CLI | Extraction, retrieval, verification, diagnostics, maintenance | `cmd/semantix` |
+| Coding agent | Reasonix-derived harness and executable | `cmd/semantix-agent`, `harness` |
+| Slices | Types, scopes, storage, compression, eviction | `kernel/slice` |
+| Retrieval | BM25, embeddings, fusion, zones | `kernel/bm25`, `kernel/embed`, `kernel/fuse`, `kernel/zone` |
+| Reuse | Lookup, injection, L3 gates, fingerprints, promotion | `kernel/lookup`, `kernel/inject`, `kernel/cache`, `kernel/fingerprint`, `kernel/judge`, `kernel/promote` |
+| Orchestration | Round plans, prefetch, bounded evolution | `kernel/sched`, `kernel/prefetch`, `kernel/evolve` |
+| Gateway | OpenAI-compatible proxy, SSE, upstream routing, usage | `gateway`, `cmd/semantix-gateway` |
 
-### 关键设计原则
+## Important boundaries
 
-1. **前缀永不改**：注入到系统前缀后的内容集合必须字节稳定（固定顺序、冻结期保护），这是 L2 命中的前提。
-2. **只读才预取**：投机预取仅限只读资源，杜绝副作用。
-3. **fail-open / fail-closed**：缓存层故障 fail-open（不阻塞主循环）；安全/验证边界 fail-closed。
-4. **一切决策可回滚可解释**：每个决策带 reason，支持 ablation。
-5. **MIT 参考不抄**：参考 Reasonix 算法思路但独立实现，保留 attribution。
-6. **单一 kernel，多 harness**：通过适配层支持任意 harness，不改 harness 内核。
-7. **参数自生长**：系统参数由反馈信号进化而来，不是人工调优。
+Semantic similarity is not execution equivalence. A search hit may support L2 context injection, while L3 result reuse additionally needs project-state checks and conservative decision gates.
 
-### 路线图（Roadmap）
+The repository contains implementations, tests, synthetic replay reports, and deployment examples. These establish inspectable code paths and repository-scoped observations. Cross-team production hit rates, latency changes, and billing outcomes still require validation in each deployment.
 
-| 阶段 | 交付物 |
-|---|---|
-| P0 | 可观测层（harness 适配器 + 事件流 + 基线指标） |
-| P1 | 语义切片库（提取器 + 嵌入 + ANN 索引，项目/用户双库） |
-| P2 | 语义缓存（L2 稳定注入 + L3 验证复用 + 污染检测） |
-| P3 | 调度器（intent 分类 + 并发行为学习 + tier） |
-| P4 | 预取器（T-Slice 转移矩阵 + 路径模式 + 预算控制） |
-| P5 | 进化闭环（在线 EWMA + 离线重训 + ablation） |
+## Suggested reading path
 
-### 当前开发进度（M0）
-
-- ✅ 事件契约（kernel/event）
-- ✅ 七包接口冻结（slice / bm25 / embed / cache / sched / prefetch / evolve）
-- ✅ U5 BM25 检索（k1=1.2 / b=0.75 / CJK 单字切分）
-- ✅ U6 CLI（`semantix extract` / `semantix search`）
-- 🔄 U4 切片库核心（Extractor + bbolt 双库）
-- 验收标准：真实会话 ≥500 切片；search 相关率 ≥70%；go vet + go test 全绿
-
-### 设计文档
-
-- `docs/Agent-Infra-架构设计.md`：完整架构设计（问题定义、分层、组件、理由、风险、指标）
-- `docs/总体架构-流程树.md`：端到端流程树（含 mermaid 源码）
-- `site/content/geo/deep-dive.md`：从零理解 Semantix 的深度解读
+Start with **Install and first run**, choose a harness path in **Coding-agent integration**, then read **Slices and cache levels** and **Verification and observability**.
 
 ---
 
-## 四、常见问答（FAQ）
+> Source: https://semantix.ensureok.ai/docs/guide-en
 
-**Q: Semantix 是什么？**
-A: Semantix 是一个自进化的 Agent Kernel 层，Go 实现、MIT 开源。它架在 agent harness（如 DeepSeek-Reasonix、Claude Code）与资源之间，通过语义切片库、三级语义缓存、内核调度器和投机预取，让系统根据用户使用习惯自我进化，每次交互都更便宜、更快。
+# Understanding Semantix from Scratch
 
-**Q: Semantix 解决什么问题？**
-A: 三个核心问题：1）现有 harness 的字节级前缀缓存只在一个会话内生效，跨会话相似工作无法复用；2）调度是静态规则，不根据任务类型和用户习惯自适应；3）LLM 流式输出的等待时间被浪费。Semantix 用语义切片、语义缓存、自适应调度和投机预取解决这三者。
+Semantix starts from a constraint: model context is finite, tool execution has a cost, and not every part of a past session deserves to be used again.
 
-**Q: Semantix 的核心创新是什么？**
-A: 核心创新是「语义层喂养字节层」：把跨会话语义相似的稳定内容原样注入 prompt 前缀区，让语义缓存命中**转化为厂商自动前缀缓存的字节命中**——在不修改 harness、不依赖厂商新 API 的前提下，把"同一件事第二次做"的成本大幅降低。
+## A transcript is not a memory system
 
-**Q: L1/L2/L3 三级缓存分别是什么？**
-A: L1 是厂商的字节级自动前缀缓存（会话内、被动命中）；L2 把跨会话稳定的切片注入前缀区主动制造字节命中；L3 对只读任务带文件指纹验证直接复用历史结果（fail-closed，用户可否决）。
+Saving a conversation solves persistence. A new task still needs scope, retrieval, freshness, authority, and feedback. Replaying every transcript increases token use, noise, and prompt-injection exposure.
 
-**Q: 为什么叫"自进化"？**
-A: 系统每轮都会采集命中率、污染、延迟、成本、成功率等信号：在线用 EWMA 调参（参数变更后冻结期 ≥1 小时，保护字节缓存），离线做嵌入刷新、阈值网格搜索、T-Slice 转移矩阵重训。参数不是人调的，是系统自己长出来的。
+Semantix therefore extracts bounded semantic slices before retrieval and reuse.
 
-**Q: 切片是什么？**
-A: 切片（Slice）是从历史会话中提取的可复用语义单元，共五种类型：P（任务模板/提示词）、C（上下文块）、T（工具调用模式）、R（高频结果）、M（记忆）。切片是语义缓存和跨会话复用的最小单位。
+## Scope comes before similarity
 
-**Q: T-Slice 是什么？**
-A: T-Slice 是从工具调用序列中提取的 n-gram 模式，例如 `grep→readFile→editFile→test`。它刻画了"这类任务通常怎么做"，用于预取器预测下一步工具调用和调度器学习并发模式。
+Session facts, project conventions, and user preferences have different lifetimes. The `session`, `project`, and `user` scopes reduce cross-project contamination and control recall. They are not a substitute for access control or data redaction.
 
-**Q: Semantix 用什么检索算法？**
-A: BM25，参数 k1=1.2、b=0.75；CJK 文本按单字（unigram）切分，非 CJK 按词。检索按 scope（项目/用户）做局部统计。规划中后续会引入 embedding + ANN 索引。
+## Retrieval does not approve execution
 
-**Q: Semantix 用什么存储？**
-A: bbolt（Go 嵌入式 KV 存储），项目级与用户级双库。切片、统计、索引元数据都持久化在本地。
+BM25 finds exact terms, vector retrieval finds paraphrases, and hybrid fusion reduces their individual blind spots. All three rank relevance. They do not prove that files, dependencies, or user intent are unchanged.
 
-**Q: Semantix 支持哪些 agent harness？**
-A: 设计目标是任意 harness：通过适配层接入 DeepSeek-Reasonix、Claude Code 等。kernel 与 harness 通过事件契约解耦，这是"单一 kernel，多 harness"架构的基础。
+Semantix retains uncertainty through hit, grey, and miss zones. L3 candidates additionally pass dependency fingerprints, rule gates, and an optional judge. Uncertain candidates fall back to normal execution.
 
-**Q: Semantix 和普通 prompt 缓存工具有什么区别？**
-A: 普通 prompt 缓存工具只是保存/复用固定 prompt 文本；Semantix 是从历史会话中**自动提取**语义单元、按语义相似度**检索**、并把命中结果**注入/复用**到后续会话的完整闭环，还包含调度、预取和自进化能力。
+## Three cache levels, three different objects
 
-**Q: Semantix 的缓存为什么要"冻结期"？**
-A: 因为 L2 缓存靠字节稳定性命中厂商前缀缓存��N<��$z{-���jםz���	���r&��B[z^z��h��j�^�Ȏz�>Z�k:�XZ^�ȞX��yJ�X�.YXny�N�z�X��X��{�{�>Zَ�ɰ��K�N�^�z>Xk>K��Y�[.y�N�z�)����6V��F��y�Nik�j�Yʎ�z�k��Yˮi��K��[
-NX[niȞK�~X�(	N(	NY�K��yJ�h�~izk9^h�~X�ni��X�z��y�B�b66�^8 ����Р�22z��XZ�z��ɮ[���x����z>K��Xxnz���� ��K�^K��Xh^Z�yJ�K��k�Nk�^[�X��^i�Z�i�>k{~kxny�NXzK���z�)��ɠ����X[>K��Z�K�Ң��ɥ6V��F��i��K�K��K�ޙ{NK�n[.���Z�>i�nYʂvV�B�&�W72K��K��8�XNk�K��K�����h�K�{�>Zَ8�>[�n8�(NX�nY��z���ikވ;�X��8.Z�>i�΋��Z��h�vV�By�Nh	ވ>K��[z^X[~�>yJ�[�x��8 ����X[>K��j�Y貢��ɥ6V��F��K�ފ��{�>j�Y�8K��K��iK�j�Y�8K��h�K�j�Y�8.Z�>KɎX�ny�Ni��j�Y辋>yJ�K��X��y�B&��B{�N�8^K��>yJ�K��Y�y�N�XNk�{�nh�.8 ����X[>K��{�>Zق���ɥ6V��F��y�N{�>ZَiˮX�nX�^Y
-�Z�~��.{�~�Ȅ��Ȟ8���K��k:�XZ^�Ȅ�.�ȞK��{�>i��ZH�yJ��Ȅ�>�ȞK��K��[.j����X[nK���"�	���~K��h�X��{�Z�~��.z�>Z�i�^X��yJ�X�.YXn�z�X��X��{�{�>Zَ8 ����X[>K��:�{�"���ɥ6V��F��i��Y������Ȅv�Z��x����&&��BZَX*����K�^K�K��ZIn�:�K�ދYn�Ȟ���i[h���ȎX�~x�~8{�����Ȟh�K�^X�nYʎi��Y�X��[�>K��8 ����X[>K��K��yJ�ik�[���ɥ6V��F���	���~�.�X�[.K��X[~K�2�&�W72���h�^���yJ�h�~iz��y�Nh�^i8�K��6V��F��(	N(	NZ�>�z�X��K��K��yJ�K��Z�nK�[�nKɎX�n8 ����Р�22z��K�>z��ɮ�	�i�^(	N(	NyJ�K�X�^���Y��z�B%6V��F��i��K�K�� �����{��h�i��K�����ɥ6V��F��i��K�K��K��K��vV�B�&�W72K��XNk�K���{Ny�N�z����X�nK�ޙ{NK�n���yJ����K��X�~x�r�z�>Z�k:�XZ^h���z�Kɮ���y�N���K��Y�K�ދ��X�nK��X�.YXnZ�~��.{�>ZَY�K��8 �"���{��K�~Y8K�����ɥ6V��F��i��K�K���h�yJ��h�K��Z��8�h�yJ��h�[��y�BvV�BX��	�[.(	N(	N�z�X��ZH�yJ�K���~X�y�NX�>X��h�i��8 �2���{��z	Nz�n�R���ɥ6V��F��i��K�K���z�x��Z�nK�{;�{���ɮ�x.kX�(i"k(�kx(i"ZH�yJ�(i"���X�n���j��K��{�NK�nZ��[�NK�K��X����Ί�y�N����X~���8 �B���{��[�k�x�Z[ވR���ɥ6V��F��i��K�K��ԕB��X��8v�Z��x�8����ih~j>��XZ�8j�>Yʎiz�i��[�X���nj�^y�NzK�Xˮ��y��8 ����Р��i��ih~yK��y��{�Nh�N�^i+Xi��ɾX[~K�>x�nhK��Z��x����[�nK�^K�>[�>K��Xxn8"�����Р��6�W&6S��GG3���6V��F���V�7W&V�����F�72�wV�FR�Vࠢ26V��F��FVWF�fS�V�FW'7F�F��rF�R&��V7Bg&��67&F6����F��2F�7V�V�B�2f�"FWfV��W'2v��v�B7�7FV�F�2V�FW'7F�F��r�b6V��F����B7F'G2v�F�v��F�R&��V7BW��7G2�F�V�W����2�G2�V6��6�2�&6��FV7GW&R&�V�F&�W2�7W'&V�B&�w&W72��B6�����֗66��6WF���2���b6V��F���2�WrF���R�&VBF�R&��V7B�fW'f�Wr&Vf�&RW6��rF��2F�7V�V�B2F�RFVWF�fRࠢ��Р�226�FW"�7F'F��rg&��F�RV6�7�7FV�(	Bv���$vV�B�W&�V���W""W��7G0��F�V�FW'7F�B6V��F���f�'7BV�FW'7F�B�G2�6R��F�RV6�7�7FV�ࠢ222�v�B�2����vV�@������vV�B�26�gGv&R7�7FV�v�F�����2�G2&'&��"��B6���WFW2W6W"F6�2'������r'F���(i"6��F���2(i"�'6W'fR&W7V�G2(i"F���v��"�G��6�F���2��6�VFS�&VF��rf��W2�6V&6���r6�FR�W�V7WF��r6����G2�VF�F��rf��W2�'V���rFW7G2�66W76��rF�RvV"ࠤf�"6�F��rvV�B�G��6�F6�����2Ɩ�S��� �W6W#�&FB&WG'�v�F�&6��fbF�F�R�GG6ƖV�B �vV�BF���2(i"&VG2f��R��WB�6ƖV�B�v�(i"6V&6�W2&V�FVB6�FR(i"VF�G2f��R(i"'V�2FW7G2(i"F��P� ��222�"v�B�2�vV�B�&�W70���vV�B�&�W72�2F�R6�gGv&R6�V��F�B��7G2F��2�����B��vW26W76���2�6��2��FV�2�W�V7WFW2F���2���F�W2W&֗76���2��B6fW2��7F�'��6�����W���W3������FVW6VV��&V6�旂�����V��6�W&6Rv�6�F��rvV�B&6VB��FVW6VV�����6�VFR6�FR����F�&��2w2FW&֖��6�F��rvV�@���F�W'3�7W'6�"��V��6�FW�4Ē�WF2ࠢ222�26�����vV��W76W2�bW��7F��r�&�W76W0��WfW'��&�W72�2F�&VR7G'V7GW&�&�&�V�3������66���r�2v�F����6W76��⢣�fV�F�"&Vf��66���r�R�r��FVW6VV�6��FW�B66���r���ǒv�&�2�v�F�����R6W76�����Wr6W76���F���r6�֖�"F6��2f�"��6��FW�B6��WFF���v���"���66�VGVƖ�r�27FF�2���6��7W'&V�7����FV�6V�V7F�����B&W6�W&6R���6F���&R�&F6�FVB'V�W2F�BF��wBFBF�'v�B���B�bF6�F��2�2"�"&��rF�RW6W"W7V�ǒv�&�2"�2���v�F��r�2v7FVB���v���RF�R��FV�7G&V�2�WGWB�F�RvV�Bv�G3�v���RF�R��FV�v�G2f�"F���&W7V�G2�F�RvV�Bv�G2�F��2v���6��6�F��R�6V6��G2F�֖�WFW2W"F6���26��ǒ��7Bࠢ222�B6��6�W6���&֖FF�R��W""�2�VVFV@��6��6RF�W6RvV��W76W2&R7G'V7GW&��B�&�W76W2&R�&BF���F�g��V6����V�V�FF���F�ffW'2�6��vW2&R6�7Fǒ��F�R�GW&��FV�3�����6W'B���FWV�FV�B֖FF�R��W"&WGvVV�F�R�&�W72�B&W6�W&6W2��(	B�BF�W6�wB��F�g�F�R�&�W72�'WBw&2�B��'6W'f��r�&�W72&V�f��"F��F�֗�RF�Rv���R���ࠥF�B֖FF�R��W"�2F�R��vV�B�W&�V���W"���6V��F���2W�7FǒF�Bࠢ��Р�226�FW"#�6V��F��w2�6�F���(	Bv�B�B7GV�ǒ�0��222"���R�Ɩ�R�6�F����p����6V��F���26V�b�Wf��f��rvV�B�W&�V���W"����B6�G2&WGvVV�vV�B�&�W76W2�FVW6VV��&V6�旂�6�VFR6�FR�WF2��BF�V�"&W6�W&6W2�G��֖6�ǒ�&6�W7G&F��r6��7W'&V�7��6V��F�266���r��B7V7V�F�fR&VfWF6���B6V�b�Wf��fW2&6VB��W6W"W6vR�&�G2(	BF�R7�7FV�vWG2f7FW"�B6�VW"F�R��&R��RW6R�Bࠢ222"�"F�&VR�W�v�&G2�V�6�V@����$vV�B�W&�V���W""��(	B�6�F����&V��rF�R�&�W72���B&W�6��r�B��&�fR&W6�W&6W2�����2�f��W7�7FV��F���2���B�2&�W&�V�#��B&�f�FW2��g&7G'V7GW&R6&�ƗF�W2�66���r�66�VGVƖ�r�&VfWF6�����BW6W"�f6��r��FW&f6W2ࠢ��%6V��F�2"��(	Bw&�V�&�G���B�W&FW2��6V��F�2V�G2�6Ɩ6W2����B'�FW2�'�FR66���r&WV�&W2W�7B6��FV�B�F6�W3�6V��F�266���r���w2�6�֖�"�6��FV�BF�&R&V6�v旦VB�B&WW6VBࠢ��%6V�b�Wf��f��r"��(	BF��R��B�2��B7FF�2'V�R6WB'WB6��6VB�����V&��r7�7FVӢWfW'���FW&7F���&�GV6W2fVVF&6�6�v��2�6�v��2G&�fR&�WFW"F�W7F�V�G2��BF�W7F�V�G2��RF�R�W�B��FW&7F���&WGFW"ࠢ222"�26��7&WFR&�&�V�2�B6��fW0��������B�7W'&V�B7FFR�6V��F��w26��WF����������������������7&�72�6W76���&WW6R�6�֖�"F6�27F'Bg&���W&�����r&WVFVFǒ�6V��F�26Ɩ6RƖ'&'�67V�V�FW2�6V��F�266�R&WW6W2���'�FR66�W2&&Vǒ��B���ǒW�7Fǒ֖FV�F�6�6��FV�B��G2��"7F&�R��V7F���6��fW'B6V��F�2��G2��F�'�FR��G2���66�VGVƖ�r�2V��FV�ƖvV�B�7FF�2'V�W2���F6���&�BFFF�����W&�V�66�VGV�W#���FV�B6�76�f�6F����&V�f��"�V&��r���v�F��r�2v7FVB��F�RGW&��r7G&V֖�r�F���v�G2�7V7V�F�fR&VfWF6��B�6Ɩ6R&VF�7F����&VB���ǒ&VfWF6����7�7FV�F�W6�wB�V&��6��f�rGV�VB'��V��2��WfW"f�G2vV���6V�b�Wf��WF���V�v��S�Ut���Ɩ�RGV��r��ffƖ�R&WG&���r���222"�B��r�B�2W6V@��W6W'2F��wB&�W&FR"6V��F��F�&V7Fǒ��G2��FR�b�W&F��㠠����RW6R��W"vV�B�&V6�旂�6�VFR6�FR���&��Ǔ��"�6V��F�����'6W'fW2����W"6W76���2F�&�Vv��FFW"��W"�WfV�B7G&Vғ��2��B��67V�V�FW2����7F�&�6�6W76���2��F�6V��F�26Ɩ6W2�F6�FV��FW2�6��FW�B&��6�2�F���GFW&�2�&W7V�G2��V��'����B�v�V�6�֖�"F6�'&�fW2��B����V7G2��&V�Wf�B6Ɩ6W2���GF��rF�RfV�F�"'�FR66�R����66�VGV�W2��6��7W'&V�7���B��&VfWF6�W2��&W6�W&6W3��R�6�v��2g&��WfW'�&�V�B���B����WF�����FV�7��6�7B�7V66W72���fVVB&6���F�F�RWf��WF���V�v��S�&�WFW'2�VW��&�f��rࠥF�R��ǒF���rW6W'2��F�6S�F6�2vWBf7FW"�&���2vWB6�VW"(	B�BF�RVffV7Bw&�w2�fW"F��Rࠢ��Р�226�FW"3���r�Bv�&�2(	Bf�W"6����V�G2�W2��RV�v��P��2222�6V��F�26Ɩ6RƖ'&'��54(	B�V��'�����&W7��6�&�ƗG����W�G&7B���FW���BW'6�7B&WW6&�R6V��F�2V�G2g&����7F�&�6�6W76���2ࠢ��f�fR6Ɩ6RG�W2������G�R��V��r�W���R������������������6Ɩ6R�F6�FV��FW2�&��G2��F6�FW67&�F���2Ɩ�R&FB&WG'�F��"���2�6Ɩ6R�6��FW�B&��6�2��W�6��FW�Bg&v�V�G2�b&��V7B���B�6Ɩ6R�F����6��GFW&�2�w&W(i'&VDf��^(i&VF�Df��^(i'FW7B���"�6Ɩ6R���v��g&WVV�7�&W7V�G2�7F�F&B�WGWG2�b6�����6����G2�6�����d2�����6Ɩ6R��V��'��W6W"&VfW&V�6W2�B�&�G2�����W�G&7F���7G&FVv�W2���F�&VR6Vv�V�FF���2������GW&��&�V�F'�6Vv�V�FF��⢣�6Vv�V�BBW6W"�W76vW0����6���WF�������B6Vv�V�FF��⢣�6Vv�V�B6��FW�BBF6�6���WF������B�6Ɩ6R��w&�2���W�G&7B6��6V7WF�fRGFW&�2g&��F����6��6WVV�6W0����7F�&vR���&&��BGV�7F�&W2�&��V7B��WfV��W6W"��WfV�6W&F��r66�W2ࠢ2222�"F�&VR��WfV�6V��F�266�R����"��2�(	B���WF��F��ࠢ����'�FR66�R����W6W2F�RfV�F�"w2WF��F�2&Vf��66�R�W�7Fǒ֖FV�F�6�&Vf��W2v�F���6W76�����BB�W&�6�7Bࠢ���"�7F&�R��V7F��⒢��6V��F��w2��7BV�Vv�BFW6�v�(	B��F�R6V��F�2��W"fVVG2F�R'�FR��W"����gFW"&WG&�Wf��r6V��F�6�ǒ6�֖�"6Ɩ6W2�F�W�&R��V7FVB��fW&&F�Ң�gFW"F�R7�7FV�&Vf���&Vf�&RF�RW6W"�W76vS�����V7F����&FW"�2f��VB���B6�'FVB'�f�VR�F�wV&�FVR'�FR7F&�ƗG����v�V��Wr6W76���7F'G2�F�R6�R��V7F���6WB(i"F�R6�R'�FR&Vf��(i"����G2F�RfV�F�"w2'�FR66�R�����VffV7C�6V��F�2��G2&R'G&�6�FVB"��F�'�FR��G2�V�����rfV�F�"66�R&�6��rF�66�V�G2ࠢ���2�fW&�f�VB&WW6R����f�"&VB���ǒF6�2�v�F�f��R�f��vW'&��BfW&�f�6F������7F�&�6�&W7V�G2&R&WW6VBF�&V7Fǒ(	B������FV�&WVW7B�26V�BB�¢��f���6��6VC���&WW6Rv�F��WBfW&�f�6F���F�RW6W"6�fWF�ࠢ2222�2�W&�V�66�VGV�W"(	B�&6�W7G&F��ࠢ�����FV�B6�76�f�6F��⢣�&V6�v旦RF6�G�R�&VB�w&�FR�6V&6��&Vf7F�"�FW7B��␢�������BFV6�6���2���6��7W'&V�7����FV�F�W"�66�R��V7F���f��V�R�&VfWF6�'VFvW@����&V�f��"�V&��r����V&�2&��rF��2���B�bF6��2W7V�ǒF��R"g&��B�6Ɩ6R7FF�7F�72�����rFV6�6���2��7&V6��vǒ67W&FP��2222�B7V7V�F�fR&VfWF6�W"(	Bf��Ɩ�r�F�RF��P�����&VF�7F��⢣�W6W2F�RB�6Ɩ6RG&�6�F����G&��F�&VF�7BF�R�W�BF����&W6�W&6RF�&R�VVFV@����&VfWF6����GW&��rF�R��FV�w27G&V֖�rv�B�&VfWF6�&VB���ǒ&W6�W&6W2��W�B�GW&�6Ɩ6R76V�&ǒ�V�&VFF��r6��WFF��␢���6V�b�V��G����v�V�v7FR���BW�6VVG2F�RF�&W6���B�FVfV�B3���F�R6�v��6�W&6R�2WF��F�6�ǒF�v�vV�v�FVB(	BF�R&VfWF6�7G&FVw��G6V�bWf��fW0��2222�R6V�b�Wf��WF���V�v��R(	B�V&��p������Ɩ�R��W"�WfW'�&�V�B������6���V7B6�v��3���B&FR����WF�����FV�7��6�7B�7V66W70��Ut���f��r�fW&vRGV��s�F�&W6���G2�B���V7F���'VFvWB�&VfWF6�&�WFW'2�6��7W'&V�7��F�W"���p����g&VW�R�W&��B&�FV7F��⢣�F�R��V7F���6WB7F�2V�6��vVBf�"(�S�gFW"&�WFW"6��vW2�6�Wf��WF�����GFW"�WfW"FW7G&��2F�R'�FR66�R�BfVVG0�����ffƖ�R��W"�W&��F�2������6Ɩ6RV�&VFF��r&Vg&W6���F�&W6���Bw&�B6V&6���B�6Ɩ6RG&�6�F�����G&��&WG&���p����r�g&WVV�7�6Ɩ6R&6��f��p����Р�226�FW"C�FW6�v�����6���(	B6WfV�&��6��W0�����F�R&Vf���WfW"6��vW2���'�FR7F&�ƗG��bF�R��V7F���6WB�2F�RƖfVƖ�R�b�"��G2�"���&VB���ǒ&VfWF6���ǒ���7V7V�F�fR&VfWF6�F�V6�W2��ǒ&VB���ǒ&W6�W&6W2�VƖ֖�F��r6�FRVffV7G2�2���f����V��f���6��6VB���66�R���W"f��W&W2�WfW"&��6�F�R�������6V7W&�G�&�V�F&�W2�WfW"6��&�֗6R�B���WfW'�FV6�6���W����&�R�B&WfW'6�&�R���V6�FV6�6���6'&�W2&V6��&�F���7v�F6�W2&R7W�'FVB�R���ԕB&VfW&V�6R���6����r���&VfW&V�6R&V6�旂w2&�6�����V�V�B6�FR��FWV�FV�Fǒv�F�GG&�'WF����b���6��v�R�W&�V�����&�W76W2���FFW"GFW&��WfW"��7FvRF��7V6�f�2vV�B�r���&�WFW'2w&�r���BGV�VB���7�7FV�&�WFW'2Wf��fRg&��fVVF&6�&F�W"F���V��GV��rࠢ��Р�226�FW"S�&V�F���6��F�&V�FVB6��6WG0��222R�6V��F��g2�vV�B�&�W76W2�&V6�旂�6�VFR6�FR����6V��F����6�G2��F��b���&�W76W2�6���V7FVBf��FFW"��W#����&�W76W2&F�F�Rv�&�"�F����6��F���2���FW&7B��6V��F����W2'F�Rv�&�6�VW""�66�R�66�VGV�R�&VfWF6�����F�W�&R6���&�&F�fR���B6��WF�F�fS�&V6�旂�6V��F��v�&�F�vWF�W"ࠢ222R�"6V��F��g2�6V��F�266���r�uD66�RWB�␠��F���2Ɩ�RuD66�R6��fR'���r&WVFVFǒf�"F�R6�R6��fW'6F����VW7F���#���6V��F��w26V��F�266�RF&vWG2��vV�Bv�&���G2���6Ɩ6W26��Rg&��F����6��6WVV�6W2�F6�FV��FW2��B&W7V�B&WW6R��BF�&�Vv�'7F&�R��V7F���"6V��F�2��G2��6��fW'B��F�fV�F�"'�FR�66�R��G2��(	B�V6��6�W��7F��r6V��F�2�66���rF���2�6�ࠢ222R�26V��F��g2�6V�b֖�&�fV�V�B�&Vf�V7F����WF��G2�&Vf�W�����f��vW"�WF2␠��&Vf�W�����f��vW"�WBF�R��vV�B�G6V�b���V&�g&��W�W&�V�6R�6����Ɩ'&&�W2�&Vf�V7F��⓰��6V��F���WG2F�R����g&7G'V7GW&R��W"���66�R�66�VGV�R�&VfWF6���V&�g&��W�W&�V�6S���F�W�&R6���V�V�F'��F�Rf�&�W"��&�fW2&��rF�F�F6�2"�F�R�GFW"��&�fW2'F�R6�7B�B7VVB�bF���rF6�2"ࠢ222R�B6V��F��g2��b66�R�&Vf��66�R7�7FV�2�4t��r�d����WF2␠��4t��r�d���&R��6W'fW"�6�FR���b66�R7�7FV�2f�"6V�bֆ�7FVB��fW&V�6S���6V��F��F&vWG2��fV�F�"����66V�&��2�R�r��FVW6VV����W6��r&��B�V�v��VW&��r�V�2�7F&�R��V7F���F�W����BF�RfV�F�"w2WF��F�2&Vf��66�R��F�R6ƖV�B6�FS���F�W�6��fRF�ffW&V�B��W'3�6V��F��w2&�6��2W7V6��ǒf�V&�R��6��6VB��66V�&��2v�W&RW6W'26���B6��G&��6W'fW"�6�FR�b66�W2ࠢ��Р�226�FW"c�6�����֗66��6WF���2�67W&FVǒ7FFV@��F�Rf����v��r7FFV�V�G26�&�g�F�RVW7F���2FWfV��W'2��7B�gFV�6��gW6S��������6�F����r���6V��F���2֖FF�Wv&R��W"6�GF��r&�fRvV�B�&�W76W2�B&V��r&W6�W&6W2�&�f�F��r66���r�66�VGVƖ�r��B&VfWF6���g&7G'V7GW&R�F�RvV�Bw2F��涖�r�BF����6������V�2��F�R�&�W72�G6V�bࠢ������FV�2���6V��F��F�W2��BG&�����F�g���"&�f�FR��FV�2��B�F�֗�W2&��B76V�&ǒ&Vf�&R��FV�6��2�B&W6�W&6R�&6�W7G&F���gFW"6��2ࠢ����66���r���6V��F��w266���r��6�VFW2F�&VR�WfV�2(	B'�FR��WfV�����6V��F�2��V7F�����"���B&W7V�B&WW6R��2���"W����G2F�RfV�F�"w2WF��F�2&Vf��66�R'��VW��r&Vf��'�FW27F&�Rࠢ����FW����V�B���6V��F��'V�2��6�ǒ�v��&&��B7F�&vR�6��v�RW�FW&��FWV�FV�7���FF�6Ɩ6W2�7FF�7F�72�W'6�7G2����6�GV�7F�&W2ࠢ����W6vR���6V��F��6���V7G2F�7V6�f�2�&�W76W2F�&�Vv��FFW"��W#�W6W'2F��wB�W&FR6V��F��F�&V7Fǒ(	B�BWF��F�6�ǒ�V&�2g&��W6vR�B�F�֗�W2ࠢ��Р�226�FW"s�V�6�&VfW&V�6R(	B��R6V�FV�6Rf�"%v�B�26V��F�� �����f�"V�v��VW'2���6V��F���26V�b�Wf��f��r֖FF�Wv&R&WGvVV�vV�B�&�W76W2�B&W6�W&6W3��B6��fW'G27&�72�6W76���6V��F�2��G2��F�fV�F�"'�FR�66�R��G2f�6V��F�26Ɩ6W2�7F&�R��V7F����"���f�"&�GV7BV��R���6V��F���2�66V�W&F�����W"f�"vV�G2F�BvWG26�VW"�Bf7FW"v�F�W6R(	BWF��F�6�ǒ&WW6��rF�Rv�&���RwfR�&VG�F��R�2���f�"&W6V&6�W'2���6V��F���26��6VB�����V&��r7�7FV�(	B�'6W'fR(i"67V�V�FR(i"&WW6R(i"Wf��fS�WfW'�6����V�B6�'&W7��G2F�FW7F&�RFW6�v����F�W6�2�B���f�"�V��6�W&6RV�F�W6�7G2���6V��F���2�ԕB�Ɩ6V�6VB�v�֖��V�V�FVB6���V�G�&��V7Bv�F�6���WFRFW6�v�F�72�7W'&V�Fǒ��V&ǒFWfV���V�Bࠢ��Р��w&�GFV�'�F�R&��V7B���F��W'3�&VfW"F�F�R&W�6�F�'�f�"F�R7W'&V�B���V�V�FF���7FFR�
+- L1 reuses provider computation for a stable prompt prefix.
+- L2 injects relevant historical context while the model and tools still run.
+- L3 reuses a verified result and may skip repeated work.
+
+The shared word “cache” does not make these paths equivalent. Risk and proof requirements increase from L1 to L3.
+
+## Scheduling, prefetch, and evolution
+
+The scheduler expresses round plans without replacing the harness permission model. Prefetch uses learned transition patterns for restricted read-only work and records both hits and waste.
+
+Evolution currently means bounded parameter updates, such as retrieval thresholds and injection budgets. It does not mean unrestricted self-modification, and repeated use does not guarantee better outcomes.
+
+## Failure behavior
+
+Semantix is an optimization layer. When memory loading, judging, or prefetch cannot establish a safe path, the host continues the original task. Fail-open means abandoning the optimization, not bypassing a failed safety check.
+
+## How to evaluate the project
+
+Separate specifications, executable tests, synthetic replay, and production evidence. Semantix provides the first three in the repository. Generalized performance and cost claims require real sessions, human relevance checks, task outcomes, and billing comparison in the target environment.

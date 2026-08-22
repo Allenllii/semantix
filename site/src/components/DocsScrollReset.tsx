@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
-export default function GeoScrollReset() {
+export default function DocsScrollReset() {
   const pathname = usePathname();
 
   useEffect(() => {

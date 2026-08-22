@@ -4,12 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
+import { documentSections, type DocumentSection } from "@/lib/docs-shared";
 
 type DocsNavDocument = {
   slug: string;
   title: string;
   language: string;
-  depth: "速览" | "深入";
+  section: DocumentSection;
+  navDescription: string;
 };
 
 function DocumentLinks({
@@ -19,16 +21,10 @@ function DocumentLinks({
   pathname: string;
   documents: readonly DocsNavDocument[];
 }) {
-  const groups = [
-    {
-      title: "项目速览",
-      documents: documents.filter((document) => document.depth === "速览"),
-    },
-    {
-      title: "架构深读",
-      documents: documents.filter((document) => document.depth === "深入"),
-    },
-  ];
+  const groups = documentSections.map((title) => ({
+    title,
+    documents: documents.filter((document) => document.section === title),
+  }));
 
   return (
     <nav aria-label="文档目录" className="space-y-7">
@@ -47,7 +43,7 @@ function DocumentLinks({
         </Link>
       </div>
 
-      {groups.map((group) => (
+      {groups.filter((group) => group.documents.length > 0).map((group) => (
         <div key={group.title}>
           <p className="mb-2 px-3 text-xs font-semibold text-foreground">{group.title}</p>
           <div className="space-y-1">
@@ -68,8 +64,8 @@ function DocumentLinks({
                   )}
                 >
                   {document.title}
-                  <span className="mt-0.5 block font-mono text-[11px] font-normal opacity-70">
-                    {document.language}
+                  <span className="mt-0.5 block text-[11px] font-normal leading-4 opacity-70">
+                    {document.navDescription}
                   </span>
                 </Link>
               );
