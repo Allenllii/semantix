@@ -44,7 +44,7 @@ func TestRunnerStoresResultSlice(t *testing.T) {
 	seedIndexedSlice(t, st, ix, "s1", "readFile usage documentation")
 
 	r := &Runner{Store: st, Executor: &SliceAssembler{Index: ix, K: 3}}
-	ids, err := r.Run(context.Background(), []PrefetchTask{{Kind: "slice-assembly", Key: "readFile", Cost: 200}})
+	ids, err := r.Run(context.Background(), []PrefetchTask{{Kind: "slice-assembly", Key: "readFile", Cost: 200, Locality: LocalityLocal}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestRunnerStoresResultSlice(t *testing.T) {
 func TestRunnerDefaultScopeIsProject(t *testing.T) {
 	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
 	r := &Runner{Store: st, Executor: &fakeExecutor{results: map[string][]byte{"k": []byte("c")}}}
-	if _, err := r.Run(context.Background(), []PrefetchTask{{Key: "k"}}); err != nil {
+	if _, err := r.Run(context.Background(), []PrefetchTask{{Key: "k", Locality: LocalityLocal}}); err != nil {
 		t.Fatal(err)
 	}
 	all, err := st.List(slice.Project)
@@ -93,7 +93,7 @@ func TestRunnerFailureContinues(t *testing.T) {
 			fails:   map[string]error{"bad": errors.New("boom")},
 		},
 	}
-	ids, err := r.Run(context.Background(), []PrefetchTask{{Key: "bad"}, {Key: "good"}})
+	ids, err := r.Run(context.Background(), []PrefetchTask{{Key: "bad", Locality: LocalityLocal}, {Key: "good", Locality: LocalityLocal}})
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("Run error = %v, want boom", err)
 	}
@@ -108,7 +108,7 @@ func TestRunnerFailureContinues(t *testing.T) {
 
 func TestRunnerRequiresFields(t *testing.T) {
 	r := &Runner{}
-	if _, err := r.Run(context.Background(), []PrefetchTask{{Key: "k"}}); err == nil {
+	if _, err := r.Run(context.Background(), []PrefetchTask{{Key: "k", Locality: LocalityLocal}}); err == nil {
 		t.Fatal("expected error for missing Store/Executor")
 	}
 }
@@ -150,7 +150,7 @@ func TestRunnerStoresDedupByContent(t *testing.T) {
 
 	r := &Runner{Store: st, Executor: &SliceAssembler{Index: ix, K: 3}}
 	for i := 0; i < 2; i++ {
-		if _, err := r.Run(context.Background(), []PrefetchTask{{Kind: "slice-assembly", Key: "stable"}}); err != nil {
+		if _, err := r.Run(context.Background(), []PrefetchTask{{Kind: "slice-assembly", Key: "stable", Locality: LocalityLocal}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -175,4 +175,55 @@ func ids(slices []*slice.Slice) []string {
 		out[i] = s.ID
 	}
 	return out
+}
+// TestRunnerRejectsEgressTasks (Issue #273): a task that crosses a
+// process boundary is never executed — a speculative external call leaks
+// inferred intent before any commit (Ghost Tool Calls). The counter
+// records the block for observability.
+func TestRunnerRejectsEgressTasks(t *testing.T) {
+	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
+	executed := 0
+	r := &Runner{Store: st, Executor: &countingExecutor{executed: &executed}}
+	ids, err := r.Run(context.Background(), []PrefetchTask{
+		{Kind: "mcp", Key: "external", Locality: LocalityEgress},
+		{Kind: "slice-assembly", Key: "readFile", Locality: LocalityLocal},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executed != 1 {
+		t.Fatalf("executed %d tasks, want 1 (egress must not run)", executed)
+	}
+	if len(ids) != 1 {
+		t.Fatalf("stored ids = %v, want 1", ids)
+	}
+	if got := r.BlockedEgress.Load(); got != 1 {
+		t.Fatalf("BlockedEgress = %d, want 1", got)
+	}
+}
+
+// TestRunnerUndeclaredLocalityFailsClosed (Issue #273): an undeclared
+// locality is treated as egress — fail-closed, matching the
+// empty-whitelist semantics.
+func TestRunnerUndeclaredLocalityFailsClosed(t *testing.T) {
+	st := newTestStore(t, filepath.Join(t.TempDir(), "slices.jsonl"))
+	executed := 0
+	r := &Runner{Store: st, Executor: &countingExecutor{executed: &executed}}
+	ids, err := r.Run(context.Background(), []PrefetchTask{{Kind: "file", Key: "x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if executed != 0 || len(ids) != 0 {
+		t.Fatalf("undeclared task must not run: executed=%d ids=%v", executed, ids)
+	}
+	if got := r.BlockedEgress.Load(); got != 1 {
+		t.Fatalf("BlockedEgress = %d, want 1", got)
+	}
+}
+
+type countingExecutor struct{ executed *int }
+
+func (c *countingExecutor) Execute(_ context.Context, t PrefetchTask) ([]byte, error) {
+	*c.executed++
+	return []byte("ok"), nil
 }

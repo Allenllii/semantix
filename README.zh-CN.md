@@ -7,8 +7,8 @@
 **语义缓存 · 自适应调度 · 投机预取 · 跨会话学习**
 
 [![License: FSL-1.1-MIT](https://img.shields.io/badge/License-FSL--1.1--MIT-blue.svg?style=flat-square)](./LICENSE)
-[![Status](https://img.shields.io/badge/status-v0.3.1-green?style=flat-square)](#项目状态)
-[![Version](https://img.shields.io/badge/release-0.3.1-blue?style=flat-square)](https://github.com/Gnosil/semantix/releases)
+[![Status](https://img.shields.io/badge/status-v0.6.0-green?style=flat-square)](#项目状态)
+[![Version](https://img.shields.io/badge/release-0.6.0-blue?style=flat-square)](https://github.com/Gnosil/semantix/releases)
 [![GitHub stars](https://img.shields.io/github/stars/Gnosil/semantix?style=flat-square\&logo=github)](https://github.com/Gnosil/semantix/stargazers)
 [![Website](https://img.shields.io/badge/website-semantix.ensureok.ai-168b6d?style=flat-square)](https://semantix.ensureok.ai)
 
@@ -99,7 +99,7 @@ Semantix 从历史会话中提取可复用的语义单元（切片），持久�
 
 - **内核调度器**（`kernel/sched`）：按任务 intent 联合决策工具并发分组、模型 tier、注入切片与预取目标，附带行为学习门
 - **投机预取器**（`kernel/prefetch`）：用 T-Slice 转移矩阵在 LLM 流式输出的等待期预取下一轮**只读**资源，waste/hit 比例自我惩罚
-- **自进化引擎**（`kernel/evolve`）：每轮采集命中/污染/延迟/成本信号，在线 EWMA 调参（带冻结期保护）+ 离线重训。参数不是人调的，是系统长出来的
+- **价值评分与淘汰**（`kernel/slice`）：命中/注入在线记账 → 价值 = 时效衰减·使用频次·注入成功率·反馈 → 库有上限（默认 5000），超限按价值归档、可还原——库越用越准而非越用越大。`kernel/evolve` 的 EWMA 全局调参仍是 MVP（闭环接线待做）
 
 ---
 
@@ -179,7 +179,7 @@ go build -o semantix ./cmd/semantix
 # 1. 从历史会话提取切片（Reasonix/Claude Code 风格 JSONL）
 semantix extract --input session.jsonl --db .semantix/project.db --project demo
 
-# 2. 语义检索（bm25 / vector / hybrid 三模式）
+# 2. 语义检索（bm25 / vector / hybrid 三模式；hybrid 融合策略 --fusion weighted|rrf 可配）
 semantix search --query "修复 go 测试失败" --db .semantix/project.db
 
 # 3. L2 注入块（会话 B 复用会话 A 的切片）
@@ -199,7 +199,7 @@ semantix install --target claude-code   # 安装 agent skill 到 ~/.claude/skill
 semantix install --target reasonix      # Reasonix fork 已内置集成
 ```
 
-全部命令（`extract` / `search` / `verify` / `eval` / `eval-judge` / `usage` / `lookup` / `inject` / `doctor` / `install` / `completion` / `gc` / `export` / `import` / `dashboard` …）见 `semantix help`；CLI v2 起统一 `--json` 信封输出（`{ok, command, data, error, version}`），退出码契约统一（0 成功 / 1 运行错误 / 2 用法错误 / 3 门禁未达标）。详见 [docs/QUICKSTART.md](./docs/QUICKSTART.md)。
+全部命令（`extract` / `search` / `verify` / `eval` / `eval-judge` / `calibrate` / `usage` / `lookup` / `inject` / `dashboard` / `doctor` / `install` / `version` / `gc`）见 `semantix help`；CLI v2 起统一 `--json` 信封输出（`{ok, command, data, error, version}`），退出码契约统一（0 成功 / 1 运行错误 / 2 用法错误 / 3 门禁未达标）。详见 [docs/QUICKSTART.md](./docs/QUICKSTART.md)。
 
 另有 **Semantix Gateway**（`cmd/semantix-gateway`）：OpenAI 兼容网关，为任意支持自定义 base URL 的客户端透明加上跨会话复用层。
 
@@ -246,15 +246,15 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 
 ## 项目状态
 
-> **v0.3.1 已发布**，M2 CLI v2（命令树 / config / `--json` 信封 / completion / doctor / install / gc）已交付。规模化之前剩余的门槛是**真实数据的跨会话命中率验证**。
+> **v0.6.0 已发布**（2026-08-21，「Agile 2 完整落地」）：打包 `semantix-agent` + `semantix` + `semantix-gateway`，覆盖四平台。**Agile 2（自进化闭环）已收尾**——内核编排调度、投机预取、进化闭环接线（U37–U43）全部落地，并带上 GLM-5.x 缓存适配首批（前缀卫生 + per-provider 命中计量，GLM P0）。规模化之前剩余的门槛是**真实数据的跨会话命中率验证**（#58，Agile 1 的 v1.0 门禁）。
 
 | Agile | 里程碑 | 状态 |
 |---|---|---|
 | **1** | 首个可下载、可品牌化的 agent（v1.0） | 🚧 M0 ✅ · M1 接近完成（门禁 [#58](https://github.com/Gnosil/semantix/issues/58)）· CLI v2 ✅ · 复用可视化 CLI 侧 ✅ |
-| **2** | 自进化闭环——内核反向调配助手的并发 / 预算 / 模型档位 | 🚧 内核侧 MVP 已落地（sched/prefetch/evolve）；助手侧待接 |
+| **2** | 自进化闭环——内核反向调配助手的并发 / 预算 / 模型档位 | ✅ 完成并发布（v0.6.0，2026-08-21）：H2/H3 编排 + 进化闭环接线（U37–U43） |
 | **3** | 多助手生态——任意编程助手都能接入 | ⏳ 路径已文档化，未开始 |
 
-技术阶段 P0（可观测）✅ · P1（切片库）🚧 · P2（语义缓存）🚧 · P3（调度）✅ MVP · P4（预取）✅ MVP · P5（进化）✅ MVP。完整路线图见 [docs/Agile路线图.md](./docs/Agile路线图.md)。
+技术阶段 P0（可观测）✅ · P1（切片库）🚧 · P2（语义缓存）🚧 · P3（调度）✅ MVP · P4（预取）✅ MVP · P5（进化）✅ 闭环已接线（U43）。GLM-5.x 已作为一等 provider 接入（可与 DeepSeek 通过 `semantix setup` 切换），缓存适配 P0 已随 v0.6.0 落地，P1/P2 规划中。完整路线图见 [docs/Agile路线图.md](./docs/Agile路线图.md)。
 
 ### 参与验证（社区第一入口 👋）
 

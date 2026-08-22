@@ -29,10 +29,7 @@ func writeUsageLog(t *testing.T, path string, events []usage.Event) {
 // writeSliceStore puts slices into a fresh store at db.
 func writeSliceStore(t *testing.T, db string, sls []*slice.Slice) {
 	t.Helper()
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	for _, sl := range sls {
 		if err := store.Put(sl); err != nil {
 			t.Fatal(err)
@@ -76,7 +73,7 @@ func TestRunDashboardANSIBlocks(t *testing.T) {
 		"📦 Slice library",
 		"█", "░", // bar characters (U31 acceptance)
 		"2 / 3 turns", // 1 L3 + 1 L2 of 3 turns
-		"5 slices",    // library total
+		"5 / 5000 slices",    // library total / capacity water level
 		"3 cross-session sessions",
 	} {
 		if !strings.Contains(s, want) {
@@ -182,7 +179,7 @@ func TestRunDashboardConfigDefaultDB(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("dashboard exit = %d, want 0; stderr:\n%s", code, errOut.String())
 	}
-	if !strings.Contains(out.String(), "5 slices") {
+	if !strings.Contains(out.String(), "5 / 5000 slices") {
 		t.Fatalf("config store.db not used as dashboard default:\n%s", out.String())
 	}
 
@@ -193,7 +190,7 @@ func TestRunDashboardConfigDefaultDB(t *testing.T) {
 	if code := runDashboard([]string{"--config", cfg, "--db", other, "--usage", filepath.Join(dir, "usage.jsonl")}, &out, &errOut, productionDependencies()); code != 0 {
 		t.Fatalf("dashboard --db override exit = %d, want 0", code)
 	}
-	if !strings.Contains(out.String(), "1 slices") {
+	if !strings.Contains(out.String(), "1 / 5000 slices") {
 		t.Fatalf("--db override not applied:\n%s", out.String())
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"semantix/kernel/sched"
 )
 
 // fakePrefetcher is a scripted Prefetcher for adapter tests.
@@ -11,6 +13,23 @@ type fakePrefetcher struct {
 	tasks []PrefetchTask
 	err   error
 	last  []string // records the last Plan input
+}
+
+func TestAsLoadAwarePlanFuncFallsBackToFrozenPlan(t *testing.T) {
+	f := &fakePrefetcher{tasks: []PrefetchTask{{Key: "read_file"}}}
+	got := AsLoadAwarePlanFunc(f)([]string{"search"}, sched.PrefetchLoadHint{ConcurrencyUsed: 8, ConcurrencyLimit: 8})
+	if !reflect.DeepEqual(got.IDs, []string{"read_file"}) || got.Reason != string(ReasonCandidate) {
+		t.Fatalf("result = %+v", got)
+	}
+}
+
+func TestAsLoadAwarePlanFuncUsesMatrixGate(t *testing.T) {
+	m := NewMatrixPrefetcher(Config{})
+	m.Observe("search", "read_file", true)
+	got := AsLoadAwarePlanFunc(m)([]string{"search"}, sched.PrefetchLoadHint{ConcurrencyUsed: 8, ConcurrencyLimit: 8})
+	if got.IDs != nil || got.Reason != string(ReasonLoadSaturated) {
+		t.Fatalf("result = %+v", got)
+	}
 }
 
 func (f *fakePrefetcher) Plan(last []string) ([]PrefetchTask, error) {

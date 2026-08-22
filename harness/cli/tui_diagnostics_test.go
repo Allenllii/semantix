@@ -237,6 +237,23 @@ func TestWatchdogBootStallDumpsAndKills(t *testing.T) {
 	}
 }
 
+func TestWatchdogSamplesIdleHeartbeatOncePerMinute(t *testing.T) {
+	clock := &fakeWatchClock{now: time.Unix(1_700_000_000, 0)}
+	d := newWatchdogForTest(t, clock)
+	var logs atomic.Int32
+	d.logFn = func(string, ...any) { logs.Add(1) }
+	d.NoteBooted()
+	logs.Store(0)
+	d.onTick(clock.now)
+	clock.now = clock.now.Add(30 * time.Second)
+	d.onTick(clock.now)
+	clock.now = clock.now.Add(30 * time.Second)
+	d.onTick(clock.now)
+	if got := logs.Load(); got != 2 {
+		t.Fatalf("idle logs = %d, want 2", got)
+	}
+}
+
 func TestWatchdogRunningElapsedHeartbeatPreventsKill(t *testing.T) {
 	clock := &fakeWatchClock{now: time.Unix(1_700_000_000, 0)}
 	d := newWatchdogForTest(t, clock)

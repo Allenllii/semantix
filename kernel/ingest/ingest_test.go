@@ -178,6 +178,55 @@ func TestPipelineExtractsAndPersists(t *testing.T) {
 	}
 }
 
+func TestPipelineDoesNotPersistProjectContextOutsideProjectScope(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "context.jsonl")
+	transcript := `{"role":"user","content":"inspect"}
+{"role":"assistant","tool_calls":[{"name":"read_file","arguments":{"path":"kernel/ingest/ingest.go"}}]}
+{"role":"assistant","tool_calls":[{"name":"read_file","arguments":{"path":"kernel/ingest/ingest.go"}}]}
+{"role":"assistant","content":"done"}
+`
+	if err := os.WriteFile(path, []byte(transcript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src, err := NewJSONLSource(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := slice.NewFileStore(filepath.Join(t.TempDir(), "user.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if c, ok := store.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	})
+	pipeline := Pipeline{
+		Extractor: slice.NewExtractor(),
+		Store:     store,
+		Index:     bm25.New(),
+		Scope:     slice.User,
+		Project:   "semantix",
+	}
+	stats, err := pipeline.Run(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats["context"] == 0 {
+		t.Fatalf("expected non-context slices to be stored: %v", stats)
+	}
+	items, err := store.List(slice.User)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range items {
+		if item.Type == slice.Context {
+			t.Fatal("project Context slice was persisted in user scope")
+		}
+	}
+}
+
 func firstContent(hits []slice.Hit) string {
 	if len(hits) == 0 {
 		return ""

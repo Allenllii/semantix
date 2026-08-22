@@ -31,6 +31,13 @@ type chatMessage struct {
 	ToolCalls  any    `json:"tool_calls,omitempty"`
 	Name       string `json:"name,omitempty"`
 	ToolCallID string `json:"tool_call_id,omitempty"`
+	// ReasoningContent is a preserved thinking sequence the client rounds
+	// back on assistant turns (GLM preserved-thinking discipline, #293).
+	// It must survive the Anthropic conversion verbatim and in position —
+	// GLM endpoints degrade quality and cache hits when it is dropped or
+	// reordered (spec §3.3). The OpenAI forwarding path keeps it naturally
+	// (rewriteOutgoing operates on the decoded raw body).
+	ReasoningContent string `json:"reasoning_content,omitempty"`
 }
 
 // textParts renders a message content value as its text form: a string is

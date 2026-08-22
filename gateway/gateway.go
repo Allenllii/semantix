@@ -38,6 +38,7 @@ type Gateway struct {
 	decider  *cache.L3Decider
 	injector *inject.Injector
 	usageLog *usage.Recorder
+	quota    *quotaEngine // nil unless [billing] enabled (gateway/quota.go)
 	client   *http.Client
 
 	// healthProbe checks upstream reachability for /healthz (nil or a
@@ -52,12 +53,28 @@ type Gateway struct {
 	closing    bool
 	disabled   bool // SEMANTIX_GATEWAY_DISABLE ablation switch
 
+	// Suspected-false-hit tracking (Issue #262 §3.3): the most recent L3
+	// reuse per session, bounded, so a same-session retry of a served
+	// query bypasses L3 and is recorded as L3FalseHit.
+	reuseMu  sync.Mutex
+	l3Reuses map[string]l3ReuseEntry
+
 	now func() time.Time
 
 	// lexicalBlocks counts zone-Hit candidates downgraded by the lexical
 	// support gate (Issue #260), for hit-rate-loss accounting.
 	lexicalBlocks atomic.Int64
 }
+
+// l3ReuseEntry records one L3-served request per session (Issue #262).
+type l3ReuseEntry struct {
+	Query   string // the served query, for retry similarity
+	SliceID string
+	At      time.Time // LRU eviction timestamp
+}
+
+// maxL3ReuseEntries bounds the per-session reuse map (LRU eviction).
+const maxL3ReuseEntries = 1024
 
 // disableEnv reports the ablation switch SEMANTIX_GATEWAY_DISABLE. Only
 // truthy values disable ("1", "true", "yes", "on") — "0"/"false" must keep
@@ -84,15 +101,24 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gateway: open store %s: %w", cfg.Store.DB, err)
 	}
-	// Startup is a process boundary: fold any journal into the base before
-	// serving (freeze-window semantics — the library never shifts mid-flight).
-	// Best-effort: a failed fold still leaves a consistent store.
-	if c, ok := store.(interface{ Compact() error }); ok {
-		if err := c.Compact(); err != nil {
-			log.Printf("gateway: store compact: %v", err)
-		}
+	// Startup is a process boundary: run the scoring + eviction pass and
+	// fold the journal before serving (freeze-window semantics — the
+	// library never shifts mid-flight; over-cap growth during a run is
+	// tolerated and converges at the next boot/gc). Best-effort: a failed
+	// pass still leaves a consistent store.
+	gcRes, gcErr := slice.GC(store, slice.GCOptions{
+		Rescore:     true,
+		MaxSlices:   cfg.Store.EffectiveMaxSlices(),
+		Params:      slice.DefaultScoreParams(),
+		ArchivePath: cfg.Store.DB + ".archive.jsonl",
+	})
+	if gcErr != nil {
+		log.Printf("gateway: store maintenance: %v", gcErr)
+	} else if gcRes.Removed > 0 || gcRes.RescoredWeights > 0 {
+		log.Printf("gateway: store maintenance: rescored=%d evicted=%d archived=%d capacity=%d",
+			gcRes.RescoredWeights, gcRes.Removed, gcRes.Archived, gcRes.Capacity)
 	}
-	idx := newRetriever(cfg.Retrieval.Retriever, cfg.Retrieval.VectorDim)
+	idx := newRetriever(cfg.Retrieval.Retriever, cfg.Retrieval.VectorDim, cfg.fusionConfig())
 	if err := loadIndex(store, idx); err != nil {
 		_ = closeStore(store)
 		return nil, fmt.Errorf("gateway: rebuild index: %w", err)
@@ -159,6 +185,7 @@ func New(cfg *Config) (*Gateway, error) {
 		usageLog: rec,
 		client:   &http.Client{Timeout: 120 * time.Second},
 		disabled: disableEnv(),
+		l3Reuses: make(map[string]l3ReuseEntry),
 		now:      time.Now,
 	}
 	// Grey-zone judge decisions become durable here (Issue #242 gap 1):
@@ -167,6 +194,41 @@ func New(cfg *Config) (*Gateway, error) {
 	g.decider.OnJudge = g.observeJudge
 	g.decider.OnLexicalGate = g.observeLexicalGate
 	g.healthProbe = g.probeUpstreams
+	if gcErr == nil && gcRes.Removed > 0 {
+		// Type-aware eviction observation (Issue #277): a library-level
+		// Compact event makes the startup eviction visible to kernel/event
+		// consumers. "maintenance" is a fixed library-scope session id, not
+		// a real conversation. Best-effort — a failed write only drops the
+		// observation.
+		data, merr := json.Marshal(kernelevent.CompactPayload{
+			Trigger:       "evict",
+			Before:        gcRes.Checked,
+			After:         gcRes.Checked - gcRes.Removed,
+			EvictedByType: gcRes.EvictedByType,
+		})
+		if merr == nil {
+			g.recordKernelEvent("maintenance", "", "", kernelevent.Event{
+				Kind: kernelevent.Compact,
+				At:   time.Now(),
+				Data: data,
+			})
+		}
+	}
+
+	// Customer free-tier gate (gateway/quota.go). The persisted counter
+	// lives next to the slice store unless [billing] state_file overrides.
+	if cfg.Billing.Enabled {
+		statePath := cfg.Billing.StateFile
+		if statePath == "" {
+			statePath = filepath.Join(filepath.Dir(cfg.Store.DB), "quota-state.json")
+		}
+		qe, qerr := newQuotaEngine(cfg.Billing, statePath, g.client, g.now)
+		if qerr != nil {
+			_ = closeStore(store)
+			return nil, fmt.Errorf("gateway: billing: %w", qerr)
+		}
+		g.quota = qe
+	}
 	return g, nil
 }
 

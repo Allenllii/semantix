@@ -17,6 +17,20 @@ type fakeExtractor struct {
 	meta  slice.SliceMeta
 }
 
+// openTestStore opens a real file store and registers Close so the journal
+// handle is released before t.TempDir() teardown — on Windows the .journal
+// file stays locked while any handle is open, which fails RemoveAll cleanup
+// (CI on Linux can unlink open files, so this only bites local Windows runs).
+func openTestStore(t *testing.T, path string) slice.Store {
+	t.Helper()
+	st, err := slice.NewFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeStore(st) })
+	return st
+}
+
 func (f *fakeExtractor) Extract(_ []byte, meta slice.SliceMeta) ([]*slice.Slice, error) {
 	f.meta = meta
 	return f.items, nil
@@ -129,6 +143,38 @@ func TestExtractStoresSlicesInSelectedScope(t *testing.T) {
 	}
 }
 
+func TestExtractDoesNotStoreProjectContextInUserScope(t *testing.T) {
+	input := filepath.Join(t.TempDir(), "session.jsonl")
+	if err := os.WriteFile(input, []byte("{\"role\":\"user\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	extractor := &fakeExtractor{items: []*slice.Slice{
+		{ID: "prompt", Type: slice.Prompt, Scope: slice.Project, Content: []byte("question")},
+		{ID: "context", Type: slice.Context, Scope: slice.Project, Content: []byte("project paths")},
+	}}
+	store := newFakeStore()
+	deps := dependencies{
+		newExtractor: func() slice.Extractor { return extractor },
+		openStore:    func(string) (slice.Store, error) { return store, nil },
+		newIndex:     func() slice.Index { return bm25.New() },
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"extract", "--input", input, "--scope", "user", "--db", filepath.Join(t.TempDir(), "user.db")}, &stdout, &stderr, deps)
+	if code != 0 {
+		t.Fatalf("run() code = %d, stderr = %q", code, stderr.String())
+	}
+	if store.items["context"] != nil {
+		t.Fatal("project Context slice was stored in user scope")
+	}
+	if store.items["prompt"] == nil || store.items["prompt"].Scope != slice.User {
+		t.Fatalf("prompt slice = %#v, want user scope", store.items["prompt"])
+	}
+	if !strings.Contains(stdout.String(), "extracted=2 stored=1 scope=user") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
 func TestSearchLoadsStoreAndRanksResults(t *testing.T) {
 	store := newFakeStore(
 		&slice.Slice{ID: "relevant", Scope: slice.Project, Content: []byte("BM25 cache retrieval")},
@@ -186,10 +232,7 @@ func TestExtractWithProductionDependencies(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("run() code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	items, err := store.List(slice.Project)
 	if err != nil {
 		t.Fatal(err)
@@ -269,7 +312,9 @@ func TestHelpListsAllCommandsByGroup(t *testing.T) {
 		t.Fatalf("help: code = %d, stderr = %q", code, stderr.String())
 	}
 	out := stdout.String()
-	for _, group := range []string{"Kernel operations", "Product & management", "Maintenance", "Service mode"} {
+	// Service mode was removed in the tool-set minimization (serve/watch were
+	// never implemented); only groups with registered commands are shown.
+	for _, group := range []string{"Kernel operations", "Product & management", "Maintenance"} {
 		if !strings.Contains(out, group) {
 			t.Errorf("help missing group %q:\n%s", group, out)
 		}
@@ -297,28 +342,23 @@ func TestHelpCommandShowsSynopsis(t *testing.T) {
 	}
 }
 
-// TestHelpShowsPlannedGroups: groups without registered commands render
-// their planned command names; a group with a registered command must not
-// be listed as planned.
-func TestHelpShowsPlannedGroups(t *testing.T) {
+// TestHelpHasNoEmptyOrPlannedGroups: after the tool-set minimization the
+// command tree has no placeholder groups — help must not render an empty
+// "Service mode" header or any "(planned: ...)" suffix, and every shown group
+// must carry at least one real command.
+func TestHelpHasNoEmptyOrPlannedGroups(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"help"}, &stdout, &stderr, productionDependencies()); code != 0 {
 		t.Fatalf("help: code = %d", code)
 	}
 	out := stdout.String()
-	for _, want := range []string{
-		"Maintenance",
-		"Service mode (planned: serve watch)",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("help missing %q:\n%s", want, out)
+	for _, unwanted := range []string{"Service mode", "(planned:"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("help must not render %q after minimization:\n%s", unwanted, out)
 		}
 	}
-	if strings.Contains(out, "Product & management (planned") {
-		t.Errorf("doctor is implemented; the product group must not render as planned:\n%s", out)
-	}
-	if strings.Contains(out, "Maintenance (planned") {
-		t.Errorf("gc/export/import are implemented; the maintenance group must not render as planned:\n%s", out)
+	if !strings.Contains(out, "Maintenance") {
+		t.Errorf("Maintenance group (gc) must still be shown:\n%s", out)
 	}
 }
 

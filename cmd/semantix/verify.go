@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"semantix/kernel/judge"
@@ -35,20 +36,197 @@ type verifyRow struct {
 
 // verifySummary is the --json envelope payload (M2-U22 §4.2).
 type verifySummary struct {
-	Sessions       int          `json:"sessions"`
-	TrainedTurns   int          `json:"trained_turns"`
-	ReplaySessions int          `json:"replay_sessions"`
-	ReplayedTurns  int          `json:"replayed_turns"`
-	ZonesHit       int          `json:"zones_hit"`
-	ZonesGrey      int          `json:"zones_grey"`
-	ZonesMiss      int          `json:"zones_miss"`
-	GreyRatioPct   float64      `json:"grey_ratio_pct"`
-	GreyTargetPct  float64      `json:"grey_target_pct"`
-	RelevancePct   float64      `json:"relevance_pct"`
-	Icon           string       `json:"icon"`
-	WarnGrey       bool         `json:"warn_grey"`
-	Judge          *judge.Stats `json:"judge,omitempty"`
-	Rows           []verifyRow  `json:"rows"`
+	Sessions       int                `json:"sessions"`
+	TrainedTurns   int                `json:"trained_turns"`
+	ReplaySessions int                `json:"replay_sessions"`
+	ReplayedTurns  int                `json:"replayed_turns"`
+	ZonesHit       int                `json:"zones_hit"`
+	ZonesGrey      int                `json:"zones_grey"`
+	ZonesMiss      int                `json:"zones_miss"`
+	GreyRatioPct   float64            `json:"grey_ratio_pct"`
+	GreyTargetPct  float64            `json:"grey_target_pct"`
+	RelevancePct   float64            `json:"relevance_pct"`
+	Icon           string             `json:"icon"`
+	WarnGrey       bool               `json:"warn_grey"`
+	Judge          *verifyJudgeJSON   `json:"judge,omitempty"`
+	Calibration    *verifyCalibration `json:"calibration,omitempty"`
+	Rows           []verifyRow        `json:"rows"`
+}
+
+// verifyJudgeJSON is the CLI-side wire shape for judge.Stats. The kernel type
+// carries no json tags, so marshaling it directly published PascalCase keys
+// ("NeedJudge", and — once Issue #245 landed — "JudgeError") into an envelope
+// that is snake_case everywhere else. Keeping the mapping here follows the
+// house rule already stated in search.go: the CLI owns its wire format and the
+// kernel type stays policy-free.
+type verifyJudgeJSON struct {
+	Confirmed     int `json:"confirmed"`
+	RulesReject   int `json:"rules_reject"`
+	Fingerprint   int `json:"fingerprint"`
+	JudgeReject   int `json:"judge_reject"`
+	JudgeError    int `json:"judge_error"`
+	JudgeApproved int `json:"judge_approved"`
+	NeedJudge     int `json:"need_judge"`
+}
+
+func newVerifyJudgeJSON(s judge.Stats) *verifyJudgeJSON {
+	return &verifyJudgeJSON{
+		Confirmed:     s.Confirmed,
+		RulesReject:   s.RulesReject,
+		Fingerprint:   s.Fingerprint,
+		JudgeReject:   s.JudgeReject,
+		JudgeError:    s.JudgeError,
+		JudgeApproved: s.JudgeApproved,
+		NeedJudge:     s.NeedJudge,
+	}
+}
+
+// verifyCalibration is the Issue #262 calibration report: the replay stream
+// bucketed by relative confidence r = top2/top1 — the axis the three-region
+// gate actually classifies on (classifyTop1) — showing per-bin zone shares
+// under the current thresholds plus the three-region drift against
+// zone.Default(). A mistuned tau/abs threshold shows up as a shift in the
+// per-bin hit/grey/miss distribution and in the drift block (Issue #262
+// acceptance: "人为调坏 TauHigh 后校准报告能显示失配"). With --labels, the
+// oracle marks per-turn relevance and the report adds per-bin false
+// positives (hits the oracle rejects) and precision — the P-CHR simplified
+// distribution (GPT Semantic Cache, arXiv:2411.05276).
+type verifyCalibration struct {
+	Bins    []verifyBin     `json:"bins"`
+	Current [3]int          `json:"current"` // zone counts under the current thresholds
+	Default [3]int          `json:"default"` // zone counts under zone.Default()
+	Labeled bool            `json:"labeled"` // --labels was provided
+	Marks   map[string]bool `json:"-"`       // oracle relevance marks (session\x00turn -> relevant)
+}
+
+// verifyBin is one relative-confidence bucket [Lo,Hi) of the replay stream.
+type verifyBin struct {
+	Bin       string   `json:"bin"` // e.g. "[0.00,0.10)"
+	N         int      `json:"n"`
+	Hit       int      `json:"hit"`
+	Grey      int      `json:"grey"`
+	Miss      int      `json:"miss"`
+	HitPct    float64  `json:"hit_pct,omitempty"`
+	Top1Sum   float64  `json:"-"`
+	Top1Avg   float64  `json:"top1_avg,omitempty"`
+	FP        int      `json:"fp,omitempty"`        // labeled irrelevant but judged hit
+	Precision *float64 `json:"precision,omitempty"` // labeled: (hit-FP)/hit, nil when unlabeled
+}
+
+// verifyCalibBuckets is the fixed bucket plan: ten 0.1-wide relative-
+// confidence bins over [0,1]. r == 1 (exact tie, top2 == top1) lands in the
+// last bin.
+const verifyCalibBuckets = 10
+
+// calibBinIndex maps a relative confidence r ∈ [0,1] to a bucket index.
+func calibBinIndex(r float64) int {
+	if math.IsNaN(r) || r < 0 {
+		return 0
+	}
+	if r >= 1 {
+		return verifyCalibBuckets - 1
+	}
+	return int(r * verifyCalibBuckets)
+}
+
+// calibBinLabel renders the bucket range as "[lo,hi)" (last bucket "[..,1]").
+func calibBinLabel(i int) string {
+	lo := float64(i) / verifyCalibBuckets
+	hi := float64(i+1) / verifyCalibBuckets
+	if i == verifyCalibBuckets-1 {
+		return fmt.Sprintf("[%.2f,1.00]", lo)
+	}
+	return fmt.Sprintf("[%.2f,%.2f)", lo, hi)
+}
+
+// readVerifyLabels parses the --labels TSV (session<TAB>turn<TAB>1|0; '#'
+// comments and blank lines skipped). Turn relevance marks the oracle side of
+// the calibration report: a hit the oracle marks 0 is a false positive.
+func readVerifyLabels(path string) (map[string]bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	marks := make(map[string]bool)
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("labels: malformed line %q (want session<TAB>turn<TAB>1|0)", line)
+		}
+		rel := false
+		switch parts[2] {
+		case "1":
+			rel = true
+		case "0":
+		default:
+			return nil, fmt.Errorf("labels: malformed relevance %q in line %q (want 1|0)", parts[2], line)
+		}
+		turn, err := strconv.Atoi(parts[1])
+		if err != nil {
+			return nil, fmt.Errorf("labels: malformed turn %q in line %q", parts[1], line)
+		}
+		marks[fmt.Sprintf("%s\x00%d", parts[0], turn)] = rel
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	return marks, nil
+}
+
+// printVerifyCalibration renders the calibration report (text mode) after
+// the replay table: per-bin distribution plus the three-region drift block.
+func printVerifyCalibration(stdout io.Writer, cal *verifyCalibration) {
+	if cal == nil {
+		return
+	}
+	fmt.Fprintln(stdout, "# calibration: 分桶命中分布——相对置信度 r = top2/top1（classifyTop1 实际判定轴）")
+	hdr := "#   bin        n   hit grey miss  hit%   top1_avg"
+	if cal.Labeled {
+		hdr += "   fp  precision"
+	}
+	fmt.Fprintln(stdout, hdr)
+	for i := range cal.Bins {
+		b := &cal.Bins[i]
+		if b.N == 0 {
+			continue
+		}
+		hitPct := 100 * float64(b.Hit) / float64(b.N)
+		line := fmt.Sprintf("#   %-10s %4d %4d %4d %4d  %5.1f%%  %7.3f",
+			calibBinLabel(i), b.N, b.Hit, b.Grey, b.Miss, hitPct, b.Top1Avg)
+		if cal.Labeled {
+			if b.Precision != nil {
+				line += fmt.Sprintf("  %3d  %5.1f%%", b.FP, *b.Precision*100)
+			} else {
+				line += "    -        -"
+			}
+		}
+		fmt.Fprintln(stdout, line)
+	}
+	// Three-region drift: current thresholds vs zone.Default().
+	def := zone.Default()
+	fmt.Fprintf(stdout, "# drift vs default thresholds (tau_high=%.2f tau_low=%.2f abs_high=%.2f abs_low=%.2f)\n",
+		def.TauHigh, def.TauLow, def.AbsHigh, def.AbsLow)
+	fmt.Fprintln(stdout, "#   zone    current  default   delta")
+	total := cal.Current[0] + cal.Current[1] + cal.Current[2]
+	if total == 0 {
+		total = 1 // avoid div-by-zero on an empty replay stream
+	}
+	defTotal := cal.Default[0] + cal.Default[1] + cal.Default[2]
+	if defTotal == 0 {
+		defTotal = 1
+	}
+	names := []string{"miss", "grey", "hit"}
+	for i := range names {
+		cur := 100 * float64(cal.Current[i]) / float64(total)
+		dft := 100 * float64(cal.Default[i]) / float64(defTotal)
+		fmt.Fprintf(stdout, "#   %-6s %7.1f%% %7.1f%%  %+5.1fpt\n", names[i], cur, dft, cur-dft)
+	}
 }
 
 // verifyVerdict returns the one-line gate verdict icon (Issue #153 / U29):
@@ -222,6 +400,8 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	strict := fs.Bool("strict", false, "return exit code 3 when the grey-zone ratio exceeds --grey-target")
 	usageDB := fs.String("usage-db", filepath.Join(".semantix", "usage.jsonl"), "usage log for the L1 hit-rate regression footer (missing = skipped)")
 	jsonOut := fs.Bool("json", false, "output as JSON envelope (summary + rows)")
+	calibrate := fs.Bool("calibrate", false, "append the Issue #262 calibration report: per-bin hit/miss distribution + three-region drift vs default thresholds")
+	labelsPath := fs.String("labels", "", "optional oracle relevance marks: session<TAB>turn<TAB>1|0 (implies --calibrate; adds per-bin fp/precision)")
 	zf := addZoneFlags(fs)
 	judgeProtocol := fs.String("judge-protocol", "", "LLM judge protocol: openai|anthropic (empty = rules only)")
 	judgeBaseURL := fs.String("judge-base-url", "", "LLM judge endpoint base URL (e.g. https://api.openai.com/v1)")
@@ -287,6 +467,14 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 			return 1
 		}
 	}
+	// Release the store journal before returning: runVerify is
+	// called in-process (tests, embedding), so the journal file
+	// handle must not outlive the replay (Windows TempDir cleanup).
+	defer func() {
+		if c, ok := store.(interface{ Close() error }); ok {
+			_ = c.Close()
+		}
+	}()
 	idx := deps.newIndex()
 
 	// Train: index every user turn of earlier sessions as a P-slice.
@@ -343,6 +531,27 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	var jstats judge.Stats
 	gate := judge.RuleGate{Judge: jg, Stats: &jstats}
 
+	// Issue #262 calibration collection: per-bin relative-confidence
+	// distribution under the current vs default thresholds, plus optional
+	// oracle labels for per-bin fp/precision (P-CHR simplified).
+	calMode := *calibrate || *labelsPath != ""
+	var cal *verifyCalibration
+	if calMode {
+		cal = &verifyCalibration{Bins: make([]verifyBin, verifyCalibBuckets)}
+		for i := range cal.Bins {
+			cal.Bins[i].Bin = calibBinLabel(i)
+		}
+		if *labelsPath != "" {
+			marks, err := readVerifyLabels(*labelsPath)
+			if err != nil {
+				fmt.Fprintf(stdout, "verify: labels: %v\n", err)
+				return 2
+			}
+			cal.Marks = marks
+			cal.Labeled = true
+		}
+	}
+
 	replayed := 0
 	zones := zf.zones()
 	var zoneCount [3]int // [0]=miss [1]=grey [2]=hit
@@ -361,11 +570,11 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 			replayed++
 			top1 := ""
 			score := 0.0
+			top2 := 0.0
 			z := zone.Miss
 			if len(hits) > 0 {
 				top1 = string(hits[0].Slice.Content)
 				score = hits[0].Score
-				top2 := 0.0
 				if len(hits) > 1 {
 					top2 = hits[1].Score
 				}
@@ -384,6 +593,34 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 				}
 			}
 			zoneCount[int(z)]++
+			if cal != nil {
+				// Calibration: relative confidence r = top2/top1 is the axis
+				// classifyTop1 decides on; bucket it and classify under both
+				// the current and the default thresholds (Issue #262).
+				r := 0.0
+				if score > 0 {
+					r = top2 / score
+				}
+				bi := calibBinIndex(r)
+				b := &cal.Bins[bi]
+				b.N++
+				switch z {
+				case zone.Hit:
+					b.Hit++
+				case zone.Grey:
+					b.Grey++
+				default:
+					b.Miss++
+				}
+				b.Top1Sum += score
+				cal.Current[int(z)]++
+				cal.Default[int(classifyTop1(zone.Default(), score, top2))]++
+				if cal.Marks != nil {
+					if rel, ok := cal.Marks[fmt.Sprintf("%s\x00%d", t.Session, t.Turn)]; ok && z == zone.Hit && !rel {
+						b.FP++ // oracle says irrelevant but the gate would reuse
+					}
+				}
+			}
 			if *jsonOut {
 				rows = append(rows, verifyRow{
 					Session: t.Session, Turn: t.Turn, Score: score, Zone: z.String(), Top1: top1, Query: t.Query,
@@ -391,6 +628,21 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 			} else {
 				fmt.Fprintf(stdout, "%s\t%d\t%.4f\t%s\t%s\t%s\n",
 					tabSafe(t.Session), t.Turn, score, verifyZoneIcon(z), tabSafe(top1), tabSafe(t.Query))
+			}
+		}
+	}
+	// Finalize the calibration bins: averages and labeled precision.
+	if cal != nil {
+		for i := range cal.Bins {
+			b := &cal.Bins[i]
+			if b.N == 0 {
+				continue
+			}
+			b.HitPct = 100 * float64(b.Hit) / float64(b.N)
+			b.Top1Avg = b.Top1Sum / float64(b.N)
+			if cal.Labeled && b.Hit > 0 {
+				p := float64(b.Hit-b.FP) / float64(b.Hit)
+				b.Precision = &p
 			}
 		}
 	}
@@ -412,8 +664,11 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 			WarnGrey: *greyTarget > 0 && greyRatio > *greyTarget,
 			Rows:     rows,
 		}
+		if cal != nil {
+			summary.Calibration = cal
+		}
 		if *judgeProtocol != "" {
-			summary.Judge = &jstats
+			summary.Judge = newVerifyJudgeJSON(jstats)
 		}
 		if err := writeJSON(stdout, okEnvelope("verify", summary)); err != nil {
 			fmt.Fprintf(stdout, "verify: %v\n", err)
@@ -440,10 +695,14 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 		fmt.Fprintf(stdout, "# ⚠ WARN grey_ratio=%.1f%% exceeds target %.1f%%\n", greyRatio, *greyTarget)
 	}
 	if *judgeProtocol != "" {
-		fmt.Fprintf(stdout, "# judge: confirmed=%d rules_reject=%d fingerprint=%d judge_reject=%d judge_approved=%d waste=%d\n",
-			jstats.Confirmed, jstats.RulesReject, jstats.Fingerprint, jstats.JudgeReject, jstats.JudgeApproved,
-			jstats.JudgeReject+jstats.Fingerprint+jstats.RulesReject)
+		// waste keeps its pre-#245 meaning. Judge errors used to arrive inside
+		// RulesReject, so JudgeError must be added back into the total or this
+		// published number would silently shrink as a side effect of the split.
+		fmt.Fprintf(stdout, "# judge: confirmed=%d rules_reject=%d fingerprint=%d judge_reject=%d judge_error=%d judge_approved=%d waste=%d\n",
+			jstats.Confirmed, jstats.RulesReject, jstats.Fingerprint, jstats.JudgeReject, jstats.JudgeError, jstats.JudgeApproved,
+			jstats.JudgeReject+jstats.Fingerprint+jstats.RulesReject+jstats.JudgeError)
 	}
+	printVerifyCalibration(stdout, cal)
 	if *greyTarget > 0 && greyRatio > *greyTarget {
 		// Issue #7 acceptance: the grey-zone share is an observability
 		// metric with a hard alarm — the threshold can be tuned but a

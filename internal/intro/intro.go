@@ -1,8 +1,9 @@
-package main
+// Package intro renders the branded SEMANTIX pixel-wordmark animation.
+// It is shared by the `semantix intro` command and the semantix-agent
+// interactive startup (Issue #307, the integration step promised in PR #180).
+package intro
 
 import (
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -13,13 +14,22 @@ import (
 )
 
 const (
-	semantixGreen = "\x1b[38;2;22;139;109m"
-	shadowGreen   = "\x1b[38;2;11;72;57m"
-	resetColor    = "\x1b[0m"
-	introVersion  = "v0.2.0"
+	brandGreen  = "\x1b[38;2;0;156;109m" // H4 brand green #009C6D
+	shadowGreen = "\x1b[38;2;0;78;54m"   // half-luminance scan tail
+	resetColor  = "\x1b[0m"
 )
 
-var introGlyphs = map[rune][]string{
+// Options selects what the intro renders; zero value plays the full
+// animation with the "dev" version line.
+type Options struct {
+	// Version is the product version shown in the banner (ldflags
+	// main.version of the calling binary). Empty falls back to "dev".
+	Version string
+	// NoAnimation renders only the final frame.
+	NoAnimation bool
+}
+
+var glyphs = map[rune][]string{
 	'S': {"11111", "10000", "10000", "11111", "00001", "00001", "11111"},
 	'E': {"11111", "10000", "10000", "11110", "10000", "10000", "11111"},
 	'M': {"10001", "11011", "10101", "10101", "10001", "10001", "10001"},
@@ -30,34 +40,30 @@ var introGlyphs = map[rune][]string{
 	'X': {"10001", "10001", "01010", "00100", "01010", "10001", "10001"},
 }
 
-type introLayout struct {
+type layout struct {
 	block     string
 	letterGap string
 }
 
 var (
-	wideIntroLayout   = introLayout{block: "██", letterGap: "     "}
-	narrowIntroLayout = introLayout{block: "█", letterGap: "  "}
-	plainIntroLayout  = introLayout{}
+	wideLayout   = layout{block: "██", letterGap: "     "}
+	narrowLayout = layout{block: "█", letterGap: "  "}
+	plainLayout  = layout{}
 )
 
-func runIntro(args []string, stdout io.Writer) int {
-	fs := flag.NewFlagSet("intro", flag.ContinueOnError)
-	fs.SetOutput(stdout)
-	noAnimation := fs.Bool("no-animation", false, "render the final frame without animation")
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return 0 // --help is a successful request (U19 contract)
-		}
-		return 2
+// Run renders the intro to stdout following the terminal-capability rules
+// (TTY, TERM, NO_COLOR, window size) and returns a process exit code.
+func Run(stdout io.Writer, opts Options) int {
+	version := opts.Version
+	if version == "" {
+		version = "dev"
 	}
-
-	effects := supportsTerminalEffects(stdout)
+	effects := TerminalSupportsEffects(stdout)
 	color := effects && os.Getenv("NO_COLOR") == ""
 	columns, rows := terminalSize(stdout)
-	layout := introLayoutForSize(columns, rows)
-	if *noAnimation || !effects || layout.block == "" {
-		fmt.Fprint(stdout, renderIntroFrameWithLayout(1, color, layout))
+	lay := layoutForSize(columns, rows)
+	if opts.NoAnimation || !effects || lay.block == "" {
+		fmt.Fprint(stdout, renderFrame(1, color, lay, version))
 		return 0
 	}
 
@@ -66,11 +72,22 @@ func runIntro(args []string, stdout io.Writer) int {
 	for frame := range frames {
 		frames[frame] = float64(frame+1) / frameCount
 	}
-	renderIntroAnimation(stdout, frames, color, layout, 28*time.Millisecond)
+	renderAnimation(stdout, frames, color, lay, version, 28*time.Millisecond)
 	return 0
 }
 
-func renderIntroAnimation(stdout io.Writer, frames []float64, color bool, layout introLayout, delay time.Duration) {
+// TerminalSupportsEffects reports whether w is an interactive terminal that
+// can host the animation (character device, TERM not "dumb").
+func TerminalSupportsEffects(w io.Writer) bool {
+	file, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0 && os.Getenv("TERM") != "dumb"
+}
+
+func renderAnimation(stdout io.Writer, frames []float64, color bool, lay layout, version string, delay time.Duration) {
 	// Animate in the terminal's alternate screen buffer. Some terminals do not
 	// implement cursor save/restore consistently, especially after a long line
 	// wraps. The alternate buffer guarantees that every intermediate frame is
@@ -78,14 +95,14 @@ func renderIntroAnimation(stdout io.Writer, frames []float64, color bool, layout
 	fmt.Fprint(stdout, "\x1b[?1049h\x1b[?25l")
 	for _, progress := range frames {
 		fmt.Fprint(stdout, "\x1b[2J\x1b[H")
-		fmt.Fprint(stdout, renderIntroFrameWithLayout(progress, color, layout))
+		fmt.Fprint(stdout, renderFrame(progress, color, lay, version))
 		time.Sleep(delay)
 	}
 	fmt.Fprint(stdout, "\x1b[?25h\x1b[?1049l")
-	fmt.Fprint(stdout, renderIntroFrameWithLayout(1, color, layout))
+	fmt.Fprint(stdout, renderFrame(1, color, lay, version))
 }
 
-func introLayoutForSize(columns, rows int) introLayout {
+func layoutForSize(columns, rows int) layout {
 	const (
 		safeMargin     = 2
 		minimumRows    = 13
@@ -95,10 +112,10 @@ func introLayoutForSize(columns, rows int) introLayout {
 		maximumSpacing = 6
 	)
 	if rows > 0 && rows < minimumRows {
-		return plainIntroLayout
+		return plainLayout
 	}
 	if columns <= 0 {
-		return wideIntroLayout
+		return wideLayout
 	}
 	available := columns - safeMargin
 	for blockWidth := 2; blockWidth >= 1; blockWidth-- {
@@ -107,62 +124,49 @@ func introLayoutForSize(columns, rows int) introLayout {
 			continue
 		}
 		spacing := max(1, min(maximumSpacing, remaining/letterGaps)-1)
-		return introLayout{
+		return layout{
 			block:     strings.Repeat("█", blockWidth),
 			letterGap: strings.Repeat(" ", spacing),
 		}
 	}
-	return plainIntroLayout
+	return plainLayout
 }
 
-func introWidth(layout introLayout) int {
+func width(lay layout) int {
 	const letters = len("SEMANTIX")
-	return letters*5*utf8.RuneCountInString(layout.block) + (letters-1)*utf8.RuneCountInString(layout.letterGap)
+	return letters*5*utf8.RuneCountInString(lay.block) + (letters-1)*utf8.RuneCountInString(lay.letterGap)
 }
 
-func supportsTerminalEffects(w io.Writer) bool {
-	file, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	info, err := file.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0 && os.Getenv("TERM") != "dumb"
-}
-
-func renderIntroFrame(progress float64, color bool) string {
-	return renderIntroFrameWithLayout(progress, color, wideIntroLayout)
-}
-
-func renderIntroFrameWithLayout(progress float64, color bool, layout introLayout) string {
+func renderFrame(progress float64, color bool, lay layout, version string) string {
 	const word = "SEMANTIX"
 	totalPixels := len(word) * 35
 	visiblePixels := int(progress * float64(totalPixels))
 	var out strings.Builder
 
 	if color {
-		out.WriteString(semantixGreen)
+		out.WriteString(brandGreen)
 	}
 	out.WriteString("╭──────────────────────────────╮\n")
 	out.WriteString("│ ")
 	if color {
-		out.WriteString(introStarColor(progress))
+		out.WriteString(starColor(progress))
 	}
 	out.WriteString("✦")
 	if color {
-		out.WriteString(semantixGreen)
+		out.WriteString(brandGreen)
 	}
 	out.WriteString("  Semantix ")
-	out.WriteString(introVersion)
-	out.WriteString(strings.Repeat(" ", max(1, 17-len(introVersion))))
+	out.WriteString(version)
+	out.WriteString(strings.Repeat(" ", max(1, 17-len(version))))
 	out.WriteString("│\n")
 	out.WriteString("╰──────────────────────────────╯")
 	if color {
 		out.WriteString(resetColor)
 	}
 	out.WriteString("\n\n")
-	if layout.block == "" {
+	if lay.block == "" {
 		if color {
-			out.WriteString(semantixGreen)
+			out.WriteString(brandGreen)
 		}
 		out.WriteString("SEMANTIX\n")
 		if color {
@@ -173,7 +177,7 @@ func renderIntroFrameWithLayout(progress float64, color bool, layout introLayout
 
 	for row := 0; row < 7; row++ {
 		for letterIndex, letter := range word {
-			glyph := introGlyphs[letter]
+			glyph := glyphs[letter]
 			for column := 0; column < 5; column++ {
 				// Reveal each glyph from its top-left corner to its
 				// bottom-right corner, then continue into the next glyph.
@@ -185,15 +189,15 @@ func renderIntroFrameWithLayout(progress float64, color bool, layout introLayout
 					if color && progress < 1 && pixelIndex+18 > visiblePixels {
 						out.WriteString(shadowGreen)
 					} else if color {
-						out.WriteString(semantixGreen)
+						out.WriteString(brandGreen)
 					}
-					out.WriteString(layout.block)
+					out.WriteString(lay.block)
 				} else {
-					out.WriteString(strings.Repeat(" ", utf8.RuneCountInString(layout.block)))
+					out.WriteString(strings.Repeat(" ", utf8.RuneCountInString(lay.block)))
 				}
 			}
 			if letterIndex < len(word)-1 {
-				out.WriteString(layout.letterGap)
+				out.WriteString(lay.letterGap)
 			}
 		}
 		if color {
@@ -204,7 +208,7 @@ func renderIntroFrameWithLayout(progress float64, color bool, layout introLayout
 	return out.String()
 }
 
-func introStarColor(progress float64) string {
+func starColor(progress float64) string {
 	// Two restrained pulses: one as the scan begins and one as it settles.
 	const pulseWidth = 0.22
 	strength := 0.0
@@ -213,7 +217,7 @@ func introStarColor(progress float64) string {
 	} else if progress > 1-pulseWidth && progress < 1 {
 		strength = math.Sin(math.Pi * (progress - (1 - pulseWidth)) / pulseWidth)
 	}
-	base := [3]float64{22, 139, 109}
+	base := [3]float64{0, 156, 109}
 	highlight := [3]float64{105, 255, 211}
 	r := int(base[0] + (highlight[0]-base[0])*strength)
 	g := int(base[1] + (highlight[1]-base[1])*strength)

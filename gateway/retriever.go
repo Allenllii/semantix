@@ -1,12 +1,12 @@
 package gateway
 
 import (
-	"sort"
 	"strings"
 	"sync"
 
 	"semantix/kernel/bm25"
 	"semantix/kernel/embed"
+	"semantix/kernel/fuse"
 	"semantix/kernel/slice"
 )
 
@@ -29,7 +29,9 @@ const defaultVectorDim = 256
 // newRetriever builds the retrieval index selected by [retrieval] retriever.
 // Unknown kinds fall back to bm25 (config.validate rejects them before New,
 // so this default is defensive only). dim seeds the HashEmbedder (<=0 → 256).
-func newRetriever(kind string, dim int) slice.Index {
+// fusion configures the hybrid fusion strategy (Issue #274); it is ignored
+// by the single-route indexes.
+func newRetriever(kind string, dim int, fusion fuse.Config) slice.Index {
 	if dim <= 0 {
 		dim = defaultVectorDim
 	}
@@ -37,7 +39,7 @@ func newRetriever(kind string, dim int) slice.Index {
 	case "vector":
 		return newVectorIndex(dim)
 	case "hybrid":
-		return &hybridIndex{bm: bm25.New(), vec: newVectorIndex(dim)}
+		return &hybridIndex{bm: bm25.New(), vec: newVectorIndex(dim), fusion: fusion}
 	default:
 		return bm25.New()
 	}
@@ -113,10 +115,12 @@ func (v *vectorIndex) Search(query string, k int, scope slice.Scope) ([]slice.Hi
 	return out, nil
 }
 
-// hybridIndex runs BM25 and vector retrieval and fuses the top-k per route.
+// hybridIndex runs BM25 and vector retrieval and fuses the top-k per route
+// through kernel/fuse (Issue #274 single source of truth).
 type hybridIndex struct {
-	bm  slice.Index // *bm25.Index
-	vec *vectorIndex
+	bm      slice.Index // *bm25.Index
+	vec     *vectorIndex
+	fusion  fuse.Config
 }
 
 func (h *hybridIndex) Insert(s *slice.Slice) error {
@@ -145,82 +149,5 @@ func (h *hybridIndex) Search(query string, k int, scope slice.Scope) ([]slice.Hi
 	if err != nil {
 		return nil, err
 	}
-	return fuseHits(bmHits, vecHits, k), nil
-}
-
-// fuseHits normalizes each route's score to [0,1] relative to that route's
-// top-1 (a route with no results contributes nothing) and averages them.
-// The fused score stays on the bounded scale, so the zone classifier's
-// absolute floors behave like the pure-cosine case.
-func fuseHits(bm, vec []slice.Hit, k int) []slice.Hit {
-	norm := func(hits []slice.Hit) map[string]float64 {
-		m := map[string]float64{}
-		if len(hits) == 0 {
-			return m
-		}
-		top1 := hits[0].Score
-		if top1 <= 0 {
-			return m
-		}
-		for _, h := range hits {
-			if h.Score > 0 {
-				m[h.Slice.ID] = h.Score / top1
-			}
-		}
-		return m
-	}
-	bmN := norm(bm)
-	vecN := norm(vec)
-	if len(bmN) == 0 && len(vecN) == 0 {
-		return []slice.Hit{}
-	}
-
-	merged := map[string]*slice.Slice{}
-	score := map[string]float64{}
-	for _, h := range bm {
-		if _, ok := merged[h.Slice.ID]; !ok {
-			merged[h.Slice.ID] = h.Slice
-			score[h.Slice.ID] = 0
-		}
-	}
-	for _, h := range vec {
-		if _, ok := merged[h.Slice.ID]; !ok {
-			merged[h.Slice.ID] = h.Slice
-			score[h.Slice.ID] = 0
-		}
-	}
-	for id := range merged {
-		var s float64
-		if v, ok := bmN[id]; ok {
-			s += v
-		}
-		if v, ok := vecN[id]; ok {
-			s += v
-		}
-		score[id] = s / 2
-	}
-
-	out := make([]slice.Hit, 0, len(merged))
-	for id, s := range merged {
-		if score[id] > 0 { // drop no-signal candidates, like bm25's score<=0 filter
-			// Lexical support = the normalized BM25 route contribution; 0 means
-			// the candidate was a pure-vector hit with no term overlap (Issue
-			// #260). A fused index always evaluates it, so LexicalValid is set.
-			lx := 0.0
-			if v, ok := bmN[id]; ok {
-				lx = v
-			}
-			out = append(out, slice.Hit{Slice: s, Score: score[id], Lexical: lx, LexicalValid: true})
-		}
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Score == out[j].Score {
-			return out[i].Slice.ID < out[j].Slice.ID
-		}
-		return out[i].Score > out[j].Score
-	})
-	if len(out) > k {
-		out = out[:k]
-	}
-	return out
+	return fuse.Fuse(bmHits, vecHits, query, k, h.fusion), nil
 }

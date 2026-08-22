@@ -76,6 +76,10 @@ type chatTUI struct {
 	// drag-select, the transcript scrollbar, and wheel-scroll while it's on,
 	// since the terminal no longer forwards those events to Reasonix.
 	mouseCaptureOff bool
+	// shuttingDown is irreversible once tuiShutdownMsg is received. It prevents
+	// focus/resize/settle events and already-armed timers from re-enabling mouse
+	// tracking while Bubble Tea restores the parent shell.
+	shuttingDown bool
 
 	input       textarea.Model
 	composerSel composerSelection
@@ -1950,6 +1954,9 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tuiShutdownMsg:
+		m.shuttingDown = true
+		m.mouseReenablePending = false
+		m.mouseReenableTimerArmed = false
 		if m.ctrl != nil {
 			_ = m.ctrl.Snapshot()
 			m.followSessionLease()

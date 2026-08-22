@@ -1301,7 +1301,7 @@ func chatREPL(args []string, version string) int {
 			p.Send(tuiShutdownMsg{})
 		}
 	}()
-	final, runErr := p.Run()
+	final, runErr := runTUIProgram(p, os.Stdout)
 	signal.Stop(hangup)
 	diagnostics.Milestone("terminal_released")
 	// Close the active controller plus any retired ones from /model switches.
@@ -1353,6 +1353,25 @@ func chatREPL(args []string, version string) int {
 		return runWebCommand(webHandoffArgs(launchWebPath, launchWebSessionID, launchWebModelRef, launchWebProfile))
 	}
 	return 0
+}
+
+// tuiProgramRunner is the lifecycle surface runTUIProgram needs. Keeping it
+// narrow makes the terminal reset invariant testable without a real TTY.
+type tuiProgramRunner interface {
+	Run() (tea.Model, error)
+}
+
+// runTUIProgram adds an application-owned final mouse reset around Bubble
+// Tea's renderer cleanup. DEC private-mode resets are idempotent, so this is a
+// harmless duplicate on ordinary exits and a necessary fallback on Run errors
+// and panic unwinding.
+func runTUIProgram(p tuiProgramRunner, out io.Writer) (tea.Model, error) {
+	defer func() {
+		if out != nil {
+			_, _ = io.WriteString(out, resetMouseTracking)
+		}
+	}()
+	return p.Run()
 }
 
 // adoptCarriedHistoryPreservingProfileAndGrants resumes c on the carried
