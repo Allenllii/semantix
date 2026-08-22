@@ -82,9 +82,12 @@ func (p *StableProxy) Replace(ctx context.Context, next Backend, generation uint
 		c()
 	}
 	if prev != nil {
-		if err := prev.Close(ctx); err != nil {
-			return fmt.Errorf("drain previous backend: %w", err)
-		}
+		closeErr := prev.Close(ctx)
+		// Remove prev from the draining set whether or not Close succeeded: it
+		// was appended before Close was attempted, so an early error return
+		// would leave it there permanently — causing a double-close on the next
+		// StableProxy.Close and unbounded growth across repeated hot-reload
+		// failures (Issue #370). Still propagate the close error.
 		p.mu.Lock()
 		out := p.draining[:0]
 		for _, b := range p.draining {
@@ -94,6 +97,9 @@ func (p *StableProxy) Replace(ctx context.Context, next Backend, generation uint
 		}
 		p.draining = out
 		p.mu.Unlock()
+		if closeErr != nil {
+			return fmt.Errorf("drain previous backend: %w", closeErr)
+		}
 	}
 	return nil
 }
