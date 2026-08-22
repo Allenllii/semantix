@@ -149,7 +149,7 @@ export default function BrandIntroOverlay() {
               <div className="relative">
                 <h2 className="font-semibold">GitHub 仓库</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  开源 · FSL-1.1-MIT · 设计文档与路线图都在这里
+                  开源 · MIT · 设计文档与路线图都在这里
                 </p>
                 <a
                   href="https://github.com/Gnosil/semantix"

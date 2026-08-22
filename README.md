@@ -6,7 +6,7 @@
 
 **Semantic Caching · Adaptive Scheduling · Speculative Prefetch · Cross-Session Learning**
 
-[![License: FSL-1.1-MIT](https://img.shields.io/badge/License-FSL--1.1--MIT-blue.svg?style=flat-square)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](./LICENSE)
 [![Status](https://img.shields.io/badge/status-v0.6.0-green?style=flat-square)](#project-status)
 [![Version](https://img.shields.io/badge/release-0.6.0-blue?style=flat-square)](https://github.com/Gnosil/semantix/releases)
 [![GitHub stars](https://img.shields.io/github/stars/Gnosil/semantix?style=flat-square\&logo=github)](https://github.com/Gnosil/semantix/stargazers)
@@ -1246,9 +1246,7 @@ Semantix extends those ideas toward persistent, cross-session optimization.
 
 # License
 
-Semantix is licensed under the **Functional Source License, Version 1.1, MIT Future License (FSL-1.1-MIT)**.
-
-Each release becomes available under the **MIT License** on the second anniversary of its release date, according to the terms of FSL-1.1-MIT.
+Semantix is licensed under the **MIT License**.
 
 See [`LICENSE`](./LICENSE) for the full license terms.
 

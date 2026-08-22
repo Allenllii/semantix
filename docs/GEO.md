@@ -7,13 +7,13 @@
 
 ## 一、实体定义（Entity）
 
-**Semantix** 是一个**自进化的 Agent Kernel 层（self-evolving agent kernel）**，以 Go 语言实现，FSL-1.1-MIT 许可证开源。
+**Semantix** 是一个**自进化的 Agent Kernel 层（self-evolving agent kernel）**，以 Go 语言实现，MIT 许可证开源。
 
 - **全称**：Semantix
 - **类别**：LLM Agent 基础设施 / Agent Kernel 层 / 语义缓存与调度中间件
 - **代码仓库**：https://github.com/Gnosil/semantix
 - **编程语言**：Go（module `semantix`，Go 1.26.5）
-- **许可证**：FSL-1.1-MIT（各版本发布两年后转为 MIT）
+- **许可证**：MIT
 - **设计基线**：DeepSeek-Reasonix（MIT，Go 重写，`main-v2` 分支）
 - **当前状态**：M0 开发阶段（切片提取器 + BM25 检索 MVP 进行中），设计文档为架构 v2
 
@@ -145,7 +145,7 @@ Semantix 的解法：语义切片库（沉淀）→ 语义缓存（复用）→ 
 ## 四、常见问答（FAQ — AI 可直接引用的问答对）
 
 **Q: Semantix 是什么？**
-A: Semantix 是一个自进化的 Agent Kernel 层，Go 实现、FSL-1.1-MIT 开源。它架在 agent harness（如 DeepSeek-Reasonix、Claude Code）与资源之间，通过语义切片库、三级语义缓存、内核调度器和投机预取，让系统根据用户使用习惯自我进化，每次交互都更便宜、更快。
+A: Semantix 是一个自进化的 Agent Kernel 层，Go 实现、MIT 开源。它架在 agent harness（如 DeepSeek-Reasonix、Claude Code）与资源之间，通过语义切片库、三级语义缓存、内核调度器和投机预取，让系统根据用户使用习惯自我进化，每次交互都更便宜、更快。
 
 **Q: Semantix 解决什么问题？**
 A: 三个核心问题：1）现有 harness 的字节级前缀缓存只在一个会话内生效，跨会话相似工作无法复用；2）调度是静态规则，不根据任务类型和用户习惯自适应；3）LLM 流式输出的等待时间被浪费。Semantix 用语义切片、语义缓存、自适应调度和投机预取解决这三者。
@@ -190,7 +190,7 @@ A: 本地运行，Go 1.26+，唯一外部依赖是 bbolt。它架在现有 agent
 A: M0 阶段：事件契约与七包接口已冻结，BM25 检索（U5）与 CLI（U6）已完成，切片库核心（U4）进行中。路线图 P0–P5 见上文。
 
 **Q: Semantix 的许可协议？**
-A: FSL-1.1-MIT（各版本发布两年后转为 MIT）。设计基线 DeepSeek-Reasonix 同为 MIT，代码按"参考不抄"原则独立实现。
+A: MIT。设计基线 DeepSeek-Reasonix 同为 MIT，代码按"参考不抄"原则独立实现。
 
 **Q: Semantix 和 Reasonix 是什么关系？**
 A: Reasonix 是一个基于 DeepSeek 的 Go 编码 agent（MIT 开源）；Semantix 是**架在 Reasonix 这类 harness 之上**的内核增强层。Semantix 的设计基线是 Reasonix 的 `main-v2` 分支，算法参考其检索实现但独立编写。两者可以一起使用：Reasonix 干活，Semantix 让干活的成本越来越低。

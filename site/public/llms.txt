@@ -1,8 +1,8 @@
 # Semantix
 
-> Semantix is a self-evolving agent kernel that sits between any agent harness and its resources — extracting reusable semantic slices from past sessions, retrieving them with BM25, and injecting stable reuse blocks into later sessions. Open source (FSL-1.1-MIT), implemented in Go.
+> Semantix is a self-evolving agent kernel that sits between any agent harness and its resources — extracting reusable semantic slices from past sessions, retrieving them with BM25, and injecting stable reuse blocks into later sessions. Open source (MIT), implemented in Go.
 >
-> Semantix 是一个自进化的 Agent Kernel 层：架设在 agent harness 与资源之间，从历史会话提取可复用的语义切片，用 BM25 检索，并向后续会话注入稳定的复用块。开源（FSL-1.1-MIT），Go 实现。
+> Semantix 是一个自进化的 Agent Kernel 层：架设在 agent harness 与资源之间，从历史会话提取可复用的语义切片，用 BM25 检索，并向后续会话注入稳定的复用块。开源（MIT），Go 实现。
 
 ## Capabilities（能力清单）
 
@@ -63,8 +63,8 @@
 
 ## License（许可证）
 
-- Current license: **FSL-1.1-MIT**（Functional Source License, Version 1.1, MIT Future License）.
-- Each release converts to the **MIT License** two years after its release date, per the terms of FSL-1.1-MIT.
+- Current license: **MIT**.
+- Each release converts to the **MIT License** two years after its release date, per the terms of MIT.
 - Full license text: https://github.com/Gnosil/semantix/blob/main/LICENSE
 
 ## Last updated
