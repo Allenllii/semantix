@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -34,6 +35,14 @@ const (
 
 // quotaStateVersion is the persisted counter schema.
 const quotaStateVersion = 1
+
+// balanceErrorBackoff bounds how long a *failed* wallet probe suppresses the
+// next probe. A successful verdict is cached for balance_cache_seconds, but an
+// error must be retried quickly (not held for the full success TTL): otherwise
+// a flaky wallet endpoint — especially right after a restart, when no prior
+// verdict exists to fall back on — would 402 a paying customer for the whole
+// TTL. Short backoff keeps stale-while-error self-healing in seconds.
+const balanceErrorBackoff = 5 * time.Second
 
 // quotaState is the durable token counter. It survives gateway restarts via
 // an atomic tmp+rename write next to the slice store.
@@ -72,7 +81,8 @@ type quotaEngine struct {
 	// out a paying customer, and the free-tier gate itself never depends on
 	// the probe.
 	paidOK      bool
-	paidChecked time.Time
+	paidChecked time.Time // last *successful* probe; cached for balance_cache_seconds
+	probeErrAt  time.Time // last *failed* probe; suppresses re-probe for balanceErrorBackoff only
 }
 
 // newQuotaEngine loads (or initializes) the persisted counter. A corrupt or
@@ -170,7 +180,16 @@ func (q *quotaEngine) balanceActive(ctx context.Context) bool {
 	}
 	q.mu.Lock()
 	ttl := time.Duration(q.cfg.BalanceCacheSeconds) * time.Second
+	// Reuse a cached *successful* verdict for the full TTL.
 	if !q.paidChecked.IsZero() && q.now().Sub(q.paidChecked) < ttl {
+		ok := q.paidOK
+		q.mu.Unlock()
+		return ok
+	}
+	// After a *failed* probe, suppress re-probing only for the short backoff —
+	// never the full success TTL — so a transient wallet error self-heals fast
+	// and cannot lock out a paid customer (Issue B).
+	if !q.probeErrAt.IsZero() && q.now().Sub(q.probeErrAt) < balanceErrorBackoff {
 		ok := q.paidOK
 		q.mu.Unlock()
 		return ok
@@ -184,12 +203,16 @@ func (q *quotaEngine) balanceActive(ctx context.Context) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if err != nil {
-		// stale-while-error: keep the previous verdict, retry after ttl
-		q.paidChecked = q.now()
+		// stale-while-error: keep the previous verdict and retry after a short
+		// backoff (not the full TTL). Logged so a misconfigured/expired
+		// balance_key that would silently 402 paid customers is diagnosable.
+		q.probeErrAt = q.now()
+		log.Printf("gateway: wallet balance probe failed (%v); keeping previous paid=%v, retrying in %s", err, q.paidOK, balanceErrorBackoff)
 		return q.paidOK
 	}
 	q.paidOK = b != nil && b.Available
 	q.paidChecked = q.now()
+	q.probeErrAt = time.Time{} // clear the error backoff on any successful probe
 	return q.paidOK
 }
 
