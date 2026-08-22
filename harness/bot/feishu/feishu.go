@@ -101,6 +101,7 @@ type adapter struct {
 	msgCh    chan bot.InboundMessage
 	cancel   context.CancelFunc
 	client   *lark.Client
+	wsMu     sync.Mutex // 保护 wsClient:reconnect 闭包写、Stop 读(#371)
 	wsClient *larkws.Client
 
 	// fetchResource 覆盖消息资源下载（测试注入）；nil 时用 sdkFetchResource。
@@ -257,8 +258,11 @@ func (a *adapter) Stop() error {
 	if a.cancel != nil {
 		a.cancel()
 	}
-	if a.wsClient != nil {
-		a.wsClient.Close()
+	a.wsMu.Lock()
+	c := a.wsClient
+	a.wsMu.Unlock()
+	if c != nil {
+		c.Close()
 	}
 	return nil
 }
@@ -305,7 +309,9 @@ func (a *adapter) runWebSocket(ctx context.Context) {
 			opts = append(opts, larkws.WithDomain(lark.LarkBaseUrl))
 		}
 		client := larkws.NewClient(a.cfg.AppID, secret, opts...)
+		a.wsMu.Lock()
 		a.wsClient = client
+		a.wsMu.Unlock()
 		// client.Start blocks; run it off-loop so cancellation closes the client
 		// immediately rather than waiting for Start to notice ctx. RunWithRetry
 		// handles the reconnect backoff.
