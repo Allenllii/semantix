@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"semantix/kernel/cache"
 	kernelevent "semantix/kernel/event"
@@ -803,8 +804,19 @@ func (g *Gateway) replayStream(w http.ResponseWriter, r *http.Request, req *chat
 	content := res.Response
 	for len(content) > 0 {
 		n := 256
-		if len(content) < n {
+		if n >= len(content) {
 			n = len(content)
+		} else {
+			// Never split a multi-byte UTF-8 rune across chunks: json.Marshal
+			// would replace the torn bytes with U+FFFD, corrupting the replayed
+			// text at 256-byte boundaries (Issue #369). Back off to a rune
+			// start; the max UTF-8 rune is 4 bytes, so n stays >= 253.
+			for n > 0 && !utf8.RuneStart(content[n]) {
+				n--
+			}
+			if n == 0 { // unreachable (no rune > 256B); flush the rest to be safe
+				n = len(content)
+			}
 		}
 		writeChunk(map[string]any{"content": content[:n]}, nil)
 		content = content[n:]
