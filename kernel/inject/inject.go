@@ -128,9 +128,15 @@ func (in *Injector) Build(query string) (*Injection, error) {
 		if in.MinScore > 0 && h.Score < in.MinScore {
 			continue
 		}
-		if in.Zones != nil && in.Zones.Classify(h.Score, top1) != zone.Hit {
-			dropped++
-			continue
+		if in.Zones != nil {
+			z := *in.Zones
+			if h.Slice != nil {
+				z = z.ForType(h.Slice.Type.String()) // Issue #259 阶段 2
+			}
+			if z.Classify(h.Score, top1) != zone.Hit {
+				dropped++
+				continue
+			}
 		}
 		if buf.Len()+len(h.Slice.Content)+len(blockClose)+64 > budget && len(kept) > 0 {
 			dropped++

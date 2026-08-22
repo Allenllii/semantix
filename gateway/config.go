@@ -8,6 +8,8 @@
 package gateway
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -15,7 +17,10 @@ import (
 	"sort"
 	"strings"
 
+	"semantix/kernel/evolve"
 	"semantix/kernel/fuse"
+	"semantix/kernel/slice"
+	"semantix/kernel/zone"
 
 	"github.com/BurntSushi/toml"
 )
@@ -130,6 +135,44 @@ type RetrievalConfig struct {
 	// fuse.DefaultBM25Weight (0.5), explicit 0 = pure vector route. Only
 	// read in weighted mode.
 	BM25Weight *float64 `toml:"bm25_weight"`
+	// Grey-zone thresholds (Issue #259 阶段 1). An explicit tau_*/abs_*
+	// key overrides zone.Default(); unspecified keys fall back to the
+	// tuned defaults. Validation: 0 < tau <= 1, abs >= 0, tau_high >
+	// tau_low. EvolveDB is an optional evolve state dir (params.json,
+	// written by `usage --evolve-db`): its tuned TauL2 drives TauLow when
+	// no explicit tau_low is configured (clamped to the evolve tuning
+	// band), mirroring the CLI --evolve-db behavior.
+	TauHigh  *float64 `toml:"tau_high"`
+	TauLow   *float64 `toml:"tau_low"`
+	AbsHigh  *float64 `toml:"abs_high"`
+	AbsLow   *float64 `toml:"abs_low"`
+	EvolveDB string   `toml:"evolve_db"`
+	// Adaptive enables per-entry online TauLow learning (Issue #259 阶段
+	// 3, vCache route): each high-frequency reused slice learns its own
+	// grey floor from positive/negative evidence, with the global
+	// thresholds as cold-start prior. nil → enabled; explicit false
+	// disables (all entries use the global/per-type thresholds).
+	// ErrorBound is the operator-specified false-hit rate ceiling
+	// (0 → 0.05; -1 also disables adaptation). AdaptDB is the state file
+	// (empty → <store dir>/l3-adapt.json).
+	Adaptive   *bool   `toml:"adaptive"`
+	ErrorBound float64 `toml:"error_bound"`
+	AdaptDB    string  `toml:"adapt_db"`
+	// ByType holds per-slice-type threshold overrides (Issue #259 阶段
+	// 2), keyed by the stable wire name (prompt|context|tool_pattern|
+	// result|memory). Each entry is partial: only the keys present are
+	// set, everything else inherits the effective global thresholds when
+	// assembled into zone.Zones.ByType. Unknown type names fail startup.
+	ByType map[string]zoneOverride `toml:"by_type"`
+}
+
+// zoneOverride is the partial per-type override syntax for [retrieval]
+// by_type.<type>: absent fields inherit the global thresholds.
+type zoneOverride struct {
+	TauHigh *float64 `toml:"tau_high"`
+	TauLow  *float64 `toml:"tau_low"`
+	AbsHigh *float64 `toml:"abs_high"`
+	AbsLow  *float64 `toml:"abs_low"`
 }
 
 // CacheConfig holds L3 policy. TTL is resolved by the gateway and passed to
@@ -401,6 +444,80 @@ func (c *Config) validate() error {
 			return fmt.Errorf("gateway config: [retrieval] bm25_weight must be in [0,1], got %v", w)
 		}
 	}
+	// Grey-zone thresholds (Issue #259 阶段 1): taus are relative
+	// confidences in (0,1], abs floors are non-negative; NaN/Inf must be
+	// rejected because comparisons are false for NaN and would silently
+	// distort classification.
+	for _, th := range []struct {
+		key string
+		v   *float64
+	}{
+		{"tau_high", c.Retrieval.TauHigh},
+		{"tau_low", c.Retrieval.TauLow},
+		{"abs_high", c.Retrieval.AbsHigh},
+		{"abs_low", c.Retrieval.AbsLow},
+	} {
+		if th.v == nil {
+			continue
+		}
+		v := *th.v
+		isTau := th.key == "tau_high" || th.key == "tau_low"
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return fmt.Errorf("gateway config: [retrieval] %s must be a finite number, got %v", th.key, v)
+		}
+		if isTau && (v <= 0 || v > 1) {
+			return fmt.Errorf("gateway config: [retrieval] %s must be in (0,1], got %v", th.key, v)
+		}
+		if !isTau && v < 0 {
+			return fmt.Errorf("gateway config: [retrieval] %s must be >= 0, got %v", th.key, v)
+		}
+	}
+	if c.Retrieval.TauHigh != nil && c.Retrieval.TauLow != nil && *c.Retrieval.TauHigh <= *c.Retrieval.TauLow {
+		return fmt.Errorf("gateway config: [retrieval] tau_high (%v) must be > tau_low (%v)", *c.Retrieval.TauHigh, *c.Retrieval.TauLow)
+	}
+	// Adaptive error bound (Issue #259 阶段 3): -1 disables per-entry
+	// adaptation; any other value must be a rate in [0,1].
+	if c.Retrieval.ErrorBound != 0 && c.Retrieval.ErrorBound != -1 {
+		if math.IsNaN(c.Retrieval.ErrorBound) || math.IsInf(c.Retrieval.ErrorBound, 0) ||
+			c.Retrieval.ErrorBound < 0 || c.Retrieval.ErrorBound > 1 {
+			return fmt.Errorf("gateway config: [retrieval] error_bound must be -1 (disabled) or in [0,1], got %v", c.Retrieval.ErrorBound)
+		}
+	}
+	// Per-type overrides (Issue #259 阶段 2): every by_type key must be a
+	// known slice type (fail closed on typos) and each override obeys the
+	// same value-domain rules as the global thresholds.
+	for name, o := range c.Retrieval.ByType {
+		if _, ok := slice.TypeFromString(name); !ok {
+			return fmt.Errorf("gateway config: [retrieval] by_type key %q is not a slice type (want prompt|context|tool_pattern|result|memory)", name)
+		}
+		for _, th := range []struct {
+			key string
+			v   *float64
+		}{
+			{"tau_high", o.TauHigh},
+			{"tau_low", o.TauLow},
+			{"abs_high", o.AbsHigh},
+			{"abs_low", o.AbsLow},
+		} {
+			if th.v == nil {
+				continue
+			}
+			v := *th.v
+			isTau := th.key == "tau_high" || th.key == "tau_low"
+			if math.IsNaN(v) || math.IsInf(v, 0) {
+				return fmt.Errorf("gateway config: [retrieval] by_type.%s.%s must be a finite number, got %v", name, th.key, v)
+			}
+			if isTau && (v <= 0 || v > 1) {
+				return fmt.Errorf("gateway config: [retrieval] by_type.%s.%s must be in (0,1], got %v", name, th.key, v)
+			}
+			if !isTau && v < 0 {
+				return fmt.Errorf("gateway config: [retrieval] by_type.%s.%s must be >= 0, got %v", name, th.key, v)
+			}
+		}
+		if o.TauHigh != nil && o.TauLow != nil && *o.TauHigh <= *o.TauLow {
+			return fmt.Errorf("gateway config: [retrieval] by_type.%s tau_high (%v) must be > tau_low (%v)", name, *o.TauHigh, *o.TauLow)
+		}
+	}
 	if c.Cache.JudgeAPIKey != "" && (strings.TrimSpace(c.Cache.JudgeBaseURL) == "" || strings.TrimSpace(c.Cache.JudgeModel) == "") {
 		return fmt.Errorf("gateway config: [cache] judge_api_key requires judge_base_url and judge_model")
 	}
@@ -498,6 +615,95 @@ func (c *Config) fusionConfig() fuse.Config {
 		cfg.Strategy = fuse.RRF
 	}
 	return cfg
+}
+
+// zoneConfig resolves the effective grey-zone thresholds (Issue #259):
+// explicit tau_*/abs_* keys win over zone.Default(); when tau_low is not
+// configured and evolve_db points at an evolve state dir, the engine's
+// tuned TauL2 drives TauLow (clamped to the evolve tuning band). The
+// result is the exact classifier the decider and injector will use.
+func (c *Config) zoneConfig() (zone.Zones, error) {
+	z := zone.Default()
+	if c.Retrieval.TauHigh != nil {
+		z.TauHigh = *c.Retrieval.TauHigh
+	}
+	if c.Retrieval.TauLow != nil {
+		z.TauLow = *c.Retrieval.TauLow
+	}
+	if c.Retrieval.AbsHigh != nil {
+		z.AbsHigh = *c.Retrieval.AbsHigh
+	}
+	if c.Retrieval.AbsLow != nil {
+		z.AbsLow = *c.Retrieval.AbsLow
+	}
+	if c.Retrieval.TauLow == nil && c.Retrieval.EvolveDB != "" {
+		tau, err := loadEvolveTauL2(c.Retrieval.EvolveDB)
+		if err != nil {
+			return zone.Zones{}, err
+		}
+		if tau > 0 {
+			z.TauLow = tau
+		}
+	}
+	// Per-type overrides (Issue #259 阶段 2): each partial entry inherits
+	// the effective global thresholds (z, after evolve) for the fields it
+	// does not set. A configured type therefore never silently falls back
+	// mid-flight; the assembled map is a complete snapshot per type.
+	if len(c.Retrieval.ByType) > 0 {
+		z.ByType = make(map[string]zone.Zones, len(c.Retrieval.ByType))
+		for name, o := range c.Retrieval.ByType {
+			oz := z
+			if o.TauHigh != nil {
+				oz.TauHigh = *o.TauHigh
+			}
+			if o.TauLow != nil {
+				oz.TauLow = *o.TauLow
+			}
+			if o.AbsHigh != nil {
+				oz.AbsHigh = *o.AbsHigh
+			}
+			if o.AbsLow != nil {
+				oz.AbsLow = *o.AbsLow
+			}
+			oz.ByType = nil // leaf snapshot: overrides never nest
+			z.ByType[name] = oz
+		}
+	}
+	return z, nil
+}
+
+// loadEvolveTauL2 reads an evolve state dir's params.json (written by
+// `usage --evolve-db`) and returns its tuned TauL2 clamped to the evolve
+// tuning band [DefaultMinTau, DefaultMaxTau]. A missing file or an
+// unset/non-finite value reports 0 (caller falls back to defaults); a
+// corrupt file is a startup error the operator should see — same
+// degradation contract as the CLI applyEvolveParams path.
+func loadEvolveTauL2(dir string) (float64, error) {
+	p := filepath.Join(dir, "params.json")
+	b, err := os.ReadFile(p)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("gateway: read evolve state: %w", err)
+	}
+	var st struct {
+		Params evolve.Params `json:"params"`
+	}
+	if err := json.Unmarshal(b, &st); err != nil {
+		return 0, fmt.Errorf("gateway: parse evolve state %s: %w", p, err)
+	}
+	tau := st.Params.TauL2
+	if math.IsNaN(tau) || math.IsInf(tau, 0) || tau <= 0 {
+		return 0, nil
+	}
+	if tau < evolve.DefaultMinTau {
+		tau = evolve.DefaultMinTau
+	}
+	if tau > evolve.DefaultMaxTau {
+		tau = evolve.DefaultMaxTau
+	}
+	return tau, nil
 }
 
 // DefaultConfig returns the built-in defaults (for tests and docs).

@@ -136,7 +136,7 @@ func buildCommands() []commandSpec {
 		{name: "eval", group: groupKernelOps,
 			usage:   "semantix eval --set <oracle.tsv> [--tau-*]",
 			summary: "retrieval strategy comparison (Issue #7)",
-			run:     intCommand(runEval)},
+			run:     depsCommand(runEval)},
 		{name: "eval-judge", group: groupKernelOps,
 			usage:   "semantix eval-judge [--stub yes|no] [--judge-*] [--audit <tsv>]",
 			summary: "LLM judge authenticity evaluation (Issue #8)",

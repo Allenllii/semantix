@@ -246,6 +246,15 @@ func TestVerifyCalibrateReportStructure(t *testing.T) {
 			t.Fatalf("default-threshold run must show zero drift, missing %q:\n%s", want, s)
 		}
 	}
+	// Per-type block (Issue #259 阶段 2): the replay stream's top-1
+	// candidates are typed, so the by_type report must name at least one
+	// real slice type and sum its counts.
+	if !strings.Contains(s, "# by_type:") {
+		t.Fatalf("calibration report missing per-type block:\n%s", s)
+	}
+	if !strings.Contains(s, "#   type          n   hit grey miss  hit%  default_hit") {
+		t.Fatalf("calibration report missing by_type header:\n%s", s)
+	}
 	// The report is a tail block: the replay table must precede it.
 	if strings.Index(s, "session\tturn\tscore") > strings.Index(s, "# calibration:") {
 		t.Fatalf("calibration block must follow the replay table:\n%s", s)

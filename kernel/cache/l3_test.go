@@ -724,3 +724,107 @@ func TestL3ObsAccumSnapshotIsThreadSafe(t *testing.T) {
 		t.Fatalf("accumulated = %+v, want %+v", got, want)
 	}
 }
+
+// Per-type thresholds participate in the real L3 decision (Issue #259
+// 阶段 2): the same Result candidate that reuses under the global
+// baseline is rejected when its type carries a stricter override.
+func TestDecideL3PerTypeOverride(t *testing.T) {
+	root, idx, _, _ := buildTestLib(t)
+	// Baseline: global defaults (nil Zones → zone.Default).
+	base := &L3Decider{Index: idx, Root: root}
+	res, err := base.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("baseline must reuse the Result candidate")
+	}
+
+	// Strict result override: unreachable thresholds for this type.
+	strict := zone.Zones{TauHigh: 1.0, TauLow: 0.99, AbsHigh: 1e9, AbsLow: 1e9,
+		ByType: map[string]zone.Zones{
+			"result": {TauHigh: 1.0, TauLow: 0.99, AbsHigh: 1e9, AbsLow: 1e9},
+		}}
+	dec := &L3Decider{Index: idx, Root: root, Zones: &strict}
+	res2, err := dec.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2 != nil {
+		t.Fatalf("strict result override must reject reuse, got %+v", res2)
+	}
+}
+
+// stubAdapt returns a fixed learned TauLow per slice.
+type stubAdapt struct{ tau float64 }
+
+func (a stubAdapt) TauLow(sliceID string, global float64) float64 { return a.tau }
+
+// The per-entry adaptive TauLow replaces the effective grey floor before
+// classification (Issue #259 阶段 3): a candidate whose relative
+// confidence sits in the grey band under the baseline falls to Miss once
+// the entry's learned TauLow rises above it, while a learned value above
+// TauHigh is clamped so the grey zone never collapses.
+func TestDecideL3AdaptiveTauLow(t *testing.T) {
+	// Two Result candidates: a perfect one (relConf 1.0, always a Hit) and
+	// a weaker peer with relConf 0.70 (score 0.7 / resultTop1 1.0) — grey
+	// under the default TauLow 0.55. The weaker one is listed first so the
+	// loop reaches it before the clear Hit; the Obs counters reveal which
+	// gate routed it.
+	mk := func() []slice.Hit {
+		return []slice.Hit{hitOf("weak", slice.Result, 0.7), hitOf("strong", slice.Result, 1.0)}
+	}
+	observe := func(tau float64) (Obs, *L3Result) {
+		d := &L3Decider{Index: &fixedIndex{hits: mk()}, Root: t.TempDir(), Adapt: stubAdapt{tau: tau}}
+		var acc ObsAccum
+		d.Obs = &acc
+		res, _ := d.DecideL3(context.Background(), Query{UserInput: "q", Scope: slice.Project})
+		return acc.Snapshot(), res
+	}
+	// TauLow 0.50: the weak candidate (0.70) stays grey-routed.
+	lo, resLo := observe(0.50)
+	if lo.Grey != 1 || lo.RulesReject != 1 || resLo == nil || resLo.SliceID != "strong" {
+		t.Fatalf("tau 0.50: grey=%d rules_reject=%d res=%+v, want grey-routed weak + strong reuse", lo.Grey, lo.RulesReject, resLo)
+	}
+	// TauLow 0.80 (clamped to TauHigh-0.05 = 0.75): 0.70 < 0.75 → Miss.
+	hi, resHi := observe(0.80)
+	if hi.Grey != 0 || hi.RulesReject != 1 || resHi == nil || resHi.SliceID != "strong" {
+		t.Fatalf("tau 0.80: grey=%d rules_reject=%d res=%+v, want straight-Miss weak + strong reuse", hi.Grey, hi.RulesReject, resHi)
+	}
+}
+
+
+// With a threshold band narrower than minGreyWidth, the adaptive clamp
+// must never turn a tighten into a loosening: the value in effect is the
+// floor (review finding, Issue #259 阶段 3).
+func TestDecideL3AdaptiveClampNeverLoosens(t *testing.T) {
+	// tau_high 0.56 / tau_low 0.55: band is 0.01 < minGreyWidth 0.05.
+	narrow := zone.Zones{TauHigh: 0.56, TauLow: 0.55, AbsHigh: 0.7, AbsLow: 0.45}
+	// Learned 0.60 would clamp to 0.51 (TauHigh-0.05) — below the prior
+	// 0.55; the floor must keep the prior so classification never widens.
+	d := &L3Decider{Index: &fixedIndex{hits: []slice.Hit{hitOf("weak", slice.Result, 0.7), hitOf("strong", slice.Result, 1.0)}},
+		Root: t.TempDir(), Zones: &narrow, Adapt: stubAdapt{tau: 0.60}}
+	var acc ObsAccum
+	d.Obs = &acc
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "q", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// With prior 0.55 the weak candidate (relConf 0.70) is grey-routed;
+	// if the clamp had loosened it to 0.51 it would still be grey, so the
+	// observable difference is the MISS path: use a weak score below the
+	// prior but above the loosened clamp. relConf 0.53: >= 0.51 (loosened)
+	// → grey; < 0.55 (prior floor) → Miss.
+	d2 := &L3Decider{Index: &fixedIndex{hits: []slice.Hit{hitOf("weak", slice.Result, 0.53), hitOf("strong", slice.Result, 1.0)}},
+		Root: t.TempDir(), Zones: &narrow, Adapt: stubAdapt{tau: 0.60}}
+	var acc2 ObsAccum
+	d2.Obs = &acc2
+	res2, err := d2.DecideL3(context.Background(), Query{UserInput: "q", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acc2.Snapshot().Grey != 0 || res2 == nil || res2.SliceID != "strong" {
+		t.Fatalf("loosened clamp would grey-route relConf 0.53; got grey=%d res=%+v (want Miss + strong reuse)", acc2.Snapshot().Grey, res2)
+	}
+	_ = res
+}

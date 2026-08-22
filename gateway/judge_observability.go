@@ -90,6 +90,13 @@ func (g *Gateway) observeJudge(ctx context.Context, obs cache.JudgeObservation) 
 	}
 	log.Printf("gateway: l3 judge slice=%s rel=%.3f verdict=%s called=%t fail_closed=%t latency_ms=%d prompt_tokens=%d reason=%q err=%q",
 		d.SliceID, d.RelConfidence, d.Verdict, d.Called, d.FailClosed, d.LatencyMs, d.PromptTokens, d.Reason, d.Error)
+	// Judge rejections are negative evidence for the per-entry adaptive
+	// engine (Issue #259 阶段 3): the judge declined to reuse this slice
+	// from its grey band — the entry should tighten so fewer of its
+	// candidates consume judge calls / risk false reuses.
+	if g.adapt != nil && obs.Verdict == cache.JudgeDeclined && obs.SliceID != "" {
+		g.adapt.Observe(obs.SliceID, true, g.zones.TauLow)
+	}
 	if c := judgeCollectorFrom(ctx); c != nil {
 		c.add(d)
 	}

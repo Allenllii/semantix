@@ -107,3 +107,58 @@ func TestClassifyL3TwoAxis(t *testing.T) {
 		}
 	}
 }
+
+// Per-type overrides resolve to the override snapshot when the type is
+// configured and to the global baseline otherwise (Issue #259 阶段 2).
+func TestForTypeOverrideAndFallback(t *testing.T) {
+	base := Default()
+	base.ByType = map[string]Zones{
+		"result": {TauHigh: 0.85, TauLow: 0.60, AbsHigh: 0.75, AbsLow: 0.50},
+	}
+	if got := base.ForType("result"); got.TauHigh != 0.85 || got.TauLow != 0.60 {
+		t.Fatalf("ForType(result) = %+v, want override", got)
+	}
+	// An override is a leaf snapshot: its own ByType must be cleared.
+	if got := base.ForType("result"); got.ByType != nil {
+		t.Fatalf("override must not carry nested ByType, got %+v", got.ByType)
+	}
+	if got := base.ForType("prompt"); got.TauHigh != base.TauHigh || got.TauLow != base.TauLow {
+		t.Fatalf("ForType(prompt) = %+v, want global baseline %+v", got, base)
+	}
+	// Unknown type names fall back too (forward compat with new types).
+	if got := base.ForType("unknown"); got.TauHigh != base.TauHigh {
+		t.Fatalf("ForType(unknown) = %+v, want global baseline", got)
+	}
+}
+
+// A zero ByType (nil map) keeps the historical behavior: every type sees
+// the global thresholds, and ForType is a no-op identity.
+func TestForTypeNilByTypeIdentity(t *testing.T) {
+	z := Default()
+	got := z.ForType("result")
+	if got.TauHigh != z.TauHigh || got.TauLow != z.TauLow ||
+		got.AbsHigh != z.AbsHigh || got.AbsLow != z.AbsLow {
+		t.Fatalf("ForType with nil ByType must return the global thresholds, got %+v", got)
+	}
+}
+
+// The per-type override participates in real classification, not just
+// field lookup: a score that is a clear Hit under a relaxed override can
+// be Grey under the stricter baseline (R slices answer users directly).
+func TestForTypeChangesClassification(t *testing.T) {
+	base := Default()
+	base.ByType = map[string]Zones{
+		"context": {TauHigh: 0.70, TauLow: 0.45, AbsHigh: 0.70, AbsLow: 0.45},
+	}
+	const score, top1 = 0.75, 1.0
+	if got := base.Classify(score, top1); got != Grey {
+		t.Fatalf("global classify = %v, want Grey", got)
+	}
+	if got := base.ForType("context").Classify(score, top1); got != Hit {
+		t.Fatalf("context classify = %v, want Hit under relaxed override", got)
+	}
+	// Types without an override keep the stricter global verdict.
+	if got := base.ForType("result").Classify(score, top1); got != Grey {
+		t.Fatalf("result classify = %v, want Grey (no override)", got)
+	}
+}

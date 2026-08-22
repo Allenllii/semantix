@@ -6,10 +6,14 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+
+	"semantix/kernel/slice"
+	"semantix/kernel/zone"
 
 	"github.com/BurntSushi/toml"
 )
@@ -55,6 +59,24 @@ type fileRetrieval struct {
 	Fusion     *string  `toml:"fusion"`      // hybrid 融合策略: weighted | rrf (Issue #274)
 	RrfK       *int     `toml:"rrf_k"`       // RRF 常数,默认 60
 	BM25Weight *float64 `toml:"bm25_weight"` // weighted 模式 BM25 路权重,默认 0.5
+	// Grey-zone 四阈值 (Issue #259 阶段 1): semantix.toml 键,被
+	// --tau-*/--abs-* flag 覆盖;值域 (0,1] / >= 0,且 tau_high > tau_low。
+	TauHigh *float64 `toml:"tau_high"`
+	TauLow  *float64 `toml:"tau_low"`
+	AbsHigh *float64 `toml:"abs_high"`
+	AbsLow  *float64 `toml:"abs_low"`
+	// ByType 是 per-slice-type 阈值覆盖 (Issue #259 阶段 2),key 为
+	// slice.SliceType 的稳定 wire 名;平铺为
+	// retrieval.by_type.<type>.<field> 键。未知类型名校验失败。
+	ByType map[string]fileZone `toml:"by_type"`
+}
+
+// fileZone 是 per-type 的部分覆盖语法:未写的字段继承全局阈值。
+type fileZone struct {
+	TauHigh *float64 `toml:"tau_high"`
+	TauLow  *float64 `toml:"tau_low"`
+	AbsHigh *float64 `toml:"abs_high"`
+	AbsLow  *float64 `toml:"abs_low"`
 }
 
 type fileInject struct {
@@ -206,6 +228,46 @@ func Load(opts Options) (*Resolved, error) {
 	}
 	if err := add(mergePtr("retrieval.bm25_weight", 0.5, "", file.Retrieval.BM25Weight, (*float64)(nil))); err != nil {
 		return nil, err
+	}
+	// Grey-zone 四阈值 (Issue #259 阶段 1): 默认值与 zone.Default() 单真源
+	// 对齐;flag > env > file > default 优先级由 mergePtr 统一处理。
+	defZ := zone.Default()
+	if err := add(mergePtr("retrieval.tau_high", defZ.TauHigh, "", file.Retrieval.TauHigh, (*float64)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("retrieval.tau_low", defZ.TauLow, "", file.Retrieval.TauLow, (*float64)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("retrieval.abs_high", defZ.AbsHigh, "", file.Retrieval.AbsHigh, (*float64)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("retrieval.abs_low", defZ.AbsLow, "", file.Retrieval.AbsLow, (*float64)(nil))); err != nil {
+		return nil, err
+	}
+
+	// Per-type 覆盖 (Issue #259 阶段 2): 平铺为 dotted 键,按类型名排序
+	// 保证 Fields 确定性 (config list 输出与测试)。
+	typeNames := make([]string, 0, len(file.Retrieval.ByType))
+	for name := range file.Retrieval.ByType {
+		typeNames = append(typeNames, name)
+	}
+	sort.Strings(typeNames)
+	for _, name := range typeNames {
+		fz := file.Retrieval.ByType[name]
+		prefix := "retrieval.by_type." + name + "."
+		for _, kv := range []struct {
+			field string
+			ptr   *float64
+		}{
+			{"tau_high", fz.TauHigh},
+			{"tau_low", fz.TauLow},
+			{"abs_high", fz.AbsHigh},
+			{"abs_low", fz.AbsLow},
+		} {
+			if kv.ptr != nil {
+				r.Fields = append(r.Fields, Field{Key: prefix + kv.field, Value: *kv.ptr, Source: SourceFile})
+			}
+		}
 	}
 	if err := add(mergePtr("inject.budget", 4096, "SEMANTIX_INJECT_BUDGET", file.Inject.Budget, (*int)(nil))); err != nil {
 		return nil, err
@@ -403,6 +465,14 @@ func (r *Resolved) validate() error {
 			if v, ok := f.Value.(float64); ok && (v < 0 || v > 1) {
 				errs = append(errs, "retrieval.bm25_weight: must be in [0,1]")
 			}
+		case "retrieval.tau_high", "retrieval.tau_low":
+			if v, ok := f.Value.(float64); ok && (math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 1) {
+				errs = append(errs, fmt.Sprintf("%s: must be in (0,1]", f.Key))
+			}
+		case "retrieval.abs_high", "retrieval.abs_low":
+			if v, ok := f.Value.(float64); ok && (math.IsNaN(v) || math.IsInf(v, 0) || v < 0) {
+				errs = append(errs, fmt.Sprintf("%s: must be >= 0", f.Key))
+			}
 		case "inject.budget":
 			if v, ok := f.Value.(int); ok && v <= 0 {
 				errs = append(errs, "inject.budget: must be > 0")
@@ -410,6 +480,71 @@ func (r *Resolved) validate() error {
 		case "verify.holdout":
 			if v, ok := f.Value.(float64); ok && (v < 0 || v >= 1) {
 				errs = append(errs, "verify.holdout: must be in [0,1)")
+			}
+		}
+	}
+	// Per-type 覆盖 (Issue #259 阶段 2): 键形如 retrieval.by_type.<type>.<field>。
+	// 类型名必须合法 (fail-closed 防拼写错误),值域与全局同规则,且
+	// 同类型内 tau_high > tau_low。
+	byTypeTau := map[string]struct{ high, low float64 }{} // 交叉校验收集
+	byTypeSeen := map[string]bool{}
+	for _, f := range r.Fields {
+		const pfx = "retrieval.by_type."
+		if !strings.HasPrefix(f.Key, pfx) {
+			continue
+		}
+		rest := strings.TrimPrefix(f.Key, pfx)
+		dot := strings.Index(rest, ".")
+		if dot <= 0 {
+			errs = append(errs, fmt.Sprintf("%s: malformed per-type key", f.Key))
+			continue
+		}
+		name, field := rest[:dot], rest[dot+1:]
+		if _, ok := slice.TypeFromString(name); !ok {
+			errs = append(errs, fmt.Sprintf("%s: %q is not a slice type (want prompt|context|tool_pattern|result|memory)", f.Key, name))
+			continue
+		}
+		v, ok := f.Value.(float64)
+		if !ok {
+			continue
+		}
+		switch field {
+		case "tau_high", "tau_low":
+			if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 1 {
+				errs = append(errs, fmt.Sprintf("%s: must be in (0,1]", f.Key))
+			}
+		case "abs_high", "abs_low":
+			if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+				errs = append(errs, fmt.Sprintf("%s: must be >= 0", f.Key))
+			}
+		default:
+			errs = append(errs, fmt.Sprintf("%s: unknown threshold field", f.Key))
+			continue
+		}
+		e := byTypeTau[name]
+		if field == "tau_high" {
+			e.high = v
+		}
+		if field == "tau_low" {
+			e.low = v
+		}
+		byTypeTau[name] = e
+		byTypeSeen[name] = true
+	}
+	for name := range byTypeSeen {
+		e := byTypeTau[name]
+		if e.high != 0 && e.low != 0 && e.high <= e.low {
+			errs = append(errs, fmt.Sprintf("retrieval.by_type.%s.tau_high (%v) must be > tau_low (%v)", name, e.high, e.low))
+		}
+	}
+	// Cross-key invariant (Issue #259 阶段 1): the clear-hit floor must sit
+	// above the grey floor, otherwise the classifier degenerates.
+	if th, _, ok := r.Get("retrieval.tau_high"); ok {
+		if tl, _, ok2 := r.Get("retrieval.tau_low"); ok2 {
+			thv, thOK := th.(float64)
+			tlv, tlOK := tl.(float64)
+			if thOK && tlOK && thv <= tlv {
+				errs = append(errs, fmt.Sprintf("retrieval.tau_high (%v) must be > retrieval.tau_low (%v)", thv, tlv))
 			}
 		}
 	}
