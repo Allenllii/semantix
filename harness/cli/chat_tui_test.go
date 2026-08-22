@@ -3309,6 +3309,42 @@ func TestChooserFreeTextWideInputChangeRequestsClearScreen(t *testing.T) {
 	}
 }
 
+// TestChooserMultiSelectNumberKeyTogglesInsteadOfSubmitting guards against a
+// regression where a number-key press on a multi-select ask() question
+// bypassed the toggle and submitted the question with no selection (#360).
+func TestChooserMultiSelectNumberKeyTogglesInsteadOfSubmitting(t *testing.T) {
+	m := newTestChatTUI()
+	m.chooser = newChooser(event.Ask{
+		ID: "ask-1",
+		Questions: []event.AskQuestion{{
+			ID:     "q1",
+			Prompt: "Pick any",
+			Multi:  true,
+			Options: []event.AskOption{
+				{Label: "Option A"},
+				{Label: "Option B"},
+			},
+		}},
+	})
+
+	next, _ := m.update(tea.KeyPressMsg{Code: '2'})
+	got := next.(chatTUI)
+
+	if got.chooser == nil {
+		t.Fatal("number key on a multi-select question must not submit/dismiss the chooser")
+	}
+	if !got.chooser.sel[0][1] {
+		t.Fatal("number key on a multi-select question should toggle the picked option, like space does")
+	}
+
+	// Pressing the same key again toggles it back off, exactly like space.
+	next, _ = got.update(tea.KeyPressMsg{Code: '2'})
+	got = next.(chatTUI)
+	if got.chooser.sel[0][1] {
+		t.Fatal("a second number-key press should toggle the option back off")
+	}
+}
+
 func TestReplayActiveBranchClearsPlanModeAndMarksSessionSwitch(t *testing.T) {
 	m := newTestChatTUI()
 	m.ctrl = control.New(control.Options{})

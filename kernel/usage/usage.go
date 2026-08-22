@@ -250,6 +250,7 @@ func Summarize(path string, costMiss, costHit float64) (*Summary, error) {
 	s := &Summary{ByProvider: map[string]*ProviderStats{}}
 	var l3In, l3Out int64 // tokens of L3-reused turns (not billed)
 	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024) // tolerate entries up to 8 MiB
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(line) == 0 {

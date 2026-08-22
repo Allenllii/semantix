@@ -138,9 +138,16 @@ func (m chatTUI) handleChooserKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		return m.chooserActivate(c.cursor)
 	default:
-		// number keys 1..9 jump to / pick an option
+		// number keys 1..9 jump to (single-select: select and advance) or pick
+		// (multi-select: toggle, like space) an option.
 		if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
 			if idx := int(s[0] - '1'); idx < len(q.Options) {
+				if q.Multi {
+					c.cursor = idx
+					c.sel[c.tab][idx] = !c.sel[c.tab][idx]
+					c.custom[c.tab] = ""
+					return m, nil
+				}
 				return m.chooserActivate(idx)
 			}
 		}
@@ -157,9 +164,9 @@ func (m chatTUI) chooserActivate(row int) (tea.Model, tea.Cmd) {
 	switch {
 	case row < len(q.Options):
 		if q.Multi {
-			// Space toggles; Enter confirms current selections and advances.
-			// (Toggling is handled in handleChooserKey; we only arrive here
-			// via Enter or number keys, both of which should commit.)
+			// Space and number keys toggle (handled in handleChooserKey);
+			// Enter is the only path that reaches here for a multi-select
+			// question, and it confirms the current selections and advances.
 			return m.chooserAdvance()
 		}
 		c.sel[c.tab] = map[int]bool{row: true}
