@@ -44,7 +44,11 @@ func (s *fileStore) Put(e Entry) error {
 		return err
 	}
 	for _, old := range all {
-		if old.ContentVersion == e.ContentVersion && old.Query == e.Query {
+		// Dedup key is the full (source, version, query) triple — matching the
+		// doc comment and MemStore.Put. Omitting SourceSliceID silently dropped
+		// a legitimate promotion whenever two different source slices produced
+		// byte-identical content for the same query (Issue #362).
+		if old.SourceSliceID == e.SourceSliceID && old.ContentVersion == e.ContentVersion && old.Query == e.Query {
 			return nil // duplicate
 		}
 	}
