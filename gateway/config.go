@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 
+	"semantix/kernel/fuse"
+
 	"github.com/BurntSushi/toml"
 )
 
@@ -103,6 +105,16 @@ type RetrievalConfig struct {
 	TopK      int    `toml:"top_k"`
 	Budget    int    `toml:"budget"`
 	VectorDim int    `toml:"vector_dim"` // HashEmbedder dimension (<=0 -> 256)
+	// Fusion selects the hybrid fusion strategy (Issue #274): ""/weighted
+	// (default, historical score average) | rrf (reciprocal rank fusion).
+	Fusion string `toml:"fusion"`
+	// RrfK is the RRF constant; 0 → fuse.DefaultRrfK (60). Only read in
+	// rrf mode.
+	RrfK int `toml:"rrf_k"`
+	// BM25Weight is the weighted-mode BM25 route share in [0,1]; nil →
+	// fuse.DefaultBM25Weight (0.5), explicit 0 = pure vector route. Only
+	// read in weighted mode.
+	BM25Weight *float64 `toml:"bm25_weight"`
 }
 
 // CacheConfig holds L3 policy. TTL is resolved by the gateway and passed to
@@ -362,6 +374,18 @@ func (c *Config) validate() error {
 	if c.Retrieval.Retriever != "" && !validRetriever(c.Retrieval.Retriever) {
 		return fmt.Errorf("gateway config: [retrieval] retriever %q is not supported (supported: bm25, vector, hybrid)", c.Retrieval.Retriever)
 	}
+	if c.Retrieval.Fusion != "" && c.Retrieval.Fusion != "weighted" && c.Retrieval.Fusion != "rrf" {
+		return fmt.Errorf("gateway config: [retrieval] fusion %q must be weighted or rrf", c.Retrieval.Fusion)
+	}
+	if c.Retrieval.RrfK < 0 {
+		return fmt.Errorf("gateway config: [retrieval] rrf_k must be >= 0 (0 = fuse default)")
+	}
+	if c.Retrieval.BM25Weight != nil {
+		w := *c.Retrieval.BM25Weight
+		if math.IsNaN(w) || math.IsInf(w, 0) || w < 0 || w > 1 {
+			return fmt.Errorf("gateway config: [retrieval] bm25_weight must be in [0,1], got %v", w)
+		}
+	}
 	if c.Cache.JudgeAPIKey != "" && (strings.TrimSpace(c.Cache.JudgeBaseURL) == "" || strings.TrimSpace(c.Cache.JudgeModel) == "") {
 		return fmt.Errorf("gateway config: [cache] judge_api_key requires judge_base_url and judge_model")
 	}
@@ -446,6 +470,16 @@ func validRetriever(s string) bool {
 		return true
 	}
 	return false
+}
+
+// fusionConfig maps the [retrieval] fusion keys onto kernel/fuse.Config
+// (Issue #274). Zero/unset values fall back to the fuse package defaults.
+func (c *Config) fusionConfig() fuse.Config {
+	cfg := fuse.Config{RrfK: c.Retrieval.RrfK, BM25Weight: c.Retrieval.BM25Weight}
+	if c.Retrieval.Fusion == "rrf" {
+		cfg.Strategy = fuse.RRF
+	}
+	return cfg
 }
 
 // DefaultConfig returns the built-in defaults (for tests and docs).

@@ -109,7 +109,7 @@ func New(cfg *Config) (*Gateway, error) {
 			log.Printf("gateway: store compact: %v", err)
 		}
 	}
-	idx := newRetriever(cfg.Retrieval.Retriever, cfg.Retrieval.VectorDim)
+	idx := newRetriever(cfg.Retrieval.Retriever, cfg.Retrieval.VectorDim, cfg.fusionConfig())
 	if err := loadIndex(store, idx); err != nil {
 		_ = closeStore(store)
 		return nil, fmt.Errorf("gateway: rebuild index: %w", err)
