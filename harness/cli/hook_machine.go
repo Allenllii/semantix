@@ -67,11 +67,11 @@ func runHookCommand(args []string, out io.Writer) int {
 		options.projectRoot, _ = os.Getwd()
 	}
 	// hook.Inspect's HomeDir is an OS user home directory: a non-empty value
-	// has .reasonix appended inside the hook package, and passing
-	// config.ReasonixHomeDir() here double-appends it. Leave it empty so the
-	// hook package resolves the platform Reasonix home itself (correct on
-	// every OS, including Windows where the home is %AppData%\Roaming\reasonix
-	// rather than ~/.reasonix) (#7420).
+	// has .semantix appended inside the hook package, and passing
+	// config.SemantixHomeDir() here double-appends it. Leave it empty so the
+	// hook package resolves the platform Semantix home itself (correct on
+	// every OS, including Windows where the home is %AppData%\Roaming\semantix
+	// rather than ~/.semantix) (#7420).
 	inspection := hook.Inspect(hook.LoadOptions{
 		ProjectRoot: options.projectRoot,
 		HomeDir:     options.homeDir,

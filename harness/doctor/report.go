@@ -123,11 +123,11 @@ func Collect(opts Options) Report {
 	}
 	cwd, _ := os.Getwd()
 	sourcePath := config.SourcePath()
-	// Settings UIs and `reasonix config` edit the user-level config, but a
-	// project reasonix.toml outranks it. Users who toggle the sandbox off in
+	// Settings UIs and `semantix-agent config` edit the user-level config, but a
+	// project semantix-agent.toml outranks it. Users who toggle the sandbox off in
 	// Settings while the project file pins [sandbox] read the no-op as "bash is
 	// broken" (#5961, #6046) — surface the layering explicitly.
-	if sourcePath != "" && filepath.Base(sourcePath) == "reasonix.toml" {
+	if sourcePath != "" && filepath.Base(sourcePath) == "semantix-agent.toml" {
 		if raw, err := fileencoding.ReadFileUTF8(sourcePath); err == nil && tomlHasSandboxTable(raw) {
 			warnings = append(warnings, "project "+redactHome(sourcePath)+" sets [sandbox]; it overrides user-level Settings -> Sandbox for this workspace — edit the project file to change sandbox behavior here")
 		}
@@ -150,7 +150,7 @@ func Collect(opts Options) Report {
 		warnings = append(warnings, `config requests [sandbox] bash = "enforce", but Windows does not provide an OS-level Bash sandbox; the setting is fixed to "off" and bash runs unconfined`)
 	}
 	// Supervised deployments sometimes override HOME onto a service config dir
-	// while Reasonix isolation should use REASONIX_HOME. Do not rewrite
+	// while Semantix isolation should use SEMANTIX_HOME. Do not rewrite
 	// subprocess HOME automatically (#7600 rejected); surface the mismatch.
 	if warn := homeIsolationWarning(); warn != "" {
 		warnings = append(warnings, warn)
@@ -367,10 +367,10 @@ func valueOr(s, fallback string) string {
 }
 
 // homeIsolationWarning detects a process HOME that differs from the OS account
-// home while REASONIX_HOME is unset. Services should keep the real account HOME
-// and isolate Reasonix state with REASONIX_HOME instead of rewriting HOME.
+// home while SEMANTIX_HOME is unset. Services should keep the real account HOME
+// and isolate Semantix state with SEMANTIX_HOME instead of rewriting HOME.
 func homeIsolationWarning() string {
-	if strings.TrimSpace(os.Getenv("REASONIX_HOME")) != "" {
+	if strings.TrimSpace(os.Getenv("SEMANTIX_HOME")) != "" {
 		return ""
 	}
 	envHome := strings.TrimSpace(os.Getenv("HOME"))
@@ -393,7 +393,7 @@ func homeIsolationWarning() string {
 	// Do not embed either absolute path: when HOME is overridden, redactHome
 	// cannot mask the account home, and shareable doctor output must stay free
 	// of machine-local identity.
-	return "process HOME differs from the OS account home; keep the real account HOME for services and isolate Reasonix with REASONIX_HOME"
+	return "process HOME differs from the OS account home; keep the real account HOME for services and isolate Semantix with SEMANTIX_HOME"
 }
 
 func samePathFold(a, b string) bool {

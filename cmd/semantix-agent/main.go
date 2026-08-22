@@ -71,7 +71,7 @@ func shouldPlayIntro(args []string, stdout io.Writer) bool {
 func runWithCrashCapture(args []string, buildVersion string) (exitCode int) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			_ = crashreport.CapturePanic(config.ReasonixHomeDir(), buildVersion, recovered, debug.Stack())
+			_ = crashreport.CapturePanic(config.SemantixHomeDir(), buildVersion, recovered, debug.Stack())
 			panic(recovered)
 		}
 	}()

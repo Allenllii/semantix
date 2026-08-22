@@ -143,8 +143,8 @@ func TestTurnReceiptAdaptsContrastAcrossThemes(t *testing.T) {
 }
 
 func TestStatusFooterSemanticPaletteAcrossThemes(t *testing.T) {
-	t.Setenv("REASONIX_THEME", "")
-	t.Setenv("REASONIX_THEME_STYLE", "")
+	t.Setenv("SEMANTIX_THEME", "")
+	t.Setenv("SEMANTIX_THEME_STYLE", "")
 	defer restoreThemeForTest(activeColorProfile, activeCLITheme)
 	activeColorProfile = colorprofile.ANSI256
 
@@ -529,14 +529,14 @@ func TestStatusFooterCustomLineStillReplacesBuiltInData(t *testing.T) {
 	m.balance = "¥12.34"
 	m.statuslineCmd = "custom-status"
 	m.statuslineOut = "custom telemetry"
-	m.gitStatus = gitStatus{Repo: "Reasonix", Branch: "main"}
+	m.gitStatus = gitStatus{Repo: "Semantix", Branch: "main"}
 
 	primary := m.primaryStatusLine(" Auto ", false, false)
 	block := ansi.Strip(m.renderStatusBlock(primary, 120))
 	if strings.Contains(block, "deepseek-v4-flash") || strings.Contains(block, "work delivery") || strings.Contains(block, "¥12.34") {
 		t.Fatalf("custom statusline should replace built-in data fields:\n%s", block)
 	}
-	if !strings.Contains(block, "Reasonix@main") || !strings.Contains(block, "custom telemetry") {
+	if !strings.Contains(block, "Semantix@main") || !strings.Contains(block, "custom telemetry") {
 		t.Fatalf("custom statusline should coexist with Git identity:\n%s", block)
 	}
 }

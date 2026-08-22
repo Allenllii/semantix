@@ -40,7 +40,7 @@ mkdir -p ~/.semantix/sessions
 
 | 你的 agent 底座 | 走哪条路径 |
 |---|---|
-| **Reasonix fork**（Gnosil/DeepSeek-Reasonix） | 内置集成已就绪：`[semantix] enabled=true` + semantix_lookup 工具（零步骤） |
+| **semantix-agent**（本仓 harness/，随发布包分发） | 内置集成已就绪：`semantix-agent.toml` 中 `[semantix] enabled=true` + semantix_lookup 工具（零步骤） |
 | **LangChain** | `docs/reports/langchain-middleware.md` 双挂点示例（消息改写 + 会话提取） |
 | **Claude Code / 工具注册类** | 本 skill `tools/semantix-lookup.md` 的 schema 注册 `semantix_lookup`（+可选 `semantix_inject`） |
 | **任意自定义 agent** | 会话旁路三方式（`hooks/session-bypass.md`）：导出 / 事件旁路 / 直接调用 |
@@ -118,7 +118,7 @@ semantix extract --input <会话JSONL> --scope user --project <业务域>
 ```
 
 **会话 JSONL 格式**：每行一个 JSON 对象，`{"role":"user|assistant","content":"...","tool_calls":[...]}`。
-（若你的 agent 会话不是此格式：`agent-skill/hooks/session-bypass.md` 有适配说明，含 Reasonix HarnessSink 参考实现。）
+（若你的 agent 会话不是此格式：`agent-skill/hooks/session-bypass.md` 有适配说明，含 Semantix HarnessSink 参考实现。）
 
 ### 2. 开始新任务时检索/注入
 
@@ -145,7 +145,7 @@ semantix verify --session <会话目录> --scope user \
 ## 工具调用规范（注册到你的 agent）
 
 `agent-skill/tools/semantix-lookup.md` 含 JSON schema 与各框架注册示例
-（Reasonix `RegisterBuiltin` / Claude Code tools / 通用 function calling）。
+（Semantix `RegisterBuiltin` / Claude Code tools / 通用 function calling）。
 
 | 工具 | 何时调用 | 命令 |
 |---|---|---|

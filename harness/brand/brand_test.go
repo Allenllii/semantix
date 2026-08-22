@@ -17,16 +17,16 @@ func TestNameIsCleanDisplayToken(t *testing.T) {
 	}
 }
 
-// Rebranding must stay display-only: the Windows AppUserModelID and every
-// on-disk name remain "Reasonix"/"reasonix" (h4-branding spec §3.1). This
-// guard fails if someone points brand identity at the appidentity constant.
-func TestBrandDoesNotLeakIntoStateNames(t *testing.T) {
+// The full rebrand (docs/specs/semantix-full-rebrand.md) owns every product
+// surface, so no brand constant may carry the upstream "Reasonix" name —
+// upstream attribution lives only in LICENSE.reasonix.md and ATTRIBUTION.md.
+func TestBrandDoesNotLeakUpstreamName(t *testing.T) {
 	for _, s := range []string{Vendor, Copyright, Tagline} {
 		if strings.TrimSpace(s) == "" {
 			t.Fatal("brand constants must be non-empty")
 		}
 		if strings.Contains(s, "Reasonix") {
-			t.Fatalf("brand constant %q still carries the harness name", s)
+			t.Fatalf("brand constant %q still carries the upstream name", s)
 		}
 	}
 }

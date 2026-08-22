@@ -25,8 +25,8 @@ import (
 // mid-session switch (RebuildSession) moves to a config model and back.
 
 const (
-	acpFakeEnvEnable     = "REASONIX_ACP_FAKE_SIDECAR"
-	acpFakeEnvPluginName = "REASONIX_ACP_FAKE_PLUGIN_NAME"
+	acpFakeEnvEnable     = "SEMANTIX_ACP_FAKE_SIDECAR"
+	acpFakeEnvPluginName = "SEMANTIX_ACP_FAKE_PLUGIN_NAME"
 )
 
 // TestACPFakeSidecarHelperProcess is the re-exec entry point for the ACP fake
@@ -148,7 +148,7 @@ func installACPFakeProviderPlugin(t *testing.T, home, name string) {
 
 func writeACPFixture(t *testing.T, dir string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, "reasonix.toml"), []byte(`
+	if err := os.WriteFile(filepath.Join(dir, "semantix-agent.toml"), []byte(`
 default_model = "local/fake-model"
 
 [environment]
@@ -159,7 +159,7 @@ name = "local"
 kind = "acp-test-provider"
 base_url = "http://example.invalid"
 model = "fake-model"
-api_key_env = "REASONIX_TEST_KEY"
+api_key_env = "SEMANTIX_TEST_KEY"
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -192,14 +192,14 @@ func runACPTurnAssistant(t *testing.T, ctrl interface {
 // model and back to the plugin ref.
 func TestACPSessionWithPluginModelStreamsAndSwitches(t *testing.T) {
 	isolateCLIConfigHome(t)
-	if _, err := config.SetCredential("REASONIX_TEST_KEY", "test-key"); err != nil {
+	if _, err := config.SetCredential("SEMANTIX_TEST_KEY", "test-key"); err != nil {
 		t.Fatalf("SetCredential: %v", err)
 	}
 	project := t.TempDir()
 	writeACPFixture(t, project)
 	name := "acpdemo"
 	ref := "plugin/" + name + "/fake/x"
-	installACPFakeProviderPlugin(t, config.ReasonixHomeDir(), name)
+	installACPFakeProviderPlugin(t, config.SemantixHomeDir(), name)
 
 	factory := &acpFactory{}
 

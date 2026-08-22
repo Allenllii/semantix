@@ -4,8 +4,8 @@
 #   semantix-agent   — merged coding agent (harness vendor, in-process kernel)
 #   semantix         — memory-kernel CLI
 #   semantix-gateway — OpenAI-compatible semantic-cache gateway
-# plus the two config templates (reasonix.example.toml, semantix.example.toml)
-# and a README, per platform.
+# plus the two config templates (semantix-agent.example.toml,
+# semantix.example.toml), the standalone kernel installer, and a README.
 #
 # History: up to v0.4.1 this script built `reasonix` from the external fork
 # checkout (FORK_ROOT) + `semantix` from this repo. v0.5.0/v0.6.0 were packaged
@@ -16,7 +16,16 @@
 #
 # Usage: build-full.sh --version v0.7.0 [--platforms darwin-arm64,linux-amd64]
 # Default platforms: darwin-arm64, darwin-amd64, linux-amd64, linux-arm64
-# Output: dist/semantix-agent-<version>-<platform>.tar.gz + SHA256SUMS.txt
+# Output (dist/):
+#   semantix-agent-<version>-<platform>.tar.gz   full bundle for humans
+#   semantix-agent-<platform>.tar.gz             flat single-binary asset the
+#                                                self-updater downloads
+#                                                (`semantix-agent upgrade`)
+#   semantix-<version>-<platform>                raw kernel binary for the
+#                                                agent-skill curl installer
+#   SHA256SUMS + SHA256SUMS.txt                  same checksums, both names
+#                                                (updater reads the former,
+#                                                install.sh the latter)
 set -euo pipefail
 
 VERSION=""
@@ -46,6 +55,14 @@ GO="${GO:-go}"
 OUT="$ROOT/dist"
 rm -rf "$OUT"
 mkdir -p "$OUT"
+
+# macOS bsdtar archives extended attributes as AppleDouble "._name" members and
+# would also sweep in .DS_Store, so a release packed on a Mac ships a shadow
+# file next to every real one (v0.7.0 did). These make the tarball wrong for
+# every consumer, not just Linux. COPYFILE_DISABLE is the documented bsdtar
+# opt-out; the older name is kept for pre-10.5 tars. Both are inert on GNU tar.
+export COPYFILE_DISABLE=1
+export COPY_EXTENDED_ATTRIBUTES_DISABLE=1
 
 COMMIT="$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -80,9 +97,11 @@ for plat in ${PLATFORMS//,/ }; do
     -ldflags "-s -w" \
     -o "$D/semantix-gateway" ./cmd/semantix-gateway)
 
-  # Config templates are required package content — fail loudly if missing.
-  cp "$ROOT/reasonix.example.toml" "$D/"
+  # Config templates and the standalone kernel installer are required package
+  # content — fail loudly if missing.
+  cp "$ROOT/semantix-agent.example.toml" "$D/"
   cp "$ROOT/semantix.example.toml" "$D/"
+  cp "$ROOT/agent-skill/scripts/install.sh" "$D/semantix-install.sh"
   cat > "$D/README.md" <<EOF
 # Semantix Agent $VERSION ($plat)
 
@@ -95,12 +114,14 @@ for plat in ${PLATFORMS//,/ }; do
 - \`semantix\` — memory kernel CLI（extract / search / lookup / verify / usage / dashboard）
 - \`semantix-gateway\` — OpenAI 兼容语义缓存网关（可选，任何 OpenAI 兼容客户端
   把 base_url 指过来即可）
-- \`reasonix.example.toml\` — agent 配置模板（provider + [semantix] 段）
+- \`semantix-agent.example.toml\` — agent 配置模板（provider + [semantix] 段）
 - \`semantix.example.toml\` — kernel 配置模板
+- \`semantix-install.sh\` — 独立 curl 安装器，只把 semantix memory kernel
+  装进别的 agent 环境
 
 ## 快速开始
-1. cp reasonix.example.toml ~/.reasonix/reasonix.toml，填 provider key，
-   确认 [semantix] enabled = true
+1. cp semantix-agent.example.toml ~/.semantix/semantix-agent.toml，填 provider key，
+   确认 [semantix] enabled = true（或直接跑 \`semantix-agent setup\` 向导）
 2. ./semantix-agent            # 交互 TUI（或 -p "task" 单发）
 3. 会话结束后 ./semantix usage # 成本与命中仪表盘
 
@@ -111,13 +132,60 @@ for plat in ${PLATFORMS//,/ }; do
 
 发布说明：https://github.com/Gnosil/semantix/releases/tag/$VERSION
 EOF
-  chmod +x "$D/semantix-agent" "$D/semantix" "$D/semantix-gateway"
+  chmod +x "$D/semantix-agent" "$D/semantix" "$D/semantix-gateway" "$D/semantix-install.sh"
 
-  (cd "$OUT" && tar -czf "$PKG.tar.gz" "$PKG")
+  (cd "$OUT" && tar --exclude='.DS_Store' -czf "$PKG.tar.gz" "$PKG")
+
+  # Flat single-binary archive for `semantix-agent upgrade`: the updater
+  # expects semantix-agent-<os>-<arch>.tar.gz with the binary at the root.
+  (cd "$D" && tar --exclude='.DS_Store' -czf "$OUT/semantix-agent-$plat.tar.gz" semantix-agent)
+  # Raw kernel binary for agent-skill/scripts/install.sh (curl flow).
+  cp "$D/semantix" "$OUT/semantix-$VERSION-$plat"
   rm -rf "$D"
-  echo "packed $PKG.tar.gz"
+  echo "packed $PKG.tar.gz + semantix-agent-$plat.tar.gz + semantix-$VERSION-$plat"
 done
 
-(cd "$OUT" && shasum -a 256 semantix-agent-*.tar.gz > SHA256SUMS.txt)
+# One checksum set over every asset, published under both names: the
+# self-updater downloads the asset literally named SHA256SUMS, while the
+# agent-skill install.sh fetches SHA256SUMS.txt.
+(cd "$OUT" && shasum -a 256 semantix-agent-*.tar.gz semantix-"$VERSION"-* > SHA256SUMS && cp SHA256SUMS SHA256SUMS.txt)
+
+# Self-check. v0.7.0 shipped with the updater asset missing, the kernel asset
+# missing, SHA256SUMS absent under the name the updater reads, and AppleDouble
+# junk inside every tarball — none of it caught before publishing. Fail the
+# build here instead of finding out from a user's broken `upgrade`.
+echo "--- verifying assets"
+verify_fail=0
+note() { echo "  FAIL: $*" >&2; verify_fail=1; }
+# shasum writes "<hash>  name" in text mode but "<hash> *name" in binary mode
+# (the Git-Bash default), so compare on the name field with the marker stripped
+# rather than pattern-matching the whole line. Both consumers already tolerate
+# the marker: releaseasset/cli.go TrimPrefixes it and install.sh pipes through
+# `shasum -c`.
+sums_have() { awk '{sub(/^\*/, "", $2); print $2}' "$OUT/SHA256SUMS" | grep -Fxq "$1"; }
+for plat in ${PLATFORMS//,/ }; do
+  [ -f "$OUT/semantix-agent-$VERSION-$plat.tar.gz" ] || note "missing bundle for $plat"
+  [ -f "$OUT/semantix-agent-$plat.tar.gz" ]          || note "missing updater asset for $plat"
+  [ -f "$OUT/semantix-$VERSION-$plat" ]              || note "missing raw kernel asset for $plat"
+  # The updater resolves its asset through SHA256SUMS; a name mismatch there is
+  # exactly how v0.7.0's `upgrade` 404'd.
+  sums_have "semantix-agent-$plat.tar.gz" \
+    || note "SHA256SUMS has no entry for semantix-agent-$plat.tar.gz"
+  sums_have "semantix-$VERSION-$plat" \
+    || note "SHA256SUMS has no entry for semantix-$VERSION-$plat"
+done
+for t in "$OUT"/*.tar.gz; do
+  if tar -tzf "$t" 2>/dev/null | grep -qE '(^|/)(\._|\.DS_Store)'; then
+    note "$(basename "$t") contains AppleDouble/.DS_Store junk"
+  fi
+done
+[ -f "$OUT/SHA256SUMS" ]     || note "SHA256SUMS missing (self-updater reads this exact name)"
+[ -f "$OUT/SHA256SUMS.txt" ] || note "SHA256SUMS.txt missing (agent-skill install.sh reads this)"
+if [ "$verify_fail" -ne 0 ]; then
+  echo "release assets are incomplete — not publishable" >&2
+  exit 1
+fi
+echo "  all asset checks passed"
+
 echo "---"
 ls -lh "$OUT" | awk '{print $5, $9}'

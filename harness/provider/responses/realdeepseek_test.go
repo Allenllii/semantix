@@ -13,7 +13,7 @@ import (
 	"semantix/harness/provider"
 )
 
-// TestRealOpenCodeGoDeepSeekResponsesWebSearch exercises Reasonix's stateless
+// TestRealOpenCodeGoDeepSeekResponsesWebSearch exercises Semantix's stateless
 // Responses request, server-side web search, and replay-item capture against the
 // OpenCode Go DeepSeek Flash route.
 func TestRealOpenCodeGoDeepSeekResponsesWebSearch(t *testing.T) {

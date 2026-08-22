@@ -1,6 +1,6 @@
 # Semantix 事件契约（Event Contract）
 
-> 对应 `kernel/event` 包。事件是 kernel 与 harness（Reasonix 等）之间的**唯一观测通道**：kernel 通过它们驱动语义切片提取、缓存统计、调度与进化信号。
+> 对应 `kernel/event` 包。事件是 kernel 与 harness（Semantix 等）之间的**唯一观测通道**：kernel 通过它们驱动语义切片提取、缓存统计、调度与进化信号。
 
 **Wire 稳定性**：JSON 字段名是契约的一部分，不得更改。新增事件只能追加 Kind（`KindCount` 前插入），不得重排/删除既有 Kind 序号。
 
@@ -56,11 +56,11 @@
 
 ---
 
-## 3. Reasonix 事件映射表
+## 3. Semantix 事件映射表
 
-Semantix 的 adapter 监听 Reasonix（或任意 harness）并翻译为上述契约：
+Semantix 的 adapter 监听 Semantix（或任意 harness）并翻译为上述契约：
 
-| Semantix 事件 | Reasonix 对应点 | 备注 |
+| Semantix 事件 | Semantix 对应点 | 备注 |
 |---|---|---|
 | `TurnStarted` | 会话/轮次开始（session 载入、新 turn 组装） | turn 边界 = 语义切片提取的切分点 |
 | `Usage` | 模型流式调用后的 usage 汇总（provider 返回） | 含前缀缓存命中统计（`cache_hit`/`cache_miss`） |
@@ -72,7 +72,7 @@ Semantix 的 adapter 监听 Reasonix（或任意 harness）并翻译为上述契
 | `PrefetchHit` / `PrefetchWaste` | （无对应） | **semantix 新增**：投机预取闭环 |
 | `EvolutionTick` | （无对应） | **semantix 新增**：自进化闭环 |
 
-> Reasonix 自身的工具修复（`NormalizeMessages`）、双模型会话（Coordinator）与三级压缩阈值是 harness 内部机制；semantix kernel **不干预**这些机制，只消费其可观测事件——保持 kernel 与 harness 解耦（架构设计 §2.2）。
+> Semantix 自身的工具修复（`NormalizeMessages`）、双模型会话（Coordinator）与三级压缩阈值是 harness 内部机制；semantix kernel **不干预**这些机制，只消费其可观测事件——保持 kernel 与 harness 解耦（架构设计 §2.2）。
 
 ---
 

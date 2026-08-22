@@ -20,25 +20,25 @@ func TestResolvedBuiltinDocsSlashNameMatchesRuntimeOwner(t *testing.T) {
 			name:     "visible custom command",
 			commands: []command.Command{{Name: DocsSlashName}},
 			owner:    SlashOwnerCustom,
-			builtin:  ReasonixDocsSlashName,
+			builtin:  SemantixDocsSlashName,
 		},
 		{
 			name:     "hidden plugin command alias",
 			commands: []command.Command{{Name: DocsSlashName, Plugin: "manuals", Hidden: true}},
 			owner:    SlashOwnerCustom,
-			builtin:  ReasonixDocsSlashName,
+			builtin:  SemantixDocsSlashName,
 		},
 		{
 			name:    "visible project skill",
 			skills:  []skill.Skill{{Name: DocsSlashName}},
 			owner:   SlashOwnerSkill,
-			builtin: ReasonixDocsSlashName,
+			builtin: SemantixDocsSlashName,
 		},
 		{
 			name:    "compatible plugin skill alias",
 			skills:  []skill.Skill{{Name: DocsSlashName, Plugin: "manuals"}},
 			owner:   SlashOwnerSkill,
-			builtin: ReasonixDocsSlashName,
+			builtin: SemantixDocsSlashName,
 		},
 		{
 			name: "ambiguous plugin skill aliases",
@@ -62,8 +62,8 @@ func TestResolvedBuiltinDocsSlashNameMatchesRuntimeOwner(t *testing.T) {
 			if got := IsBuiltinDocsSlash(DocsSlashName, tt.commands, tt.skills); got != (tt.owner == SlashOwnerBuiltin) {
 				t.Fatalf("short built-in = %v, owner=%v", got, tt.owner)
 			}
-			if !IsBuiltinDocsSlash(ReasonixDocsSlashName, tt.commands, tt.skills) {
-				t.Fatal("preferred qualified Reasonix docs name should resolve to the built-in when unoccupied")
+			if !IsBuiltinDocsSlash(SemantixDocsSlashName, tt.commands, tt.skills) {
+				t.Fatal("preferred qualified Semantix docs name should resolve to the built-in when unoccupied")
 			}
 		})
 	}
@@ -72,14 +72,14 @@ func TestResolvedBuiltinDocsSlashNameMatchesRuntimeOwner(t *testing.T) {
 func TestQualifiedBuiltinDocsSlashPreservesExistingQualifiedCommands(t *testing.T) {
 	commands := []command.Command{
 		{Name: DocsSlashName},
-		{Name: ReasonixDocsSlashName},
-		{Name: "reasonix:builtin:docs"},
+		{Name: SemantixDocsSlashName},
+		{Name: "semantix:builtin:docs"},
 	}
-	want := "reasonix:builtin:docs:2"
+	want := "semantix:builtin:docs:2"
 	if got := ResolvedBuiltinSlashName(DocsSlashName, commands, nil); got != want {
 		t.Fatalf("resolved built-in name = %q, want %q", got, want)
 	}
-	for _, existing := range []string{DocsSlashName, ReasonixDocsSlashName, "reasonix:builtin:docs"} {
+	for _, existing := range []string{DocsSlashName, SemantixDocsSlashName, "semantix:builtin:docs"} {
 		if IsBuiltinDocsSlash(existing, commands, nil) {
 			t.Fatalf("existing command %q was displaced by the built-in", existing)
 		}

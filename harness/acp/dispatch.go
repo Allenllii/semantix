@@ -58,7 +58,7 @@ type updateSink struct {
 	answer  func(id string, answers []event.AskAnswer)
 	status  func(event.Event)
 	// extensionSurface records the client's negotiated
-	// reasonix.extensionSurface support: structured surfaces go out as vendor
+	// semantix.extensionSurface support: structured surfaces go out as vendor
 	// session/update payloads on top of the always-sent text fallback.
 	extensionSurface bool
 	// speculativeToolIDs tracks parent-sampling tool IDs published under the
@@ -242,7 +242,7 @@ func (s *updateSink) Emit(e event.Event) {
 }
 
 // emitExtension maps one extension structured-UI event onto ACP updates. A
-// client that negotiated reasonix.extensionSurface receives the structured DTO
+// client that negotiated semantix.extensionSurface receives the structured DTO
 // (the shared eventwire JSON contract) in a vendor session/update variant;
 // every client — including that one, belt and suspenders — also receives the
 // flattened text fallback as an ordinary agent_message_chunk. Blocking
@@ -258,7 +258,7 @@ func (s *updateSink) emitExtension(e event.Event) {
 			s.send(extensionSurfaceUpdate{
 				SessionUpdate: extensionSurfaceUpdateKind,
 				Meta: map[string]any{
-					"reasonix.io": map[string]any{
+					"semantix.io": map[string]any{
 						"extensionSurface": dto,
 					},
 				},
@@ -436,20 +436,20 @@ func (s *updateSink) requestPermission(ctx context.Context, a event.Approval) {
 	s.approve(a.ID, allow, session, persist)
 }
 
-// permissionMeta carries Reasonix-owned structured data that an ACP supervisor
+// permissionMeta carries Semantix-owned structured data that an ACP supervisor
 // may trust independently from model-supplied rawInput. A foreground bash call
 // receives argv only when the command is a single static command: shell
 // expansion, control operators, redirects, assignments, and background jobs all
 // fail closed and remain interactive.
 func (s *updateSink) permissionMeta(a event.Approval) map[string]any {
-	reasonix := map[string]any{
+	semantix := map[string]any{
 		"approvalId": a.ID,
 		"tool":       a.Tool,
 		"subject":    a.Subject,
 		"fresh":      a.Fresh,
 	}
 	if reason := strings.TrimSpace(a.Reason); reason != "" {
-		reasonix["reason"] = reason
+		semantix["reason"] = reason
 	}
 	if a.Tool == "bash" && strings.TrimSpace(s.cwd) != "" {
 		var input struct {
@@ -472,13 +472,13 @@ func (s *updateSink) permissionMeta(a event.Approval) map[string]any {
 				}
 			}
 			if cwdErr == nil && commandErr == nil && exact && len(command.Argv) > 0 {
-				reasonix["commandSchemaVersion"] = 1
-				reasonix["argv"] = command.Argv
-				reasonix["cwd"] = cwd
+				semantix["commandSchemaVersion"] = 1
+				semantix["argv"] = command.Argv
+				semantix["cwd"] = cwd
 			}
 		}
 	}
-	return map[string]any{"reasonix.io": reasonix}
+	return map[string]any{"semantix.io": semantix}
 }
 
 func (s *updateSink) requestAsk(ctx context.Context, a event.Ask) {

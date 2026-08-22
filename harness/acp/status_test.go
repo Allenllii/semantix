@@ -102,13 +102,13 @@ func openStatusSession(t *testing.T, client *rpcClient, cwd string) string {
 	return opened.SessionID
 }
 
-func getStatus(t *testing.T, client *rpcClient, sessionID string) ReasonixSessionStatus {
+func getStatus(t *testing.T, client *rpcClient, sessionID string) SemantixSessionStatus {
 	t.Helper()
 	resp := client.call(t, sessionStatusMethod, SessionStatusParams{SessionID: sessionID})
 	if resp.Error != nil {
 		t.Fatalf("session/status: %+v", resp.Error)
 	}
-	var status ReasonixSessionStatus
+	var status SemantixSessionStatus
 	if err := json.Unmarshal(resp.Result, &status); err != nil {
 		t.Fatalf("session/status result: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestStatusExtensionTracksMultipleSessionsAndUsage(t *testing.T) {
 		if notification.Method != sessionStatusUpdateMethod {
 			continue
 		}
-		var update ReasonixStatusUpdate
+		var update SemantixStatusUpdate
 		if err := json.Unmarshal(notification.Params, &update); err != nil {
 			t.Fatalf("status update: %v", err)
 		}
@@ -231,7 +231,7 @@ func TestStatusNormalizesPhaseAndRedactsPublicText(t *testing.T) {
 func TestRestoreStatusNormalizesLegacyPresentationPhase(t *testing.T) {
 	restored := restoreStatusTelemetry(&persistedStatusTelemetry{
 		Phase:          "executor · implementing local patch",
-		FinalReadiness: ReasonixFinalReadiness{},
+		FinalReadiness: SemantixFinalReadiness{},
 	})
 	if got := restored.snapshot().phase; got != "implementing" {
 		t.Fatalf("restored phase = %q, want implementing", got)
@@ -243,8 +243,8 @@ func TestRestoreStatusMarksInterruptedTurnPaused(t *testing.T) {
 		Sequence:    7,
 		State:       "running",
 		Phase:       "implementing",
-		TurnOutcome: ReasonixTurnOutcome{Kind: "none"},
-		FinalReadiness: ReasonixFinalReadiness{
+		TurnOutcome: SemantixTurnOutcome{Kind: "none"},
+		FinalReadiness: SemantixFinalReadiness{
 			ReadyForReview: true,
 			Risks:          []string{},
 		},

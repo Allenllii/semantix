@@ -9,33 +9,33 @@ import (
 // Default tuning constants (MVP, U15). Freeze window protects the vendor
 // byte-level prefix cache: a changed injection set invalidates the cached
 // prefix for ~24h (DeepSeek policy) — we never change params inside the
-// window (Reasonix lesson, cache_policy.go:21-45).
+// window (Semantix lesson, cache_policy.go:21-45).
 const (
-	DefaultAlpha         = 0.1  // EWMA smoothing (10% weight on newest sample)
-	DefaultTauL2         = 0.55 // relative-confidence threshold for L2 hit
-	DefaultSuccessFloor  = 0.7  // behavior success gate for read-only tools
-	DefaultInjectCap     = 0.3  // max injected budget as fraction of context
-	DefaultFreezeEpoch   = 60   // epochs a param change stays frozen
-	DefaultMinTau        = 0.30 // floor for tau tuning (never below)
-	DefaultMaxTau        = 0.80 // ceiling for tau tuning (never above)
-	TauStep              = 0.05 // per adjustment step
-	PrefetchStep         = 0.05 // per adjustment step for planner confidence
-	PollutionRiseAt      = 0.30 // pollution EWMA above this → tighten tau
-	HitTarget            = 0.70 // hit EWMA above this (and pollution low) → relax tau
-	PollutionLow         = 0.10 // pollution below this to allow relaxation
-	MinSamples           = 20   // signals required before the first adjustment
+	DefaultAlpha        = 0.1  // EWMA smoothing (10% weight on newest sample)
+	DefaultTauL2        = 0.55 // relative-confidence threshold for L2 hit
+	DefaultSuccessFloor = 0.7  // behavior success gate for read-only tools
+	DefaultInjectCap    = 0.3  // max injected budget as fraction of context
+	DefaultFreezeEpoch  = 60   // epochs a param change stays frozen
+	DefaultMinTau       = 0.30 // floor for tau tuning (never below)
+	DefaultMaxTau       = 0.80 // ceiling for tau tuning (never above)
+	TauStep             = 0.05 // per adjustment step
+	PrefetchStep        = 0.05 // per adjustment step for planner confidence
+	PollutionRiseAt     = 0.30 // pollution EWMA above this → tighten tau
+	HitTarget           = 0.70 // hit EWMA above this (and pollution low) → relax tau
+	PollutionLow        = 0.10 // pollution below this to allow relaxation
+	MinSamples          = 20   // signals required before the first adjustment
 )
 
 // Config carries operator-provided tuning constants (zero values → defaults).
 type Config struct {
-	Alpha         float64
-	TauL2         float64
-	SuccessFloor  float64
-	InjectCap     float64
-	FreezeEpochs  uint64
-	MinTau        float64
-	MaxTau        float64
-	MinSamples    uint64
+	Alpha        float64
+	TauL2        float64
+	SuccessFloor float64
+	InjectCap    float64
+	FreezeEpochs uint64
+	MinTau       float64
+	MaxTau       float64
+	MinSamples   uint64
 }
 
 // Signal is one feedback sample consumed by the evolution engine.
@@ -48,12 +48,12 @@ type Signal struct {
 // Params is the tunable parameter snapshot (frozen semantics: injected set
 // must not change within the freeze window — see architecture spec §6.2).
 type Params struct {
-	TauL2         float64 `json:"tau_l2"`
-	TauL3         float64 `json:"tau_l3"`
-	InjectCap     float64 `json:"inject_cap"`
-	PrefetchConf  float64 `json:"prefetch_conf"`
-	SuccessFloor  float64 `json:"success_floor"` // behavior success gate for read-only tools
-	FreezeEpochs  uint64  `json:"freeze_epochs"` // injection-set freeze duration
+	TauL2        float64 `json:"tau_l2"`
+	TauL3        float64 `json:"tau_l3"`
+	InjectCap    float64 `json:"inject_cap"`
+	PrefetchConf float64 `json:"prefetch_conf"`
+	SuccessFloor float64 `json:"success_floor"` // behavior success gate for read-only tools
+	FreezeEpochs uint64  `json:"freeze_epochs"` // injection-set freeze duration
 }
 
 // Engine runs online EWMA tuning and offline retraining (MVP in M1).

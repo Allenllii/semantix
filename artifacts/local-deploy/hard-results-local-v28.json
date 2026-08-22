@@ -1,0 +1,88 @@
+{
+  "summary": {
+    "variant": "local-port-v28",
+    "passed": 5,
+    "total": 5,
+    "duration_ms": 98664,
+    "input_tokens": 264676,
+    "output_tokens": 6959,
+    "cost": 0.028201784
+  },
+  "rows": [
+    {
+      "id": "cross_file",
+      "pass": true,
+      "test_output": "",
+      "duration_ms": 13799,
+      "agent_exit": 1,
+      "usage": {
+        "input_tokens": 30820,
+        "output_tokens": 1042,
+        "cache_read_input_tokens": 24960,
+        "cache_creation_input_tokens": 5860
+      },
+      "cost": 0.00430328,
+      "reported": "Fixed the failing user lookup.\n\nThe cross-file chain is: `test_app.py` → `users.find()` → `email_key()` (from `normalize.py`). The test passes `' Alice@Example.COM '` and expects it to resolve to the stored `'alice@example.com'`, but `email_key` was returning the value unchanged.\n\n**Change:** in `normalize.py`, normalize the email key by stripping surrounding whitespace and lowercasing, so lookups become case/whitespace-insensitive and match the stored lowercase keys.\n\n```python\ndef email_key(value):\n    return value.strip().lower()\n```\n\n`python test_app.py` now exits cleanly (`TESTS PASSED`), confirming both assertions pass."
+    },
+    {
+      "id": "csv_edge",
+      "pass": true,
+      "test_output": "",
+      "duration_ms": 20850,
+      "agent_exit": 1,
+      "usage": {
+        "input_tokens": 58590,
+        "output_tokens": 1276,
+        "cache_read_input_tokens": 52224,
+        "cache_creation_input_tokens": 6366
+      },
+      "cost": 0.005216496,
+      "reported": "The `git diff` shows nothing since this directory is untracked, but the fix is in place and verified.\n\nFixed the quoted-comma regression by replacing naive `.split(',')` with the stdlib `csv` module. Now quoted fields containing commas, and escaped quotes, are parsed correctly:\n\n- `fields('a,b,c\\n')` → `['a', 'b', 'c']`\n- `fields('a,\"b,c\",d\\n')` → `['a', 'b,c', 'd']` (previously `['a', '\"b', 'c\"', 'd']`)\n- `fields('x,\"he said \"\"hi\"\"\",z\\n')` → `['x', 'he said \"hi\"', 'z']`\n\nFinal `parser.py`:\n\n```python\nimport csv\nimport io\n\n\ndef fields(line):\n    return next(csv.reader(io.StringIO(line.strip())))\n```\n\n`test_app.py` passes."
+    },
+    {
+      "id": "precedence",
+      "pass": true,
+      "test_output": "",
+      "duration_ms": 19477,
+      "agent_exit": 1,
+      "usage": {
+        "input_tokens": 53391,
+        "output_tokens": 1565,
+        "cache_read_input_tokens": 47232,
+        "cache_creation_input_tokens": 6159
+      },
+      "cost": 0.005437008,
+      "reported": "The directory is new/untracked in this repo, so there's no prior committed version to diff against — but the file contents and test run confirm the change.\n\nFinal state of `config.py`:\n```python\ndef resolve(cli, project, global_):\n    return cli or project or global_\n```\n\nTest run: `python test_app.py` → `TESTS PASSED`\n\n## Summary\n\n- **Bug**: `resolve` returned `global_ or project or cli`, giving *global* the highest precedence (opposite of the requirement).\n- **Fix**: Changed the return to `cli or project or global_` so precedence is **CLI → project → global**.\n- **API unchanged**: signature `resolve(cli, project, global_)` and return type are untouched.\n- **Tests**: `test_app.py` passes all three assertions (CLI wins, then project, then global fallback)."
+    },
+    {
+      "id": "path_security",
+      "pass": true,
+      "test_output": "",
+      "duration_ms": 20171,
+      "agent_exit": 1,
+      "usage": {
+        "input_tokens": 43421,
+        "output_tokens": 1435,
+        "cache_read_input_tokens": 37504,
+        "cache_creation_input_tokens": 5917
+      },
+      "cost": 0.005022736,
+      "reported": "The file is untracked (not yet committed), so `git diff` is empty — that's expected. The change is in place.\n\n## Summary\n\nI hardened `load` in `files.py` against path traversal while keeping valid reads working.\n\n**The fix** resolves both `root` and the joined `root/name` to absolute canonical paths, then requires the target to be `root` itself or inside it:\n\n```python\nfrom pathlib import Path\n\ndef load(root, name):\n    root = Path(root).resolve()\n    path = (root / name).resolve()\n    if root != path and root not in path.parents:\n        raise ValueError(f\"path traversal detected: {name!r}\")\n    return path.read_text()\n```\n\n- Valid read (`load(p, 'ok.txt')`) → `p/ok.txt` is a child of root → returned normally. ✅\n- Traversal (`load(p, '../secret.txt')`) → resolves outside root → `ValueError` raised. ✅\n- `.resolve()` also neutralizes `..` segments and symlinks that escape the root, and it runs on an already-`Path`/`str` root so callers can pass either.\n\n**Verification:** `python test_app.py` → `TESTS PASSED`.\n\nOne note: the test's traversal case would previously either read a real sibling file or raise `FileNotFoundError`; the guard now deterministically raises `ValueError`, so the behavior is explicit and testable."
+    },
+    {
+      "id": "multi_module",
+      "pass": true,
+      "test_output": "",
+      "duration_ms": 24367,
+      "agent_exit": 1,
+      "usage": {
+        "input_tokens": 78454,
+        "output_tokens": 1641,
+        "cache_read_input_tokens": 66816,
+        "cache_creation_input_tokens": 11638
+      },
+      "cost": 0.008222264,
+      "reported": "The directory is untracked so `git diff` shows nothing, but the change is in place. Verification:\n\n- **Change** (`service.py`): `register` now rejects non-string (covers `None` from `payload.get('name')`) and blank/whitespace-only names with `ValueError`, and trims the name before saving.\n- **Module boundaries preserved**: `api.create` still delegates to `service.register`; `service` still delegates storage to `store.save`; no cross-module coupling changed.\n- **Tests**: `python test_app.py` → `TEST_PASSED` (trims `' Ada '`→`'Ada'`, saves trimmed value, raises `ValueError` on `{}`)."
+    }
+  ]
+}

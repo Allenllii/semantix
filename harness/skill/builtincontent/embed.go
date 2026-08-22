@@ -1,5 +1,5 @@
 // Package builtincontent holds shipped skill markdown that is embedded into the
-// Reasonix binary. Bodies stay out of the system prompt until the skill is
+// Semantix binary. Bodies stay out of the system prompt until the skill is
 // invoked; only the name+description index line is cache-stable.
 package builtincontent
 
@@ -13,7 +13,7 @@ import (
 	"semantix/harness/frontmatter"
 )
 
-//go:embed reasonix-guide/SKILL.md
+//go:embed semantix-guide/SKILL.md
 var files embed.FS
 
 // SkillMarkdown is one embedded skill file after frontmatter split.
@@ -28,9 +28,9 @@ type SkillMarkdown struct {
 	Frontmatter map[string]string
 }
 
-// LoadReasonixGuide returns the shipped reasonix-guide skill markdown.
-func LoadReasonixGuide() (SkillMarkdown, error) {
-	return loadSkill("reasonix-guide/SKILL.md")
+// LoadSemantixGuide returns the shipped semantix-guide skill markdown.
+func LoadSemantixGuide() (SkillMarkdown, error) {
+	return loadSkill("semantix-guide/SKILL.md")
 }
 
 // All loads every embedded SKILL.md under this package (currently one).
@@ -72,7 +72,7 @@ func ParseSkillMarkdown(sourcePath, content string) (SkillMarkdown, error) {
 	fm, body := frontmatter.Split(content)
 	name := strings.TrimSpace(fm["name"])
 	if name == "" {
-		// Fall back to directory name: reasonix-guide/SKILL.md → reasonix-guide
+		// Fall back to directory name: semantix-guide/SKILL.md → semantix-guide
 		dir := path.Dir(sourcePath)
 		if dir != "" && dir != "." {
 			name = path.Base(dir)

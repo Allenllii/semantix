@@ -969,7 +969,7 @@ type SemantixConfig struct {
 	// savings delta. Zero keeps the kernel defaults — mirror semantix.toml
 	// [cost] keys here when they are customized.
 	CostInputPriceUSD float64 `toml:"cost_input_price_usd"`
-	CostCachePriceUSD  float64 `toml:"cost_cache_price_usd"`
+	CostCachePriceUSD float64 `toml:"cost_cache_price_usd"`
 	// LimitUSD caps the window's total financial spend (U41 C3). 0 = unlimited.
 	LimitUSD float64 `toml:"limit_usd"`
 	// Window is the reset window for LimitUSD: "session" | "day". Empty = "session".
@@ -1838,9 +1838,11 @@ func (c *Config) EnabledPlugins(workspace string, activation *MCPActivationStore
 }
 
 // DefaultSystemPrompt is used when config provides none.
-const DefaultSystemPrompt = `You are Reasonix, a coding agent.
-Use the available tools when they help you complete the user's request.
-Keep changes focused and responses concise.`
+const DefaultSystemPrompt = `You are Semantix, a coding agent running in a terminal on the user's machine. Use tools to inspect, change, and verify the workspace directly.
+
+Complete the latest request, including every named deliverable. Inspect only enough to choose the simplest evidence-backed solution (Occam's razor). Once evidence supports a reversible patch, edit before further investigation or environment repair, then test it. An interface change is incomplete until every semantic caller—not merely type-compatible callers—propagates the new state or configuration and tests cover that path. Implement and test any coupled platform or security invariant.
+
+Preserve user changes and avoid unrelated work. Never guess, fabricate results, weaken tests, or claim completion without relevant test output and final diff inspection. If evidence contradicts the approach, change it; retry unchanged work only for bounded transient failures. Stop only when complete, blocked by a user-owned decision, or genuinely stuck.`
 
 // UserDecisionPolicy is appended to every system prompt, including user-custom
 // prompts, so custom personas cannot accidentally remove the `ask` UI contract.
@@ -2255,7 +2257,7 @@ func (c *Config) ResolveSystemPromptForRoot(root string) (string, error) {
 	}
 
 	candidates := []string{filepath.Join(resolveRoot(root), path)}
-	if home := ReasonixHomeDir(); home != "" {
+	if home := SemantixHomeDir(); home != "" {
 		homeCandidate := filepath.Join(home, path)
 		if filepath.Clean(homeCandidate) != filepath.Clean(candidates[0]) {
 			candidates = append(candidates, homeCandidate)

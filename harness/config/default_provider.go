@@ -5,9 +5,9 @@ import "os"
 // Issue B1 (GLM adaptation): a fresh install defaults to GLM, stays switchable
 // to DeepSeek, and never strands a user who only holds one vendor's key.
 //
-// The shipped config template (reasonix.example.toml) already defaults to GLM,
+// The shipped config template (semantix-agent.example.toml) already defaults to GLM,
 // so packaged installs get GLM out of the box. This file covers the *no-config*
-// path — a source build or a bare run with no reasonix.toml — where the choice
+// path — a source build or a bare run with no semantix-agent.toml — where the choice
 // must be inferred from which API-key env var is present instead of guessing a
 // vendor the user cannot authenticate against.
 
@@ -21,7 +21,7 @@ const (
 )
 
 // regularFileExists reports whether path exists and is a regular file. Used to
-// detect a truly config-less install (no project reasonix.toml on disk).
+// detect a truly config-less install (no project semantix-agent.toml on disk).
 func regularFileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.Mode().IsRegular()

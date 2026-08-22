@@ -33,12 +33,12 @@ const (
 )
 
 // LocalOnlyToolName/ID make display-only records safe when a newer transcript
-// is opened by an older Reasonix binary that does not know Message.LocalOnly.
+// is opened by an older Semantix binary that does not know Message.LocalOnly.
 // Old wire normalization treats this unmatched tool result as an orphan and
 // drops it instead of replaying partial content to the model.
 const (
-	LocalOnlyToolName = "__reasonix_local_only__"
-	LocalOnlyToolID   = "__reasonix_local_only__"
+	LocalOnlyToolName = "__semantix_local_only__"
+	LocalOnlyToolID   = "__semantix_local_only__"
 )
 
 // Message is a single conversation message.
@@ -196,7 +196,7 @@ type ToolCall struct {
 	Diff             string `json:"diff,omitempty"`
 	Added            int    `json:"added,omitempty"`
 	Removed          int    `json:"removed,omitempty"`
-	// Resolved* fields are Reasonix-local display metadata for stable proxy
+	// Resolved* fields are Semantix-local display metadata for stable proxy
 	// calls such as use_capability. Provider request builders deliberately
 	// serialize only provider-visible fields, so these values never alter the
 	// provider-visible conversation or prompt-cache prefix.
@@ -294,7 +294,7 @@ func SanitizeToolPairing(msgs []Message) []Message { return NormalizeMessages(ms
 // This is the wire-safe entry point for provider requests. Stored session loads
 // use NormalizeSessionMessages so they can share the assistant-turn repairs
 // without deleting standalone tool messages that must round-trip through
-// reasonix --resume.
+// semantix-agent --resume.
 //
 // A well-formed history — no unanswered calls, no orphan results, no empty tool-
 // call names, no truncated args — returns the input slice unchanged (same backing
@@ -1079,7 +1079,7 @@ func (e *AuthError) Error() string {
 	if e.KeySource != "" {
 		key += " from " + e.KeySource
 	}
-	return fmt.Sprintf("authentication failed for provider %q (HTTP %d): %s is invalid or expired — update it (in .env or your environment) and retry, or run `reasonix setup`",
+	return fmt.Sprintf("authentication failed for provider %q (HTTP %d): %s is invalid or expired — update it (in .env or your environment) and retry, or run `semantix-agent setup`",
 		e.Provider, e.Status, key)
 }
 

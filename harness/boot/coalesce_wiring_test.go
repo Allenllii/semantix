@@ -53,7 +53,7 @@ func TestBuildCoalescesAgentStreamDeltas(t *testing.T) {
 	provider.Register("boot-coalesce-test", func(provider.Config) (provider.Provider, error) {
 		return &coalesceWiringProvider{deltas: deltas}, nil
 	})
-	writeFile(t, dir, "reasonix.toml", `
+	writeFile(t, dir, "semantix-agent.toml", `
 default_model = "test-model"
 
 [agent]

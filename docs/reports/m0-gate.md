@@ -38,7 +38,7 @@
 P0（发布必须）：
 - U11 真实数据达标（verify 回放 ≥70%）
 - U12 embedding 语义检索（kernel/embed 落地：本地 miniLM 或远端 API）
-- U13 L2 注入接入真实 harness（Reasonix fork 挂载点②③）
+- U13 L2 注入接入真实 harness（Semantix fork 挂载点②③）
 - U14 打包发布（单二进制 + 配置 + 文档）
 
 P1（体验增强）：

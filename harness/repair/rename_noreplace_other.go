@@ -4,7 +4,7 @@ package repair
 
 import "os"
 
-// Unpackaged ports retain a best-effort existence check. Reasonix's packaged
+// Unpackaged ports retain a best-effort existence check. Semantix's packaged
 // Linux, macOS, and Windows targets each have an atomic no-replace primitive.
 func renameRepairNodeNoReplace(oldPath, newPath string) error {
 	if _, err := os.Lstat(newPath); err == nil {

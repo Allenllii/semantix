@@ -15,12 +15,12 @@ import (
 )
 
 // installTargets are the harnesses `semantix install` supports (Issue #119).
-// reasonix is the Gnosil/DeepSeek-Reasonix fork, which already ships a
+// semantix-agent is the vendored harness (harness/), which already ships a
 // built-in integration ([semantix] enabled=true); install lands the
 // agent-skill reference docs locally and prints the one-line config step.
 // claude-code uses the Claude Code agent-skills directory; custom is any
 // directory the user names with --dir.
-var installTargets = []string{"reasonix", "claude-code", "custom"}
+var installTargets = []string{"semantix-agent", "claude-code", "custom"}
 
 // installManifestName is the bookkeeping file `semantix install` writes into
 // the destination. It lists exactly which files install placed there, so
@@ -80,7 +80,7 @@ type installManifest struct {
 func runInstall(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("install", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	target := fs.String("target", "", "harness to install into (reasonix|claude-code|custom)")
+	target := fs.String("target", "", "harness to install into (semantix|claude-code|custom)")
 	dir := fs.String("dir", "", "destination directory (required for custom; default per target)")
 	source := fs.String("source", "", "agent-skill source dir (default: SEMANTIX_SKILL_DIR, exe-relative, ./agent-skill)")
 	uninstall := fs.Bool("uninstall", false, "remove a previous install instead of installing")
@@ -92,11 +92,11 @@ func runInstall(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintln(stderr, "Usage: semantix install --target reasonix|claude-code|custom [--dir <path>] [--uninstall]")
+		fmt.Fprintln(stderr, "Usage: semantix install --target semantix-agent|claude-code|custom [--dir <path>] [--uninstall]")
 		return 2
 	}
 	if *target == "" {
-		fmt.Fprintln(stderr, "semantix install: missing --target (want reasonix|claude-code|custom)")
+		fmt.Fprintln(stderr, "semantix install: missing --target (want semantix|claude-code|custom)")
 		return 2
 	}
 	if !installTargetValid(*target) {
@@ -193,7 +193,7 @@ func installDestDir(target, dirFlag string) (string, error) {
 		return "", fmt.Errorf("cannot resolve home directory: %w", err)
 	}
 	switch target {
-	case "reasonix":
+	case "semantix-agent":
 		return filepath.Join(home, ".semantix", "agent-skill"), nil
 	case "claude-code":
 		return filepath.Join(home, ".claude", "skills", "semantix"), nil
@@ -253,9 +253,9 @@ func validSkillDir(dir string) (bool, error) {
 // acceptance requires the output to reference them).
 func installNextSteps(target, dest string) []string {
 	switch target {
-	case "reasonix":
+	case "semantix-agent":
 		return []string{
-			fmt.Sprintf("set [semantix] enabled=true in the Reasonix config (built-in integration, zero steps; see %s)",
+			fmt.Sprintf("set [semantix] enabled=true in semantix-agent.toml (built-in integration, zero steps; see %s)",
 				filepath.Join(dest, "SKILL.md")),
 			fmt.Sprintf("session capture reference: %s", filepath.Join(dest, "hooks", "session-bypass.md")),
 		}

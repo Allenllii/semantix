@@ -26,7 +26,7 @@ Perplexity explicitly recommends `llms-full.txt` for full-text grounding. Conten
 
 ### 3. Structured data — additive, no fabrication
 
-- `layout.tsx`: add `WebSite` JSON-LD (`name`, `url`, `inLanguage`, `publisher` → existing Organization `@id`) and `SoftwareApplication` JSON-LD (`applicationCategory: DeveloperApplication`, `operatingSystem`, `license: FSL-1.1-MIT`, `codeRepository`, `offers` free/open-source, `publisher` → Organization `@id`).
+- `layout.tsx`: add `WebSite` JSON-LD (`name`, `url`, `inLanguage`, `publisher` → existing Organization `@id`) and `SoftwareApplication` JSON-LD (`applicationCategory: DeveloperApplication`, `operatingSystem`, `license: MIT`, `codeRepository`, `offers` free/open-source, `publisher` → Organization `@id`).
 - Homepage: add a visible compact FAQ section (5 factual Q&A pairs taken from the authoritative `docs/GEO.md` FAQ) **and** matching `FAQPage` JSON-LD in `page.tsx`. Policy rule: FAQPage structured data must correspond to visible content — so the visible section lands first.
 - `/docs/[slug]`: add `TechnicalArticle` JSON-LD per page (`headline`, `description`, `dateModified` from `geoDocuments[].lastUpdated`, `inLanguage`, `author`/`publisher` → Organization `@id`).
 - `sameAs`: only real links exist (GitHub + company site). Add the company site link to Organization `sameAs`; do not invent social profiles to chase the "5 links" heuristic — fabricated signals are worse than none for E-E-A-T.

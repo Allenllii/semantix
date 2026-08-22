@@ -206,7 +206,7 @@ func resolveSessionBundlePath(ref string) (string, error) {
 		}
 	}
 	if len(matches) == 0 {
-		return "", fmt.Errorf("session %q not found under Reasonix session directories", branch)
+		return "", fmt.Errorf("session %q not found under Semantix session directories", branch)
 	}
 	sort.Strings(matches)
 	if len(matches) > 1 {
@@ -238,9 +238,9 @@ func redactSessionBundlePath(path string) string {
 		if rootErr == nil && pathErr == nil {
 			if rel, err := filepath.Rel(absRoot, absPath); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 				if rel == "." {
-					return "<REASONIX_HOME>"
+					return "<SEMANTIX_HOME>"
 				}
-				return filepath.ToSlash(filepath.Join("<REASONIX_HOME>", rel))
+				return filepath.ToSlash(filepath.Join("<SEMANTIX_HOME>", rel))
 			}
 		}
 	}
@@ -259,9 +259,9 @@ func redactSessionBundleText(text string) string {
 		return text
 	}
 	if root := strings.TrimSpace(config.MemoryUserDir()); root != "" {
-		text = replacePathPrefix(text, root, "<REASONIX_HOME>")
+		text = replacePathPrefix(text, root, "<SEMANTIX_HOME>")
 		if absRoot, err := filepath.Abs(root); err == nil {
-			text = replacePathPrefix(text, absRoot, "<REASONIX_HOME>")
+			text = replacePathPrefix(text, absRoot, "<SEMANTIX_HOME>")
 		}
 	}
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
@@ -430,7 +430,7 @@ func defaultSessionBundlePath(branch string) string {
 	if branch == "" {
 		branch = "session"
 	}
-	return filepath.Join(os.TempDir(), "reasonix-session-"+branch+"-diag.zip")
+	return filepath.Join(os.TempDir(), "semantix-session-"+branch+"-diag.zip")
 }
 
 func safeBundleName(name string) string {

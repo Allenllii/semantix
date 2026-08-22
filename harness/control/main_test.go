@@ -14,8 +14,8 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	if os.Getenv("REASONIX_CREDENTIALS_STORE") == "" {
-		_ = os.Setenv("REASONIX_CREDENTIALS_STORE", "file")
+	if os.Getenv("SEMANTIX_CREDENTIALS_STORE") == "" {
+		_ = os.Setenv("SEMANTIX_CREDENTIALS_STORE", "file")
 	}
 	goleak.VerifyTestMain(m, goleak.Cleanup(func(exitCode int) {
 		cleanupUserState()

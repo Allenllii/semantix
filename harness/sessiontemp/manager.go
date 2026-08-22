@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	dirPrefix     = "reasonix-session-tmp-"
+	dirPrefix     = "semantix-session-tmp-"
 	ownerLockName = ".owner.lock"
 	staleAge      = 24 * time.Hour
 )
@@ -374,7 +374,7 @@ func resetProcessCleanupForTest() {
 	processCleanup.Unlock()
 }
 
-// cleanupStale removes reasonix-session-tmp-* direct children of root that are
+// cleanupStale removes semantix-session-tmp-* direct children of root that are
 // older than 24h and whose owner lock is free. Failures are logged only.
 func cleanupStale(root string, now func() time.Time) {
 	if root == "" {

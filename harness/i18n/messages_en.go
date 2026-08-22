@@ -223,7 +223,7 @@ var English = Messages{
 	SkillPickerStatusNotDir:      "not-directory",
 	SkillPickerStatusUnreadable:  "unreadable",
 	SlashPromptEmpty:             "the MCP prompt returned no content to send",
-	SlashMCPNone:                 "no MCP servers configured — add a [[plugins]] entry in reasonix.toml",
+	SlashMCPNone:                 "no MCP servers configured — add a [[plugins]] entry in semantix-agent.toml",
 	CtrlCQuitHint:                "press Ctrl+C again to quit",
 	CompHintSlash:                "↑/↓ move · Tab/Enter select · Esc close",
 	CompHintFile:                 "↑/↓ move · Tab/Enter open folder or pick file · Esc close",
@@ -307,7 +307,7 @@ var English = Messages{
 	ArgEffortXHigh:      "extra deep reasoning",
 	ArgEffortMax:        "maximum reasoning",
 	ArgThemeCurrent:     "current",
-	ArgLanguageAuto:     "auto-detect from REASONIX_LANG / locale",
+	ArgLanguageAuto:     "auto-detect from SEMANTIX_LANG / locale",
 	ArgLanguageEn:       "English",
 	ArgLanguageZh:       "中文",
 
@@ -319,9 +319,9 @@ var English = Messages{
 	ListSkillsHeaderFmt: "skills (%d)",
 	ListSkillsNone:      "skills: none defined — invoke a built-in like /init, or author one with install_skill",
 	ListHooksHeaderFmt:  "hooks (%d active)",
-	ListHooksNone:       "hooks: none active — configure in .reasonix/settings.json (project) or <Semantix home>/settings.json (global)",
+	ListHooksNone:       "hooks: none active — configure in .semantix/settings.json (project) or <Semantix home>/settings.json (global)",
 	ListMcpHeader:       "mcp servers",
-	ListMcpNone:         "mcp: no servers connected — add one in reasonix.toml ([[plugins]]) or a project .mcp.json",
+	ListMcpNone:         "mcp: no servers connected — add one in semantix-agent.toml ([[plugins]]) or a project .mcp.json",
 
 	MemoryEditHint:               "edit doc files or use “/remember <note>”; doc edits apply next session",
 	ForgetUsage:                  "usage: /forget <name> — the slug shown under “saved memories” in /memory",
@@ -533,7 +533,7 @@ var English = Messages{
 	ReportHeaderFmt:           "CLI crash report %s",
 	ReportCapturedFmt:         "Captured: %s",
 	ReportPreviewOnlyFmt:      "Preview only. Run `semantix-agent report send %s` to send this report.",
-	ReportSendPrompt:          "Send this sanitized report to crash.reasonix.io?",
+	ReportSendPrompt:          "Send this sanitized report to crash.semantix.ensureok.ai?",
 	ReportKept:                "Report kept locally.",
 	ReportDeletedFmt:          "Deleted CLI crash report %s.",
 	ReportSentFmt:             "Sent CLI crash report %s.",
@@ -547,7 +547,7 @@ var English = Messages{
   semantix-agent report send [ID]       send a reviewed report and delete it after success
   semantix-agent report delete [ID]     delete a local report without sending`,
 
-	CLITelemetryConsentNotice:           "Semantix can send anonymous, content-free CLI usage statistics to crash.reasonix.io: a random install ID, version, OS, and fixed quality buckets. It never sends prompts, answers, code, paths, model or tool content, or environment variables. You can disable this later with `semantix-agent config telemetry off`.",
+	CLITelemetryConsentNotice:           "Semantix can send anonymous, content-free CLI usage statistics to crash.semantix.ensureok.ai: a random install ID, version, OS, and fixed quality buckets. It never sends prompts, answers, code, paths, model or tool content, or environment variables. You can disable this later with `semantix-agent config telemetry off`.",
 	CLITelemetryConsentPrompt:           "Allow anonymous CLI usage statistics?",
 	CLITelemetryConsentInvalid:          "Please answer y or n.",
 	CLITelemetryConsentSaveFailedFmt:    "CLI telemetry remains disabled because the preference could not be saved: %v",
@@ -564,12 +564,12 @@ Usage:
   semantix-agent web [--model NAME] [--addr HOST:PORT] [--no-open]  start the local Web UI and open it in the default browser
   semantix-agent serve [--model NAME] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  serve over HTTP+SSE (with optional auth)
   semantix-agent acp [--model NAME]                           serve Agent Client Protocol over stdio (also: semantix-agent --acp)
-  semantix-agent setup [path]                                 interactive config wizard; writes reasonix.toml (+ .env)
+  semantix-agent setup [path]                                 interactive config wizard; writes semantix-agent.toml (+ .env)
   semantix-agent config reasoning-language [auto|zh|en]        configure visible reasoning language
   semantix-agent config compact-ratio [--local] [65..85]       configure automatic compaction threshold
   semantix-agent config telemetry [auto|on|off]                configure content-free CLI usage metrics
   semantix-agent report [list|show|send|delete] [ID]           review and explicitly send local CLI crash reports
-  semantix-agent mcp <add|remove|list|import>                 manage MCP servers in reasonix.toml
+  semantix-agent mcp <add|remove|list|import>                 manage MCP servers in semantix-agent.toml
   semantix-agent subagent <list|create|edit|delete|try|run>   manage and run isolated subagent profiles
   semantix-agent init                                         show how to generate project memory (AGENTS.md)
   semantix-agent doctor [--json]                              print redacted local diagnostics
@@ -599,7 +599,7 @@ Examples:
   echo "explain this code" | semantix-agent run
 
 Configuration:
-  Resolution: flag > ./reasonix.toml > <Semantix home>/config.toml > built-in defaults
+  Resolution: flag > ./semantix-agent.toml > <Semantix home>/config.toml > built-in defaults
   Secrets come from the environment via api_key_env (e.g. DEEPSEEK_API_KEY).
   Run 'semantix-agent setup' to scaffold a config; see docs/SPEC.md.
 `,

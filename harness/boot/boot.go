@@ -58,6 +58,7 @@ import (
 	"semantix/harness/recovery"
 	"semantix/harness/sandbox"
 	"semantix/harness/secrets"
+	"semantix/harness/semanticreview"
 	"semantix/harness/semantix"
 	"semantix/harness/sessiontemp"
 	"semantix/harness/skill"
@@ -133,7 +134,7 @@ type Options struct {
 	OnConfigLoadWarnings func([]string) bool
 	// ExtraPlugins are session-scoped MCP servers supplied by a host transport
 	// (for example ACP session/new). They are connected eagerly for this
-	// controller but are not persisted to reasonix.toml.
+	// controller but are not persisted to semantix-agent.toml.
 	ExtraPlugins []plugin.Spec
 	// AgentPreset selects the session role setting (light|balanced|delivery).
 	// Empty falls back to balanced. It controls planning depth, verification
@@ -194,7 +195,7 @@ type Options struct {
 	// everything.
 	Ablation ablation.Set
 	// SandboxNetworkOverride and WorkspaceOnly are process-local hard bounds for
-	// supervised ACP workers. Nil/false preserve normal Reasonix config.
+	// supervised ACP workers. Nil/false preserve normal Semantix config.
 	SandboxNetworkOverride *bool
 	SandboxBashOverride    string
 	WorkspaceOnly          bool
@@ -242,7 +243,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Arm the credential-protection layers from the user-global [secrets]
 	// section before any tool, hook, or plugin subprocess can spawn. Package
 	// globals are correct here because [secrets] is user-global (project
-	// reasonix.toml cannot override it), so concurrent workspaces agree.
+	// semantix-agent.toml cannot override it), so concurrent workspaces agree.
 	secrets.SetFilterSubprocessEnv(cfg.Secrets.FilterSubprocessEnv)
 	secrets.SetProtectSensitiveFiles(cfg.Secrets.ProtectSensitiveFiles)
 	secrets.RegisterCredentialEnvKeys(cfg.CredentialEnvNames())
@@ -360,7 +361,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			slog.Warn("boot: extension UI hub: "+msg, "root", root)
 		},
 	})
-	extensionMgr, err := preflightExtensionRuntimes(ctx, config.ReasonixHomeDir(), extensionBoot{
+	extensionMgr, err := preflightExtensionRuntimes(ctx, config.SemantixHomeDir(), extensionBoot{
 		session:   protocol.SessionContext{SessionID: sessionID, WorkspaceRoot: root, Generation: generation},
 		ui:        extUIHub,
 		onWarning: extWarn,
@@ -493,7 +494,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if stepLimitsMigrated || cfg.IgnoredLegacyAgentStepLimits() {
 		level := event.LevelInfo
 		text := "Deprecated agent step limits were removed."
-		detail := "[agent].max_steps and planner_max_steps are no longer used; Reasonix now manages interactive progress automatically. " +
+		detail := "[agent].max_steps and planner_max_steps are no longer used; Semantix now manages interactive progress automatically. " +
 			"Use the CLI --max-steps flag for a one-off run or [bot].max_steps for unattended bot sessions."
 		if stepLimitMigErr != nil {
 			level = event.LevelWarn
@@ -512,7 +513,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if redactToolOutputMigrated || redactToolOutputMigErr != nil {
 		level := event.LevelInfo
 		text := "Deprecated redact_tool_output setting was removed."
-		detail := "[secrets].redact_tool_output no longer has any effect: ordinary model/tool content and local session/job artifacts now preserve their original text. Explicit diagnostics and reasonix doctor redact-sessions still redact credential values."
+		detail := "[secrets].redact_tool_output no longer has any effect: ordinary model/tool content and local session/job artifacts now preserve their original text. Explicit diagnostics and semantix-agent doctor redact-sessions still redact credential values."
 		if redactToolOutputMigErr != nil {
 			level = event.LevelWarn
 			text = "Deprecated redact_tool_output setting was ignored."
@@ -523,7 +524,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	if memoryCompilerMigrated || memoryCompilerMigErr != nil {
 		level := event.LevelInfo
 		text := "Deprecated memory_compiler setting was removed."
-		detail := "The Memory v5 execution compiler has been removed from Reasonix: [agent].memory_compiler no longer has any effect, user turns are never replaced by compiled execution contracts, and no compiler state is written. Old transcripts containing compiled turns still display normally."
+		detail := "The Memory v5 execution compiler has been removed from Semantix: [agent].memory_compiler no longer has any effect, user turns are never replaced by compiled execution contracts, and no compiler state is written. Old transcripts containing compiled turns still display normally."
 		if memoryCompilerMigErr != nil {
 			level = event.LevelWarn
 			text = "Deprecated memory_compiler setting was ignored."
@@ -545,7 +546,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	migration.MigrateLegacyMemorySources(sink)
 	migration.MigrateLegacySessionSources(sink)
 	if ignored := cfg.IgnoredProjectDefaultModel(); ignored != "" {
-		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Ignored the project config's default_model.", Detail: fmt.Sprintf("./reasonix.toml sets default_model = %q but no configured provider serves it; using %q from your user config instead. Edit or remove that default_model line to silence this notice.", ignored, cfg.DefaultModel)})
+		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "Ignored the project config's default_model.", Detail: fmt.Sprintf("./semantix-agent.toml sets default_model = %q but no configured provider serves it; using %q from your user config instead. Edit or remove that default_model line to silence this notice.", ignored, cfg.DefaultModel)})
 	}
 
 	// A resolvable model whose API key env is unset would otherwise build fine
@@ -609,7 +610,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}
 		// A stale missing prompt file must not block startup: warn and fall back
 		// to the inline (or built-in default) system prompt. Other read failures
-		// stay fatal so Reasonix never runs without explicitly configured policy.
+		// stay fatal so Semantix never runs without explicitly configured policy.
 		sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: err.Error() + "; falling back to inline/default system prompt"})
 		sysPrompt = cfg.InlineSystemPrompt()
 	}
@@ -652,7 +653,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	}
 	sysPrompt = appendOfflineEnvironmentNote(sysPrompt, cfg.Environment.Offline)
 
-	// Persistent memory (REASONIX.md / AGENTS.md hierarchy + auto-memory index)
+	// Persistent memory (SEMANTIX.md / AGENTS.md hierarchy + auto-memory index)
 	// folds into the system prompt exactly here, once: it becomes part of the
 	// durable, cache-stable prefix every turn reuses, so memory costs nothing per
 	// turn. Mid-session changes never touch this prefix — they ride the
@@ -711,15 +712,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		bashMode = override
 	}
 	forbidReadRoots := RuntimeForbidReadRoots(cfg, root)
-	// managedConfig names the Reasonix-owned config FILES (config.toml,
+	// managedConfig names the Semantix-owned config FILES (config.toml,
 	// compatibility TOMLs, legacy v0.x config.json) the file-writers may repair
 	// outside the workspace after a fresh per-write human approval. The bash
 	// OS-sandbox write roots deliberately stay unwidened: config repair goes
 	// through the approval-gated file tools, not raw shell writes.
-	managedConfig := builtin.NewManagedConfigPaths(config.ReasonixManagedConfigPaths())
+	managedConfig := builtin.NewManagedConfigPaths(config.SemantixManagedConfigPaths())
 	bashSpec := sandbox.Spec{Mode: bashMode, WriteRoots: writeRoots, ForbidReadRoots: forbidReadRoots, Network: networkEnabled}
 	bashSpec.Shell = shell
-	// The session-data guard blocks agent writes into Reasonix's own session
+	// The session-data guard blocks agent writes into Semantix's own session
 	// stores (they race the app's saves and surface as conflict-copy loops);
 	// explicit allow_write entries stay a sanctioned escape hatch.
 	allowWriteRoots := cfg.AllowWriteRoots()
@@ -762,9 +763,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	pluginSpecOptions := PluginSpecOptions{
 		DefaultStartupTimeout: time.Duration(cfg.MCPStartupTimeoutSeconds()) * time.Second,
 		DefaultCallTimeout:    time.Duration(cfg.MCPCallTimeoutSeconds()) * time.Second,
-		LaunchManager:         mcplaunch.ForWorkspace(config.ReasonixHomeDir(), root),
+		LaunchManager:         mcplaunch.ForWorkspace(config.SemantixHomeDir(), root),
 		ConfigSource:          "workspace_config",
-		StateHome:             config.ReasonixHomeDir(),
+		StateHome:             config.SemantixHomeDir(),
 		WriterRoots:           writeRoots,
 		ForbidReadRoots:       forbidReadRoots,
 		Network:               networkEnabled,
@@ -979,7 +980,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// Permission policy gates every tool call. With no HeadlessApprovalMode
 	// (interactive bootstrap), the temporary gate preserves the legacy behavior
 	// until chat/desktop installs an interactive gate. A real headless caller
-	// such as `reasonix run` always supplies a mode: Ask fails closed, Auto
+	// such as `semantix-agent run` always supplies a mode: Ask fails closed, Auto
 	// allows ordinary writer fallbacks, and DontAsk denies them (#6927).
 	// The selected contract is also applied to sub-agents, so they cannot be a
 	// weaker path around the parent gate.
@@ -1380,7 +1381,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		parentSession := agent.ParentSession(sctx)
 		var run *agent.SubagentRun
 		if subagentStore == nil || parentSession == "" {
-			// Headless runs (e.g. `reasonix run`) have no persistent session to
+			// Headless runs (e.g. `semantix-agent run`) have no persistent session to
 			// own a transcript. Run the skill sub-agent ephemerally, as before
 			// persisted transcripts existed, instead of failing. Continuation needs
 			// a persisted owner, so it errors here.
@@ -1926,7 +1927,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 			}
 		}
 		// HeadlessApprovalMode is an explicit declaration that this frontend has
-		// no decision channel (`reasonix run`). ApprovalTimeout is not a proxy for
+		// no decision channel (`semantix-agent run`). ApprovalTimeout is not a proxy for
 		// that capability: bots have a bounded timeout and can still answer cards.
 		ctrlOpts.RecoveryHeadless = recoveryHeadlessMode(opts)
 	}
@@ -1950,6 +1951,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 					slog.Warn("goal evaluator provider construction failed — goals without an update_goal report will pause", "model", evalModel, "err", err)
 				}
 			}
+		}
+	}
+	// The independent reviewer is opt-in, then routes only selected boundary
+	// tasks from the request plus the actual final diff.
+	if strings.TrimSpace(os.Getenv("SEMANTIX_SEMANTIC_REVIEW")) == "1" {
+		ctrlOpts.SemanticReviewer = &semanticreview.Session{
+			Provider: execProv, Pricing: entry.Price, ModelRef: modelRef, Sink: sink,
 		}
 	}
 	ctrl := control.New(ctrlOpts)
@@ -2159,11 +2167,11 @@ func rememberPermissionRule(workspaceRoot, rule string) control.RememberResult {
 func rememberPermissionConfigPath(workspaceRoot string) string {
 	workspaceRoot = strings.TrimSpace(workspaceRoot)
 	if workspaceRoot != "" {
-		return filepath.Join(workspaceRoot, "reasonix.toml")
+		return filepath.Join(workspaceRoot, "semantix-agent.toml")
 	}
 	path := config.SourcePath()
 	if path == "" {
-		path = "reasonix.toml" // match Config.Save() fallback
+		path = "semantix-agent.toml" // match Config.Save() fallback
 	}
 	return path
 }
@@ -2400,7 +2408,7 @@ func appendUniquePaths(base []string, extra ...string) []string {
 	return out
 }
 
-// RuntimeForbidReadRoots returns the configured deny roots plus Reasonix's
+// RuntimeForbidReadRoots returns the configured deny roots plus Semantix's
 // global credential FILE when it exists. It also registers the corresponding
 // credential environment names for subprocess filtering. Runtime tool
 // assemblers outside Build must use this helper instead of reading the config
@@ -2581,9 +2589,9 @@ func NewProviderWithProxy(e *config.ProviderEntry, proxy netclient.ProxySpec) (p
 // the listed directories.
 // When workDir is non-empty, tools resolve relative paths against it instead of
 // the process cwd, enabling concurrent multi-project sessions.
-// sessionGuard blocks writer-tool targets inside Reasonix's own session stores
+// sessionGuard blocks writer-tool targets inside Semantix's own session stores
 // and makes bash warn when a command references them. managedConfig names the
-// Reasonix-owned config files writable outside writeRoots after a fresh
+// Semantix-owned config files writable outside writeRoots after a fresh
 // per-write human approval.
 func addBuiltins(reg *tool.Registry, enabled, writeRoots []string, bashSpec sandbox.Spec, bashTimeout time.Duration, searchSpec builtin.SearchSpec, stderr io.Writer, workDir string, proxySpec netclient.ProxySpec, forbidReadRoots []string, readPathResolver *builtin.PathResolver, sessionGuard builtin.SessionDataGuard, managedConfig builtin.ManagedConfigPaths, overlay builtin.FileOverlay, terminal builtin.TerminalRunner, sessionTemp *sessiontemp.Manager, fileWriteReceipt func(path string, hadPrior bool, prior []byte)) {
 	// If a workspace directory is set, use workspace-bound tools that resolve
@@ -2737,7 +2745,7 @@ func skillMCPBindings(sk skill.Skill, reg *tool.Registry, specs []plugin.Spec, c
 	}
 	// A valid cached schema also supplies stable bindings for an on-demand
 	// package server before it is connected. The skill can then route through
-	// use_capability without inventing Reasonix's canonical name.
+	// use_capability without inventing Semantix's canonical name.
 	for _, spec := range specs {
 		if spec.Package != sk.Plugin || liveServers[spec.Name] || !cacheKeyOK[spec.Name] {
 			continue

@@ -9,8 +9,8 @@ import (
 	"semantix/harness/control"
 )
 
-// sessionLeaseResumeRefusal is the startup-time refusal for `reasonix
-// [--resume|--continue]` and `reasonix run --resume/--continue`: it names the
+// sessionLeaseResumeRefusal is the startup-time refusal for `semantix
+// [--resume|--continue]` and `semantix-agent run --resume/--continue`: it names the
 // holder and offers the two ways out (close the holder, or continue in a
 // duplicated session via --copy).
 func sessionLeaseResumeRefusal(err error) string {

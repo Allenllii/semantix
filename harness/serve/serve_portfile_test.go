@@ -13,7 +13,7 @@ import (
 
 func newListenerTestServer(t *testing.T) *Server {
 	t.Helper()
-	t.Setenv("REASONIX_HOME", t.TempDir())
+	t.Setenv("SEMANTIX_HOME", t.TempDir())
 	bc := NewBroadcaster()
 	ctrl := control.New(control.Options{
 		Sink:       bc,

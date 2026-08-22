@@ -35,9 +35,9 @@ func UnmarshalState(data []byte) (ServeState, error) {
 	return s, nil
 }
 
-// remoteDir is the ~/.reasonix/remote directory given the resolved remote home.
+// remoteDir is the ~/.semantix/remote directory given the resolved remote home.
 func remoteDir(home string) string {
-	return path.Join(home, ".reasonix", store.RemoteDirName)
+	return path.Join(home, ".semantix", store.RemoteDirName)
 }
 
 // pathsFor derives every per-workspace state path from the resolved remote
@@ -57,9 +57,9 @@ func pathsFor(home, workspace string) StatePaths {
 	}
 }
 
-// uploadedBinPath is the fallback location for an uploaded reasonix binary.
+// uploadedBinPath is the fallback location for an uploaded semantix binary.
 func uploadedBinPath(home string) string {
-	return path.Join(remoteDir(home), store.RemoteBinDirName, "reasonix")
+	return path.Join(remoteDir(home), store.RemoteBinDirName, "semantix-agent")
 }
 
 func nowUnix(clock func() time.Time) int64 {

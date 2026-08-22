@@ -91,8 +91,8 @@ func TestExtensionlessSessionStartHookUsesAutoResolvedBash(t *testing.T) {
 	}
 
 	home := t.TempDir()
-	reasonixHome := filepath.Join(home, ".reasonix")
-	root := filepath.Join(reasonixHome, "plugins", "superpowers")
+	semantixHome := filepath.Join(home, ".semantix")
+	root := filepath.Join(semantixHome, "plugins", "superpowers")
 	writeHookTestFile(t, filepath.Join(root, pluginpkg.CodexManifest), `{
   "name": "superpowers",
   "version": "6.1.1"
@@ -101,7 +101,7 @@ func TestExtensionlessSessionStartHookUsesAutoResolvedBash(t *testing.T) {
 input=$(cat)
 printf 'session-start:%s' "$input"
 `)
-	if err := pluginpkg.Upsert(reasonixHome, pluginpkg.InstalledPlugin{
+	if err := pluginpkg.Upsert(semantixHome, pluginpkg.InstalledPlugin{
 		Name:         "superpowers",
 		Root:         "plugins/superpowers",
 		Version:      "6.1.1",
@@ -156,9 +156,9 @@ func TestProjectAndGlobalExtensionlessHooksUseAutoResolvedBash(t *testing.T) {
 	} {
 		writeHookTestFile(t, item.path, "#!/usr/bin/env bash\ninput=$(cat)\nprintf '"+item.prefix+":%s' \"$input\"\n")
 	}
-	writeHookTestFile(t, filepath.Join(workspace, ".reasonix", "settings.json"), `{"hooks":{"SessionStart":[{"command":"hooks/project-start"}]}}`)
-	reasonixHome := filepath.Join(home, ".reasonix")
-	writeHookTestFile(t, filepath.Join(reasonixHome, "settings.json"), `{"hooks":{"SessionStart":[{"command":"hooks/global-start"}]}}`)
+	writeHookTestFile(t, filepath.Join(workspace, ".semantix", "settings.json"), `{"hooks":{"SessionStart":[{"command":"hooks/project-start"}]}}`)
+	semantixHome := filepath.Join(home, ".semantix")
+	writeHookTestFile(t, filepath.Join(semantixHome, "settings.json"), `{"hooks":{"SessionStart":[{"command":"hooks/global-start"}]}}`)
 
 	hooks := Load(LoadOptions{HomeDir: home, ProjectRoot: workspace})
 	if len(hooks) != 2 {

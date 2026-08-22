@@ -16,31 +16,31 @@ import (
 func TestPluginPackageV2FieldsAreReported(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	reasonixHome := filepath.Join(home, ".reasonix")
+	semantixHome := filepath.Join(home, ".semantix")
 	t.Setenv("HOME", home)
-	t.Setenv("REASONIX_HOME", reasonixHome)
+	t.Setenv("SEMANTIX_HOME", semantixHome)
 
-	pluginRoot := filepath.Join(reasonixHome, "plugins", "demo")
+	pluginRoot := filepath.Join(semantixHome, "plugins", "demo")
 	write(t, filepath.Join(pluginRoot, pluginpkg.NativeManifest), `{
-  "apiVersion": "reasonix.io/plugin/v2",
+  "apiVersion": "semantix.io/plugin/v2",
   "name": "demo",
   "contributes": {
     "prompts": ["prompts"],
-    "themes": ["themes/*.reasonix-theme"]
+    "themes": ["themes/*.semantix-theme"]
   },
-  "runtime": {"command": "${REASONIX_PLUGIN_ROOT}/bin/demo", "intercepts": ["input.receive"]}
+  "runtime": {"command": "${SEMANTIX_PLUGIN_ROOT}/bin/demo", "intercepts": ["input.receive"]}
 }`)
 	write(t, filepath.Join(pluginRoot, "prompts", "plan.md"), "---\ndescription: plan\n---\nPlan $ARGUMENTS\n")
-	write(t, filepath.Join(pluginRoot, "themes", "neon.reasonix-theme"), "theme bytes")
+	write(t, filepath.Join(pluginRoot, "themes", "neon.semantix-theme"), "theme bytes")
 	write(t, filepath.Join(pluginRoot, "bin", "demo"), "#!/bin/sh\n")
-	if err := pluginpkg.Upsert(reasonixHome, pluginpkg.InstalledPlugin{
-		Name: "demo", Root: "plugins/demo", ManifestKind: "reasonix", Enabled: true,
+	if err := pluginpkg.Upsert(semantixHome, pluginpkg.InstalledPlugin{
+		Name: "demo", Root: "plugins/demo", ManifestKind: "semantix", Enabled: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	r := capdiag.Collect(capdiag.Options{
-		Root: root, HomeDir: home, ReasonixHomeDir: reasonixHome,
+		Root: root, HomeDir: home, SemantixHomeDir: semantixHome,
 	})
 	if len(r.Plugins.Packages) != 1 {
 		t.Fatalf("plugin packages = %+v, want demo", r.Plugins.Packages)
@@ -75,21 +75,21 @@ func TestPluginPackageV2FieldsAreReported(t *testing.T) {
 func TestPluginPackageLegacyOmitsV1Fields(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	reasonixHome := filepath.Join(home, ".reasonix")
+	semantixHome := filepath.Join(home, ".semantix")
 	t.Setenv("HOME", home)
-	t.Setenv("REASONIX_HOME", reasonixHome)
+	t.Setenv("SEMANTIX_HOME", semantixHome)
 
-	pluginRoot := filepath.Join(reasonixHome, "plugins", "legacy")
-	write(t, filepath.Join(pluginRoot, pluginpkg.NativeManifest), `{"apiVersion":"reasonix.io/plugin/v2","name":"legacy","skills":["skills"]}`)
+	pluginRoot := filepath.Join(semantixHome, "plugins", "legacy")
+	write(t, filepath.Join(pluginRoot, pluginpkg.NativeManifest), `{"apiVersion":"semantix.io/plugin/v2","name":"legacy","skills":["skills"]}`)
 	write(t, filepath.Join(pluginRoot, "skills", "s", "SKILL.md"), "---\ndescription: s\n---\nS\n")
-	if err := pluginpkg.Upsert(reasonixHome, pluginpkg.InstalledPlugin{
-		Name: "legacy", Root: "plugins/legacy", ManifestKind: "reasonix", Enabled: true,
+	if err := pluginpkg.Upsert(semantixHome, pluginpkg.InstalledPlugin{
+		Name: "legacy", Root: "plugins/legacy", ManifestKind: "semantix", Enabled: true,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	r := capdiag.Collect(capdiag.Options{
-		Root: root, HomeDir: home, ReasonixHomeDir: reasonixHome,
+		Root: root, HomeDir: home, SemantixHomeDir: semantixHome,
 	})
 	if len(r.Plugins.Packages) != 1 {
 		t.Fatalf("plugin packages = %+v, want legacy", r.Plugins.Packages)

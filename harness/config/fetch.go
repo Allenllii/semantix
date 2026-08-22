@@ -69,7 +69,7 @@ func modelFetchAuthMode(e *ProviderEntry) openai.ModelFetchAuthMode {
 }
 
 // BuildModelFetchURLs derives likely OpenAI-compatible model-list endpoints.
-// It keeps Reasonix's historical {base}/models path first, then tries the common
+// It keeps Semantix's historical {base}/models path first, then tries the common
 // {base}/v1/models shape used by many aggregators.
 func BuildModelFetchURLs(baseURL, override string) ([]string, error) {
 	if trimmed := strings.TrimSpace(override); trimmed != "" {

@@ -73,7 +73,7 @@ type Config struct {
 	KeyEnv     string
 	KeySource  string
 	RequestURL string // optional exact Responses request URL; empty derives from BaseURL
-	// MaxOutputTokens is the total provider output budget. Zero enables Reasonix's
+	// MaxOutputTokens is the total provider output budget. Zero enables Semantix's
 	// 32K reasoning safety default on official DeepSeek and otherwise omits the
 	// field; thinking-disabled DeepSeek requests and negative values omit it.
 	MaxOutputTokens int
@@ -338,7 +338,7 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
 	if c.webSearch || len(req.Tools) > 0 {
 		tools := make([]map[string]any, 0, len(req.Tools)+1)
 		// Keep the server tool first and stable across turns. DeepSeek executes
-		// this tool itself; ordinary Reasonix tools remain function entries.
+		// this tool itself; ordinary Semantix tools remain function entries.
 		if c.webSearch {
 			tools = append(tools, map[string]any{"type": "web_search"})
 		}

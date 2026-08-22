@@ -168,7 +168,7 @@ func buildCommands() []commandSpec {
 				return runDoctor(args, stdout, stderr)
 			}},
 		{name: "install", group: groupProduct,
-			usage:   "semantix install --target reasonix|claude-code|custom [--dir <path>] [--uninstall]",
+			usage:   "semantix install --target semantix-agent|claude-code|custom [--dir <path>] [--uninstall]",
 			summary: "install agent-skill (skill + tool schema) into a harness",
 			run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
 				return runInstall(args, stdout, stderr)

@@ -1,9 +1,8 @@
-// Package brand centralizes the user-facing product identity of this
-// Semantix-branded fork. Only display strings route through here:
-// filesystem names, config paths, env vars, keyring services, binary
-// names, and wire identifiers deliberately stay "reasonix" so existing
-// installs, patches, and upstream merges keep working (see the semantix
-// repo, docs/specs/h4-branding.md §3.1).
+// Package brand centralizes the user-facing product identity. Display
+// strings route through here; filesystem names, config paths, env vars,
+// keyring services, binary names, and wire identifiers also carry the
+// Semantix name since the full rebrand (docs/specs/semantix-full-rebrand.md,
+// which superseded the h4-branding keep-list).
 package brand
 
 const (

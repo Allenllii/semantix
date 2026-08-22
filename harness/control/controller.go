@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -52,11 +53,13 @@ import (
 	"semantix/harness/provider"
 	"semantix/harness/recovery"
 	"semantix/harness/sandbox"
+	"semantix/harness/semanticreview"
 	"semantix/harness/sessioninbox"
 	"semantix/harness/sessiontemp"
 	"semantix/harness/shellrun"
 	"semantix/harness/skill"
 	"semantix/harness/store"
+	"semantix/harness/taskintent"
 	"semantix/harness/taskmonitor"
 	"semantix/harness/tool"
 	"semantix/harness/workspacelease"
@@ -94,6 +97,9 @@ type Controller struct {
 	// recoveryGate is the shared Auto Guard state for this controller.
 	// nil when the feature is not wired for this controller.
 	recoveryGate *recovery.Gate
+	// semanticReviewer independently checks selected boundary-task diffs before
+	// headless completion. Nil keeps ordinary short-task behavior unchanged.
+	semanticReviewer *semanticreview.Session
 
 	// taskBudget is the configured spend gate, as passed at construction.
 	taskBudget agent.TaskBudget
@@ -430,8 +436,11 @@ type Options struct {
 	// when the working model submits no update_goal report. nil fails closed:
 	// the goal pauses instead of defaulting to continue.
 	GoalEvaluator goaleval.Evaluator
-	Sink          event.Sink
-	Policy        permission.Policy
+	// SemanticReviewer is an optional bounded final-diff reviewer. Selection is
+	// deterministic and happens after the actual workspace diff is available.
+	SemanticReviewer *semanticreview.Session
+	Sink             event.Sink
+	Policy           permission.Policy
 	// SubagentGate is the shared, mutable gate every headless-only sub-agent
 	// surface (task, writer-capable skill sub-agents, planner) reads from. Nil
 	// disables gating for those surfaces same as before this field existed.
@@ -592,6 +601,7 @@ func New(opts Options) *Controller {
 		guardianSess:                      opts.Guardian,
 		guardianPath:                      guardian.PathFor(opts.SessionPath),
 		evaluator:                         opts.GoalEvaluator,
+		semanticReviewer:                  opts.SemanticReviewer,
 		goalUsageTee:                      usageTee,
 		sink:                              sink,
 		policy:                            opts.Policy,
@@ -685,7 +695,7 @@ func New(opts Options) *Controller {
 	if c.jobs != nil && c.workspaceRoot != "" {
 		taskStore := opts.TaskStore
 		if taskStore == nil {
-			taskStore = taskmonitor.NewFileStore(filepath.Join(".reasonix", "tasks"))
+			taskStore = taskmonitor.NewFileStore(filepath.Join(".semantix", "tasks"))
 		}
 		c.jobs.SetTaskRecorder(taskmonitor.NewTaskRecorder(
 			taskStore,
@@ -788,7 +798,7 @@ func (c *Controller) ApplyExtensionSystemPrompt(prompt string) {
 // SetOnSessionRecovered installs the ownership handoff invoked before the
 // controller commits to an automatically created recovery branch. Frontends
 // that acquire their session owner after controller construction (for example
-// reasonix serve) use this before publishing the controller.
+// semantix-agent serve) use this before publishing the controller.
 func (c *Controller) SetOnSessionRecovered(fn func(SessionRecoveryInfo) error) {
 	if c == nil {
 		return
@@ -1065,7 +1075,7 @@ const (
 const SandboxEscapeApprovalTool = "sandbox_escape"
 
 // ManagedConfigWriteApprovalTool is the internal Tool name used for per-write
-// approval when a file tool targets a Reasonix-managed config file outside the
+// approval when a file tool targets a Semantix-managed config file outside the
 // workspace write roots. It is a fresh human decision: config files control
 // providers, sandbox rules, permissions, and MCP servers for future sessions,
 // so YOLO/auto approval must never answer it.
@@ -1541,7 +1551,7 @@ func (c *Controller) submitCommandOrTurnReady(trimmed, input, display string, sc
 			return
 		}
 		// A custom command wins over a skill of the same name; both resolve to a
-		// turn. Built-ins and their explicit Reasonix namespace are handled above.
+		// turn. Built-ins and their explicit Semantix namespace are handled above.
 		if sent, ok := c.CustomCommand(trimmed); ok {
 			c.runGuarded(func(ctx context.Context) error {
 				return runGoalLoop(ctx, sent, sent, display)
@@ -1945,7 +1955,7 @@ func (c *Controller) noticeDetail(text, detail string) {
 }
 
 // Run executes a turn synchronously, returning the agent's error. Used by the
-// headless `reasonix run` path, where the Sink renders to stdout and the caller
+// headless `semantix-agent run` path, where the Sink renders to stdout and the caller
 // just needs the exit status — no TurnDone event, no cancel bookkeeping.
 func (c *Controller) runReady(ctx context.Context, input string) (err error) {
 	ctx = extension.ContextWithRuntimeOwner(ctx, c.RuntimeOwner())
@@ -1992,14 +2002,113 @@ func (c *Controller) runReady(ctx context.Context, input string) (err error) {
 	marker = c.markInFlightTurn(startMessages, true)
 	ctx = c.withPlannerTurnMetadata(ctx, rawInput, false, startMessages)
 	err = c.runner.Run(ctx, c.withCapabilityRoute(ctx, input, rawInput))
+	if err == nil {
+		err = c.runSemanticReviewContinuation(ctx, rawInput)
+	}
 	return err
+}
+
+func (c *Controller) runSemanticReviewContinuation(ctx context.Context, task string) error {
+	if c == nil || c.semanticReviewer == nil || !taskintent.NeedsMutation(task) {
+		return nil
+	}
+	summary := lastAssistantText(c.History())
+	diff := semanticReviewDiff(ctx, c.workspaceRoot)
+	if !semanticReviewApplies(task, diff) {
+		return nil
+	}
+	if strings.TrimSpace(diff) == "" {
+		diff = summary
+	}
+	verdict, err := c.semanticReviewer.Review(ctx, semanticreview.Evidence{
+		Task: task, DiffSummary: diff, TestReceipts: semanticReviewReceipts(summary),
+	})
+	if err != nil {
+		c.noticeDetail("semantic review unavailable", err.Error())
+		return err
+	}
+	c.noticeDetail("semantic review: "+verdict.Outcome, verdict.Reason)
+	if verdict.Outcome == "pass" {
+		return nil
+	}
+	b, _ := json.Marshal(verdict)
+	prompt := `<semantic-review-result>` + string(b) + `</semantic-review-result>
+The bounded independent reviewer found concrete semantic-closure gaps. Inspect the actual diff, fix only these gaps, run focused tests, and re-check the final diff before finishing.`
+	if c.skillRunner != nil {
+		repair := skill.Skill{
+			Name: "semantic-repair", RunAs: skill.RunSubagent, Effort: "low",
+			AllowedTools: []string{"read_file", "grep", "glob", "edit_file", "multi_edit", "write_file", "bash"},
+			Body:         `You are an isolated semantic-repair worker. Inspect the existing workspace diff and the review findings. Fix only proven missing requirements, callers, invariants, or tests. Run focused verification and leave changes uncommitted. Do not redo correct work.`,
+		}
+		childTask := "Original task:\n" + task + "\n\nReviewer findings:\n" + string(b)
+		childAnswer, childErr := c.skillRunner(ctx, repair, childTask, skill.SubagentRunOptions{HostInitiated: true})
+		if childErr == nil {
+			c.noticeDetail("semantic repair completed", childAnswer)
+			second, reviewErr := c.semanticReviewer.Review(ctx, semanticreview.Evidence{
+				Task: task, DiffSummary: semanticReviewDiff(ctx, c.workspaceRoot), TestReceipts: semanticReviewReceipts(childAnswer),
+			})
+			if reviewErr == nil {
+				c.noticeDetail("semantic re-review: "+second.Outcome, second.Reason)
+				if second.Outcome == "pass" {
+					return nil
+				}
+				secondJSON, _ := json.Marshal(second)
+				prompt = `<semantic-review-result>` + string(secondJSON) + `</semantic-review-result>
+The isolated repair left concrete gaps. Fix only the remaining findings, run focused tests, and inspect the final diff.`
+			}
+		}
+	}
+	return c.runner.Run(ctx, prompt)
+}
+
+func semanticReviewDiff(ctx context.Context, root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return ""
+	}
+	cmd := exec.CommandContext(ctx, "git", "-c", "core.filemode=false", "diff", "HEAD", "--no-ext-diff")
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+func semanticReviewApplies(task, diff string) bool {
+	for _, text := range []string{task, diff} {
+		n := strings.ToLower(text)
+		for _, marker := range []string{"public api", "interface", "callers", "config option", "cookie", "samesite", "authentication", "authorization", "path traversal", "permission", "security invariant", "protocol", "公开接口", "调用方", "配置传播", "路径穿越", "权限", "安全不变量"} {
+			if strings.Contains(n, marker) {
+				return true
+			}
+		}
+		if text == diff && strings.Contains(n, "middleware") && strings.Contains(n, "config") {
+			return true
+		}
+	}
+	return false
+}
+
+func semanticReviewReceipts(summary string) []string {
+	var out []string
+	for _, line := range strings.Split(summary, "\n") {
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "test") || strings.Contains(lower, "pass") || strings.Contains(lower, "测试") {
+			out = append(out, strings.TrimSpace(line))
+			if len(out) == 6 {
+				break
+			}
+		}
+	}
+	return out
 }
 
 // RunSubagentProfile executes one named runAs=subagent skill synchronously and
 // returns only its final answer. It is the headless CLI counterpart to explicit
 // slash invocation: the child keeps an isolated session, while the caller owns
 // stdout rendering and exit status. readOnly selects the preview-safe runner
-// used by `reasonix subagent try`.
+// used by `semantix-agent subagent try`.
 func (c *Controller) RunSubagentProfile(ctx context.Context, name, task string, readOnly bool) (string, error) {
 	name = strings.TrimSpace(name)
 	task = strings.TrimSpace(task)
@@ -2373,7 +2482,7 @@ func rulesWithoutFreshHumanApproval(rules []permission.Rule) []permission.Rule {
 }
 
 // ApplyHeadlessApprovalMode configures the executor gate for a non-interactive
-// (`reasonix run`) session from an explicit --permission-mode. Unlike
+// (`semantix-agent run`) session from an explicit --permission-mode. Unlike
 // EnableInteractiveApproval it installs no blocking approver, asker, or
 // fresh-approval prompt: there is no key loop to answer them, and the default
 // infinite approval timeout would wedge the run forever on an Ask rule, the
@@ -3934,7 +4043,7 @@ func (c *Controller) recoverExternallyRemovedSession(path string, saveErr error)
 	slog.Warn("controller: active session was removed externally; moved runtime to stable recovery path",
 		"path", path, "recovery", info.Path, "existing", info.Existing)
 	c.sink.Emit(sessionRecoveryNotice(event.NoticeCodeSessionRecoveryForked,
-		"the open session file was removed outside Reasonix; your active conversation was preserved as one recovery copy"))
+		"the open session file was removed outside Semantix; your active conversation was preserved as one recovery copy"))
 	return info.Path, nil
 }
 
@@ -5171,7 +5280,7 @@ func (c *Controller) AddMCPServer(e config.PluginEntry) (int, error) {
 
 // ConnectMCPServer connects an MCP server entry for this session without writing
 // it to config. Desktop owns config placement so it can keep user-level settings
-// out of project reasonix.toml while preserving the CLI AddMCPServer semantics.
+// out of project semantix-agent.toml while preserving the CLI AddMCPServer semantics.
 func (c *Controller) ConnectMCPServer(e config.PluginEntry) (int, error) {
 	return c.connectMCPServer(e)
 }
@@ -5770,7 +5879,7 @@ func (c *Controller) Bypass() bool {
 // the SessionAPI surface; each is a thin delegation. See memory.go.
 
 // QuickAdd appends a one-line note to the doc-memory file for scope (project
-// REASONIX.md by default) — the write side of "#<note>". Returns the file written.
+// SEMANTIX.md by default) — the write side of "#<note>". Returns the file written.
 func (c *Controller) QuickAdd(scope memory.Scope, note string) (string, error) {
 	return c.memory.quickAdd(scope, note)
 }
@@ -5945,7 +6054,7 @@ func sandboxEscapeApprovalReason(reason string) string {
 	return reason
 }
 
-// managedConfigWriteApprover routes a file tool's Reasonix-managed config write
+// managedConfigWriteApprover routes a file tool's Semantix-managed config write
 // through the fresh-human approval prompt (see ManagedConfigWriteApprovalTool).
 // A session grant is tool-wide (mirroring sandbox_escape): one "allow for this
 // session" covers the rest of the repair flow across the handful of managed
@@ -6236,11 +6345,11 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 	// Claude's PermissionRequest contract answers the dialog on the plugin's
 	// behalf (auto-allow/auto-deny) instead of merely observing it, so a
 	// decision here must preempt the prompt rather than just notify — this
-	// runs synchronously and before the dialog is shown. Native Reasonix
+	// runs synchronously and before the dialog is shown. Native Semantix
 	// PermissionRequest hooks stay advisory-only (see claudePermissionBlocking).
 	//
 	// A hook's auto-allow must never stand in for a human-required decision:
-	// sandbox escapes, Reasonix config writes, memory remember/forget, and
+	// sandbox escapes, Semantix config writes, memory remember/forget, and
 	// plan approval (RequiresFreshHumanApprovalTool) are deliberately excluded
 	// from YOLO/auto-approval and Guardian too, so a broadly-matched plugin
 	// hook returning "allow" can't silently rubber-stamp them. A deny still

@@ -662,7 +662,7 @@ func TestSessionsShareContentSeesEventLogDivergence(t *testing.T) {
 	}
 
 	// Grow A normally, then restore its old compatibility checkpoint to model a
-	// crash or an older Reasonix build that did not advance the display read
+	// crash or an older Semantix build that did not advance the display read
 	// model. Transcript equality must still follow the event log.
 	anchorB, err := os.ReadFile(pathB)
 	if err != nil {

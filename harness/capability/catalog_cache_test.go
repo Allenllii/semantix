@@ -12,7 +12,7 @@ import (
 func boolPtr(b bool) *bool { return &b }
 
 func TestLoadCachedToolsForSpecsHonorsSchemaCacheKey(t *testing.T) {
-	t.Setenv("REASONIX_CACHE_HOME", t.TempDir())
+	t.Setenv("SEMANTIX_CACHE_HOME", t.TempDir())
 	fresh := plugin.Spec{Name: "gh", Type: "stdio", Command: "gh-mcp"}
 	if err := plugin.SaveCachedSchema("gh", plugin.CachedSchema{
 		CacheKey: plugin.SchemaCacheKey(fresh),

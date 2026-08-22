@@ -115,14 +115,14 @@ type realTicker struct{ *time.Ticker }
 
 func (t realTicker) C() <-chan time.Time { return t.Ticker.C }
 
-func startTUIDiagnostics(reasonixHome string) *tuiDiagnostics {
+func startTUIDiagnostics(semantixHome string) *tuiDiagnostics {
 	d := &tuiDiagnostics{
 		previous:  slog.Default(),
 		writer:    io.Discard,
 		stopWatch: make(chan struct{}),
 		phase:     watchdogBooting,
 	}
-	if logDir := tuiDiagnosticLogDir(reasonixHome); logDir != "" {
+	if logDir := tuiDiagnosticLogDir(semantixHome); logDir != "" {
 		if err := os.MkdirAll(logDir, 0o700); err == nil {
 			pruneTUIDiagnosticLogs(logDir, time.Now())
 			if file, err := os.CreateTemp(logDir, "cli-tui-*.log"); err == nil {
@@ -591,11 +591,11 @@ func (d *tuiDiagnostics) Close() {
 	})
 }
 
-func tuiDiagnosticLogDir(reasonixHome string) string {
-	if strings.TrimSpace(reasonixHome) == "" {
+func tuiDiagnosticLogDir(semantixHome string) string {
+	if strings.TrimSpace(semantixHome) == "" {
 		return ""
 	}
-	return filepath.Join(reasonixHome, "logs")
+	return filepath.Join(semantixHome, "logs")
 }
 
 func pruneTUIDiagnosticLogs(logDir string, now time.Time) {
@@ -645,7 +645,7 @@ func (w *boundedDiagnosticWriter) Write(p []byte) (int, error) {
 	}
 	if n < total && !w.truncated {
 		w.truncated = true
-		_, _ = io.WriteString(w.dst, "\nreasonix: CLI TUI diagnostic log limit reached; further diagnostics omitted\n")
+		_, _ = io.WriteString(w.dst, "\nsemantix: CLI TUI diagnostic log limit reached; further diagnostics omitted\n")
 		w.remaining = 0
 	}
 	return total, nil

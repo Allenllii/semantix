@@ -97,7 +97,7 @@ tar -xzf semantix-agent-v0.7.0-<platform>.tar.gz
 cd semantix-agent-v0.7.0-<platform>
 
 # 2) 用默认 GLM 配置(已指向 bigmodel.cn)
-cp reasonix.example.toml ~/.reasonix/reasonix.toml
+cp semantix-agent.example.toml ~/.semantix/semantix-agent.toml
 export GLM_API_KEY=<你的智谱 key>          # 海外:改用 ZAI_API_KEY 并把 default_model 设为 zai
 
 # 3) 开跑:CLI 交互 或 本地 Web GUI

@@ -14,10 +14,10 @@ func TestProviderConfigured(t *testing.T) {
 		p    ProviderEntry
 		want bool
 	}{
-		{"key set", ProviderEntry{APIKeyEnv: "REASONIX_TEST_KEY", resolvedAPIKey: "secret"}, true},
-		{"key env empty", ProviderEntry{APIKeyEnv: "REASONIX_TEST_EMPTY"}, false},
-		{"key env unset", ProviderEntry{APIKeyEnv: "REASONIX_TEST_MISSING"}, false},
-		{"loopback key env unset", ProviderEntry{BaseURL: "http://127.0.0.1:23333/v1", APIKeyEnv: "REASONIX_TEST_MISSING"}, true},
+		{"key set", ProviderEntry{APIKeyEnv: "SEMANTIX_TEST_KEY", resolvedAPIKey: "secret"}, true},
+		{"key env empty", ProviderEntry{APIKeyEnv: "SEMANTIX_TEST_EMPTY"}, false},
+		{"key env unset", ProviderEntry{APIKeyEnv: "SEMANTIX_TEST_MISSING"}, false},
+		{"loopback key env unset", ProviderEntry{BaseURL: "http://127.0.0.1:23333/v1", APIKeyEnv: "SEMANTIX_TEST_MISSING"}, true},
 		{"official endpoint without key env", ProviderEntry{BaseURL: "https://api.deepseek.com"}, false},
 		{"no api_key_env", ProviderEntry{}, true},
 	}

@@ -157,7 +157,7 @@ func FingerprintPath(root, path string) (Fingerprint, error) {
 }
 
 // CompareIdentity checks whether current disk state still matches the last
-// Reasonix-owned after fingerprint. empty afterSHA with afterExisted==nil means
+// Semantix-owned after fingerprint. empty afterSHA with afterExisted==nil means
 // no ownership tracking (legacy) — callers should treat as unverified.
 func CompareIdentity(current Fingerprint, afterSHA string, afterExisted *bool, afterMode uint32) (conflict string) {
 	if afterExisted == nil && afterSHA == "" {

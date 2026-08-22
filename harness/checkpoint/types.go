@@ -57,7 +57,7 @@ const (
 	CaptureManual         CaptureSource = "manual"
 )
 
-// FileRevision is the v2 per-file preimage plus last Reasonix-owned after fingerprint.
+// FileRevision is the v2 per-file preimage plus last Semantix-owned after fingerprint.
 type FileRevision struct {
 	Path          string        `json:"path"`
 	Existed       bool          `json:"existed"`
@@ -66,7 +66,7 @@ type FileRevision struct {
 	SHA256        string        `json:"sha256,omitempty"`
 	BlobRef       string        `json:"blobRef,omitempty"`
 	CaptureSource CaptureSource `json:"captureSource,omitempty"`
-	// AfterSHA256 is the fingerprint of the file after the last Reasonix-owned write.
+	// AfterSHA256 is the fingerprint of the file after the last Semantix-owned write.
 	// Empty means "no after fingerprint" (legacy or never observed).
 	AfterSHA256  string `json:"afterSha256,omitempty"`
 	AfterExisted *bool  `json:"afterExisted,omitempty"`

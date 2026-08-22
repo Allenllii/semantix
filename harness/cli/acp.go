@@ -25,7 +25,7 @@ import (
 	"semantix/harness/tool/builtin"
 )
 
-// acpCommand runs Reasonix as an Agent Client Protocol agent: a stdio JSON-RPC
+// acpCommand runs Semantix as an Agent Client Protocol agent: a stdio JSON-RPC
 // server that editors and other host clients drive (initialize, session/new,
 // session/prompt, session/cancel). It keeps v2 wire-compatible with the many
 // tools that integrated with v1 over ACP.
@@ -130,7 +130,7 @@ func (f *acpFactory) NewSession(ctx context.Context, p acp.SessionParams) (*cont
 
 // RebuildSession implements acp.SessionRebuilder: the replacement controller
 // comes from boot.Rebuild with the same boot.Options NewSession would use, so
-// _reasonix.io/session/reloadExtensions refreshes tool/skill/command/hook/
+// _semantix.io/session/reloadExtensions refreshes tool/skill/command/hook/
 // MCP/provider discovery while the session state migrates inside the boot
 // layer. ACP sessions hold no SharedHost — each controller owns its plugin
 // host, and the service releases the outgoing one only after the swap.

@@ -38,12 +38,12 @@ func Collect(opts Options) Report {
 			home = h
 		}
 	}
-	reasonixHome := opts.ReasonixHomeDir
-	if reasonixHome == "" {
+	semantixHome := opts.SemantixHomeDir
+	if semantixHome == "" {
 		if opts.HomeDir != "" {
-			reasonixHome = filepath.Join(home, ".reasonix")
+			semantixHome = filepath.Join(home, ".semantix")
 		} else {
-			reasonixHome = config.ReasonixHomeDir()
+			semantixHome = config.SemantixHomeDir()
 		}
 	}
 
@@ -57,19 +57,19 @@ func Collect(opts Options) Report {
 	if cfgErr != nil {
 		issues = append(issues, Issue{
 			Severity: "error", Code: "config.load_failed", Subsystem: "config",
-			Message:     "failed to load configuration: " + sanitizeErrTextWithPaths(cfgErr.Error(), root, home, reasonixHome),
-			Remediation: "Fix reasonix.toml / config.toml syntax, then re-run doctor capabilities",
+			Message:     "failed to load configuration: " + sanitizeErrTextWithPaths(cfgErr.Error(), root, home, semantixHome),
+			Remediation: "Fix semantix-agent.toml / config.toml syntax, then re-run doctor capabilities",
 		})
 	}
 
-	disp := func(p string) string { return displayPath(p, root, home, reasonixHome) }
+	disp := func(p string) string { return displayPath(p, root, home, semantixHome) }
 
 	instr, instructionIssues := collectInstructions(root, home, disp)
-	skillsR, skillIssues := collectSkills(root, home, reasonixHome, cfg, disp)
+	skillsR, skillIssues := collectSkills(root, home, semantixHome, cfg, disp)
 	cmdsR, cmdIssues := collectCommands(root, disp)
-	hooksR, hookIssues := collectHooks(root, home, reasonixHome, cfg, disp)
-	pluginsR, pluginIssues := collectPlugins(reasonixHome, disp)
-	mcpR, mcpIssues := collectMCP(cfg, root, home, reasonixHome, disp)
+	hooksR, hookIssues := collectHooks(root, home, semantixHome, cfg, disp)
+	pluginsR, pluginIssues := collectPlugins(semantixHome, disp)
+	mcpR, mcpIssues := collectMCP(cfg, root, home, semantixHome, disp)
 
 	issues = append(issues, instructionIssues...)
 	issues = append(issues, skillIssues...)
@@ -80,10 +80,10 @@ func Collect(opts Options) Report {
 
 	// Runtime host merge (desktop) or live probe (CLI).
 	if opts.Live {
-		liveIssues := probeLiveMCP(&mcpR, cfg, root, home, reasonixHome, opts.LiveTimeout)
+		liveIssues := probeLiveMCP(&mcpR, cfg, root, home, semantixHome, opts.LiveTimeout)
 		issues = append(issues, liveIssues...)
 	} else if opts.RuntimeHost != nil {
-		mergeRuntimeHost(&mcpR, opts.RuntimeHost, root, home, reasonixHome, &issues)
+		mergeRuntimeHost(&mcpR, opts.RuntimeHost, root, home, semantixHome, &issues)
 	}
 
 	sortIssues(issues)
@@ -145,8 +145,8 @@ func buildSummary(r Report) Summary {
 func collectInstructions(root, home string, disp func(string) string) (InstructionsReport, []Issue) {
 	userDir := config.MemoryUserDir()
 	if home != "" && (userDir == "" || strings.Contains(userDir, home)) {
-		// Prefer explicit test home when Reasonix home is under it.
-		if custom := filepath.Join(home, ".reasonix"); custom != "" {
+		// Prefer explicit test home when Semantix home is under it.
+		if custom := filepath.Join(home, ".semantix"); custom != "" {
 			if userDir == "" {
 				userDir = custom
 			}
@@ -179,11 +179,11 @@ func collectInstructions(root, home string, disp func(string) string) (Instructi
 	return out, issues
 }
 
-func collectSkills(root, home, reasonixHome string, cfg *config.Config, disp func(string) string) (AssetReport, []Issue) {
+func collectSkills(root, home, semantixHome string, cfg *config.Config, disp func(string) string) (AssetReport, []Issue) {
 	var issues []Issue
 	store := skill.New(skill.Options{
 		HomeDir:         home,
-		ReasonixHomeDir: reasonixHome,
+		SemantixHomeDir: semantixHome,
 		ProjectRoot:     root,
 		CustomPaths:     cfg.SkillCustomPaths(),
 		ExcludedPaths:   cfg.SkillExcludedPaths(),
@@ -285,12 +285,12 @@ func collectCommands(root string, disp func(string) string) (AssetReport, []Issu
 	return rep, issues
 }
 
-func collectHooks(root, home, reasonixHome string, cfg *config.Config, disp func(string) string) (HookReport, []Issue) {
+func collectHooks(root, home, semantixHome string, cfg *config.Config, disp func(string) string) (HookReport, []Issue) {
 	var issues []Issue
 	insp := hook.Inspect(hook.LoadOptions{
 		ProjectRoot:     root,
 		HomeDir:         home,
-		ReasonixHomeDir: reasonixHome,
+		SemantixHomeDir: semantixHome,
 	})
 	runtimeOptions := hook.RuntimeOptions{}
 	if cfg != nil {
@@ -321,7 +321,7 @@ func collectHooks(root, home, reasonixHome string, cfg *config.Config, disp func
 	}
 	for _, e := range insp.Entries {
 		rep.Entries = append(rep.Entries, HookEntry{
-			Event: string(e.Event), Match: e.Match, Command: redactCommandDisplay(e.Command, root, home, reasonixHome),
+			Event: string(e.Event), Match: e.Match, Command: redactCommandDisplay(e.Command, root, home, semantixHome),
 			ContextFile: disp(e.ContextFile), Description: e.Description, TimeoutMS: e.Timeout,
 			Scope: string(e.Scope), Source: disp(e.Source), Blocking: hook.IsBlocking(e.Event),
 		})
@@ -383,19 +383,19 @@ func hookRuntimeIssue(entry hook.Entry, err error, disp func(string) string) (Is
 	}, true
 }
 
-func collectPlugins(reasonixHome string, disp func(string) string) (PluginPackageReport, []Issue) {
+func collectPlugins(semantixHome string, disp func(string) string) (PluginPackageReport, []Issue) {
 	var issues []Issue
 	rep := PluginPackageReport{
-		StatePath: disp(filepath.Join(reasonixHome, pluginpkg.StateFilename)),
+		StatePath: disp(filepath.Join(semantixHome, pluginpkg.StateFilename)),
 		Packages:  []PluginPackageInfo{},
 	}
-	st, err := pluginpkg.LoadState(reasonixHome)
+	st, err := pluginpkg.LoadState(semantixHome)
 	if err != nil {
 		issues = append(issues, Issue{
 			Severity: "error", Code: "plugin.state_read_failed", Subsystem: "plugins",
 			Source:      rep.StatePath,
 			Message:     "failed to read plugin-packages state",
-			Remediation: "Ensure Reasonix home is readable or reinstall packages",
+			Remediation: "Ensure Semantix home is readable or reinstall packages",
 			SettingsTab: "plugins",
 		})
 		return rep, issues
@@ -407,10 +407,10 @@ func collectPlugins(reasonixHome string, disp func(string) string) (PluginPackag
 	for _, p := range st.Plugins {
 		info := PluginPackageInfo{
 			Name: p.Name, Enabled: p.Enabled, Version: p.Version,
-			Root:         disp(pluginpkg.ResolveRoot(reasonixHome, p.Root)),
+			Root:         disp(pluginpkg.ResolveRoot(semantixHome, p.Root)),
 			ManifestKind: p.ManifestKind, Status: "ok",
 		}
-		root := pluginpkg.ResolveRoot(reasonixHome, p.Root)
+		root := pluginpkg.ResolveRoot(semantixHome, p.Root)
 		if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
 			info.Status = "missing_root"
 			issues = append(issues, Issue{
@@ -430,7 +430,7 @@ func collectPlugins(reasonixHome string, disp func(string) string) (PluginPackag
 				Severity: "error", Code: "plugin.invalid_manifest", Subsystem: "plugins",
 				Name: p.Name, Source: disp(root),
 				Message:     "plugin package manifest is invalid: " + sanitizeErr(perr),
-				Remediation: "Fix reasonix-plugin.json / Codex / Claude plugin manifest",
+				Remediation: "Fix semantix-plugin.json / Codex / Claude plugin manifest",
 				SettingsTab: "plugins",
 			})
 			rep.Packages = append(rep.Packages, info)
@@ -461,7 +461,7 @@ func collectPlugins(reasonixHome string, disp func(string) string) (PluginPackag
 	return rep, issues
 }
 
-func collectMCP(cfg *config.Config, root, home, reasonixHome string, disp func(string) string) (MCPReport, []Issue) {
+func collectMCP(cfg *config.Config, root, home, semantixHome string, disp func(string) string) (MCPReport, []Issue) {
 	var issues []Issue
 	rep := MCPReport{Servers: []MCPServerInfo{}}
 	if cfg == nil {
@@ -497,7 +497,7 @@ func collectMCP(cfg *config.Config, root, home, reasonixHome string, disp func(s
 			}
 		}
 		if info.Transport == "stdio" {
-			info.Command = redactCommandDisplay(p.Command, root, home, reasonixHome)
+			info.Command = redactCommandDisplay(p.Command, root, home, semantixHome)
 		} else {
 			info.URLHost = urlHostOnly(p.URL)
 		}
@@ -577,7 +577,7 @@ func commandExists(cmd string) bool {
 	return false
 }
 
-func mergeRuntimeHost(rep *MCPReport, host *plugin.Host, root, home, reasonixHome string, issues *[]Issue) {
+func mergeRuntimeHost(rep *MCPReport, host *plugin.Host, root, home, semantixHome string, issues *[]Issue) {
 	if host == nil {
 		return
 	}
@@ -611,13 +611,13 @@ func mergeRuntimeHost(rep *MCPReport, host *plugin.Host, root, home, reasonixHom
 		}
 	}
 	for _, f := range host.Failures() {
-		errText := sanitizeErrTextWithPaths(f.Error, root, home, reasonixHome)
+		errText := sanitizeErrTextWithPaths(f.Error, root, home, semantixHome)
 		if i, ok := byName[f.Name]; ok {
 			rep.Servers[i].RuntimeStatus = "failed"
 			rep.Servers[i].Error = errText
 			rep.Servers[i].StartupStage = f.Stage
 			rep.Servers[i].StartupElapsedMS = f.Elapsed.Milliseconds()
-			rep.Servers[i].Stderr = sanitizeErrTextWithPaths(f.Stderr, root, home, reasonixHome)
+			rep.Servers[i].Stderr = sanitizeErrTextWithPaths(f.Stderr, root, home, semantixHome)
 		}
 		*issues = append(*issues, Issue{
 			Severity: "error", Code: "mcp.start_failed", Subsystem: "mcp",
@@ -668,7 +668,7 @@ func sanitizeErrText(s string) string {
 	return sanitizeErrTextWithPaths(s, "", "", "")
 }
 
-func sanitizeErrTextWithPaths(s, workspace, home, reasonixHome string) string {
+func sanitizeErrTextWithPaths(s, workspace, home, semantixHome string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return s
@@ -701,7 +701,7 @@ func sanitizeErrTextWithPaths(s, workspace, home, reasonixHome string) string {
 	s = redactBearer(s)
 
 	// Absolute paths: rewrite with displayPath when possible.
-	s = redactAbsolutePaths(s, workspace, home, reasonixHome)
+	s = redactAbsolutePaths(s, workspace, home, semantixHome)
 
 	// Cap length after redaction.
 	const max = 400
@@ -753,7 +753,7 @@ func redactBearer(s string) string {
 	}
 }
 
-func redactAbsolutePaths(s, workspace, home, reasonixHome string) string {
+func redactAbsolutePaths(s, workspace, home, semantixHome string) string {
 	// Walk for POSIX and Windows absolute path-like tokens.
 	var b strings.Builder
 	i := 0
@@ -781,7 +781,7 @@ func redactAbsolutePaths(s, workspace, home, reasonixHome string) string {
 		token := s[start:j]
 		// Only rewrite if it looks like a path with a directory separator beyond root.
 		if strings.ContainsAny(token, `/\`) && len(token) > 1 {
-			b.WriteString(displayPath(token, workspace, home, reasonixHome))
+			b.WriteString(displayPath(token, workspace, home, semantixHome))
 		} else {
 			b.WriteString(token)
 		}
@@ -790,7 +790,7 @@ func redactAbsolutePaths(s, workspace, home, reasonixHome string) string {
 	return b.String()
 }
 
-func redactCommandDisplay(cmd, root, home, reasonixHome string) string {
+func redactCommandDisplay(cmd, root, home, semantixHome string) string {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {
 		return ""
@@ -800,7 +800,7 @@ func redactCommandDisplay(cmd, root, home, reasonixHome string) string {
 	if len(fields) == 0 {
 		return ""
 	}
-	return displayPath(fields[0], root, home, reasonixHome)
+	return displayPath(fields[0], root, home, semantixHome)
 }
 
 // ioDiscard avoids importing io in every call site for skill.Options.Stderr.

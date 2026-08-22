@@ -26,7 +26,7 @@ const components: ComponentCard[] = [
     title: "语义切片库",
     responsibility:
       "解析会话 JSONL，按 turn 边界生成 Prompt、ToolPattern 和 Result 切片，并按 scope 持久化。",
-    io: "输入：Reasonix 风格会话 JSONL。输出：带内容哈希 ID、类型、scope 与来源元数据的 Slice。",
+    io: "输入：Semantix 风格会话 JSONL。输出：带内容哈希 ID、类型、scope 与来源元数据的 Slice。",
     limits:
       "默认提取器暂不生成 Context 和 Memory 切片；畸形行会跳过，Prompt 与 Result 分别限制为 4 KB 和 8 KB。",
     art: "/generated/component-slice-longhair-v6-ink.png",

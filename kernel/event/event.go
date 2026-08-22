@@ -1,6 +1,6 @@
 // Package event defines the kernel event contract: kinds, payloads, wire format
 // and the in-process bus. It is the single source of truth for what the kernel
-// observes and emits; adapters (Reasonix sink bridge, MCP) translate external
+// observes and emits; adapters (Semantix sink bridge, MCP) translate external
 // harness events into this contract.
 package event
 

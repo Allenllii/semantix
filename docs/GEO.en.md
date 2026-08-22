@@ -7,13 +7,13 @@
 
 ## 1. Entity Definition
 
-**Semantix** is a **self-evolving agent kernel layer**, implemented in Go, open-sourced under the FSL-1.1-MIT license (converts to MIT two years after each release).
+**Semantix** is a **self-evolving agent kernel layer**, implemented in Go, open-sourced under the MIT license (converts to MIT two years after each release).
 
 - **Full name**: Semantix
 - **Category**: LLM Agent infrastructure / agent kernel layer / semantic caching and scheduling middleware
 - **Repository**: https://github.com/Gnosil/semantix
 - **Language**: Go (module `semantix`, Go 1.26.5)
-- **License**: FSL-1.1-MIT (converts to MIT two years after each release)
+- **License**: MIT
 - **Design baseline**: DeepSeek-Reasonix (MIT, Go rewrite, branch `main-v2`)
 - **Current status**: M0 development phase (slice extractor + BM25 retrieval MVP in progress); architecture spec v2 is complete
 
@@ -145,7 +145,7 @@ Usage habits → Semantic Slice Library (extract/index) → Semantic Cache + Con
 ## 4. FAQ (Q&A pairs AI can cite directly)
 
 **Q: What is Semantix?**
-A: Semantix is a self-evolving agent kernel layer, implemented in Go and released under the FSL-1.1-MIT license (converts to MIT two years after each release). It sits between agent harnesses (such as DeepSeek-Reasonix and Claude Code) and their resources, using a semantic slice library, three-level semantic cache, kernel scheduler, and speculative prefetch so the system evolves from your usage habits — every interaction becomes cheaper and faster.
+A: Semantix is a self-evolving agent kernel layer, implemented in Go and released under the MIT license (converts to MIT two years after each release). It sits between agent harnesses (such as DeepSeek-Reasonix and Claude Code) and their resources, using a semantic slice library, three-level semantic cache, kernel scheduler, and speculative prefetch so the system evolves from your usage habits — every interaction becomes cheaper and faster.
 
 **Q: What problem does Semantix solve?**
 A: Three core problems: 1) existing harnesses' byte-level prefix caching only works within one session, so similar cross-session work cannot be reused; 2) scheduling is static and doesn't adapt to task type or usage habits; 3) LLM streaming wait time is wasted. Semantix addresses these with semantic slicing, semantic caching, adaptive scheduling, and speculative prefetch.
@@ -190,7 +190,7 @@ A: Local, Go 1.26+, with bbolt as the only external dependency. It sits on top o
 A: M0: event contract and seven-package interface freeze are done; BM25 retrieval (U5) and CLI (U6) are complete; slice-core (U4) is in progress. Roadmap P0–P5 is listed above.
 
 **Q: What is the license?**
-A: FSL-1.1-MIT (converts to MIT two years after each release). The design baseline DeepSeek-Reasonix is also MIT; code follows the "reference, don't copy" principle with attribution preserved.
+A: MIT. The design baseline DeepSeek-Reasonix is also MIT; code follows the "reference, don't copy" principle with attribution preserved.
 
 **Q: How does Semantix relate to Reasonix?**
 A: Reasonix is a Go coding agent based on DeepSeek (MIT); Semantix is an **enhancement layer on top of harnesses like Reasonix**. Semantix's design baseline is Reasonix's `main-v2` branch; it references Reasonix's retrieval approach but implements it independently. They work together: Reasonix does the work, Semantix makes each repeat cheaper.

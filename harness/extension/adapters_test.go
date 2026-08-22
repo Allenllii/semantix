@@ -80,7 +80,7 @@ func TestSkillsContributor(t *testing.T) {
 	projectRoot := t.TempDir()
 	home := t.TempDir()
 	pluginRoot := t.TempDir()
-	writeSkill(t, filepath.Join(projectRoot, ".reasonix", skill.SkillsDirname), "projskill", "Project skill")
+	writeSkill(t, filepath.Join(projectRoot, ".semantix", skill.SkillsDirname), "projskill", "Project skill")
 	writeSkill(t, pluginRoot, "plugskill", "Plugin skill")
 
 	store := skill.New(skill.Options{
@@ -272,7 +272,7 @@ func TestProvidersContributor(t *testing.T) {
 func TestAdaptersAssembleTogether(t *testing.T) {
 	projectRoot := t.TempDir()
 	home := t.TempDir()
-	writeSkill(t, filepath.Join(projectRoot, ".reasonix", skill.SkillsDirname), "projskill", "Project skill")
+	writeSkill(t, filepath.Join(projectRoot, ".semantix", skill.SkillsDirname), "projskill", "Project skill")
 	cmdDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(cmdDir, "review.md"), []byte("review body"), 0o644); err != nil {
 		t.Fatal(err)
