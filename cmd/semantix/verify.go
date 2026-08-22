@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 
+	"semantix/kernel/adapt"
 	"semantix/kernel/judge"
 	"semantix/kernel/slice"
 	"semantix/kernel/usage"
@@ -92,12 +93,12 @@ func newVerifyJudgeJSON(s judge.Stats) *verifyJudgeJSON {
 // positives (hits the oracle rejects) and precision — the P-CHR simplified
 // distribution (GPT Semantic Cache, arXiv:2411.05276).
 type verifyCalibration struct {
-	Bins    []verifyBin               `json:"bins"`
-	Current [3]int                    `json:"current"` // zone counts under the current thresholds
-	Default [3]int                    `json:"default"` // zone counts under zone.Default()
-	ByType  map[string]verifyTypeCal  `json:"by_type,omitempty"` // Issue #259 阶段 2: per-type zone distribution
-	Labeled bool                      `json:"labeled"` // --labels was provided
-	Marks   map[string]bool           `json:"-"`       // oracle relevance marks (session\x00turn -> relevant)
+	Bins    []verifyBin              `json:"bins"`
+	Current [3]int                   `json:"current"`           // zone counts under the current thresholds
+	Default [3]int                   `json:"default"`           // zone counts under zone.Default()
+	ByType  map[string]verifyTypeCal `json:"by_type,omitempty"` // Issue #259 阶段 2: per-type zone distribution
+	Labeled bool                     `json:"labeled"`           // --labels was provided
+	Marks   map[string]bool          `json:"-"`                 // oracle relevance marks (session\x00turn -> relevant)
 }
 
 // verifyTypeCal is the per-slice-type zone distribution (Issue #259
@@ -105,11 +106,11 @@ type verifyCalibration struct {
 // (possibly per-type) thresholds vs the default thresholds — the input
 // for deciding whether a type deserves its own tau.
 type verifyTypeCal struct {
-	N          int   `json:"n"`
-	Hit        int   `json:"hit"`
-	Grey       int   `json:"grey"`
-	Miss       int   `json:"miss"`
-	DefaultHit int   `json:"default_hit"` // hit count under zone.Default(), for drift comparison
+	N          int `json:"n"`
+	Hit        int `json:"hit"`
+	Grey       int `json:"grey"`
+	Miss       int `json:"miss"`
+	DefaultHit int `json:"default_hit"` // hit count under zone.Default(), for drift comparison
 }
 
 // verifyBin is one relative-confidence bucket [Lo,Hi) of the replay stream.
@@ -436,6 +437,7 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	jsonOut := fs.Bool("json", false, "output as JSON envelope (summary + rows)")
 	calibrate := fs.Bool("calibrate", false, "append the Issue #262 calibration report: per-bin hit/miss distribution + three-region drift vs default thresholds")
 	labelsPath := fs.String("labels", "", "optional oracle relevance marks: session<TAB>turn<TAB>1|0 (implies --calibrate; adds per-bin fp/precision)")
+	adaptDB := fs.String("adapt-db", "", "per-entry adaptive state file (Issue #259 阶段 3); empty = <db 同目录>/l3-adapt.json, 缺失则不报告")
 	zf := addZoneFlags(fs)
 	judgeProtocol := fs.String("judge-protocol", "", "LLM judge protocol: openai|anthropic (empty = rules only)")
 	judgeBaseURL := fs.String("judge-base-url", "", "LLM judge endpoint base URL (e.g. https://api.openai.com/v1)")
@@ -769,6 +771,7 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 			jstats.JudgeReject+jstats.Fingerprint+jstats.RulesReject+jstats.JudgeError)
 	}
 	printVerifyCalibration(stdout, cal)
+	printAdaptSummary(stdout, *adaptDB, opt.db)
 	if *greyTarget > 0 && greyRatio > *greyTarget {
 		// Issue #7 acceptance: the grey-zone share is an observability
 		// metric with a hard alarm — the threshold can be tuned but a
@@ -782,6 +785,54 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 	}
 	printVerifyL1Footer(stdout, *usageDB)
 	return 0
+}
+
+// printAdaptSummary appends the per-entry adaptive state summary (Issue
+// #259 阶段 3) to the replay report: entry count, learned-tau distribution
+// and adjustment totals, so an operator can see whether vCache-style
+// per-entry learning is active and how far entries drifted from the
+// global prior. adaptPath empty → derive from the store db directory; a
+// missing state file prints nothing (adaptation simply has no entries
+// yet). The engine is opened read-only: no observations are folded.
+func printAdaptSummary(stdout io.Writer, adaptPath, db string) {
+	if adaptPath == "" {
+		if db == "" {
+			return
+		}
+		adaptPath = filepath.Join(filepath.Dir(db), "l3-adapt.json")
+	}
+	e := adapt.New(adapt.Config{}, adaptPath)
+	snap := e.Snapshot()
+	if len(snap) == 0 {
+		return
+	}
+	var minTau, maxTau float64
+	var relaxed int
+	taus := make([]float64, 0, len(snap))
+	for i := range snap {
+		ent := &snap[i]
+		if ent.TauLow <= 0 {
+			continue // cold-start entries keep the global prior
+		}
+		if ent.Relaxed {
+			relaxed++
+		}
+		taus = append(taus, ent.TauLow)
+		if minTau == 0 || ent.TauLow < minTau {
+			minTau = ent.TauLow
+		}
+		if ent.TauLow > maxTau {
+			maxTau = ent.TauLow
+		}
+	}
+	if len(taus) == 0 {
+		return
+	}
+	sort.Float64s(taus)
+	median := taus[len(taus)/2]
+	fmt.Fprintf(stdout, "# adapt: per-entry 自适应状态 (Issue #259 阶段 3) — %s\n", adaptPath)
+	fmt.Fprintf(stdout, "#   entries=%d learned=%d relaxed=%d adjustments=%d epoch=%d tau_low min=%.2f median=%.2f max=%.2f\n",
+		len(snap), len(taus), relaxed, e.Adjustments(), e.Epoch(), minTau, median, maxTau)
 }
 
 // printVerifyL1Footer appends the L1 hit-rate regression rows to the replay

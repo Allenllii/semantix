@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"semantix/kernel/adapt"
 	"semantix/kernel/cache"
 	kernelevent "semantix/kernel/event"
 	"semantix/kernel/ingest"
@@ -25,6 +26,7 @@ import (
 	"semantix/kernel/judge"
 	"semantix/kernel/slice"
 	"semantix/kernel/usage"
+	"semantix/kernel/zone"
 )
 
 // Gateway is the assembled Semantix Gateway v1. All semantic behavior is
@@ -57,6 +59,13 @@ type Gateway struct {
 	// query bypasses L3 and is recorded as L3FalseHit.
 	reuseMu  sync.Mutex
 	l3Reuses map[string]l3ReuseEntry
+
+	// Per-entry adaptive thresholds (Issue #259 阶段 3): the engine the
+	// decider consults and the feedback hooks feed; nil when adaptation
+	// is disabled by config. zones is the effective classifier snapshot
+	// (explicit config > evolve > defaults) used as the cold-start prior.
+	adapt *adapt.Engine
+	zones zone.Zones
 
 	now func() time.Time
 
@@ -194,6 +203,26 @@ func New(cfg *Config) (*Gateway, error) {
 		disabled: disableEnv(),
 		l3Reuses: make(map[string]l3ReuseEntry),
 		now:      time.Now,
+		zones:    z,
+	}
+	// Per-entry adaptive TauLow (Issue #259 阶段 3, vCache route): each
+	// high-frequency reused slice learns its own grey floor from the
+	// gateway's positive/negative evidence. The engine is nil when
+	// disabled by config (adaptive = false or error_bound = -1); the
+	// decider's nil-safe Adapt hook then keeps every entry on the
+	// global/per-type thresholds (cold start). Adaptive state is derived
+	// and rebuildable — a corrupt file only logs, never blocks startup.
+	if cfg.Retrieval.Adaptive == nil || *cfg.Retrieval.Adaptive {
+		adaptCfg := adapt.Config{}
+		if cfg.Retrieval.ErrorBound != 0 {
+			adaptCfg.ErrorBound = cfg.Retrieval.ErrorBound
+		}
+		adaptPath := cfg.Retrieval.AdaptDB
+		if adaptPath == "" {
+			adaptPath = adapt.DefaultAdaptDB(cfg.Store.DB)
+		}
+		g.adapt = adapt.New(adaptCfg, adaptPath)
+		decider.Adapt = g.adapt
 	}
 	// Grey-zone judge decisions become durable here (Issue #242 gap 1):
 	// one structured log line plus a field on the turn's usage event, so a

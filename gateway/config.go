@@ -142,11 +142,22 @@ type RetrievalConfig struct {
 	// written by `usage --evolve-db`): its tuned TauL2 drives TauLow when
 	// no explicit tau_low is configured (clamped to the evolve tuning
 	// band), mirroring the CLI --evolve-db behavior.
-	TauHigh   *float64 `toml:"tau_high"`
-	TauLow    *float64 `toml:"tau_low"`
-	AbsHigh   *float64 `toml:"abs_high"`
-	AbsLow    *float64 `toml:"abs_low"`
-	EvolveDB  string   `toml:"evolve_db"`
+	TauHigh  *float64 `toml:"tau_high"`
+	TauLow   *float64 `toml:"tau_low"`
+	AbsHigh  *float64 `toml:"abs_high"`
+	AbsLow   *float64 `toml:"abs_low"`
+	EvolveDB string   `toml:"evolve_db"`
+	// Adaptive enables per-entry online TauLow learning (Issue #259 阶段
+	// 3, vCache route): each high-frequency reused slice learns its own
+	// grey floor from positive/negative evidence, with the global
+	// thresholds as cold-start prior. nil → enabled; explicit false
+	// disables (all entries use the global/per-type thresholds).
+	// ErrorBound is the operator-specified false-hit rate ceiling
+	// (0 → 0.05; -1 also disables adaptation). AdaptDB is the state file
+	// (empty → <store dir>/l3-adapt.json).
+	Adaptive   *bool   `toml:"adaptive"`
+	ErrorBound float64 `toml:"error_bound"`
+	AdaptDB    string  `toml:"adapt_db"`
 	// ByType holds per-slice-type threshold overrides (Issue #259 阶段
 	// 2), keyed by the stable wire name (prompt|context|tool_pattern|
 	// result|memory). Each entry is partial: only the keys present are
@@ -463,6 +474,14 @@ func (c *Config) validate() error {
 	}
 	if c.Retrieval.TauHigh != nil && c.Retrieval.TauLow != nil && *c.Retrieval.TauHigh <= *c.Retrieval.TauLow {
 		return fmt.Errorf("gateway config: [retrieval] tau_high (%v) must be > tau_low (%v)", *c.Retrieval.TauHigh, *c.Retrieval.TauLow)
+	}
+	// Adaptive error bound (Issue #259 阶段 3): -1 disables per-entry
+	// adaptation; any other value must be a rate in [0,1].
+	if c.Retrieval.ErrorBound != 0 && c.Retrieval.ErrorBound != -1 {
+		if math.IsNaN(c.Retrieval.ErrorBound) || math.IsInf(c.Retrieval.ErrorBound, 0) ||
+			c.Retrieval.ErrorBound < 0 || c.Retrieval.ErrorBound > 1 {
+			return fmt.Errorf("gateway config: [retrieval] error_bound must be -1 (disabled) or in [0,1], got %v", c.Retrieval.ErrorBound)
+		}
 	}
 	// Per-type overrides (Issue #259 阶段 2): every by_type key must be a
 	// known slice type (fail closed on typos) and each override obeys the

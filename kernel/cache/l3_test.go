@@ -754,3 +754,42 @@ func TestDecideL3PerTypeOverride(t *testing.T) {
 		t.Fatalf("strict result override must reject reuse, got %+v", res2)
 	}
 }
+
+// stubAdapt returns a fixed learned TauLow per slice.
+type stubAdapt struct{ tau float64 }
+
+func (a stubAdapt) TauLow(sliceID string, global float64) float64 { return a.tau }
+
+// The per-entry adaptive TauLow replaces the effective grey floor before
+// classification (Issue #259 阶段 3): a candidate whose relative
+// confidence sits in the grey band under the baseline falls to Miss once
+// the entry's learned TauLow rises above it, while a learned value above
+// TauHigh is clamped so the grey zone never collapses.
+func TestDecideL3AdaptiveTauLow(t *testing.T) {
+	// Two Result candidates: a perfect one (relConf 1.0, always a Hit) and
+	// a weaker peer with relConf 0.70 (score 0.7 / resultTop1 1.0) — grey
+	// under the default TauLow 0.55. The weaker one is listed first so the
+	// loop reaches it before the clear Hit; the Obs counters reveal which
+	// gate routed it.
+	mk := func() []slice.Hit {
+		return []slice.Hit{hitOf("weak", slice.Result, 0.7), hitOf("strong", slice.Result, 1.0)}
+	}
+	observe := func(tau float64) (Obs, *L3Result) {
+		d := &L3Decider{Index: &fixedIndex{hits: mk()}, Root: t.TempDir(), Adapt: stubAdapt{tau: tau}}
+		var acc ObsAccum
+		d.Obs = &acc
+		res, _ := d.DecideL3(context.Background(), Query{UserInput: "q", Scope: slice.Project})
+		return acc.Snapshot(), res
+	}
+	// TauLow 0.50: the weak candidate (0.70) stays grey-routed.
+	lo, resLo := observe(0.50)
+	if lo.Grey != 1 || lo.RulesReject != 1 || resLo == nil || resLo.SliceID != "strong" {
+		t.Fatalf("tau 0.50: grey=%d rules_reject=%d res=%+v, want grey-routed weak + strong reuse", lo.Grey, lo.RulesReject, resLo)
+	}
+	// TauLow 0.80 (clamped to TauHigh-0.05 = 0.75): 0.70 < 0.75 → Miss.
+	hi, resHi := observe(0.80)
+	if hi.Grey != 0 || hi.RulesReject != 1 || resHi == nil || resHi.SliceID != "strong" {
+		t.Fatalf("tau 0.80: grey=%d rules_reject=%d res=%+v, want straight-Miss weak + strong reuse", hi.Grey, hi.RulesReject, resHi)
+	}
+}
+

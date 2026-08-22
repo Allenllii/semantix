@@ -57,7 +57,23 @@ type L3Decider struct {
 	// observes the judge stage; Obs covers every rejection path.
 	Obs      *ObsAccum
 	OnDecide func(Obs)
+
+	// Adapt provides per-entry TauLow overrides (Issue #259 阶段 3,
+	// vCache route): for each Result candidate the learned value replaces
+	// the effective TauLow before classification, clamped so the grey
+	// zone never collapses. nil-safe — without it every entry uses the
+	// global/per-type threshold (cold start).
+	Adapt interface {
+		TauLow(sliceID string, global float64) float64
+	}
 }
+
+// minGreyWidth keeps a non-empty grey zone when an adaptive TauLow would
+// otherwise reach or pass TauHigh: the learned value is clamped to
+// TauHigh − minGreyWidth so ambiguous candidates still route to the judge
+// instead of flipping straight to Miss. Matches the evolve tuning step so
+// clamping cannot fight the engine's own granularity.
+const minGreyWidth = 0.05
 
 // Obs is a negative-observation counter snapshot (Issue #262): the L3
 // runtime paths that rejected reuse and why, plus the approved/reused
@@ -189,7 +205,18 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 		// Per-type thresholds (Issue #259 阶段 2): each candidate is
 		// classified with its slice type's override (or the global
 		// baseline when the type is not configured).
-		verdict := z.ForType(s.Type.String()).ClassifyL3(h.Score, resultTop1, globalTop1)
+		tz := z.ForType(s.Type.String())
+		// Per-entry adaptive TauLow (Issue #259 阶段 3): the learned value
+		// replaces the effective TauLow; it is clamped below TauHigh so
+		// the grey zone never collapses (ambiguous candidates must still
+		// reach the judge rather than flip to Miss).
+		if d.Adapt != nil {
+			tz.TauLow = d.Adapt.TauLow(s.ID, tz.TauLow)
+			if tz.TauLow > tz.TauHigh-minGreyWidth {
+				tz.TauLow = tz.TauHigh - minGreyWidth
+			}
+		}
+		verdict := tz.ClassifyL3(h.Score, resultTop1, globalTop1)
 		if fresh := q.Freshness.classify(s.CreatedAt); fresh < verdict {
 			verdict = fresh // freshness may only make reuse more conservative
 		}

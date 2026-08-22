@@ -568,12 +568,27 @@ func (g *Gateway) detectFalseHit(sessionID, query string) bool {
 		return false
 	}
 	delete(g.l3Reuses, sessionID)
-	return normalizedEditRatio(entry.Query, query) >= sim
+	if normalizedEditRatio(entry.Query, query) >= sim {
+		// Suspected false hit (Issue #262 §3.3): the user retried a query
+		// the cache just served. Feed negative evidence to the per-entry
+		// adaptive engine (Issue #259 阶段 3) so the offending slice's
+		// threshold tightens.
+		if g.adapt != nil && entry.SliceID != "" {
+			g.adapt.Observe(entry.SliceID, true, g.zones.TauLow)
+		}
+		return true
+	}
+	return false
 }
 
 // recordL3Reuse remembers the most recent L3-served request per session
-// (bounded: maxL3ReuseEntries, LRU eviction by timestamp).
+// (bounded: maxL3ReuseEntries, LRU eviction by timestamp) and feeds the
+// positive evidence to the per-entry adaptive engine (Issue #259 阶段 3):
+// the served slice just earned a clean reuse.
 func (g *Gateway) recordL3Reuse(sessionID, query, sliceID string) {
+	if g.adapt != nil && sliceID != "" {
+		g.adapt.Observe(sliceID, false, g.zones.TauLow)
+	}
 	if sessionID == "" {
 		return
 	}

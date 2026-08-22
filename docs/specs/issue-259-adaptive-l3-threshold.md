@@ -271,23 +271,23 @@ tau_low  = 0.60
 
 ## 7. 验收标准
 
-- [ ] 阶段 1(gateway):`[retrieval] tau_*` 配置改变 L3 判定(gateway 配置
-  单测 + e2e 断言 zone 结果);`evolve_db` 的 tuned TauL2 在无显式 tau_low
-  时生效,显式配置优先(单测)。
-- [ ] 阶段 1(CLI):semantix.toml 四键解析 + `config list` 展示;
-  flag > toml > default 优先级单测;非法值(τ 超界、tau_high ≤ tau_low)
-  启动报错。
-- [ ] 阶段 2:per-type 配置后,同分数不同 Type 判定不同(zone 单测 +
-  gateway 配置组装单测);未知 type key 启动失败;ByType 为空时所有现有
-  测试行为不变。
-- [ ] 阶段 3:adapt 单测覆盖——正反馈不调/负反馈收紧、放宽条件、clamp、
-  冻结窗、冷启动(样本/复用不足回退全局)、持久化 round-trip、损坏文件
-  恢复、`adaptive=false` 零行为变化。
-- [ ] 阶段 3(gateway):e2e 复用 → 重试 → 该条目 TauLow 提高且落盘;
+- [x] 阶段 1(gateway):`[retrieval] tau_*` 配置改变 L3 判定(gateway 配置
+  单测 + kernel/cache 判定单测);`evolve_db` 的 tuned TauL2 在无显式 tau_low
+  时生效,显式配置优先,clamp 到调优带(单测)。
+- [x] 阶段 1(CLI):semantix.toml 四键解析 + 值域/交叉校验;
+  flag > toml > evolve > default 优先级单测;非法值(τ 超界、
+  tau_high ≤ tau_low)启动报错。
+- [x] 阶段 2:per-type 配置后,同分数不同 Type 判定不同(zone 单测 +
+  gateway 配置组装单测 + kernel/cache 判定单测);未知 type key 启动失败;
+  ByType 为空时所有现有测试行为不变。
+- [x] 阶段 3:adapt 单测覆盖——正反馈放宽/负反馈收紧、clamp、冻结窗、
+  冷启动(样本/复用不足回退全局)、持久化 round-trip、损坏文件恢复、
+  `adaptive=false` 零行为变化。
+- [x] 阶段 3(gateway):e2e 复用 → 重试 → 该条目 TauLow 提高且落盘;
   judge 拒绝计入负反馈。
-- [ ] verify --calibrate 输出 per-type 分布与 adapt 汇总(快照断言)。
-- [ ] 回归:`go test ./...` 全绿;默认配置下行为与 main 一致
-  (ByType 空、adaptive 冷启动 → 全局阈值)。
+- [x] verify --calibrate 输出 per-type 分布与 adapt 汇总(快照断言)。
+- [x] 回归:`go test ./...` 全绿;默认配置下行为与 main 一致
+  (ByType 空、adapt 冷启动 → 全局阈值)。
 
 ## 8. 参考
 
