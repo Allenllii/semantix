@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"semantix/kernel/evolve"
@@ -16,6 +17,7 @@ import (
 )
 
 // usageJSON is the --json envelope payload for `semantix usage` (M2-U22).
+// by_provider is additive (GLM-P0-4, Issue #292): the envelope only grows.
 type usageJSON struct {
 	Events         int     `json:"events"`
 	TokensIn       int64   `json:"tokens_in"`
@@ -28,7 +30,64 @@ type usageJSON struct {
 	CostNoCacheUSD float64 `json:"cost_no_cache_usd"`
 	SavingsUSD     float64 `json:"savings_usd"`
 	SavingsRate    float64 `json:"savings_rate"`
+	// L3 negative observability (Issue #262): runtime reject/approve/false-hit
+	// aggregates from the usage log.
+	L3GreyCandidates    int                 `json:"l3_grey_candidates"`
+	L3JudgeReject       int                 `json:"l3_judge_reject"`
+	L3JudgeError        int                 `json:"l3_judge_error"`
+	L3JudgeApproved     int                 `json:"l3_judge_approved"`
+	L3RulesReject       int                 `json:"l3_rules_reject"`
+	L3FingerprintReject int                 `json:"l3_fingerprint_reject"`
+	L3IsolatedReject    int                 `json:"l3_isolated_reject"`
+	L3FalseHits         int                 `json:"l3_false_hits"`
+	ByProvider          []usageProviderJSON `json:"by_provider,omitempty"`
 }
+
+// usageProviderJSON is one endpoint's L1 telemetry row.
+type usageProviderJSON struct {
+	Provider       string  `json:"provider"`
+	Events         int     `json:"events"`
+	ExactEvents    int     `json:"exact_events"`
+	TokensIn       int64   `json:"tokens_in"`
+	CacheHitTokens int64   `json:"cache_hit_tokens"`
+	L1HitRate      float64 `json:"l1_hit_rate"`
+	L3Reuses       int     `json:"l3_reuses"`
+	HitSavingsUSD  float64 `json:"hit_savings_usd"`
+}
+
+// providerRows prices each endpoint's hit savings with its own price pair
+// (cost.providers.<name>.* falling back to the global figures) and returns
+// rows sorted by provider name. The unnamed bucket ("" — pre-#291 logs)
+// sorts last and renders as "(unattributed)".
+func providerRows(s *usage.Summary, deps dependencies, globalMiss, globalHit float64) []usageProviderJSON {
+	names := make([]string, 0, len(s.ByProvider))
+	for name := range s.ByProvider {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		if (names[i] == "") != (names[j] == "") {
+			return names[j] == ""
+		}
+		return names[i] < names[j]
+	})
+	rows := make([]usageProviderJSON, 0, len(names))
+	for _, name := range names {
+		p := s.ByProvider[name]
+		miss := cfgFloat(deps.resolved, "cost.providers."+name+".input_price_usd", globalMiss)
+		hit := cfgFloat(deps.resolved, "cost.providers."+name+".cache_price_usd", globalHit)
+		rows = append(rows, usageProviderJSON{
+			Provider: name, Events: p.Events, ExactEvents: p.ExactEvents,
+			TokensIn: p.TokensIn, CacheHitTokens: p.CacheHitTokens,
+			L1HitRate: p.L1HitRate(), L3Reuses: p.L3Reuses,
+			// Savings from prefix-cache hits alone: hit tokens billed at hit
+			// price instead of miss price. Exact-metered tokens only.
+			HitSavingsUSD: float64(p.CacheHitTokens) * (miss - hit) / 1e6,
+		})
+	}
+	return rows
+}
+
+// usageProviderJSON is one endpoint's L1 telemetry row.
 
 // runUsage summarizes the usage log and reports cost savings (Issue #60 /
 // U17). With --evolve-db it also replays the log as cache_hit signals into
@@ -53,6 +112,7 @@ func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 		return 1 // runtime/IO error, not a usage mistake
 	}
 
+	rows := providerRows(s, deps, *costMiss, *costHit)
 	if *jsonOut {
 		data := usageJSON{
 			Events: s.Events, TokensIn: s.TokensIn, TokensOut: s.TokensOut,
@@ -60,6 +120,12 @@ func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 			SliceHits:   s.SliceHits,
 			CostPaidUSD: s.CostPaidUSD, CostNoCacheUSD: s.CostNoCacheUSD,
 			SavingsUSD: s.SavingsUSD, SavingsRate: s.SavingsRate,
+			L3GreyCandidates: s.L3GreyCandidates, L3JudgeReject: s.L3JudgeReject,
+			L3JudgeError: s.L3JudgeError,
+			L3JudgeApproved: s.L3JudgeApproved, L3RulesReject: s.L3RulesReject,
+			L3FingerprintReject: s.L3FingerprintReject, L3IsolatedReject: s.L3IsolatedReject,
+			L3FalseHits: s.L3FalseHits,
+			ByProvider:  rows,
 		}
 		if err := writeJSON(stdout, okEnvelope("usage", data)); err != nil {
 			fmt.Fprintln(os.Stderr, "usage:", err)
@@ -88,6 +154,37 @@ func runUsage(args []string, stdout io.Writer, deps dependencies) int {
 	fmt.Fprintf(stdout, "cost_no_cache_usd\t%.6f\n", s.CostNoCacheUSD)
 	fmt.Fprintf(stdout, "savings_usd\t%.6f\n", s.SavingsUSD)
 	fmt.Fprintf(stdout, "savings_rate\t%.4f\n", s.SavingsRate)
+	// L3 negative observability (Issue #262): runtime reject/approve detail
+	// and suspected false hits. Zero values are meaningful here — a quiet
+	// cache must be distinguishable from a missing log via the events row.
+	fmt.Fprintf(stdout, "l3_grey_candidates\t%d\n", s.L3GreyCandidates)
+	fmt.Fprintf(stdout, "l3_judge_reject\t%d\n", s.L3JudgeReject)
+	fmt.Fprintf(stdout, "l3_judge_error\t%d\n", s.L3JudgeError)
+	fmt.Fprintf(stdout, "l3_judge_approved\t%d\n", s.L3JudgeApproved)
+	fmt.Fprintf(stdout, "l3_rules_reject\t%d\n", s.L3RulesReject)
+	fmt.Fprintf(stdout, "l3_fingerprint_reject\t%d\n", s.L3FingerprintReject)
+	fmt.Fprintf(stdout, "l3_isolated_reject\t%d\n", s.L3IsolatedReject)
+	fmt.Fprintf(stdout, "l3_false_hits\t%d\n", s.L3FalseHits)
+
+	// Per-provider L1 telemetry (GLM-P0-4, #292). Hit-rates come from
+	// exact-metered events only (#291); estimated-only endpoints show "—"
+	// so an unwired adapter is visible instead of reading as 0%.
+	if len(rows) > 0 {
+		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, "🌐 Per-provider L1（exact 计量）")
+		for _, row := range rows {
+			name := row.Provider
+			if name == "" {
+				name = "(unattributed)"
+			}
+			rate := "—"
+			if row.ExactEvents > 0 {
+				rate = fmt.Sprintf("%s %.1f%%", barChart(row.L1HitRate, 10), row.L1HitRate*100)
+			}
+			fmt.Fprintf(stdout, "  %-22s hit %s  省 $%.6f  (exact %d/%d, L3 %d)\n",
+				name, rate, row.HitSavingsUSD, row.ExactEvents, row.Events, row.L3Reuses)
+		}
+	}
 
 	if *evolveDB != "" {
 		if err := feedEvolve(*evolveDB, *db, stdout); err != nil {
@@ -136,6 +233,22 @@ func feedEvolve(dir, logPath string, stdout io.Writer) error {
 		}
 		epoch++
 		_ = e.RecordSignal(evolve.Signal{Name: "cache_hit", Value: v, Epoch: epoch})
+		// Issue #262 negative evidence: judge rejections and suspected
+		// false hits fold into the pollution EWMA so TauL2 tuning sees
+		// both directions (mirrors #267's SliceReject producer). A turn
+		// with L3 activity but no rejection evidence reports 0 (clean),
+		// letting the EWMA fall back after a pollution streak; turns
+		// without L3 activity emit no signal at all (old logs unchanged).
+		if decisions := ev.L3GreyCandidates + ev.L3RulesReject + ev.L3FingerprintReject + ev.L3IsolatedReject; decisions > 0 || ev.L3Reuse || ev.L3FalseHit {
+			pol := float64(ev.L3JudgeReject) / float64(decisions+1)
+			if ev.L3FalseHit {
+				pol = float64(ev.L3JudgeReject+1) / float64(decisions+1)
+			}
+			if pol > 1 {
+				pol = 1
+			}
+			_ = e.RecordSignal(evolve.Signal{Name: "inject_pollution", Value: pol, Epoch: epoch})
+		}
 	}
 	if err := sc.Err(); err != nil {
 		return err

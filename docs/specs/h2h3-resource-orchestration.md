@@ -5,7 +5,7 @@
 > `kernel/event/event.go`（12 种 Kind + `KindCount` 哨兵）、`patches/semantix-sched-prefetch.patch`（U13c 成果，本期作迁移素材）；
 > 架构基线：`docs/reports/harness-refactor-blueprint.md` §3/§4/§6、`docs/Agent-Infra-架构设计.md` §5。
 >
-> **状态（2026-08-17 评审后）**：v1.1（U37 评审意见已回写，见 §10，正文修订标注 R#）。
+> **状态（2026-08-21）**：v1.2-draft（#269 tier intent/近邻契约）；v1.1 的 U37 评审记录见 §10。
 > **先审后写**——本文档获批准前，U38-U43 不开工实现。
 > 判级：Spec-Required（新顶层目录/包结构 + 事件契约扩展 + 新配置面，多条命中）。
 
@@ -115,6 +115,7 @@ type ResourceCatalogPayload struct {
 type RoundPlan struct {
     ParallelGroups [][]string
     Tier           string
+    TierReason     string     `json:"tierReason,omitempty"`
     InjectIDs      []string
     PrefetchIDs    []string
     // 新增：
@@ -123,6 +124,24 @@ type RoundPlan struct {
     BudgetAction   string   `json:"budgetAction,omitempty"`   // "" | "degrade_tier" | "halt_prefetch" | "hard_stop"；未知值按无动作（fail-safe，R7）
 }
 ```
+
+`TierReason` 是机器可读、稳定的首个命中理由，供事件落盘与调度演示解释决策；它不参与执行。
+常规 tier 规则按以下优先级短路：
+
+1. 冻结的 turn intent 为 `mutation` / `persistent_action` → pro（`intent:<name>`）；
+2. 本轮存在 writer → pro（`writer:<tool>`）；
+3. 工具数超过 `ComplexTools` → pro（`complex:<count>`）；
+4. 否则使用默认 tier（`default`）。
+
+预算动作优先级仍高于上述规则；`degrade_tier` 覆盖 tier 时，理由为
+`budget:degrade_tier`。Intent 必须来自 `beginRunTurn` 已冻结的 `TaskPolicy`，不得在每个工具轮
+重复分类，避免同一 turn 内路由漂移。
+
+历史近邻信号分第二阶段接入。近邻投票的最小证据记录必须同时包含
+`session_id`、`tier`、`task_success` 与查询相似度；只有“在 flash 上失败”的近邻才可投升级票，
+且近邻合计只占一票。`SliceStats.Hits/Rejected/UserFeedback` 分别描述使用、注入污染和显式反馈，
+**不得**替代任务成败或历史 tier。当前持久化模型尚无上述二字段时，调度器必须按冷启动处理并
+退回前述确定性规则，不能从切片统计猜测结果。
 
 挂起语义：`SuspendTools` 是**声明式全量**（每轮下发当前应挂起集合），不是增量指令——
 harness 不维护指令历史，恢复 = 下一轮不在集合中。

@@ -2359,6 +2359,28 @@ func TestEchoLocalCommandAddsTranscriptMarker(t *testing.T) {
 	}
 }
 
+func TestMouseReenableIsSuppressedAfterShutdownStarts(t *testing.T) {
+	m := newTestChatTUI()
+	m.shuttingDown, m.mouseReenablePending, m.mouseReenableTimerArmed = true, true, true
+	if cmd := m.maybeReenableMouse(); cmd != nil {
+		t.Fatal("shutdown must suppress mouse re-enable")
+	}
+	if m.mouseReenablePending || m.mouseReenableTimerArmed {
+		t.Fatal("shutdown must clear delayed mouse state")
+	}
+}
+
+func TestShutdownMessageMakesMouseLifecycleIrreversible(t *testing.T) {
+	m := newTestChatTUI()
+	next, cmd := m.Update(tuiShutdownMsg{})
+	if !next.(chatTUI).shuttingDown {
+		t.Fatal("shutdown must mark TUI")
+	}
+	if cmd == nil {
+		t.Fatal("shutdown must request quit")
+	}
+}
+
 func isolateUserConfig(t *testing.T) {
 	t.Helper()
 	root := t.TempDir()

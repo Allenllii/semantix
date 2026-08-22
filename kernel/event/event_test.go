@@ -26,6 +26,7 @@ func TestRoundTripAllKinds(t *testing.T) {
 		{PrefetchHit, PrefetchHitPayload{Targets: []string{"f1.go"}}},
 		{PrefetchWaste, PrefetchWastePayload{Targets: []string{"f2.go"}}},
 		{Compact, CompactPayload{Trigger: "prune", Before: 100000, After: 70000}},
+		{Compact, CompactPayload{Trigger: "evict", Before: 9, After: 6, EvictedByType: map[string]int{"result": 2, "tool_pattern": 1}}},
 		{EvolutionTick, EvolutionTickPayload{ParamsJSON: json.RawMessage(`{"tau":0.8}`)}},
 		{ResourceCatalog, ResourceCatalogPayload{
 			Tools:  []ResourceTool{{Name: "read_file", ReadOnly: true}, {Name: "bash", Suspended: true}},
@@ -201,5 +202,27 @@ func TestUnmarshalDataMismatch(t *testing.T) {
 	var p ToolResultPayload
 	if err := UnmarshalData(e, &p); err == nil {
 		t.Fatal("expected error for type mismatch")
+	}
+}
+
+// T11 (Issue #272, c4): Prefetch payloads are wire-additive — an old event
+// without lead_ms decodes to 0, and the new field round-trips.
+func TestPrefetchPayloadLeadMsAdditive(t *testing.T) {
+	old := []byte(`{"targets":["f1.go"]}`)
+	var p PrefetchHitPayload
+	if err := json.Unmarshal(old, &p); err != nil {
+		t.Fatalf("old payload must decode: %v", err)
+	}
+	if p.LeadMs != 0 || len(p.Targets) != 1 {
+		t.Fatalf("old payload: lead_ms must default to 0, got %+v", p)
+	}
+	hit := PrefetchHitPayload{Targets: []string{"f1.go"}, LeadMs: 750}
+	data, err := json.Marshal(hit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back PrefetchHitPayload
+	if err := json.Unmarshal(data, &back); err != nil || back.LeadMs != 750 {
+		t.Fatalf("lead_ms roundtrip failed: %v %+v", err, back)
 	}
 }

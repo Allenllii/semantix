@@ -17,10 +17,7 @@ import (
 func TestRunLookupLimitClamp(t *testing.T) {
 	dir := t.TempDir()
 	db := filepath.Join(dir, "lib.db")
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	idx := bm25.New()
 	seeds := []string{"修复 go 测试失败", "配置 CI 流水线", "部署到服务器"}
 	for i, q := range seeds {
@@ -74,10 +71,7 @@ func TestRunLookupLimitClamp(t *testing.T) {
 func TestLookupHitVisualization(t *testing.T) {
 	dir := t.TempDir()
 	db := filepath.Join(dir, "lib.db")
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	idx := bm25.New()
 	for _, s := range []struct {
 		id, sess, content string

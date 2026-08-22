@@ -56,8 +56,11 @@ func TestEmbeddedAndSourceManifestsMatch(t *testing.T) {
 	if !strings.HasPrefix(embedded.Digest, "sha256:") || embedded.Version == "" || embedded.Revision == "" {
 		t.Fatalf("manifest is missing build identity: %#v", embedded)
 	}
-	if embedded.ReleaseNotes < 10 {
-		t.Fatalf("embedded release notes = %d, want release history", embedded.ReleaseNotes)
+	// This product ships its own changelog (v0.5.0+), not the upstream fork's
+	// 32-version history, so the guard is "release history is embedded at all"
+	// rather than a fixed depth.
+	if embedded.ReleaseNotes < 1 {
+		t.Fatalf("embedded release notes = %d, want at least one release entry", embedded.ReleaseNotes)
 	}
 }
 

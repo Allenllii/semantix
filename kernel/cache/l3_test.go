@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -112,11 +113,11 @@ func TestDecideL3SkipsNonResultSlices(t *testing.T) {
 	idx := bm25.New()
 	// A Prompt slice with identical content: not reusable as L3 outcome.
 	idx.Insert(&slice.Slice{
-		ID:    "l3-p",
-		Type:  slice.Prompt,
-		Scope: slice.Project,
+		ID:      "l3-p",
+		Type:    slice.Prompt,
+		Scope:   slice.Project,
 		Content: []byte("已复用的验证结果：修复 go 测试失败需要先跑 go vet"),
-		Meta:  slice.SliceMeta{SourceSession: "s1", Deps: deps},
+		Meta:    slice.SliceMeta{SourceSession: "s1", Deps: deps},
 	})
 	d := &L3Decider{Index: idx, Root: root}
 	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
@@ -470,5 +471,256 @@ func TestDecideL3GreyZoneJudgeErrorFailsClosed(t *testing.T) {
 	}
 	if res != nil {
 		t.Fatalf("judge error must fail closed, got %+v", res)
+	}
+}
+
+// fakeIndex returns a fixed hit list; used to exercise the lexical gate
+// independent of a real retriever.
+type fakeIndex struct {
+	hits []slice.Hit
+}
+
+func (f *fakeIndex) Insert(*slice.Slice) error { return nil }
+func (f *fakeIndex) Remove(string) error       { return nil }
+func (f *fakeIndex) Search(string, int, slice.Scope) ([]slice.Hit, error) {
+	return f.hits, nil
+}
+
+// l3Fixture is a dependency-captured Result slice that passes the
+// fingerprint gates when nothing changed. It returns the dep root so the
+// decider can verify against it.
+func l3Fixture(t *testing.T) (string, *slice.Slice) {
+	root := t.TempDir()
+	dep := "dep.txt"
+	if err := os.WriteFile(filepath.Join(root, dep), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps, err := fingerprint.Capture(root, []string{dep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root, &slice.Slice{ID: "l3-g", Type: slice.Result, Scope: slice.Project,
+		Content: []byte("复用结果：修复 go 测试失败"), Meta: slice.SliceMeta{SourceSession: "s1", Deps: deps}}
+}
+
+func TestL3LexicalGateBlocksPureVectorHit(t *testing.T) {
+	root, sl := l3Fixture(t)
+	idx := &fakeIndex{hits: []slice.Hit{{Slice: sl, Score: 0.9, Lexical: 0, LexicalValid: true}}}
+	d := &L3Decider{Index: idx, Root: root}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != nil {
+		t.Fatal("pure-vector hit without judge must be downgraded and rejected")
+	}
+}
+func TestL3LexicalGateAllowsLexicalHit(t *testing.T) {
+	root, sl := l3Fixture(t)
+	idx := &fakeIndex{hits: []slice.Hit{{Slice: sl, Score: 0.9, Lexical: 1, LexicalValid: true}}}
+	d := &L3Decider{Index: idx, Root: root}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil || res.SliceID != "l3-g" {
+		t.Fatalf("lexically supported Hit must reuse, got %+v", res)
+	}
+}
+
+func TestL3LexicalGateIgnoresUnmeasured(t *testing.T) {
+	root, sl := l3Fixture(t)
+	// Zero-value LexicalValid=false: legacy/third-party index, not measured.
+	idx := &fakeIndex{hits: []slice.Hit{{Slice: sl, Score: 0.9}}}
+	d := &L3Decider{Index: idx, Root: root}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("unmeasured lexical support must not block reuse")
+	}
+}
+
+func TestL3LexicalGateJudgeApprovesDowngrade(t *testing.T) {
+	root, sl := l3Fixture(t)
+	idx := &fakeIndex{hits: []slice.Hit{{Slice: sl, Score: 0.9, Lexical: 0, LexicalValid: true}}}
+	d := &L3Decider{Index: idx, Root: root, Judge: &mockJudge{confirm: true}}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("judge-approved downgrade must reuse")
+	}
+}
+
+func TestL3LexicalGateObservations(t *testing.T) {
+	root, sl := l3Fixture(t)
+	idx := &fakeIndex{hits: []slice.Hit{
+		{Slice: sl, Score: 0.9, Lexical: 0, LexicalValid: true},
+		{Slice: sl, Score: 0.8, Lexical: 1, LexicalValid: true},
+	}}
+	var obs []LexicalGateObservation
+	d := &L3Decider{Index: idx, Root: root,
+		OnLexicalGate: func(_ context.Context, o LexicalGateObservation) { obs = append(obs, o) }}
+	if _, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); err != nil {
+		t.Fatal(err)
+	}
+	if len(obs) != 2 {
+		t.Fatalf("observations = %d, want 2 (blocked + allowed)", len(obs))
+	}
+	if !obs[0].Blocked || obs[0].Zone != "grey" || obs[0].Lexical != 0 {
+		t.Fatalf("obs[0] = %+v, want blocked grey lexical=0", obs[0])
+	}
+	if obs[1].Blocked || obs[1].Zone != "hit" || obs[1].Lexical != 1 {
+		t.Fatalf("obs[1] = %+v, want allowed hit lexical=1", obs[1])
+	}
+}
+
+// --- Issue #262: negative observability (Obs / OnDecide / ObsAccum) ---
+
+// wantObs asserts every field of the observed snapshot. Zero expectations
+// are meaningful: each rejection class must be counted separately and
+// nothing may leak across classes.
+func wantObs(t *testing.T, got, want Obs, what string) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s: obs = %+v, want %+v", what, got, want)
+	}
+}
+
+func TestL3DeciderObsCounters(t *testing.T) {
+	t.Run("reuse counts candidate+reused", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		d := &L3Decider{Index: idx, Root: root, Obs: &ObsAccum{}}
+		res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+		if err != nil || res == nil {
+			t.Fatalf("reuse failed: res=%v err=%v", res, err)
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Reused: 1}, "clear hit reuse")
+	})
+
+	t.Run("modified deps count as fingerprint reject", func(t *testing.T) {
+		root, idx, dep, _ := buildTestLib(t)
+		if err := os.WriteFile(filepath.Join(root, dep), []byte("module demo\nv2\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		d := &L3Decider{Index: idx, Root: root, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("modified deps must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, FingerprintReject: 1}, "dep modified")
+	})
+
+	t.Run("context isolation counts separately", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		d := &L3Decider{Index: idx, Root: root, Obs: &ObsAccum{}}
+		q := Query{UserInput: "修复 go 测试失败", Scope: slice.Project, ContextHash: "h-other"}
+		if res, _ := d.DecideL3(context.Background(), q); res != nil {
+			t.Fatal("context mismatch must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, IsolatedReject: 1}, "context isolation")
+	})
+
+	t.Run("grey without judge counts rules reject", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("grey without judge must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, RulesReject: 1}, "grey no judge")
+	})
+
+	t.Run("judge declined counts judge reject", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		mj := &mockJudge{confirm: false}
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("judge declined must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeReject: 1}, "judge declined")
+	})
+
+	t.Run("judge approved then verified counts approve+reused", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		mj := &mockJudge{confirm: true}
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj, Obs: &ObsAccum{}}
+		res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+		if err != nil || res == nil {
+			t.Fatalf("judge-approved grey must reuse: res=%v err=%v", res, err)
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeApproved: 1, Reused: 1}, "judge approved")
+	})
+
+	// Issue #245: a judge that cannot be reached is unavailability, not a
+	// rule rejection and not a decline. wantObs compares the whole struct,
+	// so these also assert RulesReject == 0 and JudgeReject == 0 for free.
+	t.Run("judge error counts judge error not rules reject", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		mj := &mockJudge{confirm: true, err: context.DeadlineExceeded}
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("judge error must fail closed")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeError: 1}, "grey-arm judge error")
+	})
+
+	// The second arm that reaches judgeGrey: an Issue #260 lexical-support
+	// downgrade of a zone.Hit. JudgeError is therefore not a grey-verdict-only
+	// counter, and the spec's definition depends on both arms feeding it.
+	t.Run("lexical-gate judge error counts judge error", func(t *testing.T) {
+		root, sl := l3Fixture(t)
+		idx := &fakeIndex{hits: []slice.Hit{{Slice: sl, Score: 0.9, Lexical: 0, LexicalValid: true}}}
+		mj := &mockJudge{confirm: true, err: context.DeadlineExceeded}
+		d := &L3Decider{Index: idx, Root: root, Judge: mj, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("lexical-downgraded hit with an erroring judge must fail closed")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeError: 1}, "lexical-arm judge error")
+	})
+}
+
+func TestL3DeciderOnDecidePerCallDelta(t *testing.T) {
+	root, idx, _, _ := buildTestLib(t)
+	var calls []Obs
+	d := &L3Decider{
+		Index: idx, Root: root,
+		OnDecide: func(o Obs) { calls = append(calls, o) },
+	}
+	// Two calls with different outcomes: hit-reuse, then miss (unrelated).
+	if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res == nil {
+		t.Fatal("first call must reuse")
+	}
+	if res, _ := d.DecideL3(context.Background(), Query{UserInput: "完全不相关的主题", Scope: slice.Project}); res != nil {
+		t.Fatal("second call must miss")
+	}
+	if len(calls) != 2 {
+		t.Fatalf("OnDecide calls = %d, want 2", len(calls))
+	}
+	wantObs(t, calls[0], Obs{Candidates: 1, Reused: 1}, "delta call 1")
+	// The unrelated query still retrieves the Result slice but the zone
+	// verdict is miss → rules reject (Candidates + RulesReject, no reuse).
+	wantObs(t, calls[1], Obs{Candidates: 1, RulesReject: 1}, "delta call 2 (clear miss)")
+}
+
+func TestL3ObsAccumSnapshotIsThreadSafe(t *testing.T) {
+	acc := &ObsAccum{}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				acc.add(Obs{Candidates: 1, JudgeReject: 1, JudgeError: 1})
+				_ = acc.Snapshot()
+			}
+		}()
+	}
+	wg.Wait()
+	got := acc.Snapshot()
+	want := Obs{Candidates: 800, JudgeReject: 800, JudgeError: 800}
+	if got != want {
+		t.Fatalf("accumulated = %+v, want %+v", got, want)
 	}
 }

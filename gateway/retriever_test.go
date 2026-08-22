@@ -3,6 +3,7 @@ package gateway
 import (
 	"testing"
 
+	"semantix/kernel/fuse"
 	"semantix/kernel/slice"
 )
 
@@ -23,7 +24,7 @@ func projectSlice(id, content string) *slice.Slice {
 func TestNewRetrieverKindsSearch(t *testing.T) {
 	for _, kind := range []string{"bm25", "vector", "hybrid"} {
 		t.Run(kind, func(t *testing.T) {
-			idx := newRetriever(kind, 0)
+			idx := newRetriever(kind, 0, fuse.Config{})
 			seedRetriever(t, idx, projectSlice("a", "deploy golang binary to linux server with systemd"))
 			got, err := idx.Search("deploy golang binary linux", 5, slice.Project)
 			if err != nil {
@@ -40,7 +41,7 @@ func TestNewRetrieverKindsSearch(t *testing.T) {
 }
 
 func TestNewRetrieverDefaultFallsBackToBM25(t *testing.T) {
-	idx := newRetriever("", 0)
+	idx := newRetriever("", 0, fuse.Config{})
 	seedRetriever(t, idx, projectSlice("a", "hello world"))
 	got, err := idx.Search("hello", 5, slice.Project)
 	if err != nil {
@@ -52,7 +53,7 @@ func TestNewRetrieverDefaultFallsBackToBM25(t *testing.T) {
 }
 
 func TestVectorIndexScopesFilter(t *testing.T) {
-	idx := newRetriever("vector", 0)
+	idx := newRetriever("vector", 0, fuse.Config{})
 	seedRetriever(t, idx,
 		projectSlice("proj", "deploy golang binary to linux server"),
 		&slice.Slice{ID: "sess", Type: slice.Result, Scope: slice.Session, Content: []byte("deploy golang binary to linux server")},
@@ -67,7 +68,7 @@ func TestVectorIndexScopesFilter(t *testing.T) {
 }
 
 func TestVectorIndexRanksSimilarAboveUnrelated(t *testing.T) {
-	idx := newRetriever("vector", 0)
+	idx := newRetriever("vector", 0, fuse.Config{})
 	seedRetriever(t, idx,
 		projectSlice("rel", "deploy golang binary to linux server with systemd"),
 		projectSlice("un", "how to cook rice in a rice cooker"),
@@ -88,7 +89,7 @@ func TestVectorIndexRanksSimilarAboveUnrelated(t *testing.T) {
 }
 
 func TestHybridScoresStayOnBoundedScale(t *testing.T) {
-	idx := newRetriever("hybrid", 0)
+	idx := newRetriever("hybrid", 0, fuse.Config{})
 	seedRetriever(t, idx,
 		projectSlice("a", "deploy golang binary to linux server with systemd"),
 		projectSlice("b", "how to cook rice in a rice cooker"),
@@ -114,7 +115,7 @@ func TestHybridScoresStayOnBoundedScale(t *testing.T) {
 
 func TestRetrieverEmptyQueryDoesNotPanic(t *testing.T) {
 	for _, kind := range []string{"vector", "hybrid"} {
-		idx := newRetriever(kind, 0)
+		idx := newRetriever(kind, 0, fuse.Config{})
 		seedRetriever(t, idx, projectSlice("a", "some content here"))
 		_, err := idx.Search("", 5, slice.Project)
 		if err != nil {
@@ -129,4 +130,39 @@ func scoresOf(hits []slice.Hit) []float64 {
 		out[i] = h.Score
 	}
 	return out
+}
+
+func TestVectorIndexFillsLexicalCoverage(t *testing.T) {
+	idx := newRetriever("vector", 0, fuse.Config{})
+	seedRetriever(t, idx, projectSlice("a", "deploy golang binary to linux server with systemd"))
+	got, err := idx.Search("deploy golang binary linux", 5, slice.Project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) == 0 || !got[0].LexicalValid {
+		t.Fatalf("vector hit must carry LexicalValid, got %+v", got)
+	}
+	if !approx(got[0].Lexical, 1.0) {
+		t.Fatalf("lexical coverage = %v, want 1.0 (all query terms present)", got[0].Lexical)
+	}
+}
+
+func TestBM25HitsCarryLexicalSupport(t *testing.T) {
+	idx := newRetriever("bm25", 0, fuse.Config{})
+	seedRetriever(t, idx, projectSlice("a", "deploy golang binary to linux server"))
+	got, err := idx.Search("deploy golang", 5, slice.Project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) == 0 || got[0].Lexical != 1.0 || !got[0].LexicalValid {
+		t.Fatalf("bm25 hit must carry lexical=1/valid, got %+v", got)
+	}
+}
+
+func approx(a, b float64) bool {
+	d := a - b
+	if d < 0 {
+		d = -d
+	}
+	return d < 1e-9
 }

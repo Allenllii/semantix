@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-# build-full.sh — package the complete downloadable agent:
-#   semantix-agent (coding-agent harness) + semantix (memory kernel)
-#   + example configs + install.sh + README, per platform.
+# build-full.sh — package the downloadable semantix-agent bundle (v0.5.0+
+# merged-repo era): three binaries built from this repo's cmd/ entries
+#   semantix-agent   — merged coding agent (harness vendor, in-process kernel)
+#   semantix         — memory-kernel CLI
+#   semantix-gateway — OpenAI-compatible semantic-cache gateway
+# plus the two config templates (semantix-agent.example.toml,
+# semantix.example.toml), the standalone kernel installer, and a README.
 #
-# Everything builds from this repository — the harness is vendored under
-# harness/ and compiled via ./cmd/semantix-agent (no external fork checkout).
+# History: up to v0.4.1 this script built `reasonix` from the external fork
+# checkout (FORK_ROOT) + `semantix` from this repo. v0.5.0/v0.6.0 were packaged
+# by hand (`go build -trimpath -ldflags "-s -w -X main.version=..."` per entry
+# + manual tar): version was stamped but commit/build-time were not (`semantix
+# version --json` reports commit "unknown"). This rewrite restores scripted
+# builds with full version/commit/build-time stamping.
 #
-# Usage: build-full.sh --version v0.5.1 [--platforms darwin-arm64,linux-amd64]
+# Usage: build-full.sh --version v0.7.0 [--platforms darwin-arm64,linux-amd64]
 # Default platforms: darwin-arm64, darwin-amd64, linux-amd64, linux-arm64
 # Output (dist/):
 #   semantix-agent-<version>-<platform>.tar.gz   full bundle for humans
@@ -30,6 +38,7 @@ while [[ $# -gt 0 ]]; do
     --platforms)
       PLATFORMS="$2"; shift 2 ;;
     --version=*) VERSION="${1#*=}"; shift ;;
+    --platforms=*) PLATFORMS="${1#*=}"; shift ;;
     *)
       echo "unknown arg: $1" >&2; exit 2 ;;
   esac
@@ -47,6 +56,14 @@ OUT="$ROOT/dist"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
+COMMIT="$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# -buildvcs=false: the -ldflags stamps are the build-identity source of truth.
+# Go's own VCS detection walks to the primary checkout's .git when building
+# from a linked worktree (.claude/worktrees/*) and stamps the wrong revision.
+GOFLAGS_VCS="-buildvcs=false"
+
 for plat in ${PLATFORMS//,/ }; do
   os="${plat%-*}"; arch="${plat#*-}"
   case "$os" in darwin|linux) ;; *) echo "unsupported os: $os" >&2; exit 2 ;; esac
@@ -57,43 +74,57 @@ for plat in ${PLATFORMS//,/ }; do
   mkdir -p "$D"
 
   echo "building semantix-agent ($os/$arch)..."
-  (cd "$ROOT" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-    "$GO" build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$D/semantix-agent" ./cmd/semantix-agent)
+  (cd "$ROOT" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" "$GO" build -trimpath "$GOFLAGS_VCS" \
+    -ldflags "-s -w -X main.version=$VERSION -X main.gitCommit=$COMMIT -X main.buildTimeUTC=$BUILD_TIME" \
+    -o "$D/semantix-agent" ./cmd/semantix-agent)
 
   echo "building semantix ($os/$arch)..."
-  (cd "$ROOT" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-    "$GO" build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$D/semantix" ./cmd/semantix)
+  (cd "$ROOT" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" "$GO" build -trimpath "$GOFLAGS_VCS" \
+    -ldflags "-s -w -X main.version=$VERSION -X main.commit=$COMMIT -X main.buildTime=$BUILD_TIME" \
+    -o "$D/semantix" ./cmd/semantix)
 
-  cp "$ROOT/semantix-agent.example.toml" "$D/" 2>/dev/null || true
-  cp "$ROOT/semantix.example.toml" "$D/" 2>/dev/null || true
-  cp "$ROOT/agent-skill/scripts/install.sh" "$D/semantix-install.sh" 2>/dev/null || true
+  # semantix-gateway has no ldflags version vars yet; strip-only build.
+  echo "building semantix-gateway ($os/$arch)..."
+  (cd "$ROOT" && CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" "$GO" build -trimpath "$GOFLAGS_VCS" \
+    -ldflags "-s -w" \
+    -o "$D/semantix-gateway" ./cmd/semantix-gateway)
+
+  # Config templates and the standalone kernel installer are required package
+  # content — fail loudly if missing.
+  cp "$ROOT/semantix-agent.example.toml" "$D/"
+  cp "$ROOT/semantix.example.toml" "$D/"
+  cp "$ROOT/agent-skill/scripts/install.sh" "$D/semantix-install.sh"
   cat > "$D/README.md" <<EOF
 # Semantix Agent $VERSION ($plat)
 
-Complete downloadable coding agent with cross-session memory:
-- \`semantix-agent\` — the coding-agent harness (single-session prefix-cache
-  discipline, ~90%+ cache-hit on long sessions)
-- \`semantix\` — the self-evolving memory kernel (L2 semantic injection,
-  L3 verified reuse, evolution engine, cost dashboard)
+合体 coding agent 与自进化 memory kernel——每一次会话，都让下一次会话更快、更便宜。
 
-## Quick start
-1. install -m 0755 semantix-agent semantix ~/.local/bin/
-2. semantix-agent setup                 # interactive provider wizard, or:
-   cp semantix-agent.example.toml semantix-agent.toml && edit it
-3. semantix-agent                       # start the agent
-4. semantix usage                       # cost dashboard after a session
+## 包内容
+- \`semantix-agent\` — 合体 coding agent（TUI/print/run/serve/ACP），进程内挂载
+  semantix kernel：L2 语义注入、每 turn 复用面板（📦 命中 / 💰 节省 / 🗂 来源）、
+  调度编排（并行分组 / tier / 预算阶梯 / 工具挂起）
+- \`semantix\` — memory kernel CLI（extract / search / lookup / verify / usage / dashboard）
+- \`semantix-gateway\` — OpenAI 兼容语义缓存网关（可选，任何 OpenAI 兼容客户端
+  把 base_url 指过来即可）
+- \`semantix-agent.example.toml\` — agent 配置模板（provider + [semantix] 段）
+- \`semantix.example.toml\` — kernel 配置模板
+- \`semantix-install.sh\` — 独立 curl 安装器，只把 semantix memory kernel
+  装进别的 agent 环境
 
-Data lives in ~/.semantix (user) and .semantix/ (project).
-semantix-install.sh is the standalone curl installer that drops only the
-semantix memory kernel into another agent environment.
+## 快速开始
+1. cp semantix-agent.example.toml ~/.semantix/semantix-agent.toml，填 provider key，
+   确认 [semantix] enabled = true（或直接跑 \`semantix-agent setup\` 向导）
+2. ./semantix-agent            # 交互 TUI（或 -p "task" 单发）
+3. 会话结束后 ./semantix usage # 成本与命中仪表盘
 
-## Memory
-Sessions are captured by the harness sink; run
+## 记忆
+会话由 harness sink 落盘到 .semantix/sessions/；运行
     semantix extract -input <session>.jsonl -scope project
-to build the memory library, and the agent will inject relevant slices
-automatically on similar tasks.
+构建切片库，此后相似任务会自动注入相关切片。
+
+发布说明：https://github.com/Gnosil/semantix/releases/tag/$VERSION
 EOF
-  chmod +x "$D/semantix-agent" "$D/semantix" "$D/semantix-install.sh" 2>/dev/null || true
+  chmod +x "$D/semantix-agent" "$D/semantix" "$D/semantix-gateway" "$D/semantix-install.sh"
 
   (cd "$OUT" && tar -czf "$PKG.tar.gz" "$PKG")
 

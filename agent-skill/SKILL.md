@@ -45,6 +45,22 @@ mkdir -p ~/.semantix/sessions
 | **Claude Code / 工具注册类** | 本 skill `tools/semantix-lookup.md` 的 schema 注册 `semantix_lookup`（+可选 `semantix_inject`） |
 | **任意自定义 agent** | 会话旁路三方式（`hooks/session-bypass.md`）：导出 / 事件旁路 / 直接调用 |
 
+### STEP 3.5 — Claude Code 接第三方 GLM 端点时的前缀卫生（可选，强烈推荐）
+
+Claude Code ≥2.1.36 会在 system prompt 最前端注入**逐请求变化的计费头**
+（`x-anthropic-billing-header` 的 cch 字段）。官方服务端会剥离它；第三方 GLM 端点
+（腾讯云 TokenHub 等）不剥离——**前缀从第一个 token 起失配，隐式缓存全灭**
+（社区实测命中差 133 倍；对照 TokenHub 官方 Claude Code 接入页推荐的环境变量组）。
+两道防线任开其一，同开更稳：
+
+```bash
+export CLAUDE_CODE_ATTRIBUTION_HEADER=0   # 客户端不再注入计费头（直连第三方端点时唯一有效的一道）
+```
+
+- 经 **semantix-gateway** 转发时：网关净化中间件默认剥离该计费头（`[sanitize]
+  strip_attribution`，见 `deploy/semantix-gateway.toml.example`），未设环境变量也受保护；
+- **直连**第三方端点（不过网关）时：只有上面的环境变量能救。
+
 ### STEP 4 — 闭环自测（必须通过）
 
 ```bash

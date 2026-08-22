@@ -79,7 +79,7 @@ func TestSemantixManagedConfigPathsAreConfigFilesOnly(t *testing.T) {
 	paths := SemantixManagedConfigPaths()
 	for _, want := range []string{
 		filepath.Join(home, "AppData", "Roaming", "semantix", "config.toml"),
-		filepath.Join(home, ".semantix", "config.json"),
+		filepath.Join(home, ".reasonix", "config.json"),
 	} {
 		found := false
 		for _, got := range paths {

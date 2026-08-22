@@ -72,6 +72,7 @@ type tuiDiagnostics struct {
 	generation          uint64 // increments on each idle→running transition
 	lastHeartbeat       time.Time
 	lastHeartbeatSource string
+	lastIdleLog         time.Time // idle checks stay 1 Hz; diagnostic lines are sampled
 	// escalatedGeneration is the generation currently inside dump/cancel/grace
 	// (0 means none). Cleared when a heartbeat aborts the grace window so a
 	// later stall can re-enter escalation for hard-kill only.
@@ -341,6 +342,13 @@ func (d *tuiDiagnostics) onTick(now time.Time) {
 	hardKilledGen := d.hardKilledGen
 	statusFn := d.statusFn
 	cancelFn := d.cancelFn
+	if phase == watchdogIdle && !d.lastIdleLog.IsZero() && now.Sub(d.lastIdleLog) < time.Minute {
+		d.mu.Unlock()
+		return
+	}
+	if phase == watchdogIdle {
+		d.lastIdleLog = now
+	}
 	d.logfLocked("heartbeat t=%s phase=%s gen=%d last_progress_age=%s last_source=%s cancel_requested=%v hard_kill_phase=%v",
 		now.UTC().Format(time.RFC3339Nano),
 		phase,

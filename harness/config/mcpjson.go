@@ -95,7 +95,7 @@ func specsToEntries(specs map[string]mcpServerSpec, skip map[string]bool) []Plug
 	return entries
 }
 
-// legacyConfigPath is the v0.x (TypeScript line) config file, ~/.semantix/config.json.
+// legacyConfigPath is the v0.x (TypeScript line) config file, ~/.reasonix/config.json.
 func legacyConfigPath() string {
 	if IsolatedHomeDir() != "" {
 		return ""
@@ -104,10 +104,10 @@ func legacyConfigPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".semantix", "config.json")
+	return filepath.Join(home, ".reasonix", "config.json")
 }
 
-// loadLegacyMCP reads the v0.x ~/.semantix/config.json and returns its enabled
+// loadLegacyMCP reads the v0.x ~/.reasonix/config.json and returns its enabled
 // MCP servers as PluginEntry values — both the canonical mcpServers map and the
 // older `mcp` string list (mcpServers wins on a name collision, matching v0.x;
 // servers listed in mcpDisabled are skipped) — so upgrading from v0.x keeps MCP

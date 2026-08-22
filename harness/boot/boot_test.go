@@ -3422,7 +3422,7 @@ func hasPlanModeReadOnlyCommand(commands []string, want string) bool {
 }
 
 // TestBuildMigratesLegacyConfigEndToEnd drives the real boot path: a v0.x
-// ~/.semantix/config.json with no v1+ config present must be imported during
+// ~/.reasonix/config.json with no v1+ config present must be imported during
 // Build — config written, key pinned into the env, and the user told via a notice.
 func TestBuildMigratesLegacyConfigEndToEnd(t *testing.T) {
 	home := robustTempDir(t)
@@ -3438,9 +3438,9 @@ func TestBuildMigratesLegacyConfigEndToEnd(t *testing.T) {
 	// Project config merges over the migrated user config without dropping the
 	// migrated plugins.
 	writeFile(t, proj, "semantix-agent.toml", "")
-	writeFile(t, filepath.Join(home, ".semantix"), "config.json",
+	writeFile(t, filepath.Join(home, ".reasonix"), "config.json",
 		`{"apiKey":"sk-e2e","lang":"zh","mcpServers":{"fs":{"command":"npx","args":["-y","server-fs"]}}}`)
-	writeFile(t, filepath.Join(home, ".semantix", "sessions"), "chat-1.events.jsonl",
+	writeFile(t, filepath.Join(home, ".reasonix", "sessions"), "chat-1.events.jsonl",
 		`{"type":"user.message","id":1,"ts":"t","turn":0,"text":"hello from v0.x"}`+"\n"+
 			`{"type":"model.final","id":2,"ts":"t","turn":0,"content":"hi","toolCalls":[],"usage":{},"costUsd":0}`+"\n")
 

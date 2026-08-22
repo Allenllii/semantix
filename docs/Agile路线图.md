@@ -93,13 +93,18 @@
 - [x] 工具可挂起/恢复 + 预算配额生效（H2）——U40/U41 落地，证据见 `docs/reports/agile2-scheduling-demo.md` S3/S4；
       kernel 侧 hard_stop 执行点缺口（#250）收尾时补上（PR #285：plan 携带 hard_stop 在工具执行前拦截整轮）
 - [x] 调度演示：kernel 决策改变 harness 行为 + 可量化收益（H3）——**U42 完成（2026-08-20）**：挂起执行省 79.5% 轮时延、预算三档阶梯生效、硬停阻断，报告 `docs/reports/agile2-scheduling-demo.md`（#193）
-- [x] 命中率/成本随使用提升曲线（H5，自进化证据）——**U43 完成（2026-08-21，#194/#253）**：因果对照（evolve on/off 同负载同反馈）证明制度性变更下 evolve ON 浪费预取 10 vs OFF 15、25 会话总成本 $0.510 vs $0.540，报告 `docs/reports/agile2-evolution-curve.md`
+- [x] 命中率/成本随使用提升曲线（H5，自进化证据）——**U43 完成（2026-08-21，#194/#253）**：因果对照（evolve on/off 同负载同反馈）当时证明制度性变更下 evolve ON 浪费预取 10 vs OFF 15、25 会话总成本 $0.510 vs $0.540，报告 `docs/reports/agile2-evolution-curve.md`。**Issue #272 报告扩展后重采（2026-08-21）**：demote 衰减修复（#255）+ β 后验计数（#272）使两组同轨（churn 期各 9 次 waste、成本 $0.504 vs $0.504），单目标降级主导止损，evolve 门控独立收益需在无 demote 干扰场景单独验证（详见报告机制分解）
 
 ### Agile 2 收尾（2026-08-21）
 
-DoD 三项验收全绿，Agile 2 关账。落地过程中发现的品质缺陷不阻塞收尾、挂账如下：
-#245（RuleGate 统计口径）、#252（HarnessSink 多工具结果归因）、#254（evolve 闭环吸收态：conf 关停预取后参数冻结）、
-#255（prefetch demoted() 免疫缺陷）——#254/#255 与 GLM 方案 P1 的 prefetch 门控同域，宜并入该批次处理。
+DoD 三项验收全绿，Agile 2 关账；**v0.6.0「Agile 2 完整落地」当日发布**（见里程碑表）。
+落地过程中发现的品质缺陷当日几乎全数修复合入：#252（HarnessSink 归因，#287）、
+#254（evolve 吸收态 ε-探针逃逸，#295）、#255（prefetch demoted 免疫，#294）——均随 v0.6.0 发出；
+仅剩 #245（RuleGate 统计口径）挂账。
+**v0.6.0 后当日续作（2026-08-21）**：#272（Markov 三指标 coverage/accuracy/timeliness + Beta-Binomial 计数，
+spec `docs/specs/issue-272-markov-metrics.md`）——指标三元组透出进自进化曲线报告、hit/waste 计数由裸 EWMA
+升级为带时间折扣的 β 后验（demote 判定 μ < 1/(1+WasteHitLimit)），并修复 `evolution-curve` 脚本的
+不可复现问题（Plan 探针改实例级固定随机源 + 候选排序 key tie-break）。
 
 ### 前置依赖
 
@@ -152,12 +157,17 @@ DoD 三项验收全绿，Agile 2 关账。落地过程中发现的品质缺陷�
 | Agile | 目标 | 当前状态 | DoD 摘要 |
 |---|---|---|---|
 | 1 | 首个可下载品牌化 agent | M0 ✅ · M1 遗留 #58（唯一 P0 门禁）· CLI v2 ✅（U19-U36）· TUI 可视化 ✅（U33/#168）· 桌面端 #158 | v1.0 发布 + 命中率 ≥70% + 复用可视化 |
-| 2 | 自进化闭环（kernel 调配 harness） | ✅ **完成（2026-08-21 关账）**：v0.5.0 已发布（2026-08-20，合体首发）；U37-U41 随 #231 回合 main；U42 ✅（#193 调度演示）；U43 ✅（#194/#253 自进化因果对照曲线）；#250 hard_stop 执行点随收尾补上（PR #285）；遗留品质缺陷挂账 #245/#252/#254/#255（见 Agile 2 收尾节） | 调度演示 + 自进化曲线 |
+| 2 | 自进化闭环（kernel 调配 harness） | ✅ **完成并发布（2026-08-21，v0.6.0）**：U37-U41 随 #231 回合 main；U42 ✅（#193）；U43 ✅（#194/#253 因果对照曲线）；#250 hard_stop 补洞（#285）；缺陷修复 #252/#254/#255（#287/#294/#295）；全部随 **v0.6.0「Agile 2 完整落地」** 发出，仅剩 #245 挂账 | 调度演示 + 自进化曲线 |
 | 3 | 多 harness 生态 | 路径已文档化；serve/watch ✅（U27/U36） | ≥3 harness 正式接入 |
 
 **v0.5.0（2026-08-20，合体首发）**：semantix-agent（harness+kernel 单进程）+ semantix + semantix-gateway，
 四平台资产 + SHA256SUMS，https://github.com/Gnosil/semantix/releases/tag/v0.5.0 。
 发布决策：Song 在 v0.4.1-alpha.2 测试包人工验收后拍板（2026-08-20）。#58 命中率实测仍为 v1.0 门禁不变。
+
+**v0.6.0（2026-08-21，Agile 2 完整落地）**：target main@1626d90（v0.5.0 后 103 提交）——U43 因果对照、
+#250 硬停补洞、#252/#254/#255 缺陷修复、L3 双轴（#256）、GLM P0-3 usage 真实计量（#297）；
+同资产结构，https://github.com/Gnosil/semantix/releases/tag/v0.6.0 。
+发布决策：Song 拍板（2026-08-21，「Agile 2 正式落地」时点，实验 key 轮换的约定触发点）。
 
 **网关线（套壳，GW 编号，独立于 Agile 主线）**：GW1 ✅（#133，主干可运行、29 测试绿）。
 剩余按 `docs/specs/newapi-gateway-design.md` §0 对账（2026-08-15 回写）：流式响应侧写记忆（GW2，

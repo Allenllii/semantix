@@ -20,7 +20,7 @@ import (
 
 // Load builds the configuration: defaults, then user config, then project
 // config, then MCP servers from Claude Code's .mcp.json, then (lowest priority)
-// the v0.x ~/.semantix/config.json's mcpServers. Provider api_key_env values
+// the v0.x ~/.reasonix/config.json's mcpServers. Provider api_key_env values
 // resolve from Semantix's global .env, not from project .env files.
 func Load() (*Config, error) {
 	return LoadForRoot(".")
@@ -150,6 +150,9 @@ func loadForRoot(root string, migrateOnDisk bool) (*Config, error) {
 	} else if projectMeta.IsDefined("agent", "system_prompt_file") {
 		cfg.systemPromptFileSource = promptFileSourceProject
 	}
+	// Whether any config source pinned default_model. When none did and no
+	// config file exists at all, B1 infers the default provider from env keys.
+	projectDefaultModelExplicit := err == nil && projectMeta.IsDefined("default_model")
 	// The native CLI update channel controls the one user-installed binary.
 	// A repository-local semantix-agent.toml must never switch that global choice.
 	cfg.CLI = globalCLI
@@ -208,7 +211,7 @@ func loadForRoot(root string, migrateOnDisk bool) (*Config, error) {
 	}
 
 	// Lowest priority before the one-time v1.9.1 MCP migration: the v0.x
-	// ~/.semantix/config.json's mcpServers. Once the migration marker exists, the
+	// ~/.reasonix/config.json's mcpServers. Once the migration marker exists, the
 	// current config is authoritative even when it is empty; reading the legacy
 	// source again would resurrect servers the user removed from current config.
 	if !mcpGlobalMigrationComplete() {
@@ -235,6 +238,21 @@ func loadForRoot(root string, migrateOnDisk bool) (*Config, error) {
 	backfillDeepSeekOfficialPrices(cfg)
 	normalizeEffortConfig(cfg)
 	backfillDeepSeekPro(cfg)
+	// B1 (GLM adaptation): a brand-new install with no config file at all infers
+	// its default provider from env keys — GLM out of the box — instead of the
+	// DeepSeek seed, and injects that provider so the choice resolves. A
+	// DeepSeek-only key is respected so an existing key is never stranded. Any
+	// existing config (user or project) that pins default_model or ships its own
+	// providers is untouched: this only fires when neither config file exists.
+	if !userDefaultModelExplicit && !projectDefaultModelExplicit &&
+		userConfigLoadPath() == "" && !regularFileExists(projectTOML) {
+		applyEnvDefaultProvider(cfg, func(k string) string {
+			if v := expansionEnv[k]; v != "" {
+				return v
+			}
+			return os.Getenv(k)
+		})
+	}
 	if userDefaultModelExplicit {
 		restoreUnresolvableProjectDefaultModel(cfg, userDefaultModel)
 	}

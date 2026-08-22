@@ -113,6 +113,7 @@ func (s *deferredStreamSink) Discard() {
 func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string, state *turnRuntime) {
 	a.wastePrefetch()
 	a.semantixTurn.Add(1)
+	a.prefetchGate.Store(nil)
 	rawInput = RawUserInput(ctx, input)
 	providerInput := input
 	// A fresh user turn starts from zeroed per-turn host state; the new turn's
@@ -264,7 +265,14 @@ func (a *Agent) beginRunTurn(ctx context.Context, input string) (rawInput string
 	// (DeepSeek prefix-cache friendly). Kernel unavailability degrades to
 	// an empty block — the harness never blocks on the kernel.
 	if a.semantix != nil && a.semantix.Enabled() {
+		// Issue #270 step 2: the degrade_inject tier shrinks the injection
+	// (halved block budget) instead of dropping it, so tight budgets still
+	// get some reuse context. Any other action keeps the full injection.
+	if a.budgetCtrl != nil && a.budgetCtrl.Action() == sched.BudgetActionDegradeInject {
+		state.injectBlock = a.semantix.InjectDegraded(ctx, input)
+	} else {
 		state.injectBlock = a.semantix.InjectDetailed(ctx, input).Text
+	}
 		// U33/H4a reuse panel: capture the kernel's per-turn reuse summary
 		// (hit slices + incremental cost savings + top source sessions)
 		// alongside the injection block. Same soft-degrade contract: a zero

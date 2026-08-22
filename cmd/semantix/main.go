@@ -73,10 +73,10 @@ func isUsage(err error) bool {
 type commandGroup int
 
 const (
-	groupKernelOps   commandGroup = iota // kernel 运维（U19：现有 8 命令，行为不变）
-	groupProduct                         // 产品与管理（U21/U23/U24/U25 挂载）
-	groupMaintenance                     // 维护（U26 挂载）
-	groupService                         // 服务模式（U27 挂载）
+	groupKernelOps commandGroup = iota // kernel 运维（U19：现有 8 命令，行为不变）
+	groupProduct                       // 产品与管理（U21/U23/U24/U25 挂载）
+	groupMaintenance                   // 维护（U26 挂载）
+	groupService                       // 服务模式（U27 挂载）
 )
 
 func (g commandGroup) String() string {
@@ -93,13 +93,11 @@ func (g commandGroup) String() string {
 	return "Unknown group"
 }
 
-// plannedByGroup lists the commands planned for groups that U19 does not
-// implement yet. They render in help as planned and reject dispatch with
-// exit 2 until their unit lands.
-var plannedByGroup = map[commandGroup][]string{
-	groupMaintenance: {},
-	groupService:     {"serve", "watch"},
-}
+// plannedByGroup lists commands planned for groups not implemented yet. They
+// render in help as planned and reject dispatch with exit 2 until their unit
+// lands. Empty today — the former service-mode placeholders (serve/watch)
+// were never implemented and were removed in the tool-set minimization.
+var plannedByGroup = map[commandGroup][]string{}
 
 // commandSpec registers one CLI command in the command tree. All commands
 // share one dispatch signature; error-returning commands are adapted with
@@ -110,29 +108,11 @@ type commandSpec struct {
 	usage   string // one-line invocation synopsis (help)
 	summary string // one-line description (help)
 	run     func(args []string, stdout, stderr io.Writer, deps dependencies) int
-
-	// completionFlags lists the flags offered by shell completion (U23,
-	// Issue #117). Keep it in sync with the command's FlagSet;
-	// TestCompletionFlagsMatchCommandHelp fails on drift.
-	completionFlags []string
-	// flagValues maps flags whose values come from a closed set (e.g.
-	// --scope) to the candidates shell completion offers for them.
-	flagValues map[string][]string
 }
 
-// completionFlagSets are the closed-set flag values shared by several
-// commands (U23, Issue #117); they are offered by shell completion.
-var (
-	scopeValues     = []string{"session", "project", "user"}
-	embedderValues  = []string{"hash", "model"}
-	retrieverValues = []string{"bm25", "vector", "hybrid"}
-	protocolValues  = []string{"openai", "anthropic"}
-)
-
 // commands is the command tree, in help order within each group. It is
-// populated in init() rather than via a variable initializer: the completion
-// generators (U23) read commands, and buildCommands references them, so a
-// direct initializer would create an init dependency cycle.
+// populated in init() rather than via a variable initializer so buildCommands
+// can reference package-level helpers without an init dependency cycle.
 var commands []commandSpec
 
 func init() {
@@ -144,75 +124,48 @@ func buildCommands() []commandSpec {
 		{name: "extract", group: groupKernelOps,
 			usage:   "semantix extract --input <session.jsonl> [--scope project|user|session]",
 			summary: "extract session JSONL into semantic slices",
-			run:     errCommand("extract", runExtract),
-			completionFlags: []string{"--input", "--scope", "--db", "--project-db", "--user-db",
-				"--session", "--project", "--task-type", "--language", "--fingerprint", "--l3-safe", "--embedder"},
-			flagValues: map[string][]string{"--scope": scopeValues, "--embedder": embedderValues}},
+			run:     errCommand("extract", runExtract)},
 		{name: "search", group: groupKernelOps,
 			usage:   "semantix search [flags] <query>",
 			summary: "semantic retrieval (bm25 / vector / hybrid)",
-			run:     errCommand("search", runSearch),
-			completionFlags: []string{"--query", "--scope", "--limit", "--db", "--project-db", "--user-db",
-				"--json", "--retriever", "--embedder", "--tau-high", "--tau-low", "--abs-high", "--abs-low"},
-			flagValues: map[string][]string{"--scope": scopeValues, "--retriever": retrieverValues, "--embedder": embedderValues}},
+			run:     errCommand("search", runSearch)},
 		{name: "verify", group: groupKernelOps,
 			usage:   "semantix verify --session <file|dir> [--holdout 0.3]",
 			summary: "offline replay validation (exit 3 = gate not met)",
-			run:     depsCommand(runVerify),
-			completionFlags: []string{"--session", "--db", "--project", "--holdout", "--scope", "--grey-target",
-				"--strict", "--tau-high", "--tau-low", "--abs-high", "--abs-low",
-				"--judge-protocol", "--judge-base-url", "--judge-model"},
-			flagValues: map[string][]string{"--scope": scopeValues, "--judge-protocol": protocolValues}},
+			run:     depsCommand(runVerify)},
 		{name: "eval", group: groupKernelOps,
 			usage:   "semantix eval --set <oracle.tsv> [--tau-*]",
 			summary: "retrieval strategy comparison (Issue #7)",
-			run:     intCommand(runEval),
-			completionFlags: []string{"--set", "--train-frac", "--scope", "--tau-high", "--tau-low",
-				"--abs-high", "--abs-low", "--single-tau", "--grey-target", "--strict", "--json"},
-			flagValues: map[string][]string{"--scope": scopeValues}},
+			run:     intCommand(runEval)},
 		{name: "eval-judge", group: groupKernelOps,
 			usage:   "semantix eval-judge [--stub yes|no] [--judge-*] [--audit <tsv>]",
 			summary: "LLM judge authenticity evaluation (Issue #8)",
-			run:     intCommand(runEvalJudge),
-			completionFlags: []string{"--audit", "--stub", "--judge-base-url", "--judge-model",
-				"--judge-protocol", "--p-prom", "--min-consistency", "--json"},
-			flagValues: map[string][]string{"--stub": {"yes", "no", "error"}, "--judge-protocol": protocolValues}},
+			run:     intCommand(runEvalJudge)},
+		{name: "calibrate", group: groupKernelOps,
+			usage:   "semantix calibrate [--audit <oracle.tsv>] [--usage <usage.jsonl>] [--stub yes|no]",
+			summary: "L3 negative-observability calibration report (Issue #262)",
+			run:     intCommand(runCalibrate)},
 		{name: "usage", group: groupKernelOps,
-			usage:           "semantix usage [--db <usage.jsonl>] [--evolve-db <dir>]",
-			summary:         "cost-savings statistics (Issue #60)",
-			run:             depsCommand(runUsage),
-			completionFlags: []string{"--db", "--cost-miss", "--cost-hit", "--evolve-db"}},
+			usage:   "semantix usage [--db <usage.jsonl>] [--evolve-db <dir>]",
+			summary: "cost-savings statistics (Issue #60)",
+			run:     depsCommand(runUsage)},
 		{name: "dashboard", group: groupKernelOps,
-			usage:           "semantix dashboard [--db ...] [--usage ...] [--config ...] [--json]",
-			summary:         "ANSI reuse snapshot (U31, Issue #155)",
-			run:             runDashboard,
-			completionFlags: []string{"--db", "--usage", "--config", "--json", "--no-color", "--width"}},
+			usage:   "semantix dashboard [--db ...] [--usage ...] [--config ...] [--json]",
+			summary: "ANSI reuse snapshot (U31, Issue #155)",
+			run:     runDashboard},
 		{name: "lookup", group: groupKernelOps,
 			usage:   "semantix lookup --query <q> [--limit N] [--db ...]",
 			summary: "single-query retrieval (harness tool backend)",
-			run:     errCommand("lookup", runLookup),
-			completionFlags: []string{"--query", "--scope", "--limit", "--db", "--json",
-				"--tau-high", "--tau-low", "--abs-high", "--abs-low"},
-			flagValues: map[string][]string{"--scope": scopeValues}},
+			run:     errCommand("lookup", runLookup)},
 		{name: "inject", group: groupKernelOps,
 			usage:   "semantix inject --query <q> [--budget N] [--db ...]",
 			summary: "L2 injection block generation (harness backend)",
-			run:     errCommand("inject", runInject),
-			completionFlags: []string{"--query", "--scope", "--k", "--budget", "--db",
-				"--tau-high", "--tau-low", "--abs-high", "--abs-low"},
-			flagValues: map[string][]string{"--scope": scopeValues}},
+			run:     errCommand("inject", runInject)},
 		{name: "doctor", group: groupProduct,
 			usage:   "semantix doctor [--config <path>] [--db <path>] [--json]",
 			summary: "health check (db / config / embedder / judge; exit 3 on any FAIL)",
 			run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
 				return runDoctor(args, stdout, stderr)
-			},
-			completionFlags: []string{"--config", "--db", "--json"}},
-		{name: "completion", group: groupProduct,
-			usage:   "semantix completion bash|zsh|fish",
-			summary: "print shell completion script (bash / zsh / fish)",
-			run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
-				return runCompletion(args, stdout, stderr)
 			}},
 		{name: "install", group: groupProduct,
 			usage:   "semantix install --target semantix-agent|claude-code|custom [--dir <path>] [--uninstall]",
@@ -220,49 +173,16 @@ func buildCommands() []commandSpec {
 			run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
 				return runInstall(args, stdout, stderr)
 			}},
-		{name: "init", group: groupProduct,
-			usage:   "semantix init [--config <path>] [--force]",
-			summary: "generate semantix.toml + .semantix/ skeleton",
-			run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
-				return runInit(args, stdout, stderr)
-			},
-			completionFlags: []string{"--config", "--force"}},
-		{name: "config", group: groupProduct,
-			usage:   "semantix config [--config <path>] [--db <path>] [--json]",
-			summary: "print effective config with per-key source annotation",
-			run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
-				return runConfig(args, stdout, stderr)
-			},
-			completionFlags: []string{"--config", "--db", "--json"}},
-		{name: "intro", group: groupProduct,
-			usage:   "semantix intro [--no-animation]",
-			summary: "play the branded terminal startup animation",
-			run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
-				return runIntro(args, stdout)
-			},
-			completionFlags: []string{"--no-animation"}},
 		{name: "version", group: groupProduct,
 			usage:   "semantix version [--json]",
 			summary: "version + commit + build time",
 			run: func(args []string, stdout, stderr io.Writer, _ dependencies) int {
 				return runVersion(args, stdout, stderr)
-			},
-			completionFlags: []string{"--json"}},
-		{name: "export", group: groupMaintenance,
-			usage:           "semantix export --output <file> [--db ...] [--json]",
-			summary:         "JSONL backup of the slice store (incl. Meta)",
-			run:             errCommand("export", runExport),
-			completionFlags: []string{"--output", "--db", "--json"}},
-		{name: "import", group: groupMaintenance,
-			usage:           "semantix import --input <file> [--db ...] [--json]",
-			summary:         "restore the slice store from an export",
-			run:             errCommand("import", runImport),
-			completionFlags: []string{"--input", "--db", "--json"}},
+			}},
 		{name: "gc", group: groupMaintenance,
-			usage:           "semantix gc [--retention-days N] [--min-weight W] [--dry-run] [--json]",
-			summary:         "prune stale / low-weight slices",
-			run:             errCommand("gc", runGC),
-			completionFlags: []string{"--retention-days", "--min-weight", "--dry-run", "--json"}},
+			usage:   "semantix gc [--retention-days N] [--min-weight W] [--max-slices M] [--no-rescore] [--no-archive] [--dry-run] [--json]",
+			summary: "rescore weights, prune stale / low-weight slices, enforce the library cap",
+			run:     errCommand("gc", runGC)},
 	}
 }
 
@@ -346,12 +266,12 @@ func printHelp(w io.Writer) {
 			}
 		}
 		if len(inGroup) == 0 {
+			// A group with no commands and nothing planned is not shown at
+			// all — no empty section headers in the minimized command tree.
 			if planned := plannedByGroup[g]; len(planned) > 0 {
 				fmt.Fprintf(w, "%s (planned: %s)\n", g, strings.Join(planned, " "))
-			} else {
-				fmt.Fprintf(w, "%s\n", g)
+				fmt.Fprintln(w)
 			}
-			fmt.Fprintln(w)
 			continue
 		}
 		fmt.Fprintf(w, "%s\n", g)

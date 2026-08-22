@@ -93,3 +93,19 @@ func relConfidence(score, top1 float64) float64 {
 	}
 	return score / top1
 }
+// LexicalGateObservation is one zone-Hit candidate the lexical support
+// gate evaluated (Issue #260), emitted through L3Decider.OnLexicalGate.
+// It lets the host count gate blocks and measure the hit-rate loss the
+// gate introduces, without kernel/cache learning any sink.
+type LexicalGateObservation struct {
+	// SliceID is the candidate the gate evaluated.
+	SliceID string
+	// Score is the fused retrieval score that classified the candidate.
+	Score float64
+	// Lexical is the reported lexical-support score (BM25 route / coverage).
+	Lexical float64
+	// Blocked reports whether the gate downgraded this Hit to Grey.
+	Blocked bool
+	// Zone is the zone after the gate decision ("hit" or "grey").
+	Zone string
+}

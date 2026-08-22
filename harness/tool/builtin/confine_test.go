@@ -263,7 +263,7 @@ func TestManagedConfigWriteGatedOnApprover(t *testing.T) {
 	ctx := tool.WithConfigWriteApprover(context.Background(), approve)
 	for _, target := range []string{
 		config.UserConfigPath(),
-		filepath.Join(home, ".semantix", "config.json"),
+		filepath.Join(home, ".reasonix", "config.json"),
 	} {
 		args, _ := json.Marshal(map[string]string{"path": target, "content": "{}\n"})
 		if _, err := w.Execute(ctx, args); err != nil {

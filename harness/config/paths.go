@@ -279,7 +279,7 @@ func LegacyUserConfigPaths() []string {
 // SemantixManagedConfigPaths returns the Semantix-owned user configuration
 // FILES that model-driven tools may repair on the user's request, each gated
 // by a fresh per-write human approval: the current config.toml, compatibility
-// TOML locations, and the legacy v0.x ~/.semantix/config.json. Individual
+// TOML locations, and the legacy v0.x ~/.reasonix/config.json. Individual
 // files, never directories — the Semantix home also holds credentials (.env),
 // global hooks (settings.json), skills, and session stores, and none of those
 // may ride along on a config repair.

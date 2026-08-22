@@ -9,8 +9,8 @@
 //   - behavior learning: a read-only tool whose recent success history is
 //     below the floor is treated as unsafe to parallelize (candidates must
 //     pass the behavior gate, per N04 "候选须过静态数据依赖检查");
-//   - tier: writer presence or a large round → pro, otherwise the default
-//     (flash) tier;
+//   - tier: the frozen turn intent is considered before writer presence and
+//     round size; every decision carries a stable explanation;
 //   - injection list: SliceHits ids in canonical (ID-ascending) order, so the
 //     byte-stable prefix-cache invariant is preserved.
 //
@@ -21,6 +21,7 @@ package sched
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -64,6 +65,17 @@ var SerialToolNames = map[string]struct{}{
 // here so RoundPlan.PrefetchIDs stays populated without sched importing
 // prefetch (keeps the dependency direction sched → nothing).
 type PrefetchPlanFunc func(lastToolNames []string) []string
+
+// PrefetchPlanResult is the load-aware callback's candidate list and stable
+// explanation. IDs are still reduced to tool-name keys by the adapter.
+type PrefetchPlanResult struct {
+	IDs    []string
+	Reason string
+}
+
+// LoadAwarePrefetchPlanFunc is an additive callback seam; PrefetchPlanFunc is
+// retained for existing integrations.
+type LoadAwarePrefetchPlanFunc func(lastToolNames []string, hint PrefetchLoadHint) PrefetchPlanResult
 
 // Config carries operator knobs; zero values select documented defaults.
 type Config struct {
@@ -125,10 +137,11 @@ func (t *toolStat) successRate() float64 {
 // lock. It is a plain struct (no interface split) so the harness can hold
 // it directly; it satisfies the frozen Decider interface.
 type RuleDecider struct {
-	mu         sync.Mutex
-	cfg        Config
-	stats      map[string]*toolStat
-	prefetchFn PrefetchPlanFunc
+	mu             sync.Mutex
+	cfg            Config
+	stats          map[string]*toolStat
+	prefetchFn     PrefetchPlanFunc
+	loadPrefetchFn LoadAwarePrefetchPlanFunc
 }
 
 // NewRuleDecider builds a RuleDecider with cfg (zero values → Defaults).
@@ -168,6 +181,14 @@ func (d *RuleDecider) SetPrefetchPlanFunc(fn PrefetchPlanFunc) {
 	d.prefetchFn = fn
 }
 
+// SetLoadAwarePrefetchPlanFunc installs the preferred load-aware planner.
+// When set, it takes precedence over the legacy PrefetchPlanFunc.
+func (d *RuleDecider) SetLoadAwarePrefetchPlanFunc(fn LoadAwarePrefetchPlanFunc) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.loadPrefetchFn = fn
+}
+
 // DecideRound implements the frozen Decider interface.
 func (d *RuleDecider) DecideRound(ctx context.Context, in RoundInput) (RoundPlan, error) {
 	d.mu.Lock()
@@ -176,24 +197,51 @@ func (d *RuleDecider) DecideRound(ctx context.Context, in RoundInput) (RoundPlan
 	suspended := canonicalNames(in.SuspendedTools)
 	active := withoutSuspended(in.ToolCalls, suspended)
 	action := decideBudgetAction(in.Budget)
+	tier, tierReason := decideTier(in.Intent, active, d.cfg)
+	groups := d.partition(active)
 	plan := RoundPlan{
-		ParallelGroups: d.partition(active),
-		Tier:           decideTier(active, d.cfg),
+		ParallelGroups: groups,
+		Tier:           tier,
+		TierReason:     tierReason,
 		InjectIDs:      canonicalInjectIDs(in.SliceHits, d.cfg.InjectMax),
 		SuspendTools:   suspended,
 		MaxParallel:    d.cfg.MaxParallel,
 		BudgetAction:   action,
 	}
-	if d.prefetchFn != nil {
+	if d.loadPrefetchFn != nil {
+		hint := normalizedPrefetchLoad(in.PrefetchLoad, groups, d.cfg.MaxParallel)
+		result := d.loadPrefetchFn(toolNames(active), hint)
+		plan.PrefetchIDs = result.IDs
+		plan.PrefetchReason = result.Reason
+	} else if d.prefetchFn != nil {
 		plan.PrefetchIDs = d.prefetchFn(toolNames(active))
 	}
 	if action == BudgetActionHaltPrefetch || action == BudgetActionHardStop {
 		plan.PrefetchIDs = nil
+		plan.PrefetchReason = "budget:" + action
 	}
 	if action == BudgetActionDegradeTier {
 		plan.Tier = d.cfg.DefaultTier
+		plan.TierReason = "budget:" + BudgetActionDegradeTier
 	}
 	return plan, nil
+}
+
+func normalizedPrefetchLoad(hint PrefetchLoadHint, groups [][]string, maxParallel int) PrefetchLoadHint {
+	if hint.ConcurrencyLimit <= 0 {
+		hint.ConcurrencyLimit = maxParallel
+	}
+	if hint.ConcurrencyUsed <= 0 {
+		for _, group := range groups {
+			if len(group) > hint.ConcurrencyUsed {
+				hint.ConcurrencyUsed = len(group)
+			}
+		}
+	}
+	if hint.ConcurrencyUsed > hint.ConcurrencyLimit && hint.ConcurrencyLimit > 0 {
+		hint.ConcurrencyUsed = hint.ConcurrencyLimit
+	}
+	return hint
 }
 
 func canonicalNames(names []string) []string {
@@ -241,6 +289,11 @@ func decideBudgetAction(b BudgetState) string {
 		return BudgetActionHardStop
 	case ratio >= 0.9:
 		return BudgetActionDegradeTier
+	case ratio >= 0.8:
+		// Issue #270 step 2: shrink injection before dropping it. The tier
+		// stays on the default — only the injector budget is halved at the
+		// execution point.
+		return BudgetActionDegradeInject
 	case ratio >= 0.7:
 		return BudgetActionHaltPrefetch
 	default:
@@ -365,18 +418,22 @@ func (d *RuleDecider) passesBehaviorGate(name string) bool {
 	return st.successRate() >= d.cfg.SuccessFloor
 }
 
-// decideTier maps a round to a model tier: any writer or a large round goes
-// to the pro tier, everything else to the default (flash) tier.
-func decideTier(calls []ToolCallInfo, cfg Config) string {
+// decideTier maps the turn's frozen intent and current round to a model tier.
+// The first matching rule wins so TierReason remains stable and auditable.
+func decideTier(intent string, calls []ToolCallInfo, cfg Config) (string, string) {
+	intent = strings.ToLower(strings.TrimSpace(intent))
+	if intent == "mutation" || intent == "persistent_action" {
+		return cfg.ProTier, "intent:" + intent
+	}
 	for _, c := range calls {
 		if !c.ReadOnly {
-			return cfg.ProTier
+			return cfg.ProTier, "writer:" + c.Name
 		}
 	}
 	if len(calls) > cfg.ComplexTools {
-		return cfg.ProTier
+		return cfg.ProTier, fmt.Sprintf("complex:%d", len(calls))
 	}
-	return cfg.DefaultTier
+	return cfg.DefaultTier, "default"
 }
 
 // canonicalInjectIDs returns hit slice ids in canonical (ID-ascending)

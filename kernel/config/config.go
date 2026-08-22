@@ -7,6 +7,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -31,8 +32,10 @@ type File struct {
 	Store     fileStore     `toml:"store"`
 	Retrieval fileRetrieval `toml:"retrieval"`
 	Inject    fileInject    `toml:"inject"`
+	Score     fileScore     `toml:"score"`
 	Verify    fileVerify    `toml:"verify"`
 	Cost      fileCost      `toml:"cost"`
+	Doctor    fileDoctor    `toml:"doctor"`
 }
 
 type fileProject struct {
@@ -40,19 +43,28 @@ type fileProject struct {
 }
 
 type fileStore struct {
-	DB    *string `toml:"db"`
-	Scope *string `toml:"scope"`
+	DB        *string `toml:"db"`
+	Scope     *string `toml:"scope"`
+	MaxSlices *int    `toml:"max_slices"`
 }
 
 type fileRetrieval struct {
-	Retriever *string `toml:"retriever"`
-	Limit     *int    `toml:"limit"`
-	VectorDim *int    `toml:"vector_dim"`
+	Retriever  *string  `toml:"retriever"`
+	Limit      *int     `toml:"limit"`
+	VectorDim  *int     `toml:"vector_dim"`
+	Fusion     *string  `toml:"fusion"`      // hybrid 融合策略: weighted | rrf (Issue #274)
+	RrfK       *int     `toml:"rrf_k"`       // RRF 常数,默认 60
+	BM25Weight *float64 `toml:"bm25_weight"` // weighted 模式 BM25 路权重,默认 0.5
 }
 
 type fileInject struct {
 	Budget *int `toml:"budget"`
 	TopK   *int `toml:"top_k"`
+}
+
+type fileScore struct {
+	HalfLifeDays *float64 `toml:"half_life_days"`
+	GraceDays    *float64 `toml:"grace_days"`
 }
 
 type fileVerify struct {
@@ -66,6 +78,26 @@ type fileCost struct {
 	InputPriceUSD  *float64 `toml:"input_price_usd"`
 	CachePriceUSD  *float64 `toml:"cache_price_usd"`
 	OutputPriceUSD *float64 `toml:"output_price_usd"`
+	// Providers holds per-endpoint price overrides (GLM-P0-4, Issue #292):
+	// cloud-hosted GLM stacks price identically per model but differ per
+	// vendor, so hit-savings must be priced per provider key (the usage
+	// log's Event.Provider). Keys flatten to
+	// cost.providers.<name>.{input,cache,output}_price_usd.
+	Providers map[string]fileProviderCost `toml:"providers"`
+}
+
+type fileProviderCost struct {
+	InputPriceUSD  *float64 `toml:"input_price_usd"`
+	CachePriceUSD  *float64 `toml:"cache_price_usd"`
+	OutputPriceUSD *float64 `toml:"output_price_usd"`
+}
+
+// fileDoctor configures the optional doctor network checks (GLM-P0-4).
+// models_url unset ⇒ the model-catalog check reports SKIP (doctor stays
+// fully offline by default).
+type fileDoctor struct {
+	ModelsURL   *string  `toml:"models_url"`
+	WatchModels []string `toml:"watch_models"`
 }
 
 // Kind classifies a config error so the CLI can map it to an exit code.
@@ -154,6 +186,9 @@ func Load(opts Options) (*Resolved, error) {
 	if err := add(mergePtr("store.scope", "project", "SEMANTIX_SCOPE", file.Store.Scope, (*string)(nil))); err != nil {
 		return nil, err
 	}
+	if err := add(mergePtr("store.max_slices", 5000, "SEMANTIX_MAX_SLICES", file.Store.MaxSlices, (*int)(nil))); err != nil {
+		return nil, err
+	}
 	if err := add(mergePtr("retrieval.retriever", "hybrid", "SEMANTIX_RETRIEVER", file.Retrieval.Retriever, (*string)(nil))); err != nil {
 		return nil, err
 	}
@@ -163,10 +198,25 @@ func Load(opts Options) (*Resolved, error) {
 	if err := add(mergePtr("retrieval.vector_dim", 256, "", file.Retrieval.VectorDim, (*int)(nil))); err != nil {
 		return nil, err
 	}
+	if err := add(mergePtr("retrieval.fusion", "weighted", "", file.Retrieval.Fusion, (*string)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("retrieval.rrf_k", 60, "", file.Retrieval.RrfK, (*int)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("retrieval.bm25_weight", 0.5, "", file.Retrieval.BM25Weight, (*float64)(nil))); err != nil {
+		return nil, err
+	}
 	if err := add(mergePtr("inject.budget", 4096, "SEMANTIX_INJECT_BUDGET", file.Inject.Budget, (*int)(nil))); err != nil {
 		return nil, err
 	}
 	if err := add(mergePtr("inject.top_k", 5, "SEMANTIX_INJECT_TOP_K", file.Inject.TopK, (*int)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("score.half_life_days", 30.0, "", file.Score.HalfLifeDays, (*float64)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("score.grace_days", 7.0, "", file.Score.GraceDays, (*float64)(nil))); err != nil {
 		return nil, err
 	}
 	if err := add(mergePtr("verify.holdout", 0.3, "SEMANTIX_VERIFY_HOLDOUT", file.Verify.Holdout, (*float64)(nil))); err != nil {
@@ -191,10 +241,59 @@ func Load(opts Options) (*Resolved, error) {
 		return nil, err
 	}
 
+	// Per-provider price overrides flatten to dotted keys in sorted-name
+	// order so Fields stays deterministic (config list output, tests). Only
+	// present sub-keys are added: absent prices fall back to the global
+	// cost.* figures at the consumer.
+	providerNames := make([]string, 0, len(file.Cost.Providers))
+	for name := range file.Cost.Providers {
+		providerNames = append(providerNames, name)
+	}
+	sort.Strings(providerNames)
+	for _, name := range providerNames {
+		pc := file.Cost.Providers[name]
+		prefix := "cost.providers." + name + "."
+		for key, ptr := range map[string]*float64{
+			"input_price_usd":  pc.InputPriceUSD,
+			"cache_price_usd":  pc.CachePriceUSD,
+			"output_price_usd": pc.OutputPriceUSD,
+		} {
+			if ptr != nil {
+				r.Fields = append(r.Fields, Field{Key: prefix + key, Value: *ptr, Source: SourceFile})
+			}
+		}
+	}
+	// Map-range order is random; re-sort the provider block for determinism.
+	sort.SliceStable(r.Fields, func(i, j int) bool {
+		pi := strings.HasPrefix(r.Fields[i].Key, "cost.providers.")
+		pj := strings.HasPrefix(r.Fields[j].Key, "cost.providers.")
+		if pi != pj {
+			return !pi // non-provider fields keep their declaration order first
+		}
+		if !pi {
+			return false // stable: leave non-provider relative order alone
+		}
+		return r.Fields[i].Key < r.Fields[j].Key
+	})
+
+	if err := add(mergePtr("doctor.models_url", "", "SEMANTIX_DOCTOR_MODELS_URL", file.Doctor.ModelsURL, (*string)(nil))); err != nil {
+		return nil, err
+	}
+	watch := strings.Join(file.Doctor.WatchModels, ",")
+	r.Fields = append(r.Fields, Field{Key: "doctor.watch_models", Value: watch, Source: sourceOf(len(file.Doctor.WatchModels) > 0)})
+
 	if err := r.validate(); err != nil {
 		return nil, invalidErr(err)
 	}
 	return r, nil
+}
+
+// sourceOf maps "was it set in the file" to the Field source label.
+func sourceOf(fromFile bool) Source {
+	if fromFile {
+		return SourceFile
+	}
+	return SourceDefault
 }
 
 // configPath resolves the config file path and whether it was explicitly
@@ -268,6 +367,18 @@ func (r *Resolved) validate() error {
 			if v, ok := f.Value.(int); ok && v <= 0 {
 				errs = append(errs, "retrieval.limit: must be > 0")
 			}
+		case "store.max_slices":
+			if v, ok := f.Value.(int); ok && v < 0 {
+				errs = append(errs, "store.max_slices: must be >= 0 (0 disables the cap)")
+			}
+		case "score.half_life_days":
+			if v, ok := f.Value.(float64); ok && v <= 0 {
+				errs = append(errs, "score.half_life_days: must be > 0")
+			}
+		case "score.grace_days":
+			if v, ok := f.Value.(float64); ok && v < 0 {
+				errs = append(errs, "score.grace_days: must be >= 0")
+			}
 		case "retrieval.retriever":
 			if s, ok := f.Value.(string); ok {
 				switch s {
@@ -275,6 +386,22 @@ func (r *Resolved) validate() error {
 				default:
 					errs = append(errs, fmt.Sprintf("retrieval.retriever: invalid value %q (want bm25|vector|hybrid)", s))
 				}
+			}
+		case "retrieval.fusion":
+			if s, ok := f.Value.(string); ok {
+				switch s {
+				case "weighted", "rrf":
+				default:
+					errs = append(errs, fmt.Sprintf("retrieval.fusion: invalid value %q (want weighted|rrf)", s))
+				}
+			}
+		case "retrieval.rrf_k":
+			if v, ok := f.Value.(int); ok && v <= 0 {
+				errs = append(errs, "retrieval.rrf_k: must be > 0")
+			}
+		case "retrieval.bm25_weight":
+			if v, ok := f.Value.(float64); ok && (v < 0 || v > 1) {
+				errs = append(errs, "retrieval.bm25_weight: must be in [0,1]")
 			}
 		case "inject.budget":
 			if v, ok := f.Value.(int); ok && v <= 0 {

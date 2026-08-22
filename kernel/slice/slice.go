@@ -47,6 +47,28 @@ func (t SliceType) String() string {
 	return "unknown"
 }
 
+// EvictPriorityOf returns the type's eviction priority: lower values are
+// evicted first when the library cap overflows. The v1 table is fixed and
+// deterministic (Issue #277 typed context eviction): result/tool_pattern go
+// stale fastest, prompt/context are project knowledge worth keeping, memory
+// sits in between, and unknown types take the most conservative slot so a
+// future type is never prioritized for removal.
+func EvictPriorityOf(t SliceType) int {
+	switch t {
+	case Result:
+		return 0
+	case ToolPattern:
+		return 1
+	case Memory:
+		return 2
+	case Prompt:
+		return 3
+	case Context:
+		return 4
+	}
+	return 5
+}
+
 // String returns the stable wire name of a Scope.
 func (s Scope) String() string {
 	switch s {
@@ -94,6 +116,14 @@ type SliceMeta struct {
 	TaskType      string
 	Language      string
 	ProjectSlug   string
+	// CompressionVersion identifies the deterministic extraction rules applied
+	// before Content and its hash-derived ID were produced. Empty means a
+	// legacy or generated slice that did not pass through source compression.
+	CompressionVersion string `json:"compression_version,omitempty"`
+	// OriginalBytes and StoredBytes make extraction compression observable
+	// without mixing non-LLM work into the model usage ledger.
+	OriginalBytes int `json:"original_bytes,omitempty"`
+	StoredBytes   int `json:"stored_bytes,omitempty"`
 	// Deps captures the dependency fingerprint at slice time (path -> sha256,
 	// Issue #8): reuse is gated on these files not having changed.
 	Deps fingerprint.Deps `json:"deps,omitempty"`
@@ -148,4 +178,14 @@ type Slice struct {
 type Hit struct {
 	Slice *Slice
 	Score float64
+	// Lexical is the lexical-support score in [0,1] contributed by the
+	// lexical (BM25) route of a fused retrieval: 0 means the candidate was
+	// a pure-vector hit with no term overlap (Issue #260 lexical support
+	// gate). In single-route modes it carries the query-token coverage
+	// (vector mode) or 1 (bm25 mode). LexicalValid=false (zero value)
+	// means the index did not evaluate lexical support — consumers must
+	// treat that as "not measured", not "unsupported", so legacy and
+	// third-party Index implementations are never blocked by default.
+	Lexical      float64 `json:"lexical,omitempty"`
+	LexicalValid bool    `json:"-"`
 }

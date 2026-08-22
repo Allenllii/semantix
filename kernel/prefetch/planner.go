@@ -32,9 +32,13 @@ type Planner struct {
 	Budget int
 	// MaxTasks caps tasks per round; <=0 uses DefaultMaxTasks.
 	MaxTasks int
+	// MaxLoad is the slot-occupancy ratio at which speculative work yields;
+	// <=0 uses DefaultMaxLoad.
+	MaxLoad float64
 
 	mu     sync.RWMutex
 	matrix *transitionMatrix // set by Learn; nil until then
+	gate   gateCounter
 }
 
 // Defaults for the MVP budget control.
@@ -103,7 +107,7 @@ func (p *Planner) Plan(lastToolNames []string) ([]PrefetchTask, error) {
 		if spent+cost > budget {
 			break // budget truncation; candidates arrive probability-descending
 		}
-		tasks = append(tasks, PrefetchTask{Kind: "slice-assembly", Key: c.Name, Cost: cost})
+		tasks = append(tasks, PrefetchTask{Kind: "slice-assembly", Key: c.Name, Cost: cost, Locality: LocalityLocal})
 		spent += cost
 		if len(tasks) >= maxTasks {
 			break
@@ -111,6 +115,32 @@ func (p *Planner) Plan(lastToolNames []string) ([]PrefetchTask, error) {
 	}
 	return tasks, nil
 }
+
+// PlanWithLoad implements the optional load-aware extension while preserving
+// the frozen Plan method for existing callers.
+func (p *Planner) PlanWithLoad(lastToolNames []string, hint LoadHint) (PlanDecision, error) {
+	maxLoad := p.MaxLoad
+	if maxLoad <= 0 || maxLoad > 1 {
+		maxLoad = DefaultMaxLoad
+	}
+	if reason := EvaluateLoad(hint, maxLoad); reason != "" {
+		p.gate.observe(reason)
+		return PlanDecision{Reason: reason}, nil
+	}
+	tasks, err := p.Plan(lastToolNames)
+	if err != nil {
+		return PlanDecision{}, err
+	}
+	reason := ReasonNoCandidate
+	if len(tasks) > 0 {
+		reason = ReasonCandidate
+	}
+	p.gate.observe(reason)
+	return PlanDecision{Tasks: tasks, Reason: reason}, nil
+}
+
+// GateStats returns load-aware outcome counters.
+func (p *Planner) GateStats() GateStats { return p.gate.snapshot() }
 
 func (p *Planner) budget() int {
 	if p.Budget <= 0 {

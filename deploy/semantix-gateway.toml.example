@@ -29,11 +29,36 @@ judge_api_key = ""                        # 可选：grey 区 LLM judge（GW6 #1
 # GW4 实测（Issue #184）：不启用 judge 时 L3 命中率 1/10，启用后 7/10。
 judge_base_url = ""                       # 例：https://api.deepseek.com/v1
 judge_model = ""                          # 例：deepseek-chat
+# lexical_floor = 0.05                      # Issue #260：L3 Hit 词面支持下限（0 = 关闭词面门）
 
 [ingest]
 sessions_dir = "/data/sessions"           # 会话旁路落盘目录（0600）
 usage_log = "/data/gateway-usage.jsonl"   # usage 事件记录
 l3_safe_default = false                   # 无 deps 的网关结果默认不进 L3（true 需显式确认）
+
+[sanitize]                                # 前缀净化中间件（GLM-P0-2 #290）：第三方 GLM 栈缓存
+                                          # 逐字节严格（单空格差异即清零），且不像官方端点那样
+                                          # 服务端剥离 harness 计费头——净化默认开启
+# strip_attribution = true                # 剥离 system 首段的逐请求计费标记（默认 true）
+                                          # 关闭 = 客户端请求原样转发，缓存费最多多付 4–5 倍
+# attribution_markers = []                # 自定义标记行前缀，与内置合并（内置：x-anthropic-billing-header）
+# sort_tools = true                       # tools 数组按工具名固定序（默认 true；语义中性——
+                                          # 工具按名寻址，顺序只影响缓存字节）
+
+[billing]                                 # 客户免费额度闸门（gateway/quota.go）
+enabled = false                           # true 后：前 free_tokens 个 token 免费，用完 402 引导充值
+free_tokens = 10000000                    # 免费额度（前 1000 万 token）；0 = 用默认 1000 万
+# recharge_url 在 enabled = true 时必填：平台充值页（402 报错与
+# x-semantix-quota-recharge-url 头均携带）。注意 ${VAR} 展开不分段落是否启用，
+# 未设置的环境变量会直接启动失败，所以此处默认留空而不是占位 ${VAR}。
+recharge_url = ""                         # 例："https://platform.example.com/topup" 或 "${SEMANTIX_RECHARGE_URL}"
+# state_file = "/data/quota-state.json"   # 计数持久化位置；默认落在 store.db 同目录
+# 可选：平台钱包探测（DeepSeek GET /user/balance 兼容 schema）。配置后客户在
+# 平台充值到账 → is_available=true → 网关自动解锁付费模式，无需人工操作。
+# balance_url 与 balance_key 必须同时设置。
+# balance_url = "https://your-platform.example.com/user/balance"
+# balance_key = "${SEMANTIX_PLATFORM_KEY}"
+# balance_cache_seconds = 300             # 钱包探测结果缓存（秒）；0 = 用默认 300
 
 [[upstreams]]                             # 每个 New API 渠道模型对应一段
 name = "deepseek"
@@ -42,3 +67,6 @@ api_key = "${DEEPSEEK_API_KEY}"           # 上游 key：只走环境变量
 model_alias = ["deepseek-chat"]           # 客户端可见模型名（New API 渠道模型名）
 upstream_model = "deepseek-chat"          # 上游真实模型名
 vendor = "deepseek"                       # deepseek | openai | moonshot（anthropic 需 M2 格式转换，未支持）
+# strip_cache_control = false             # per-upstream：剥离 body 内 cache_control 字段。
+                                          # 默认透传——双网关实测（glm-spike-week.md §2/§3A.2）
+                                          # 均容忍该字段；仅当上游明确报错时开启

@@ -16,7 +16,7 @@ import (
 	fileencoding "semantix/harness/fileutil/encoding"
 )
 
-// legacyConfig is the subset of the v0.x (~/.semantix/config.json) schema this
+// legacyConfig is the subset of the v0.x (~/.reasonix/config.json) schema this
 // import carries forward. Fields absent here are dropped on purpose: desktop tab
 // state is frontend-owned, and skills already live in the shared ~/.semantix/skills
 // root that v1+ also scans, so they need no migration.
@@ -87,7 +87,7 @@ func (r *MigrationResult) Notice() string {
 
 // MigrateLegacyIfNeeded performs a one-time, non-destructive import of older
 // installs into the current user config when the latter does not exist yet. It
-// checks v1-era TOML first, then v0.5/v0.x ~/.semantix/config.json, and never
+// checks v1-era TOML first, then v0.5/v0.x ~/.reasonix/config.json, and never
 // modifies or deletes the legacy files. Returns nil when there is nothing to
 // migrate, or when the current user config already exists.
 func MigrateLegacyIfNeeded() (*MigrationResult, error) {
@@ -121,7 +121,7 @@ func MigrateLegacyIfNeededForRoot(root string) (*MigrationResult, error) {
 		}
 		return res, err
 	}
-	src := filepath.Join(home, ".semantix", "config.json")
+	src := filepath.Join(home, ".reasonix", "config.json")
 	data, err := fileencoding.ReadFileUTF8(src)
 	if err != nil {
 		return nil, nil

@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"semantix/kernel/cache"
 	"semantix/kernel/inject"
 	"semantix/kernel/usage"
 )
@@ -61,6 +62,11 @@ type anthropicMessage struct {
 type anthropicBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
+	// thinking (GLM-P0-5 #293): a preserved reasoning sequence round-tripped
+	// from the client's assistant reasoning_content. Must precede text/tool
+	// blocks and must never be reordered or rewritten — GLM endpoints degrade
+	// output and cache hits otherwise (spec §3.3).
+	Thinking string `json:"thinking,omitempty"`
 	// tool_use
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
@@ -104,6 +110,11 @@ type anthropicRequest struct {
 	StopSequences []string           `json:"stop_sequences,omitempty"`
 	Tools         []anthropicTool    `json:"tools,omitempty"`
 	ToolChoice    any                `json:"tool_choice,omitempty"`
+	// Thinking carries the translated effort parameter (#293). This struct
+	// deliberately has NO reasoning_effort field: re-marshaling through it is
+	// what guarantees the OpenAI-only parameter can never reach an
+	// anthropic-vendor upstream.
+	Thinking json.RawMessage `json:"thinking,omitempty"`
 }
 
 // openAIChatBody is the full OpenAI chat request body (a superset of
@@ -116,6 +127,10 @@ type openAIChatBody struct {
 	Stop             any          `json:"stop"`
 	Tools            []openAITool `json:"tools"`
 	ToolChoice       any          `json:"tool_choice"`
+	// Thinking-effort fields (#293): translated per path, never forwarded
+	// verbatim to an anthropic-vendor upstream (measured hard 400).
+	ReasoningEffort string          `json:"reasoning_effort"`
+	Thinking        json.RawMessage `json:"thinking"`
 }
 
 // toAnthropicRequest converts an OpenAI chat/completions request body into
@@ -166,6 +181,12 @@ func toAnthropicRequest(body []byte, up UpstreamConfig, inj *inject.Injection) (
 	}
 	out.Tools = mapTools(openAI.Tools)
 	out.ToolChoice = mapToolChoice(openAI.ToolChoice, len(openAI.Tools))
+	// Per-path thinking translation (#293): reasoning_effort maps onto
+	// thinking budgets; an explicit client thinking object wins; an unknown
+	// effort fails open to the endpoint default (no parameter at all).
+	if thinking, _ := translateThinking(openAI.ReasoningEffort, openAI.Thinking); thinking != nil {
+		out.Thinking = thinking
+	}
 
 	if hasBlock {
 		// L1 breakpoints (design §3.6 / §0.5: ≤2 — system tail + final
@@ -207,6 +228,13 @@ func splitSystem(messages []chatMessage) (system string, out []anthropicMessage)
 			blocks = userBlocks(m.Content)
 		case "assistant":
 			blocks = assistantBlocks(m.Content, m.ToolCalls)
+			// Preserved thinking rides FIRST on the assistant turn, verbatim
+			// (#293): GLM Anthropic-path endpoints require the reasoning
+			// sequence complete, unmodified and unreordered — dropping it
+			// here (the old behavior) degraded output and cache hits.
+			if m.ReasoningContent != "" {
+				blocks = append([]anthropicBlock{{Type: "thinking", Thinking: m.ReasoningContent}}, blocks...)
+			}
 		case "tool":
 			tr := anthropicBlock{Type: "tool_result", ToolUseID: m.ToolCallID, Input: textParts(m.Content)}
 			// tool results must ride on a user message that follows the
@@ -827,7 +855,7 @@ func (c *anthropicSSEConverter) writeDone() {
 // OpenAI SSE (the events must be translated — Anthropic frames differ from
 // OpenAI's). Sidecar/usage accounting matches the OpenAI streaming path:
 // request turns only, assistant content extraction is deferred debt.
-func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector) {
+func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector, l3Obs cache.Obs, l3FalseHit bool) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 		writeAPIError(w, resp.StatusCode, "upstream_error",
@@ -853,7 +881,7 @@ func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Respo
 	}
 	conv.finish() // no-op when message_stop already seen
 	g.recordSession(sessionID, ctxHash, req.Model, turns(req, ""))
-	ev := usage.Event{
+	ev := g.withL3Obs(usage.Event{
 		SessionID:      sessionID,
 		Provider:       up.Name,
 		Vendor:         up.Vendor,
@@ -863,7 +891,7 @@ func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Respo
 		SliceHits:      sliceHits,
 		JudgeDecisions: jc.drain(),
 		At:             g.now().Unix(),
-	}
+	}, l3Obs, l3FalseHit)
 	// message_start/message_delta carried real provider accounting: prefer
 	// it over the bytes/4 estimate (GLM-P0-3 / #291).
 	if nu, ok := conv.usage(); ok {

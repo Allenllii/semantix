@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	kernelevent "semantix/kernel/event"
 	"semantix/kernel/slice"
 )
 
@@ -113,6 +114,7 @@ func writeKernelDir(t *testing.T, slicesIn []*slice.Slice, usageLines []string) 
 			t.Fatal(err)
 		}
 	}
+	closeSliceStore(store)
 	if usageLines != nil {
 		if err := os.WriteFile(filepath.Join(kernelDir, "usage.jsonl"),
 			[]byte(strings.Join(usageLines, "\n")+"\n"), 0o644); err != nil {
@@ -154,6 +156,50 @@ func TestBridgeReuseHitsAndSources(t *testing.T) {
 	}
 	if sum.SavingsUSD != 0.0054 {
 		t.Errorf("SavingsUSD = %v, want 0.0054 (first cumulative snapshot)", sum.SavingsUSD)
+	}
+}
+
+func TestBridgeInjectRecordsStatsAndEvent(t *testing.T) {
+	dir := writeKernelDir(t, reuseFixtureSlices(), nil)
+	sessionsDir := t.TempDir()
+	b := NewBridge(Config{Enabled: true, Inject: true, ProjectDir: dir, SessionsDir: sessionsDir, Budget: 4096})
+	b.SetLabel("inject-stats")
+	result := b.InjectDetailed(context.Background(), "修复 go 测试")
+	if result.Text == "" || len(result.Targets) == 0 {
+		t.Fatalf("InjectDetailed() = %+v, want injected slices", result)
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := slice.NewFileStore(filepath.Join(dir, ".semantix", "project.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeSliceStore(store)
+	for _, id := range result.Targets {
+		got, err := store.Get(id)
+		if err != nil || got == nil {
+			t.Fatalf("Get(%q) = %v, %v", id, got, err)
+		}
+		if got.Stats.Injected != 1 || got.Stats.LastUsed == 0 {
+			t.Fatalf("stats for %q = %+v, want one injection and LastUsed", id, got.Stats)
+		}
+	}
+
+	raw, err := os.ReadFile(filepath.Join(sessionsDir, "inject-stats.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		e, err := kernelevent.FromJSON([]byte(line))
+		if err == nil && e.Kind == kernelevent.SliceInject {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("session JSONL missing SliceInject: %s", raw)
 	}
 }
 
@@ -221,5 +267,23 @@ func TestBridgeReuseEmptySources(t *testing.T) {
 	}
 	if len(sum.Sources) != 0 {
 		t.Errorf("Sources = %v, want empty (legacy slices)", sum.Sources)
+	}
+}
+// TestBridgeInjectDegradedShrinksBlock (Issue #270 step 2): the
+// degrade_inject tier halves the block budget. The degraded block must
+// never exceed the full-budget one (whole-slice truncation is monotone
+// in budget), so a tight window still gets reuse context without the
+// full injection cost.
+func TestBridgeInjectDegradedShrinksBlock(t *testing.T) {
+	dir := writeKernelDir(t, reuseFixtureSlices(), nil)
+	b := NewBridge(Config{Enabled: true, Inject: true, ProjectDir: dir, Budget: 4096})
+	defer b.Close()
+	full := b.InjectDetailed(context.Background(), "修复 go 测试")
+	degraded := b.InjectDegraded(context.Background(), "修复 go 测试")
+	if full.Text == "" {
+		t.Fatal("full injection unexpectedly empty")
+	}
+	if len(degraded) > len(full.Text) {
+		t.Fatalf("degraded block (%d bytes) exceeds full block (%d bytes)", len(degraded), len(full.Text))
 	}
 }

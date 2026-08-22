@@ -66,6 +66,8 @@ type Bridge struct {
 	// attribute the incremental per-turn delta in Reuse.
 	lastSavings float64
 	evolution   *EvolutionLoop
+	statsWG     sync.WaitGroup
+	closing     bool
 }
 
 // NewBridge builds a Bridge from cfg.
@@ -141,23 +143,44 @@ func (b *Bridge) SetLabel(label string) {
 // degrade — the harness never blocks on the kernel). Semantics match the
 // kernel CLI `semantix inject` defaults (U39 in-process data source).
 func (b *Bridge) Inject(ctx context.Context, query string) string {
-	return b.InjectDetailed(ctx, query).Text
+	return b.inject(ctx, query, b.cfg.Budget)
+}
+
+// InjectDegraded builds a halved-budget injection block (Issue #270 step
+// 2): the harness calls this when the window budget crosses the
+// degrade_inject tier — shrink the injection instead of dropping it.
+func (b *Bridge) InjectDegraded(ctx context.Context, query string) string {
+	budget := b.cfg.Budget / 2
+	if budget <= 0 {
+		budget = 1 // never fall back to the full DefaultBudget via the <=0 path
+	}
+	return b.inject(ctx, query, budget)
+}
+
+// inject is the shared injection path with an explicit block budget.
+func (b *Bridge) inject(ctx context.Context, query string, budget int) string {
+	return b.injectResult(ctx, query, budget).Text
 }
 
 func (b *Bridge) InjectDetailed(ctx context.Context, query string) InjectResult {
+	return b.injectResult(ctx, query, b.cfg.Budget)
+}
+
+func (b *Bridge) injectResult(ctx context.Context, query string, budget int) InjectResult {
 	if !b.Enabled() || !b.cfg.Inject {
 		return InjectResult{}
 	}
-	idx, err := b.kernelIndex()
+	store, idx, err := b.kernelIndex()
 	if err != nil {
 		return InjectResult{}
 	}
+	closeSliceStore(store)
 	z := zone.Default()
 	inj, err := (&inject.Injector{
 		Index:  idx,
 		Scope:  slice.Project,
 		K:      5,
-		Budget: b.cfg.Budget,
+		Budget: budget,
 		Zones:  &z,
 	}).Build(query)
 	if err != nil || inj == nil || len(inj.Slices) == 0 {
@@ -170,21 +193,61 @@ func (b *Bridge) InjectDetailed(ctx context.Context, query string) InjectResult 
 		}
 	}
 	sort.Strings(targets)
+	b.recordInjection(targets, inj.Bytes)
 	return InjectResult{Text: inj.Text, Targets: targets}
 }
 
-// RecordPrefetch emits one terminal outcome for a warmed result.
-func (b *Bridge) RecordPrefetch(hit bool, targets []string, turn int) {
+func (b *Bridge) recordInjection(ids []string, bytes int) {
+	if len(ids) == 0 {
+		return
+	}
+	ids = append([]string(nil), ids...)
+	now := time.Now().UTC()
+	projectDB := filepath.Join(b.projectDir(), ".semantix", "project.db")
+	b.mu.Lock()
+	if b.closing {
+		b.mu.Unlock()
+		return
+	}
+	b.statsWG.Add(1)
+	session := b.label
+	b.mu.Unlock()
+
+	data, err := json.Marshal(kernelevent.SliceInjectPayload{SliceIDs: ids, Bytes: bytes})
+	if err == nil {
+		b.events.Emit(kernelevent.Event{Kind: kernelevent.SliceInject, SessionID: session, At: now, Data: data})
+	}
+	go func() {
+		defer b.statsWG.Done()
+		store, err := slice.NewFileStore(projectDB)
+		if err != nil {
+			return
+		}
+		defer closeSliceStore(store)
+		deltas := make(map[string]slice.SliceStats, len(ids))
+		for _, id := range ids {
+			deltas[id] = slice.SliceStats{Injected: 1, LastUsed: now.Unix()}
+		}
+		_ = slice.ApplyStats(store, deltas)
+	}()
+}
+
+// RecordPrefetch emits one terminal outcome for a warmed result. lead is
+// the time between warm-up completion and the outcome decision: positive
+// for hits (completed before consumption — Markov timeliness, Issue #272);
+// for wastes it carries the survival time, not a consumption lead.
+func (b *Bridge) RecordPrefetch(hit bool, targets []string, turn int, lead time.Duration) {
 	if b == nil || !b.Enabled() || len(targets) == 0 {
 		return
 	}
 	targets = append([]string(nil), targets...)
 	sort.Strings(targets)
 	kind := kernelevent.PrefetchWaste
-	var payload any = kernelevent.PrefetchWastePayload{Targets: targets}
+	leadMs := int64(lead / time.Millisecond)
+	var payload any = kernelevent.PrefetchWastePayload{Targets: targets, LeadMs: leadMs}
 	if hit {
 		kind = kernelevent.PrefetchHit
-		payload = kernelevent.PrefetchHitPayload{Targets: targets}
+		payload = kernelevent.PrefetchHitPayload{Targets: targets, LeadMs: leadMs}
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -205,10 +268,11 @@ func (b *Bridge) Reuse(ctx context.Context, query string) ReuseSummary {
 	if !b.Enabled() || query == "" {
 		return ReuseSummary{}
 	}
-	idx, err := b.kernelIndex()
+	store, idx, err := b.kernelIndex()
 	if err != nil {
 		return ReuseSummary{}
 	}
+	defer closeSliceStore(store)
 	hits, err := idx.Search(query, 5, slice.Project)
 	if err != nil {
 		return ReuseSummary{}
@@ -236,24 +300,32 @@ func (b *Bridge) Reuse(ctx context.Context, query string) ReuseSummary {
 // covering every scope (kernel CLI lookup/inject parity). Rebuilt per call:
 // the store is a small JSONL file and indexing is millisecond-scale; caching
 // is deferred to the kernel wiring follow-up (U40).
-func (b *Bridge) kernelIndex() (slice.Index, error) {
+func (b *Bridge) kernelIndex() (slice.Store, slice.Index, error) {
 	store, err := slice.NewFileStore(filepath.Join(b.projectDir(), ".semantix", "project.db"))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	idx := bm25.New()
 	for _, scope := range []slice.Scope{slice.Session, slice.Project, slice.User} {
 		items, err := store.List(scope)
 		if err != nil {
-			return nil, err
+			closeSliceStore(store)
+			return nil, nil, err
 		}
 		for _, sl := range items {
 			if err := idx.Insert(sl); err != nil {
-				return nil, err
+				closeSliceStore(store)
+				return nil, nil, err
 			}
 		}
 	}
-	return idx, nil
+	return store, idx, nil
+}
+
+func closeSliceStore(store slice.Store) {
+	if closer, ok := store.(interface{ Close() error }); ok {
+		_ = closer.Close()
+	}
 }
 
 // projectDir resolves the kernel project directory for in-process store and
@@ -314,7 +386,8 @@ func (b *Bridge) mirror(e event.Event) {
 }
 
 func (b *Bridge) mirrorKernel(e kernelevent.Event) {
-	if e.Kind != kernelevent.PrefetchHit && e.Kind != kernelevent.PrefetchWaste && e.Kind != kernelevent.EvolutionTick {
+	if e.Kind != kernelevent.SliceHit && e.Kind != kernelevent.SliceInject &&
+		e.Kind != kernelevent.PrefetchHit && e.Kind != kernelevent.PrefetchWaste && e.Kind != kernelevent.EvolutionTick {
 		return
 	}
 	hs := b.sessionSink()
@@ -342,6 +415,10 @@ func (b *Bridge) sessionSink() *HarnessSink {
 
 // Close flushes and closes the mirror sink, if created.
 func (b *Bridge) Close() error {
+	b.mu.Lock()
+	b.closing = true
+	b.mu.Unlock()
+	b.statsWG.Wait()
 	if b.evolution != nil {
 		b.evolution.Close()
 	}

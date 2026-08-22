@@ -12,6 +12,7 @@ import (
 
 	"semantix/harness/event"
 	"semantix/harness/provider"
+	"semantix/harness/taskintent"
 	"semantix/harness/tool"
 	kernelevent "semantix/kernel/event"
 	"semantix/kernel/sched"
@@ -38,19 +39,44 @@ func (t *testTool) Execute(context.Context, json.RawMessage) (string, error) {
 }
 
 type sequenceDecider struct {
-	mu    sync.Mutex
-	plans []sched.RoundPlan
+	mu     sync.Mutex
+	plans  []sched.RoundPlan
+	inputs []sched.RoundInput
 }
 
-func (d *sequenceDecider) DecideRound(context.Context, sched.RoundInput) (sched.RoundPlan, error) {
+func (d *sequenceDecider) DecideRound(_ context.Context, in sched.RoundInput) (sched.RoundPlan, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.inputs = append(d.inputs, in)
 	if len(d.plans) == 0 {
 		return sched.RoundPlan{}, nil
 	}
 	p := d.plans[0]
 	d.plans = d.plans[1:]
 	return p, nil
+}
+
+func TestSchedulerReceivesFrozenTurnIntent(t *testing.T) {
+	reg := tool.NewRegistry()
+	reg.Add(&testTool{name: "read_file"})
+	d := &sequenceDecider{}
+	a := New(nil, reg, NewSession(""), Options{Decider: d}, event.Discard)
+	a.prefetchWaitMS.Store(120)
+	a.prefetchTaskMS.Store(40)
+	turn := &turnRuntime{}
+	turn.policy.Intent = taskintent.Mutation
+	turn.policySet = true
+
+	a.decideRound(context.Background(), turn, []provider.ToolCall{{ID: "c1", Name: "read_file", Arguments: `{}`}})
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(d.inputs) != 1 || d.inputs[0].Intent != "mutation" {
+		t.Fatalf("scheduler input intent = %+v, want mutation", d.inputs)
+	}
+	if got := d.inputs[0].PrefetchLoad; got.WaitWindowMS != 120 || got.TaskEstimateMS != 40 {
+		t.Fatalf("scheduler prefetch load = %+v", got)
+	}
 }
 
 func TestSchedulerSuspendThenRecover(t *testing.T) {

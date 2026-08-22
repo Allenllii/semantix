@@ -1,8 +1,10 @@
 package usage
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -165,5 +167,125 @@ func writeAll(t *testing.T, path string, data []byte) {
 	t.Helper()
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestEventL3SliceIDRoundTrip: the L3 source slice id survives the usage
+// wire (Issue #267 step 4) so a wrong reused answer can be traced back
+// to the exact slice for rejection.
+func TestEventL3SliceIDRoundTrip(t *testing.T) {
+	e := Event{L3Reuse: true, L3SliceID: "s-42"}
+	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"l3_slice_id":"s-42"`) {
+		t.Fatalf("wire = %s, want l3_slice_id field", b)
+	}
+	var back Event
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if !back.L3Reuse || back.L3SliceID != "s-42" {
+		t.Fatalf("round-trip = %+v", back)
+	}
+}
+
+// TestSummarizeInjectROI (Issue #270 step 1): the injection economics
+// figure pairs the L2 injection spend against the savings it participates
+// in (L2 price delta + L3 full-turn savings), per 1M injected tokens.
+func TestSummarizeInjectROI(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	r, err := NewRecorder(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := []Event{
+		{SessionID: "s1", Turn: 1, TokensIn: 5000, TokensOut: 300, CacheHitToken: 4000, InjectedTokens: 1000, SliceHits: 2},
+		{SessionID: "s1", Turn: 2, TokensIn: 20000, TokensOut: 500, L3Reuse: true},
+	}
+	for _, e := range evs {
+		if err := r.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := Summarize(path, DefaultCostMissPerMTok, DefaultCostHitPerMTok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.InjectedTokens != 1000 || s.L3Reuses != 1 {
+		t.Fatalf("baseline = injected %d l3 %d", s.InjectedTokens, s.L3Reuses)
+	}
+	// l2Savings = 1000*(0.27-0.07)/1e6 = 0.0002
+	// l3Savings = (20000*0.27 + 500*0.27)/1e6 = 0.005535
+	// InjectROI = (0.0002+0.005535)/1000*1e6 = 5.735 USD per 1M injected
+	want := 5.735
+	if diff := s.InjectROI - want; diff < -1e-9 || diff > 1e-9 {
+		t.Fatalf("InjectROI = %v, want %v", s.InjectROI, want)
+	}
+}
+
+// TestSummarizeInjectROIZeroWhenNoInjection: no injection, no figure.
+func TestSummarizeInjectROIZeroWhenNoInjection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	r, err := NewRecorder(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Append(Event{SessionID: "s", Turn: 1, TokensIn: 1000, TokensOut: 100}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Summarize(path, DefaultCostMissPerMTok, DefaultCostHitPerMTok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.InjectROI != 0 {
+		t.Fatalf("InjectROI = %v, want 0", s.InjectROI)
+	}
+}
+
+// TestSummarizeL3NegativeObservability covers the Issue #262 additive
+// fields: per-turn L3 decision detail sums into the Summary, and older
+// log lines without the fields read as zero (backward compatible).
+func TestSummarizeL3NegativeObservability(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	r, err := NewRecorder(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := []Event{
+		// Legacy-style line: no L3 negative fields at all.
+		{SessionID: "s1", Turn: 1, TokensIn: 100, L3Reuse: true},
+		// Full negative detail on one turn.
+		{
+			SessionID: "s1", Turn: 2, TokensIn: 200,
+			L3GreyCandidates: 3, L3JudgeReject: 1, L3JudgeApproved: 2,
+			L3RulesReject: 4, L3FingerprintReject: 1, L3IsolatedReject: 2,
+		},
+		// Suspected false hit: retry bypassed L3 and went upstream.
+		{SessionID: "s2", Turn: 1, TokensIn: 300, L3FalseHit: true},
+	}
+	for _, e := range evs {
+		if err := r.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := Summarize(path, DefaultCostMissPerMTok, DefaultCostHitPerMTok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.L3Reuses != 1 {
+		t.Fatalf("l3 reuses = %d, want 1", s.L3Reuses)
+	}
+	if s.L3GreyCandidates != 3 || s.L3JudgeReject != 1 || s.L3JudgeApproved != 2 {
+		t.Fatalf("grey/judge = %d/%d/%d, want 3/1/2",
+			s.L3GreyCandidates, s.L3JudgeReject, s.L3JudgeApproved)
+	}
+	if s.L3RulesReject != 4 || s.L3FingerprintReject != 1 || s.L3IsolatedReject != 2 {
+		t.Fatalf("rejects = %d/%d/%d, want 4/1/2",
+			s.L3RulesReject, s.L3FingerprintReject, s.L3IsolatedReject)
+	}
+	if s.L3FalseHits != 1 {
+		t.Fatalf("false hits = %d, want 1", s.L3FalseHits)
 	}
 }

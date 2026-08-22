@@ -9,10 +9,13 @@ package gateway
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"semantix/kernel/fuse"
 
 	"github.com/BurntSushi/toml"
 )
@@ -24,7 +27,56 @@ type Config struct {
 	Retrieval RetrievalConfig  `toml:"retrieval"`
 	Cache     CacheConfig      `toml:"cache"`
 	Ingest    IngestConfig     `toml:"ingest"`
+	Sanitize  SanitizeConfig   `toml:"sanitize"`
+	Billing   BillingConfig    `toml:"billing"`
 	Upstreams []UpstreamConfig `toml:"upstreams"`
+}
+
+// SanitizeConfig is the prefix-hygiene middleware (GLM-P0-2, Issue #290).
+// Third-party GLM-style caches are byte-exact over the whole prefix
+// (glm-spike-week.md §3), and unlike first-party endpoints they do not strip
+// harness billing markers server-side — a per-request marker in the system
+// head breaks the cache from the first token (133× hit-rate difference
+// reported for Claude Code's attribution header, spec §3.3/§4.1-1).
+type SanitizeConfig struct {
+	// StripAttribution removes attribution/billing marker lines from the head
+	// of the first system message before the body reaches the upstream.
+	// Default ON (nil = true); set strip_attribution = false to forward the
+	// client request untouched (documented cost: cache spend up to 4-5×).
+	StripAttribution *bool `toml:"strip_attribution"`
+	// AttributionMarkers are the line prefixes recognized as attribution
+	// segments. Merged with the built-in defaults (x-anthropic-billing-header).
+	AttributionMarkers []string `toml:"attribution_markers"`
+	// SortTools canonicalizes the request tools array by tool name so client
+	// enumeration order cannot break byte-exact prefix caches. Default ON
+	// (nil = true). Semantically neutral: tool choice is name-addressed.
+	SortTools *bool `toml:"sort_tools"`
+}
+
+// StripAttributionEnabled reports the effective default-on switch.
+func (s SanitizeConfig) StripAttributionEnabled() bool {
+	return s.StripAttribution == nil || *s.StripAttribution
+}
+
+// SortToolsEnabled reports the effective default-on switch.
+func (s SanitizeConfig) SortToolsEnabled() bool {
+	return s.SortTools == nil || *s.SortTools
+}
+
+// builtinAttributionMarkers match the known harness billing markers that
+// third-party endpoints do not strip server-side.
+var builtinAttributionMarkers = []string{"x-anthropic-billing-header"}
+
+// EffectiveAttributionMarkers merges configured markers with the built-ins.
+func (s SanitizeConfig) EffectiveAttributionMarkers() []string {
+	out := append([]string(nil), builtinAttributionMarkers...)
+	for _, m := range s.AttributionMarkers {
+		m = strings.TrimSpace(m)
+		if m != "" {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // ServerConfig is the listener and gateway-key settings.
@@ -45,6 +97,21 @@ type StoreConfig struct {
 	// against (design §3.5: "deps root provided by config"). Missing files
 	// fail closed → the cached entry is treated as stale.
 	DepsRoot string `toml:"deps_root"`
+	// MaxSlices caps the library; the worst-scored slices are archived down
+	// to this count at startup (spec slice-value-eviction §4). Pointer so an
+	// absent key gets the default while an explicit 0 disables the cap.
+	MaxSlices *int `toml:"max_slices"`
+}
+
+// defaultMaxSlices matches the CLI config default (store.max_slices).
+const defaultMaxSlices = 5000
+
+// EffectiveMaxSlices resolves the cap: absent → default, explicit 0 → off.
+func (s StoreConfig) EffectiveMaxSlices() int {
+	if s.MaxSlices == nil {
+		return defaultMaxSlices
+	}
+	return *s.MaxSlices
 }
 
 // RetrievalConfig tunes the L2 injector.
@@ -53,13 +120,24 @@ type RetrievalConfig struct {
 	TopK      int    `toml:"top_k"`
 	Budget    int    `toml:"budget"`
 	VectorDim int    `toml:"vector_dim"` // HashEmbedder dimension (<=0 -> 256)
+	// Fusion selects the hybrid fusion strategy (Issue #274): ""/weighted
+	// (default, historical score average) | rrf (reciprocal rank fusion).
+	Fusion string `toml:"fusion"`
+	// RrfK is the RRF constant; 0 → fuse.DefaultRrfK (60). Only read in
+	// rrf mode.
+	RrfK int `toml:"rrf_k"`
+	// BM25Weight is the weighted-mode BM25 route share in [0,1]; nil →
+	// fuse.DefaultBM25Weight (0.5), explicit 0 = pure vector route. Only
+	// read in weighted mode.
+	BM25Weight *float64 `toml:"bm25_weight"`
 }
 
-// CacheConfig holds L3 policy. TTL is a gateway-side time window over
-// Slice.CreatedAt (CreatedAt==0 never expires); the kernel dep-fingerprint
-// chain remains the authority for staleness. TTLSeconds is the generic
-// window; VendorTTL overrides it per vendor (design §3.5: DeepSeek 24h /
-// Anthropic 5m) and wins over the built-in vendor defaults in TTLFor.
+// CacheConfig holds L3 policy. TTL is resolved by the gateway and passed to
+// the kernel's age-aware L3 gate: candidates in the second half of the window
+// require a judge, while expired or unstamped candidates fail closed. The
+// dependency-fingerprint chain remains the content-change authority.
+// TTLSeconds is the generic window; VendorTTL overrides it per vendor (design
+// §3.5: DeepSeek 24h / Anthropic 5m) and wins over the built-in defaults.
 type CacheConfig struct {
 	TTLSeconds    int64            `toml:"ttl_seconds"`
 	VendorTTL     map[string]int64 `toml:"vendor_ttl"`
@@ -67,7 +145,47 @@ type CacheConfig struct {
 	JudgeBaseURL  string           `toml:"judge_base_url"`
 	JudgeModel    string           `toml:"judge_model"`
 	JudgeProtocol string           `toml:"judge_protocol"`
+	// LexicalFloor is the L3 lexical-support floor (Issue #260): a zone-Hit
+	// with less term overlap is downgraded to Grey (judge-gated). nil keeps
+	// the kernel default (0.05); explicit 0 disables the gate.
+	LexicalFloor *float64 `toml:"lexical_floor"`
+	// FalseHitSim is the suspected-false-hit retry similarity threshold
+	// (normalized edit ratio in [0,1], Issue #262 §3.3). 0/unspecified →
+	// DefaultFalseHitSim (0.6); -1 disables the retry detection.
+	FalseHitSim float64 `toml:"false_hit_sim"`
 }
+
+// DefaultFalseHitSim is the built-in retry-similarity threshold when
+// [cache] false_hit_sim is unspecified.
+const DefaultFalseHitSim = 0.6
+
+// BillingConfig is the customer free-tier gate (see gateway/quota.go):
+// the first FreeTokens upstream tokens are served for free; after that the
+// gateway answers 402 with RechargeURL until the customer's platform wallet
+// reports an active balance.
+type BillingConfig struct {
+	Enabled bool `toml:"enabled"`
+	// FreeTokens is the free-tier size in tokens (prompt + completion of
+	// forwarded requests; L3 cache hits are free). 0 defaults to 10M.
+	FreeTokens int64 `toml:"free_tokens"`
+	// RechargeURL is the platform top-up page shown in the 402 message and
+	// the x-semantix-quota-recharge-url header. Required when enabled.
+	RechargeURL string `toml:"recharge_url"`
+	// StateFile persists the token counter across restarts. Defaults to
+	// quota-state.json next to the slice store db.
+	StateFile string `toml:"state_file"`
+	// BalanceURL + BalanceKey (both or neither) probe the platform wallet
+	// (DeepSeek GET /user/balance schema) once the tier is exhausted: an
+	// available balance unlocks paid mode automatically after a top-up.
+	BalanceURL string `toml:"balance_url"`
+	BalanceKey string `toml:"balance_key"`
+	// BalanceCacheSeconds bounds probe frequency (0 defaults to 300).
+	BalanceCacheSeconds int `toml:"balance_cache_seconds"`
+}
+
+// defaultFreeTokens is the free tier granted to every customer install:
+// 10,000,000 tokens (产品口径: 前 1000 万 token 免费).
+const defaultFreeTokens int64 = 10_000_000
 
 // IngestConfig controls the session-sidecar write path.
 type IngestConfig struct {
@@ -86,6 +204,11 @@ type UpstreamConfig struct {
 	ModelAlias    []string `toml:"model_alias"`
 	UpstreamModel string   `toml:"upstream_model"`
 	Vendor        string   `toml:"vendor"`
+	// StripCacheControl removes cache_control fields from the outgoing body
+	// for this upstream. Default OFF: both measured GLM-hosting stacks accept
+	// cache_control without error (glm-spike-week.md §2/§3A.2), so the gateway
+	// forwards it untouched unless a provider is known to reject it.
+	StripCacheControl bool `toml:"strip_cache_control"`
 }
 
 // vendor names accepted by the v1 gateway. anthropic needs message-format
@@ -148,6 +271,8 @@ func (c *Config) expand() error {
 		&c.Cache.JudgeModel,
 		&c.Cache.JudgeProtocol,
 		&c.Ingest.SessionsDir, &c.Ingest.UsageLog,
+		&c.Billing.RechargeURL, &c.Billing.StateFile,
+		&c.Billing.BalanceURL, &c.Billing.BalanceKey,
 	}
 	for i := range c.Upstreams {
 		u := &c.Upstreams[i]
@@ -189,6 +314,13 @@ func (c *Config) expand() error {
 			return err
 		} else {
 			c.Ingest.UsageLog = home
+		}
+	}
+	if c.Billing.StateFile != "" {
+		if home, err := expandHome(c.Billing.StateFile); err != nil {
+			return err
+		} else {
+			c.Billing.StateFile = home
 		}
 	}
 	return nil
@@ -257,6 +389,18 @@ func (c *Config) validate() error {
 	if c.Retrieval.Retriever != "" && !validRetriever(c.Retrieval.Retriever) {
 		return fmt.Errorf("gateway config: [retrieval] retriever %q is not supported (supported: bm25, vector, hybrid)", c.Retrieval.Retriever)
 	}
+	if c.Retrieval.Fusion != "" && c.Retrieval.Fusion != "weighted" && c.Retrieval.Fusion != "rrf" {
+		return fmt.Errorf("gateway config: [retrieval] fusion %q must be weighted or rrf", c.Retrieval.Fusion)
+	}
+	if c.Retrieval.RrfK < 0 {
+		return fmt.Errorf("gateway config: [retrieval] rrf_k must be >= 0 (0 = fuse default)")
+	}
+	if c.Retrieval.BM25Weight != nil {
+		w := *c.Retrieval.BM25Weight
+		if math.IsNaN(w) || math.IsInf(w, 0) || w < 0 || w > 1 {
+			return fmt.Errorf("gateway config: [retrieval] bm25_weight must be in [0,1], got %v", w)
+		}
+	}
 	if c.Cache.JudgeAPIKey != "" && (strings.TrimSpace(c.Cache.JudgeBaseURL) == "" || strings.TrimSpace(c.Cache.JudgeModel) == "") {
 		return fmt.Errorf("gateway config: [cache] judge_api_key requires judge_base_url and judge_model")
 	}
@@ -266,8 +410,38 @@ func (c *Config) validate() error {
 	if c.Cache.TTLSeconds < 0 {
 		return fmt.Errorf("gateway config: [cache] ttl_seconds must be >= 0 (0 disables the time window)")
 	}
+	if c.Cache.FalseHitSim != 0 {
+		// -1 disables the retry detection; otherwise a similarity in [0,1].
+		if c.Cache.FalseHitSim != -1 && (math.IsNaN(c.Cache.FalseHitSim) || math.IsInf(c.Cache.FalseHitSim, 0) ||
+			c.Cache.FalseHitSim < 0 || c.Cache.FalseHitSim > 1) {
+			return fmt.Errorf("gateway config: [cache] false_hit_sim must be -1 (disabled) or in [0,1], got %v", c.Cache.FalseHitSim)
+		}
+	}
 	if c.Server.HealthTimeoutSeconds < 0 {
 		return fmt.Errorf("gateway config: [server] health_timeout_seconds must be >= 0 (0 disables the upstream probe)")
+	}
+	if c.Store.MaxSlices != nil && *c.Store.MaxSlices < 0 {
+		return fmt.Errorf("gateway config: [store] max_slices must be >= 0 (0 disables the cap)")
+	}
+	if c.Billing.Enabled {
+		if c.Billing.FreeTokens < 0 {
+			return fmt.Errorf("gateway config: [billing] free_tokens must be >= 0 (0 uses the default %d)", defaultFreeTokens)
+		}
+		if c.Billing.FreeTokens == 0 {
+			c.Billing.FreeTokens = defaultFreeTokens
+		}
+		if strings.TrimSpace(c.Billing.RechargeURL) == "" {
+			return fmt.Errorf("gateway config: [billing] recharge_url is required when billing is enabled (the top-up page customers are sent to)")
+		}
+		if (c.Billing.BalanceURL == "") != (c.Billing.BalanceKey == "") {
+			return fmt.Errorf("gateway config: [billing] balance_url and balance_key must be set together")
+		}
+		if c.Billing.BalanceCacheSeconds < 0 {
+			return fmt.Errorf("gateway config: [billing] balance_cache_seconds must be >= 0 (0 uses the default 300)")
+		}
+		if c.Billing.BalanceCacheSeconds == 0 {
+			c.Billing.BalanceCacheSeconds = 300
+		}
 	}
 	if len(c.Upstreams) == 0 {
 		return fmt.Errorf("gateway config: at least one [[upstreams]] entry is required")
@@ -316,13 +490,23 @@ func validRetriever(s string) bool {
 	return false
 }
 
+// fusionConfig maps the [retrieval] fusion keys onto kernel/fuse.Config
+// (Issue #274). Zero/unset values fall back to the fuse package defaults.
+func (c *Config) fusionConfig() fuse.Config {
+	cfg := fuse.Config{RrfK: c.Retrieval.RrfK, BM25Weight: c.Retrieval.BM25Weight}
+	if c.Retrieval.Fusion == "rrf" {
+		cfg.Strategy = fuse.RRF
+	}
+	return cfg
+}
+
 // DefaultConfig returns the built-in defaults (for tests and docs).
 func DefaultConfig() *Config {
 	return &Config{
 		Server:    ServerConfig{Addr: ":8080", GatewayKey: "dev-key", HealthTimeoutSeconds: 3},
 		Store:     StoreConfig{DB: ".semantix/gateway.jsonl", Scope: "project", DepsRoot: "."},
 		Retrieval: RetrievalConfig{Retriever: "bm25", TopK: 5, Budget: 4096},
-		Cache:     CacheConfig{TTLSeconds: 86400},
+		Cache:     CacheConfig{TTLSeconds: 86400, FalseHitSim: DefaultFalseHitSim},
 		Ingest:    IngestConfig{SessionsDir: ".semantix/sessions", UsageLog: ".semantix/gateway-usage.jsonl"},
 	}
 }

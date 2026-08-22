@@ -1,9 +1,49 @@
 package agent
 
+import "time"
+
+type prefetchGateDecision struct {
+	Turn   int64
+	Allow  bool
+	Reason string
+}
+
 type prefetchedInjectResult struct {
 	Text    string
 	Targets []string
 	Turn    int64
+	// WarmAt is when the speculative warm-up finished; the timeliness
+	// (Markov lead time) is measured from here to the outcome decision
+	// (Issue #272). Zero value means the producer did not stamp it and the
+	// lead is reported as 0.
+	WarmAt time.Time
+}
+
+func (a *Agent) armPrefetch(reason string) {
+	if a == nil || reason == "" {
+		if a != nil {
+			a.prefetchGate.Store(nil)
+		}
+		return
+	}
+	allow := true
+	switch reason {
+	case "load_saturated", "window_too_short", "budget:halt_prefetch", "budget:hard_stop":
+		allow = false
+	}
+	a.prefetchGate.Store(&prefetchGateDecision{
+		Turn:   a.semantixTurn.Load(),
+		Allow:  allow,
+		Reason: reason,
+	})
+}
+
+func (a *Agent) prefetchAllowed() bool {
+	if a == nil {
+		return false
+	}
+	decision := a.prefetchGate.Load()
+	return decision == nil || decision.Turn != a.semantixTurn.Load() || decision.Allow
 }
 
 func (a *Agent) storePrefetch(next *prefetchedInjectResult) {
@@ -36,6 +76,10 @@ func (a *Agent) wastePrefetch() {
 
 func (a *Agent) recordPrefetch(hit bool, got *prefetchedInjectResult) {
 	if a != nil && a.semantix != nil && got != nil {
-		a.semantix.RecordPrefetch(hit, got.Targets, int(got.Turn))
+		lead := time.Duration(0)
+		if !got.WarmAt.IsZero() {
+			lead = time.Since(got.WarmAt)
+		}
+		a.semantix.RecordPrefetch(hit, got.Targets, int(got.Turn), lead)
 	}
 }

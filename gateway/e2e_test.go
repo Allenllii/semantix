@@ -218,6 +218,37 @@ func TestE2EL3HitZeroUpstreamCalls(t *testing.T) {
 	}
 }
 
+func TestE2EL3UnknownCreatedAtFailsClosed(t *testing.T) {
+	up := &testUpstream{plain: `{"choices":[{"message":{"role":"assistant","content":"fresh upstream"}}]}`}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	chash, _ := contextHash([]chatMessage{msg("user", "hello world")})
+	s := &slice.Slice{
+		ID: "l3-legacy", Type: slice.Result, Scope: slice.Project,
+		Content: []byte("hello world legacy cached answer"),
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+	}
+	// Bypass seed: it intentionally backfills CreatedAt for ordinary tests.
+	if err := g.store.Put(s); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.index.Insert(s); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "hello world", false))
+	if resp.Header.Get("x-semantix-cache") != "miss" {
+		t.Fatalf("cache = %q, want miss for unknown CreatedAt (%s)", resp.Header.Get("x-semantix-cache"), out)
+	}
+	if n := up.callCount(); n != 1 {
+		t.Fatalf("upstream calls = %d, want 1", n)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // L2 injection: forwarded request carries the reuse block (acceptance #2)
 
@@ -1304,5 +1335,65 @@ func TestE2EHealthProbeDisabled(t *testing.T) {
 	}
 	if n := up.callCount(); n != 0 {
 		t.Errorf("upstream calls = %d, want 0 (probe disabled must not touch upstream)", n)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// L3 suspected false hit (Issue #262 §3.3): a same-session retry of a
+// served query bypasses L3, reaches upstream, and is recorded in usage.
+
+func TestE2EFalseHitRetryBypassesL3(t *testing.T) {
+	up := &testUpstream{plain: `{"choices":[{"message":{"role":"assistant","content":"fresh upstream answer"}}]}`}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	chash, _ := contextHash([]chatMessage{msg("user", "hello world")})
+	seed(t, g, &slice.Slice{
+		ID: "l3-a", Type: slice.Result, Scope: slice.Project,
+		Content: []byte("hello world hello world cached answer"),
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+	})
+
+	hdr := map[string]string{"x-semantix-session": "fh-sess-1"}
+	// First request: L3 hit, zero upstream calls.
+	resp, out := postChatWithHeaders(t, srv, "test-key", hdr, chatBody("deepseek-chat", "hello world", false))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first status = %d, body %s", resp.StatusCode, out)
+	}
+	if resp.Header.Get("x-semantix-cache") != "hit" {
+		t.Fatalf("first x-semantix-cache = %q, want hit", resp.Header.Get("x-semantix-cache"))
+	}
+	if n := up.callCount(); n != 0 {
+		t.Fatalf("upstream calls after first request = %d, want 0", n)
+	}
+
+	// Same-session near-identical retry: L3 must be bypassed → upstream.
+	resp2, out2 := postChatWithHeaders(t, srv, "test-key", hdr, chatBody("deepseek-chat", "hello world", false))
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("retry status = %d, body %s", resp2.StatusCode, out2)
+	}
+	if resp2.Header.Get("x-semantix-cache") != "miss" {
+		t.Fatalf("retry x-semantix-cache = %q, want miss (bypass)", resp2.Header.Get("x-semantix-cache"))
+	}
+	if got := respContent(t, out2); got != "fresh upstream answer" {
+		t.Fatalf("retry content = %q, want fresh upstream answer", got)
+	}
+	if n := up.callCount(); n != 1 {
+		t.Fatalf("upstream calls after retry = %d, want 1", n)
+	}
+
+	// The negative signal lands in the usage log as a suspected false hit.
+	summary, err := usage.Summarize(g.cfg.Ingest.UsageLog, usage.DefaultCostMissPerMTok, usage.DefaultCostHitPerMTok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.L3Reuses != 1 {
+		t.Fatalf("usage l3 reuses = %d, want 1", summary.L3Reuses)
+	}
+	if summary.L3FalseHits != 1 {
+		t.Fatalf("usage false hits = %d, want 1", summary.L3FalseHits)
 	}
 }
