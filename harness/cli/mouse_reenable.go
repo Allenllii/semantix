@@ -33,8 +33,9 @@ type mouseReenableMsg struct{}
 // No-op for Termux native scrollback (mouse is intentionally off so the soft
 // keyboard can focus) and when the user has toggled capture off via /mouse.
 func (m *chatTUI) maybeReenableMouse() tea.Cmd {
-	if m.nativeScrollback || m.mouseCaptureOff {
+	if m.shuttingDown || m.nativeScrollback || m.mouseCaptureOff {
 		m.mouseReenablePending = false
+		m.mouseReenableTimerArmed = false
 		return nil
 	}
 	now := m.mouseNow()

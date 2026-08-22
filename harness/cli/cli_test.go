@@ -15,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"semantix/harness/agent"
 	"semantix/harness/boot"
 	"semantix/harness/config"
@@ -25,6 +27,45 @@ import (
 	"semantix/harness/provider"
 	"semantix/harness/telemetry"
 )
+
+type fakeTUIProgramRunner struct {
+	err        error
+	panicValue any
+}
+
+func (f fakeTUIProgramRunner) Run() (tea.Model, error) {
+	if f.panicValue != nil {
+		panic(f.panicValue)
+	}
+	return nil, f.err
+}
+
+func TestRunTUIProgramAlwaysResetsMouseTracking(t *testing.T) {
+	wantErr := errors.New("input loop failed")
+	for _, err := range []error{nil, wantErr} {
+		var out bytes.Buffer
+		_, gotErr := runTUIProgram(fakeTUIProgramRunner{err: err}, &out)
+		if !errors.Is(gotErr, err) {
+			t.Fatalf("error = %v, want %v", gotErr, err)
+		}
+		if got := out.String(); got != resetMouseTracking {
+			t.Fatalf("reset = %q, want %q", got, resetMouseTracking)
+		}
+	}
+}
+
+func TestRunTUIProgramResetsMouseTrackingDuringPanic(t *testing.T) {
+	var out bytes.Buffer
+	defer func() {
+		if got := recover(); got != "boom" {
+			t.Fatalf("panic = %v, want boom", got)
+		}
+		if got := out.String(); got != resetMouseTracking {
+			t.Fatalf("reset = %q, want %q", got, resetMouseTracking)
+		}
+	}()
+	_, _ = runTUIProgram(fakeTUIProgramRunner{panicValue: "boom"}, &out)
+}
 
 func TestChdirTo(t *testing.T) {
 	orig, err := os.Getwd()
