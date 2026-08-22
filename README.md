@@ -554,7 +554,7 @@ and
 
 # Self-Evolving Optimization
 
-> **Status: shipped (MVP)** — slice value scoring + capacity eviction are live: hit/injection accounting feeds `weight = recency · frequency · injection-success · feedback` (`kernel/slice` scorer), and `gc` / gateway startup enforce a capped, archived library. `kernel/evolve` remains an EWMA-tuning MVP (retrieval threshold only; signal wiring pending).
+> **Status: shipped (MVP)** — slice value scoring + capacity eviction are live: hit/injection accounting feeds `weight = recency · frequency · injection-success · feedback` (`kernel/slice` scorer), and `gc` / gateway startup enforce a capped, archived library. Eviction is **type-aware and deterministic** (Issue #277): result/tool_pattern slices go stale first, prompt/context project knowledge is kept, and the order is byte-reproducible for the same library + clock — no LLM in the loop. `kernel/evolve` remains an EWMA-tuning MVP (retrieval threshold only; signal wiring pending).
 
 Semantix is designed around a feedback loop.
 
