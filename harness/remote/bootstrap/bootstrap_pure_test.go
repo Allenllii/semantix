@@ -37,10 +37,10 @@ func TestParseUname(t *testing.T) {
 
 func TestParseVersion(t *testing.T) {
 	cases := map[string]string{
-		"reasonix v1.9.0":        "1.9.0",
-		"1.9.0":                  "1.9.0",
-		"reasonix version 2.0.1": "2.0.1",
-		"v1.10.0-rc.1":           "1.10.0-rc.1",
+		"semantix v1.9.0":              "1.9.0",
+		"1.9.0":                        "1.9.0",
+		"semantix-agent version 2.0.1": "2.0.1",
+		"v1.10.0-rc.1":                 "1.10.0-rc.1",
 	}
 	for in, want := range cases {
 		got, err := ParseVersion(in)
@@ -77,14 +77,14 @@ func TestCompareVersions(t *testing.T) {
 // cannot break out of the launch command.
 func TestLaunchCommandQuotesHostilePaths(t *testing.T) {
 	paths := StatePaths{
-		Dir:       "/home/dev/.reasonix/remote",
-		TokenFile: "/home/dev/.reasonix/remote/serve-x.token",
-		PortFile:  "/home/dev/.reasonix/remote/serve-x.port",
-		PidFile:   "/home/dev/.reasonix/remote/serve-x.pid",
-		LogFile:   "/home/dev/.reasonix/remote/serve-x.log",
+		Dir:       "/home/dev/.semantix/remote",
+		TokenFile: "/home/dev/.semantix/remote/serve-x.token",
+		PortFile:  "/home/dev/.semantix/remote/serve-x.port",
+		PidFile:   "/home/dev/.semantix/remote/serve-x.pid",
+		LogFile:   "/home/dev/.semantix/remote/serve-x.log",
 	}
 	hostile := "/tmp/'; rm -rf ~; echo '"
-	cmd := LaunchCommand("/usr/bin/reasonix", hostile, paths)
+	cmd := LaunchCommand("/usr/bin/semantix", hostile, paths)
 
 	// The hostile workspace must appear only inside a quoted operand, escaped.
 	if strings.Contains(cmd, "; rm -rf ~; echo") && !strings.Contains(cmd, `'\''; rm -rf ~; echo '\''`) {
@@ -125,9 +125,9 @@ func TestStopAndServeAliveCommands(t *testing.T) {
 		}
 	}
 	alive := ServeAliveCommand(99, paths)
-	// Must check liveness AND that the process is a reasonix serve (guards PID
+	// Must check liveness AND that the process is a semantix-agent serve (guards PID
 	// reuse), not just kill -0.
-	for _, want := range []string{"kill -0 99", "ps -p 99", "*reasonix*serve*", paths.TokenFile, paths.PortFile} {
+	for _, want := range []string{"kill -0 99", "ps -p 99", "*semantix*serve*", paths.TokenFile, paths.PortFile} {
 		if !strings.Contains(alive, want) {
 			t.Errorf("ServeAliveCommand missing %q: %s", want, alive)
 		}
@@ -138,7 +138,7 @@ func TestStopAndServeAliveCommands(t *testing.T) {
 }
 
 func TestLaunchCommandDetachAndLogHardening(t *testing.T) {
-	cmd := LaunchCommand("/usr/bin/reasonix", "/ws", StatePaths{
+	cmd := LaunchCommand("/usr/bin/semantix", "/ws", StatePaths{
 		Dir: "/d", TokenFile: "/d/t", PortFile: "/d/p", PidFile: "/d/i", LogFile: "/d/l",
 	})
 	// setsid must be optional (macOS lacks it) and the log created 0600 so the
@@ -157,7 +157,7 @@ func TestLaunchCommandDetachAndLogHardening(t *testing.T) {
 }
 
 func TestLocateCommandProbesPortFileFlag(t *testing.T) {
-	cmd := LocateCommand("/home/x/.reasonix/remote/bin/reasonix")
+	cmd := LocateCommand("/home/x/.semantix/remote/bin/semantix")
 	for _, want := range []string{"serve --help", "port-file", "portfile:yes", "portfile:no"} {
 		if !strings.Contains(cmd, want) {
 			t.Errorf("LocateCommand missing %q:\n%s", want, cmd)

@@ -1,5 +1,5 @@
-// Package memory implements Reasonix's persistent memory. It mirrors Claude
-// Code's two-layer model while honoring Reasonix's cache-first architecture:
+// Package memory implements Semantix's persistent memory. It mirrors Claude
+// Code's two-layer model while honoring Semantix's cache-first architecture:
 //
 //   - Standing instructions resolved by internal/instruction and exposed here
 //     through compatibility aliases for existing panel and controller APIs.
@@ -25,14 +25,14 @@ import (
 type Scope = instruction.Scope
 
 const (
-	ScopeUser     = instruction.ScopeUser     // ~/.reasonix/REASONIX.md
+	ScopeUser     = instruction.ScopeUser     // ~/.semantix/SEMANTIX.md
 	ScopeAncestor = instruction.ScopeAncestor // an instruction file between workspace root and target
 	ScopeProject  = instruction.ScopeProject  // instruction file at the workspace root
 	ScopeLocal    = instruction.ScopeLocal    // *.local.md personal override
 )
 
 // docNames are the recognized memory filenames at each level, in load order.
-// REASONIX.md is ours; AGENTS.md and CLAUDE.md are the cross-tool conventions.
+// SEMANTIX.md is ours; AGENTS.md and CLAUDE.md are the cross-tool conventions.
 // When several distinct files exist in one directory, all load (each labeled with
 // its source path), so a repo already carrying an AGENTS.md / CLAUDE.md is picked
 // up without renaming. New docs are created as AGENTS.md (the universal

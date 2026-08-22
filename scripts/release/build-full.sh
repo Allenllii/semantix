@@ -4,8 +4,8 @@
 #   semantix-agent   — merged coding agent (harness vendor, in-process kernel)
 #   semantix         — memory-kernel CLI
 #   semantix-gateway — OpenAI-compatible semantic-cache gateway
-# plus the two config templates (reasonix.example.toml, semantix.example.toml)
-# and a README, per platform.
+# plus the two config templates (semantix-agent.example.toml,
+# semantix.example.toml), the standalone kernel installer, and a README.
 #
 # History: up to v0.4.1 this script built `reasonix` from the external fork
 # checkout (FORK_ROOT) + `semantix` from this repo. v0.5.0/v0.6.0 were packaged
@@ -16,7 +16,16 @@
 #
 # Usage: build-full.sh --version v0.7.0 [--platforms darwin-arm64,linux-amd64]
 # Default platforms: darwin-arm64, darwin-amd64, linux-amd64, linux-arm64
-# Output: dist/semantix-agent-<version>-<platform>.tar.gz + SHA256SUMS.txt
+# Output (dist/):
+#   semantix-agent-<version>-<platform>.tar.gz   full bundle for humans
+#   semantix-agent-<platform>.tar.gz             flat single-binary asset the
+#                                                self-updater downloads
+#                                                (`semantix-agent upgrade`)
+#   semantix-<version>-<platform>                raw kernel binary for the
+#                                                agent-skill curl installer
+#   SHA256SUMS + SHA256SUMS.txt                  same checksums, both names
+#                                                (updater reads the former,
+#                                                install.sh the latter)
 set -euo pipefail
 
 VERSION=""
@@ -80,9 +89,11 @@ for plat in ${PLATFORMS//,/ }; do
     -ldflags "-s -w" \
     -o "$D/semantix-gateway" ./cmd/semantix-gateway)
 
-  # Config templates are required package content — fail loudly if missing.
-  cp "$ROOT/reasonix.example.toml" "$D/"
+  # Config templates and the standalone kernel installer are required package
+  # content — fail loudly if missing.
+  cp "$ROOT/semantix-agent.example.toml" "$D/"
   cp "$ROOT/semantix.example.toml" "$D/"
+  cp "$ROOT/agent-skill/scripts/install.sh" "$D/semantix-install.sh"
   cat > "$D/README.md" <<EOF
 # Semantix Agent $VERSION ($plat)
 
@@ -95,12 +106,14 @@ for plat in ${PLATFORMS//,/ }; do
 - \`semantix\` — memory kernel CLI（extract / search / lookup / verify / usage / dashboard）
 - \`semantix-gateway\` — OpenAI 兼容语义缓存网关（可选，任何 OpenAI 兼容客户端
   把 base_url 指过来即可）
-- \`reasonix.example.toml\` — agent 配置模板（provider + [semantix] 段）
+- \`semantix-agent.example.toml\` — agent 配置模板（provider + [semantix] 段）
 - \`semantix.example.toml\` — kernel 配置模板
+- \`semantix-install.sh\` — 独立 curl 安装器，只把 semantix memory kernel
+  装进别的 agent 环境
 
 ## 快速开始
-1. cp reasonix.example.toml ~/.reasonix/reasonix.toml，填 provider key，
-   确认 [semantix] enabled = true
+1. cp semantix-agent.example.toml ~/.semantix/semantix-agent.toml，填 provider key，
+   确认 [semantix] enabled = true（或直接跑 \`semantix-agent setup\` 向导）
 2. ./semantix-agent            # 交互 TUI（或 -p "task" 单发）
 3. 会话结束后 ./semantix usage # 成本与命中仪表盘
 
@@ -111,13 +124,22 @@ for plat in ${PLATFORMS//,/ }; do
 
 发布说明：https://github.com/Gnosil/semantix/releases/tag/$VERSION
 EOF
-  chmod +x "$D/semantix-agent" "$D/semantix" "$D/semantix-gateway"
+  chmod +x "$D/semantix-agent" "$D/semantix" "$D/semantix-gateway" "$D/semantix-install.sh"
 
   (cd "$OUT" && tar -czf "$PKG.tar.gz" "$PKG")
+
+  # Flat single-binary archive for `semantix-agent upgrade`: the updater
+  # expects semantix-agent-<os>-<arch>.tar.gz with the binary at the root.
+  (cd "$D" && tar -czf "$OUT/semantix-agent-$plat.tar.gz" semantix-agent)
+  # Raw kernel binary for agent-skill/scripts/install.sh (curl flow).
+  cp "$D/semantix" "$OUT/semantix-$VERSION-$plat"
   rm -rf "$D"
-  echo "packed $PKG.tar.gz"
+  echo "packed $PKG.tar.gz + semantix-agent-$plat.tar.gz + semantix-$VERSION-$plat"
 done
 
-(cd "$OUT" && shasum -a 256 semantix-agent-*.tar.gz > SHA256SUMS.txt)
+# One checksum set over every asset, published under both names: the
+# self-updater downloads the asset literally named SHA256SUMS, while the
+# agent-skill install.sh fetches SHA256SUMS.txt.
+(cd "$OUT" && shasum -a 256 semantix-agent-*.tar.gz semantix-"$VERSION"-* > SHA256SUMS && cp SHA256SUMS SHA256SUMS.txt)
 echo "---"
 ls -lh "$OUT" | awk '{print $5, $9}'

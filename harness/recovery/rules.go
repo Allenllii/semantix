@@ -331,7 +331,7 @@ func commandFieldsHighRisk(fields []string) bool {
 		"stop-process", "restart-computer", "stop-computer", "format-volume", "clear-disk",
 		"initialize-disk", "powershell", "powershell.exe", "pwsh", "pwsh.exe", "cmd", "cmd.exe",
 		"del", "erase", "rd", "format", "diskpart":
-		// Reasonix runs the bash tool through PowerShell on Windows. Bash AST still
+		// Semantix runs the bash tool through PowerShell on Windows. Bash AST still
 		// gives us useful static words for simple native commands, but these verbs
 		// are not reversible workspace operations and must never fall through.
 		return true

@@ -87,9 +87,9 @@ func inspectAndRepairConfigUnlocked(opts ConfigOptions) (ConfigReport, error) {
 		opts.Now = time.Now
 	}
 	global := config.UserConfigPath()
-	project := filepath.Join(opts.Root, "reasonix.toml")
+	project := filepath.Join(opts.Root, "semantix-agent.toml")
 	if opts.Root == "" || opts.Root == "." {
-		project = "reasonix.toml"
+		project = "semantix-agent.toml"
 	}
 	paths := []struct{ scope, path string }{{"global", global}, {"project", project}}
 	report := ConfigReport{Checks: make([]ConfigCheck, 0, len(paths)), Applied: []string{}}
@@ -123,7 +123,7 @@ func inspectAndRepairConfigUnlocked(opts ConfigOptions) (ConfigReport, error) {
 				return report, err
 			}
 		}
-		quarantine := item.path + ".reasonix-quarantine-" + opts.Now().UTC().Format("20060102T150405Z")
+		quarantine := item.path + ".semantix-quarantine-" + opts.Now().UTC().Format("20060102T150405Z")
 		changeIndex := len(tx.Changes)
 		tx.Changes = append(tx.Changes, preparedRepairChangeForPrevious(item.scope, item.path, quarantine))
 		if err := persistPreparedRepairTransaction(tx); err != nil {
@@ -198,9 +198,9 @@ func configRepairTargetPaths(opts ConfigOptions) ([]string, error) {
 		}
 		return paths
 	}
-	project := filepath.Join(opts.Root, "reasonix.toml")
+	project := filepath.Join(opts.Root, "semantix-agent.toml")
 	if opts.Root == "" || opts.Root == "." {
-		project = "reasonix.toml"
+		project = "semantix-agent.toml"
 	}
 	switch opts.OnlyScope {
 	case "global":

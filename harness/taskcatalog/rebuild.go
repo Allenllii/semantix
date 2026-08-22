@@ -38,7 +38,7 @@ func Rebuild(ctx context.Context, path string, projects []Project) (Status, erro
 		Path: path, MemoryName: "task-catalog-rebuild", Migrations: migrations(),
 	}, func(ctx context.Context, db *sql.DB) error {
 		catalog := &Catalog{
-			db: db, store: taskmonitor.NewFileStore(filepath.Join(".reasonix", "tasks")),
+			db: db, store: taskmonitor.NewFileStore(filepath.Join(".semantix", "tasks")),
 			status:      Status{State: "ready", Mode: projectiondb.ModeDisk, Path: path},
 			reconciling: map[string]bool{}, registered: map[string]bool{}, reconcileDone: true,
 		}

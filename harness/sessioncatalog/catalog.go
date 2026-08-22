@@ -83,7 +83,7 @@ func Open(ctx context.Context, opts Options) (*Catalog, error) {
 		opts.InMemory = true
 	}
 	if !opts.InMemory {
-		if env := strings.TrimSpace(os.Getenv("REASONIX_SESSION_CATALOG_MEMORY")); env == "1" {
+		if env := strings.TrimSpace(os.Getenv("SEMANTIX_SESSION_CATALOG_MEMORY")); env == "1" {
 			opts.InMemory = true
 		}
 	}

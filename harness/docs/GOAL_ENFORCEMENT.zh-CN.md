@@ -1,6 +1,6 @@
 # Goal 模式 — 结构化完成协议、预算控制与 Delivery 职责拆分
 
-Reasonix 的 Goal 模式（`/goal`）将目标推进（Goal）、验收（Delivery）和权限（Ask/Auto/Yolo、Sandbox）三者保持正交：Goal 是唯一的跨 turn 调度器，Delivery 是纯质量门禁，工具权限与沙箱不受 Goal 开关影响。
+Semantix 的 Goal 模式（`/goal`）将目标推进（Goal）、验收（Delivery）和权限（Ask/Auto/Yolo、Sandbox）三者保持正交：Goal 是唯一的跨 turn 调度器，Delivery 是纯质量门禁，工具权限与沙箱不受 Goal 开关影响。
 
 ## 功能一览
 

@@ -166,7 +166,7 @@ func planForPreflight(opts Options, toGen uint64) *extension.RuntimePlan {
 	if opts.Extensions == nil && opts.Graph == nil {
 		return nil
 	}
-	toGraph, err := buildRuntimeGraph(config.ReasonixHomeDir(), nil)
+	toGraph, err := buildRuntimeGraph(config.SemantixHomeDir(), nil)
 	if err != nil {
 		return nil
 	}
@@ -179,7 +179,7 @@ func finalizeBuildResult(res *BuildResult, publish bool) *BuildResult {
 	if res == nil {
 		return nil
 	}
-	if graph, err := buildRuntimeGraph(config.ReasonixHomeDir(), nil); err == nil {
+	if graph, err := buildRuntimeGraph(config.SemantixHomeDir(), nil); err == nil {
 		attachPlanAndStatus(res, nil, graph, 0, nil)
 	}
 	if publish {

@@ -11,7 +11,7 @@
 | U7 事件旁路 | `internal/event.Sink` 接口 | 新增 `internal/semantix/sink.go`：`HarnessSink` 实现 Sink，turn 级组装 kernel 兼容 JSONL（`{role,content,tool_calls}`）写 `.semantix/sessions/<session>.jsonl` |
 | U8a L2 注入 | `internal/agent/agent.go:2641 systemPrompt()` | config 开关 `semantix.inject` 开启时，systemPrompt 末尾调 `semantix inject --query <首条用户消息>` 插入 `[semantix-reuse]` 块 |
 | U8b lookup 工具 | `internal/tool/tool.go:250 RegisterBuiltin` | 新增 `internal/tool/semantix.go`：`semantix_lookup` 工具（schema: query/limit），`semantix lookup --json` 子进程调用 |
-| 配置 | `reasonix.example.toml` | `[semantix] enabled/inject/db/binary` 段 |
+| 配置 | `semantix.example.toml` | `[semantix] enabled/inject/db/binary` 段 |
 
 ## 事件映射（fork Sink → kernel 会话 JSONL）
 
@@ -36,7 +36,7 @@ TurnDone     → flush：user 行（来自 session 首条）+ assistant 行（co
 
 1. `internal/semantix/sink.go`（HarnessSink）+ `internal/semantix/inject.go`（子进程封装）
 2. `internal/tool/semantix.go`（semantix_lookup 工具注册）
-3. `internal/config` 加 `[semantix]` 段 + `cmd/reasonix` main 装配 HarnessSink
+3. `internal/config` 加 `[semantix]` 段 + `cmd/semantix` main 装配 HarnessSink
 4. `systemPrompt()` 注入 hook（config 开关）
 5. fork 内 `go build ./...` + `go test ./internal/semantix/...` + 冒烟（fake turn → JSONL 断言）
 6. 推送 fork（网络恢复后）+ Issue #24 同步

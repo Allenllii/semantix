@@ -329,7 +329,7 @@ func RenderQualityText(report QualityReport) string {
 		cache = fmt.Sprintf("%d%%", *report.Usage.CacheHitPercent)
 	}
 	var out strings.Builder
-	fmt.Fprintf(&out, "Reasonix quality diagnostics\n")
+	fmt.Fprintf(&out, "Semantix quality diagnostics\n")
 	fmt.Fprintf(&out, "- version: %s\n", valueOrUnknown(report.Version))
 	fmt.Fprintf(&out, "- model family: %s\n", report.Profile.ModelFamily)
 	fmt.Fprintf(&out, "- profile: runtime=%s collaboration=%s approval=%s goal=%t recovered=%t\n",

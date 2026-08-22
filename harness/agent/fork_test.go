@@ -32,7 +32,7 @@ func forkRegistry() *tool.Registry {
 func captureForkFixture(t *testing.T) (*ForkBundle, *scriptedProvider) {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("REASONIX_EXPERIMENT_FORK_CAPTURE_DIR", dir)
+	t.Setenv("SEMANTIX_EXPERIMENT_FORK_CAPTURE_DIR", dir)
 	prov := &scriptedProvider{name: "p", turns: forkScriptTurns()}
 	a := New(prov, forkRegistry(), NewSession("sys"), Options{}, event.Discard)
 	if err := a.Run(context.Background(), "fix the widget"); err != nil {
@@ -57,7 +57,7 @@ func TestForkControlContinuationMatchesOriginalRequest(t *testing.T) {
 		t.Fatalf("bundle input = %q", b.Input)
 	}
 
-	os.Unsetenv("REASONIX_EXPERIMENT_FORK_CAPTURE_DIR")
+	os.Unsetenv("SEMANTIX_EXPERIMENT_FORK_CAPTURE_DIR")
 	cont := &scriptedProvider{name: "p", turns: [][]provider.Chunk{{{Type: provider.ChunkText, Text: "done"}}}}
 	a := New(cont, forkRegistry(), NewSession("sys"), Options{}, event.Discard)
 	a.armForkContinuation(b, "")
@@ -78,7 +78,7 @@ func TestForkControlContinuationMatchesOriginalRequest(t *testing.T) {
 
 func TestForkTreatmentDiffersOnlyByNudge(t *testing.T) {
 	b, orig := captureForkFixture(t)
-	os.Unsetenv("REASONIX_EXPERIMENT_FORK_CAPTURE_DIR")
+	os.Unsetenv("SEMANTIX_EXPERIMENT_FORK_CAPTURE_DIR")
 	cont := &scriptedProvider{name: "p", turns: [][]provider.Chunk{{{Type: provider.ChunkText, Text: "done"}}}}
 	a := New(cont, forkRegistry(), NewSession("sys"), Options{}, event.Discard)
 	a.armForkContinuation(b, ebmNudge)
@@ -111,7 +111,7 @@ func TestForkCaptureRefusesTreatedState(t *testing.T) {
 	defer func() { ebmEnabled = old }()
 
 	dir := t.TempDir()
-	t.Setenv("REASONIX_EXPERIMENT_FORK_CAPTURE_DIR", dir)
+	t.Setenv("SEMANTIX_EXPERIMENT_FORK_CAPTURE_DIR", dir)
 	prov := &scriptedProvider{name: "p", turns: forkScriptTurns()}
 	a := New(prov, forkRegistry(), NewSession("sys"), Options{}, event.Discard)
 	if err := a.Run(context.Background(), "fix the widget"); err != nil {
@@ -135,8 +135,8 @@ func TestForkCaptureRefusesTreatedState(t *testing.T) {
 
 func TestGovernorCaptureFreezesExpensiveExplorationState(t *testing.T) {
 	dir := t.TempDir()
-	t.Setenv("REASONIX_EXPERIMENT_FORK_CAPTURE_DIR", dir)
-	t.Setenv("REASONIX_EXPERIMENT_FORK_POLICY", "governor")
+	t.Setenv("SEMANTIX_EXPERIMENT_FORK_CAPTURE_DIR", dir)
+	t.Setenv("SEMANTIX_EXPERIMENT_FORK_POLICY", "governor")
 	reg := tool.NewRegistry()
 	reg.Add(fakeTool{name: "read_probe", readOnly: true})
 	prov := &scriptedProvider{name: "p", turns: [][]provider.Chunk{

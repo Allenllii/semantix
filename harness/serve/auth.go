@@ -40,9 +40,9 @@ const (
 )
 
 const (
-	cookieToken     = "reasonix_token"    // holds the token for token mode
-	cookieSession   = "reasonix_session"  // holds the HMAC-signed session for password mode
-	cookieRedirect  = "reasonix_redirect" // temporary: where to go after login
+	cookieToken     = "semantix_token"    // holds the token for token mode
+	cookieSession   = "semantix_session"  // holds the HMAC-signed session for password mode
+	cookieRedirect  = "semantix_redirect" // temporary: where to go after login
 	tokenByteLen    = 32                  // 256-bit random token
 	sessionDuration = 30 * 24 * time.Hour // how long a password session lasts
 	bcryptCost      = 12                  // bcrypt cost factor
@@ -185,7 +185,7 @@ func HashPassword(password string) (string, error) {
 
 func sessionKeyForPasswordHash(passwordHash string) []byte {
 	if passwordHash != "" {
-		key, err := pbkdf2.Key(sha256.New, passwordHash, []byte("reasonix serve session key"), pbkdf2Iter, 32)
+		key, err := pbkdf2.Key(sha256.New, passwordHash, []byte("semantix-agent serve session key"), pbkdf2Iter, 32)
 		if err != nil {
 			panic("serve/auth: pbkdf2 failed: " + err.Error())
 		}

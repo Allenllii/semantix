@@ -18,7 +18,7 @@ type messageEditor interface {
 	EditMessage(ctx context.Context, messageID string, msg OutboundMessage) error
 }
 
-// renderSink 将 Reasonix 事件流渲染为平台消息。
+// renderSink 将 Semantix 事件流渲染为平台消息。
 type renderSink struct {
 	ctx        context.Context
 	adapter    Adapter

@@ -56,8 +56,11 @@ func TestEmbeddedAndSourceManifestsMatch(t *testing.T) {
 	if !strings.HasPrefix(embedded.Digest, "sha256:") || embedded.Version == "" || embedded.Revision == "" {
 		t.Fatalf("manifest is missing build identity: %#v", embedded)
 	}
-	if embedded.ReleaseNotes < 10 {
-		t.Fatalf("embedded release notes = %d, want release history", embedded.ReleaseNotes)
+	// This product ships its own changelog (v0.5.0+), not the upstream fork's
+	// 32-version history, so the guard is "release history is embedded at all"
+	// rather than a fixed depth.
+	if embedded.ReleaseNotes < 1 {
+		t.Fatalf("embedded release notes = %d, want at least one release entry", embedded.ReleaseNotes)
 	}
 }
 
@@ -66,26 +69,26 @@ func TestDocsCommandOverviewAndSearchUseEmbeddedCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"内置 Semantix 文档", "version=", "revision=", "digest=sha256:", "/docs 1.19.5 更新日志"} {
+	for _, want := range []string{"内置 Semantix 文档", "version=", "revision=", "digest=sha256:", "/docs 0.5.1 更新日志"} {
 		if !strings.Contains(overview, want) {
 			t.Fatalf("command overview missing %q:\n%s", want, overview)
 		}
 	}
-	qualified, err := CommandOverviewFor("en", "/reasonix:docs")
+	qualified, err := CommandOverviewFor("en", "/semantix:docs")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(qualified, "Usage: /reasonix:docs <question>") || strings.Contains(qualified, "Example: /docs ") {
+	if !strings.Contains(qualified, "Usage: /semantix:docs <question>") || strings.Contains(qualified, "Example: /docs ") {
 		t.Fatalf("qualified command overview used the wrong invocation:\n%s", qualified)
 	}
 
-	results, err := SearchEmbedded(context.Background(), "1.19.5 更新日志")
+	results, err := SearchEmbedded(context.Background(), "0.5.1 更新日志")
 	if err != nil {
 		t.Fatal(err)
 	}
 	firstStart := strings.Index(results, "\n1. ")
 	firstEnd := strings.Index(results, "\n2. ")
-	if firstStart < 0 || firstEnd <= firstStart || !strings.Contains(results[firstStart:firstEnd], "path=changelog/v1.19.5.zh-CN.md") || !strings.Contains(results, "digest=sha256:") {
+	if firstStart < 0 || firstEnd <= firstStart || !strings.Contains(results[firstStart:firstEnd], "path=changelog/v0.5.1.zh-CN.md") || !strings.Contains(results, "digest=sha256:") {
 		t.Fatalf("command search did not use the embedded release catalog:\n%s", results)
 	}
 }
@@ -228,34 +231,34 @@ func TestReleaseNotesAreSearchableInBothLanguages(t *testing.T) {
 	}
 	tl := &docsTool{catalog: c}
 
-	english, err := tl.search(context.Background(), "v1.19.5 usage statistics dashboard", "en", "user", 5)
+	english, err := tl.search(context.Background(), "v0.5.1 rebrand update notes", "en", "user", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(english, "path=changelog/v1.19.5.md") || !strings.Contains(english, "source=release-notes/releases.json#v1.19.5") {
+	if !strings.Contains(english, "path=changelog/v0.5.1.md") || !strings.Contains(english, "source=release-notes/releases.json#v0.5.1") {
 		t.Fatalf("English release search missing versioned changelog:\n%s", english)
 	}
 
-	chinese, err := tl.search(context.Background(), "v1.19.5 用量统计面板", "zh-CN", "user", 5)
+	chinese, err := tl.search(context.Background(), "v0.5.1 品牌整合", "zh-CN", "user", 5)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(chinese, "path=changelog/v1.19.5.zh-CN.md") {
+	if !strings.Contains(chinese, "path=changelog/v0.5.1.zh-CN.md") {
 		t.Fatalf("Chinese release search missing versioned changelog:\n%s", chinese)
 	}
 
-	sections, err := tl.read("", "changelog/v1.19.5.zh-CN.md")
+	sections, err := tl.read("", "changelog/v0.5.1.zh-CN.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sections, "source: release-notes/releases.json#v1.19.5") {
+	if !strings.Contains(sections, "source: release-notes/releases.json#v0.5.1") {
 		t.Fatalf("release section listing missing JSON provenance:\n%s", sections)
 	}
-	section, err := tl.read("changelog/v1.19.5.zh-CN.md::s002", "")
+	section, err := tl.read("changelog/v0.5.1.zh-CN.md::s002", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(section, "source: release-notes/releases.json#v1.19.5 rendered-lines=") {
+	if !strings.Contains(section, "source: release-notes/releases.json#v0.5.1 rendered-lines=") {
 		t.Fatalf("release section missing rendered provenance:\n%s", section)
 	}
 }
@@ -337,7 +340,7 @@ func TestSearchPrefersRelevantChineseAndEnglishSections(t *testing.T) {
 		t.Fatalf("Chinese search did not find the permission guide:\n%s", zh)
 	}
 
-	en, err := tl.search(context.Background(), "REASONIX_HOME configuration paths", "auto", "all", 5)
+	en, err := tl.search(context.Background(), "SEMANTIX_HOME configuration paths", "auto", "all", 5)
 	if err != nil {
 		t.Fatalf("English search: %v", err)
 	}
@@ -348,13 +351,13 @@ func TestSearchPrefersRelevantChineseAndEnglishSections(t *testing.T) {
 
 func TestToolSearchReadAndListRoundTrip(t *testing.T) {
 	c, err := loadCatalog(fstest.MapFS{
-		"GUIDE.md": {Data: []byte("# Guide\n\n## Configure MCP\n\nSet `reasonix.toml` before connecting plugins.\n")},
+		"GUIDE.md": {Data: []byte("# Guide\n\n## Configure MCP\n\nSet `semantix-agent.toml` before connecting plugins.\n")},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	tl := &docsTool{catalog: c}
-	search, err := tl.Execute(context.Background(), json.RawMessage(`{"operation":"search","query":"reasonix.toml MCP"}`))
+	search, err := tl.Execute(context.Background(), json.RawMessage(`{"operation":"search","query":"semantix-agent.toml MCP"}`))
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -365,7 +368,7 @@ func TestToolSearchReadAndListRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	if !strings.Contains(read, "Set `reasonix.toml`") || !strings.Contains(read, "source: docs/GUIDE.md:3-5") {
+	if !strings.Contains(read, "Set `semantix-agent.toml`") || !strings.Contains(read, "source: docs/GUIDE.md:3-5") {
 		t.Fatalf("read result missing content or provenance:\n%s", read)
 	}
 	list, err := tl.Execute(context.Background(), json.RawMessage(`{"operation":"list","language":"en"}`))
@@ -393,11 +396,11 @@ func TestParserIgnoresHeadingsInsideFencedCode(t *testing.T) {
 }
 
 func TestGoldmarkHeadingsPreserveTextAndSetextSemantics(t *testing.T) {
-	doc := parseDocument("EXAMPLE.md", "# Example\n\n### Configure *MCP* with `reasonix.toml`, C#, and <https://example.com>\n\nBody.\n\nSetext section\n--------------\n\nMore.\n")
+	doc := parseDocument("EXAMPLE.md", "# Example\n\n### Configure *MCP* with `semantix-agent.toml`, C#, and <https://example.com>\n\nBody.\n\nSetext section\n--------------\n\nMore.\n")
 	if len(doc.sections) != 3 {
 		t.Fatalf("sections = %d, want 3", len(doc.sections))
 	}
-	if doc.sections[1].heading != "Example > Configure MCP with reasonix.toml, C#, and https://example.com" {
+	if doc.sections[1].heading != "Example > Configure MCP with semantix-agent.toml, C#, and https://example.com" {
 		t.Fatalf("ATX heading = %q", doc.sections[1].heading)
 	}
 	if doc.sections[2].heading != "Example > Setext section" {

@@ -1,14 +1,20 @@
-# Reasonix configuration.
-# Resolution order: flag > ./reasonix.toml > <Reasonix home>/config.toml > built-in defaults.
-# Fields marked user/global only are not overridden by ./reasonix.toml.
+# semantix-agent.example.toml — config for the semantix-agent harness.
+# Copy to semantix-agent.toml in your project root, or skip this file entirely
+# and run `semantix-agent setup` (interactive provider wizard).
+#
+# Resolution order: flag > ./semantix-agent.toml > <semantix home>/config.toml
+# > built-in defaults. Fields marked user/global only are not overridden by
+# ./semantix-agent.toml.
 # Provider entries name secrets via api_key_env; saved key values live in
-# Reasonix's global <Reasonix home>/.env. Never put API key values here.
+# the global <semantix home>/.env. Never put API key values here.
+#
+# The memory kernel CLI has its own separate config: semantix.example.toml.
 
 default_model = "glm"   # 默认 GLM(智谱)。切 DeepSeek:改成 "deepseek";切海外 GLM:改成 "zai"。也可写 "provider/model"
-# language      = "zh"   # ui language; empty = auto-detect from $LANG / $REASONIX_LANG
+# language      = "zh"   # ui language; empty = auto-detect from $LANG / $SEMANTIX_LANG
 
 [ui]
-theme = "auto"   # auto|dark|light; controls CLI colors only; REASONIX_THEME can override per run
+theme = "auto"   # auto|dark|light; controls CLI colors only; SEMANTIX_THEME can override per run
 # theme_style = "semantix"   # semantix|semantix-light|graphite|aurora|slate|carbon|nocturne|amber and legacy aliases
 # shortcut_layout = "desktop"   # classic|desktop; compatibility setting; Shift+Tab toggles Plan, Ctrl+Y toggles YOLO
 # cursor_shape = "bar"   # block|underline|bar; text input cursor shape; slim default avoids covering CJK characters
@@ -30,7 +36,7 @@ ask_request = true   # notify when a question is waiting
 
 [agent]
 # system_prompt = "You are ..."   # custom persona/prompt; unset or empty = built-in default
-# system_prompt_file = "prompts/system.md"   # project paths stay in <workspace>; user paths may fall back to <reasonix home>
+# system_prompt_file = "prompts/system.md"   # project paths stay in <workspace>; user paths may fall back to <semantix home>
 temperature       = 0.0
 # recovery_model = ""               # optional reviewer for low-risk automatic recovery; falls back to guardian_model then main model
 # reasoning_language = "auto"   # visible reasoning text: auto|zh|en
@@ -45,7 +51,7 @@ compact_force_ratio = 0.9   # force compacting at this high-water mark
 # max_subagent_concurrency = 6   # session-wide sub-agent concurrency (task/fleet/skills)
 # max_parallel_writers = 3       # concurrent writers with non-overlapping write_paths
 # output_style = "explanatory"   # persona/tone folded into the prompt: explanatory | learning | concise,
-#                                  or a custom .reasonix/output-styles/<name>.md ; empty = default
+#                                  or a custom .semantix/output-styles/<name>.md ; empty = default
 
 # A provider is a vendor endpoint (one base_url + key) that offers one or more
 # models. Use `models = [...]` to expose several under a single entry — switching
@@ -170,7 +176,7 @@ stalled_warning_seconds = 900   # warn once per background job after this many q
 # network        = true
 
 # Skills are invokable playbooks (SKILL.md / <name>.md with frontmatter), found
-# under .reasonix/skills, .agents/skills, .agent/skills, .claude/skills (project)
+# under .semantix/skills, .agents/skills, .agent/skills, .claude/skills (project)
 # and the same dirs under ~ (global). Built-ins (explore/research/review/security-review/test)
 # ship out of the box. The model invokes them via run_skill / explore / …; you
 # invoke them via /<name>. Manage with /skill (list, show, enable, disable, new, paths).
@@ -182,10 +188,10 @@ stalled_warning_seconds = 900   # warn once per background job after this many q
 
 # Hooks run shell commands around the loop (PreToolUse / PostToolUse /
 # PermissionRequest / UserPromptSubmit / Stop). They are NOT configured here — put them in
-# settings.json: <Reasonix home>/settings.json (global, always on) and
-# <project>/.reasonix/settings.json (project, loaded automatically).
+# settings.json: <semantix home>/settings.json (global, always on) and
+# <project>/.semantix/settings.json (project, loaded automatically).
 # Exit 0 = pass, exit 2 = block (PreToolUse / UserPromptSubmit only). Example
-# <Reasonix home>/settings.json:
+# <semantix home>/settings.json:
 #   { "hooks": {
 #       "PreToolUse":  [ { "match": "bash", "command": "my-guard.sh" } ],
 #       "PermissionRequest": [ { "match": "bash", "command": "notify-send 'approval needed'" } ],
@@ -200,7 +206,7 @@ stalled_warning_seconds = 900   # warn once per background job after this many q
 # External stdio plugins (MCP-compatible); each is a standalone executable.
 # [[plugins]]
 # name    = "example"
-# command = "reasonix-plugin-example"
+# command = "semantix-plugin-example"
 # # Startup may continue in the background after the first caller stops waiting.
 # # startup_timeout_seconds = 60
 # # Per-server MCP call timeout; 0 keeps the global/default cap.
@@ -211,7 +217,7 @@ stalled_warning_seconds = 900   # warn once per background job after this many q
 # # start. Use /mcp or the desktop MCP panel to refresh, reconnect, or disable.
 
 # Bot gateway: multi-channel IM bot for QQ, Feishu, and WeChat.
-# Start with `reasonix bot start --channels qq,feishu,weixin`.
+# Start with `semantix bot start --channels qq,feishu,weixin`.
 # All secrets are read from environment variables; never put keys here.
 # [bot]
 # enabled    = false
@@ -231,7 +237,7 @@ stalled_warning_seconds = 900   # warn once per background job after this many q
 # [bot.control]
 # enabled = false         # 本机 loopback HTTP API：GET /status, GET /metrics, POST /send
 # addr = "127.0.0.1:37913"
-# token_env = "REASONIX_BOT_CONTROL_TOKEN"
+# token_env = "SEMANTIX_BOT_CONTROL_TOKEN"
 #
 # [[bot.routes]]
 # connection_id = "feishu-lark" # 可选；空字段表示通配
@@ -284,10 +290,10 @@ stalled_warning_seconds = 900   # warn once per background job after this many q
 # api_base  = "https://ilinkai.weixin.qq.com"   # Tencent iLink Bot API base URL
 
 [serve]
-# Authentication for the HTTP serve frontend (reasonix serve).
+# Authentication for the HTTP serve frontend (semantix serve).
 # auth_mode = "none"      # none | token | password
 # token      = ""          # pre-shared token for auth_mode = "token" (auto-generated if empty)
-# password_hash = ""       # bcrypt hash for auth_mode = "password". Generate with: reasonix serve --hash-password <password>
+# password_hash = ""       # bcrypt hash for auth_mode = "password". Generate with: semantix serve --hash-password <password>
 # behind_proxy = false      # set true when behind a trusted reverse proxy (nginx, Caddy, etc.) that sets X-Forwarded-* headers
 
 # --- Semantix memory kernel (v0.3.0+) -------------------------------------

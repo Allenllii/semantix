@@ -1,6 +1,6 @@
-# Reasonix v5 Stable Production Checklist
+# Semantix v5 Stable Production Checklist
 
-Reasonix v5.9.9 is frozen as a stable release candidate. This checklist is the
+Semantix v5.9.9 is frozen as a stable release candidate. This checklist is the
 release gate for PR #5217 and future v5-stable maintenance work.
 
 ## Release Gate

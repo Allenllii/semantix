@@ -647,7 +647,7 @@ Semantix is designed as a kernel independent of any specific agent harness.
 ┌─────────────────────────────────────────────────────────┐
 │                     Agent Harness                        │
 │                                                         │
-│   Reasonix · Claude Code-style agents · custom agents   │
+│   Semantix · Claude Code-style agents · custom agents   │
 └──────────────────────────┬──────────────────────────────┘
                            │
                     events │ decisions
@@ -694,7 +694,7 @@ This map follows the current repository layout. It describes observable responsi
 | Module | Path | Responsibility | Focused verification |
 |---|---|---|---|
 | CLI | [`cmd/semantix`](./cmd/semantix) | Command registry, stable JSON envelope, exit-code contract, maintenance and evaluation commands. | `go test ./cmd/semantix -race` |
-| Agent executable | [`cmd/semantix-agent`](./cmd/semantix-agent) | Packaged Reasonix-derived agent entry point with crash capture and build-version wiring. | `go test ./cmd/semantix-agent` |
+| Agent executable | [`cmd/semantix-agent`](./cmd/semantix-agent) | Packaged Semantix-derived agent entry point with crash capture and build-version wiring. | `go test ./cmd/semantix-agent` |
 | Gateway | [`gateway`](./gateway), [`cmd/semantix-gateway`](./cmd/semantix-gateway) | OpenAI-compatible proxy, Anthropic conversion, SSE relay, retrieval/injection and fail-open upstream routing. | `go test ./gateway ./cmd/semantix-gateway -race` |
 | Configuration | [`kernel/config`](./kernel/config) | Resolves built-ins, TOML, environment variables and CLI overrides with source tracking and typed errors. | `go test ./kernel/config -race` |
 | Event ingestion | [`kernel/ingest`](./kernel/ingest) | Reads harness JSONL event streams and feeds normalized sessions into extraction without requiring a live harness. | `go test ./kernel/ingest -race` |
@@ -713,13 +713,13 @@ This map follows the current repository layout. It describes observable responsi
 | Evolution | [`kernel/evolve`](./kernel/evolve) | EWMA-driven tuning for retrieval thresholds and injection budget with bounded, inspectable parameters. | `go test ./kernel/evolve -race` |
 | Event contract | [`kernel/event`](./kernel/event) | Typed kernel event kinds, payloads, wire format and synchronous in-process bus. | `go test ./kernel/event -race` |
 | Usage accounting | [`kernel/usage`](./kernel/usage) | Records per-turn token/cache events and summarizes baseline cost, paid cost and estimated savings. | `go test ./kernel/usage -race` |
-| Reasonix harness | [`harness`](./harness) | Bundled agent runtime: providers, tools, permissions, extensions, sessions, recovery, remote execution and UI-facing contracts. | `go test ./harness/... -race` |
+| Semantix harness | [`harness`](./harness) | Bundled agent runtime: providers, tools, permissions, extensions, sessions, recovery, remote execution and UI-facing contracts. | `go test ./harness/... -race` |
 | Harness bridge | [`harness/semantix`](./harness/semantix) | Mirrors harness events into session JSONL and surfaces reuse summaries while keeping Semantix fail-open. | `go test ./harness/semantix -race` |
 | Agent Skill | [`agent-skill`](./agent-skill) | Self-serve install, tool schema, session-bypass hook and self-test for external harness integration. | `bash agent-skill/scripts/selftest.sh` |
 | Deployment | [`deploy`](./deploy) | Gateway Docker image, Compose topology and environment-expandable example configuration. | `docker compose -f deploy/docker-compose.yml config` |
 | Automation scripts | [`scripts`](./scripts) | Cross-session demo, release builders and Go bootstrap helper used by local and release workflows. | Run the relevant demo or release script in a clean workspace. |
 | Specs and evidence | [`docs`](./docs) | Architecture, security, roadmap, specifications and acceptance reports that separate design targets from measured results. | Review the linked acceptance report for each shipped unit. |
-| Integration patches | [`patches`](./patches) | Versioned delivery patches for external Reasonix forks, with drift notes and explicit preflight instructions. | `git apply --check patches/semantix-sched-prefetch.patch` |
+| Integration patches | [`patches`](./patches) | Versioned delivery patches for external Semantix forks, with drift notes and explicit preflight instructions. | `git apply --check patches/semantix-sched-prefetch.patch` |
 | Blog sources | [`blog`](./blog) | Versioned Markdown sources for technical articles; site content tests validate metadata, links and encoding. | `cd site && npm run test:content` |
 | Website | [`site`](./site) | Next.js product site, documentation, blog renderer, structured data, generated `llms-full.txt` and content-quality tests. | `cd site && npm run check` |
 | CI and workflows | [`.github/workflows`](./.github/workflows) | Runs Go vet/race tests, full website checks and the site deployment workflow with concurrency control. | Required GitHub checks: `Go checks` and `Website checks`. |
@@ -790,13 +790,13 @@ Reuse result                     │
 
 ---
 
-# Semantix + Reasonix
+# Semantix + Semantix
 
-Reasonix is the initial architecture baseline and first integration target for Semantix. Since v0.3.0 the release bundle ships both binaries together (reasonix + semantix) with a shared install script and example config.
+Semantix is the initial architecture baseline and first integration target for Semantix. Since v0.3.0 the release bundle ships both binaries together (semantix + semantix) with a shared install script and example config.
 
 The two projects solve different layers of the agent-infrastructure problem.
 
-| Capability                      | Reasonix                  | Semantix                   |
+| Capability                      | Semantix                  | Semantix                   |
 | ------------------------------- | ------------------------- | -------------------------- |
 | Primary scope                   | Individual agent session  | Cross-session optimization |
 | Agent execution loop            | ✅                         | Uses existing harness      |
@@ -813,7 +813,7 @@ The two projects solve different layers of the agent-infrastructure problem.
 | Long-term optimization feedback | —                         | ✅                          |
 | Self-evolving behavior          | —                         | ✅                          |
 
-Reasonix asks:
+Semantix asks:
 
 > **How can this agent session run efficiently?**
 
@@ -833,7 +833,7 @@ Semantix
    └─ Evolution
    │
    ▼
-Reasonix
+Semantix
    │
    ├─ Agent loop
    ├─ Context management
@@ -845,9 +845,9 @@ Reasonix
 LLM Provider
 ```
 
-Semantix is not designed to replace Reasonix.
+Semantix is not designed to replace Semantix.
 
-It is designed to make harnesses like Reasonix more efficient over time.
+It is designed to make harnesses like Semantix more efficient over time.
 
 ---
 
@@ -1033,7 +1033,7 @@ GLM adaptation · GLM-5.x provider     🚧 first-class provider, switchable w/ 
 Agile 3 · Multi-harness ecosystem     ⏳  paths documented (agent-skill/); no adapter shipped
 ```
 
-**First integration target shipped**: since v0.3.0 the release bundle packages **reasonix + semantix** together (per-platform archives, install script, example config).
+**First integration target shipped**: since v0.3.0 the release bundle packages **semantix + semantix** together (per-platform archives, install script, example config).
 
 **Gate**: M0-Gate passed conditionally (2026-08-09) — technical feasibility and cost savings (79.8% on synthetic replay, `docs/reports/m0-cost-comparison.md`) are verified; **real-data cross-session hit rate ≥ 70%** (`semantix verify`) is the remaining gate, per `docs/reports/m0-gate.md`.
 
@@ -1149,7 +1149,7 @@ Detailed architecture documents are available in [`docs/`](./docs).
 
 ### Agent Skill
 
-[`agent-skill/SKILL.md`](./agent-skill/SKILL.md) — self-serve integration for any harness (Reasonix fork / LangChain / Claude Code / custom): install + selftest scripts, tool schemas, session-bypass hooks.
+[`agent-skill/SKILL.md`](./agent-skill/SKILL.md) — self-serve integration for any harness (semantix-agent / LangChain / Claude Code / custom): install + selftest scripts, tool schemas, session-bypass hooks.
 
 ### Website
 
@@ -1166,7 +1166,7 @@ Detailed architecture documents are available in [`docs/`](./docs).
 Full architecture design covering:
 
 * problem definition
-* Reasonix baseline analysis
+* Semantix baseline analysis
 * Semantic Slice Library
 * L1 / L2 / L3 cache
 * scheduling
@@ -1216,7 +1216,7 @@ Particularly useful areas include:
 * local embeddings
 * ANN indexing
 * evaluation methodology
-* Reasonix integration
+* Semantix integration
 * other harness adapters
 
 If you disagree with an architectural assumption, open an issue.
@@ -1229,7 +1229,7 @@ Testing the assumptions is part of building the project.
 
 Semantix uses **DeepSeek-Reasonix** as its initial architecture baseline and first intended integration target.
 
-Reasonix's work on:
+Semantix's work on:
 
 * cache-stable agent execution
 * context maintenance

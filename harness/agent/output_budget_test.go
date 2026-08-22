@@ -430,7 +430,7 @@ func TestEstimatedUsageDoesNotReplacePromptCalibration(t *testing.T) {
 }
 
 func TestForkCaptureProviderPreservesOutputBudgetCapabilities(t *testing.T) {
-	t.Setenv("REASONIX_EXPERIMENT_FORK_CAPTURE_DIR", t.TempDir())
+	t.Setenv("SEMANTIX_EXPERIMENT_FORK_CAPTURE_DIR", t.TempDir())
 	prov := &sharedWindowTestProvider{budget: 128 * 1024, shared: true,
 		policy: provider.SharedWindowInputPolicy{ReplaysOrdinaryReasoning: true, ReplaysResponsesItems: true}}
 	a := New(prov, tool.NewRegistry(), NewSession(""), Options{}, event.Discard)

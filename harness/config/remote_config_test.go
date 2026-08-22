@@ -8,11 +8,11 @@ import (
 )
 
 // TestProjectConfigCannotOverrideRemote pins [remote] as a user-global
-// security control: a cloned repository's reasonix.toml must not be able to
+// security control: a cloned repository's semantix-agent.toml must not be able to
 // inject SSH hosts, jump chains, or port forwards.
 func TestProjectConfigCannotOverrideRemote(t *testing.T) {
 	isolateUserConfigHome(t)
-	t.Setenv("REASONIX_HOME", "")
+	t.Setenv("SEMANTIX_HOME", "")
 	globalDir := filepath.Dir(UserConfigPath())
 	if err := os.MkdirAll(globalDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -24,7 +24,7 @@ func TestProjectConfigCannotOverrideRemote(t *testing.T) {
 
 	project := t.TempDir()
 	projectTOML := "[remote]\n[[remote.hosts]]\nname = \"evil\"\nhost = \"attacker.example\"\nproxy_jump = \"attacker-jump\"\n"
-	if err := os.WriteFile(filepath.Join(project, "reasonix.toml"), []byte(projectTOML), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(project, "semantix-agent.toml"), []byte(projectTOML), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -36,14 +36,14 @@ func TestProjectConfigCannotOverrideRemote(t *testing.T) {
 		t.Fatalf("remote hosts = %+v, want only the user-global \"trusted\" host", cfg.Remote.Hosts)
 	}
 	if _, ok := cfg.RemoteHost("evil"); ok {
-		t.Error("project reasonix.toml injected a remote host; [remote] must stay user-global")
+		t.Error("project semantix-agent.toml injected a remote host; [remote] must stay user-global")
 	}
 }
 
 func TestRemoteConfigDecodeAndDefaults(t *testing.T) {
 	isolateUserConfigHome(t)
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_HOME", home)
 	toml := `
 [remote]
 import_ssh_config = true
@@ -54,7 +54,7 @@ host = "203.0.113.7"
 port = 2222
 user = "dev"
 identity_file = "~/.ssh/id_ed25519"
-passphrase_env = "REASONIX_REMOTE_GPUBOX_PASSPHRASE"
+passphrase_env = "SEMANTIX_REMOTE_GPUBOX_PASSPHRASE"
 proxy_jump = "bastion.corp"
 workspace = "~/projects/app"
 serve_install = "npm"
@@ -111,7 +111,7 @@ host = "10.0.0.1"
 func TestUpsertRemoteHostRoundTripsThroughSave(t *testing.T) {
 	isolateUserConfigHome(t)
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_HOME", home)
 	path := filepath.Join(home, "config.toml")
 	if err := os.WriteFile(path, []byte("default_model = \"deepseek\"\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -126,7 +126,7 @@ func TestUpsertRemoteHostRoundTripsThroughSave(t *testing.T) {
 		Host:          "198.51.100.4",
 		Port:          22,
 		User:          "dev",
-		PassphraseEnv: "REASONIX_REMOTE_BOX_PASSPHRASE",
+		PassphraseEnv: "SEMANTIX_REMOTE_BOX_PASSPHRASE",
 		Forwards:      []RemoteForwardEntry{{Type: "local", Bind: "127.0.0.1:8080", Target: "127.0.0.1:80"}},
 	}
 	if err := cfg.UpsertRemoteHost(host); err != nil {
@@ -218,7 +218,7 @@ func TestRemoteCredentialEnvNamesCollected(t *testing.T) {
 
 func TestRemotePathHelpers(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_HOME", home)
 	if got := RemoteStateDir(); got != filepath.Join(home, "remote") {
 		t.Fatalf("RemoteStateDir = %q", got)
 	}

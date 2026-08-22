@@ -16,7 +16,7 @@ func TestBuildKeepsExecutorWhenPlannerModelIsUnresolvable(t *testing.T) {
 	registerBootTokenProfileTestProvider()
 	setBootTokenProfileTestProvider(t, testutil.NewMock("planner-missing"))
 
-	writeFile(t, dir, "reasonix.toml", `
+	writeFile(t, dir, "semantix-agent.toml", `
 default_model = "executor"
 
 [agent]

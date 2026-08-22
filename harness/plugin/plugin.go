@@ -1,4 +1,4 @@
-// Package plugin is Reasonix's MCP client. It connects to external MCP servers and
+// Package plugin is Semantix's MCP client. It connects to external MCP servers and
 // adapts their tools to the tool.Tool interface, so the agent treats plugin
 // tools and built-ins uniformly. The wire protocol is JSON-RPC 2.0 in every
 // case; only the transport differs (stdio subprocess, Streamable HTTP, or the
@@ -33,7 +33,7 @@ import (
 	"semantix/harness/tool"
 )
 
-// protocolVersion is the MCP revision Reasonix advertises during initialize.
+// protocolVersion is the MCP revision Semantix advertises during initialize.
 const protocolVersion = "2024-11-05"
 
 // MCPProcessMode selects how a local stdio MCP process is launched.
@@ -81,13 +81,13 @@ type Spec struct {
 	URL     string
 	Headers map[string]string
 	// DefaultStartupTimeout is the background initialize + tools/list safety cap
-	// for this server. Zero keeps Reasonix's built-in default.
+	// for this server. Zero keeps Semantix's built-in default.
 	DefaultStartupTimeout time.Duration
 	// StartupTimeout overrides DefaultStartupTimeout for this server. It is
 	// host-only lifecycle policy and never changes provider-visible tool schemas.
 	StartupTimeout time.Duration
 	// DefaultCallTimeout is the global MCP call cap for this server. Zero keeps
-	// Reasonix's built-in defaultCallTimeout.
+	// Semantix's built-in defaultCallTimeout.
 	DefaultCallTimeout time.Duration
 	// CallTimeout overrides DefaultCallTimeout for all calls to this server.
 	// Zero falls back to DefaultCallTimeout.
@@ -97,13 +97,13 @@ type Spec struct {
 	// model-visible mcp__server__tool names.
 	ToolTimeouts map[string]time.Duration
 	// Dir, when set, is the working directory of a stdio subprocess. Empty means
-	// inherit reasonix's cwd (the default for user-configured plugins). It exists
+	// inherit semantix's cwd (the default for user-configured plugins). It exists
 	// for cwd-aware servers like CodeGraph, which detect the project from the
 	// directory they are launched in — they must be pinned to the project root.
 	Dir string
 	// WorkspaceRoot is the project root exposed through the MCP roots capability.
 	// It is runtime-only and intentionally separate from Dir: user-installed
-	// stdio servers keep inheriting Reasonix's cwd while still receiving the
+	// stdio servers keep inheriting Semantix's cwd while still receiving the
 	// explicit workspace root when they ask for roots/list.
 	WorkspaceRoot string
 	// Stderr optionally mirrors plugin subprocess stderr output. Stderr is always
@@ -156,7 +156,7 @@ type Spec struct {
 // request and returns its result (correlating by id internally); notify sends a
 // fire-and-forget notification; close releases resources. Transports route MCP
 // progress notifications to the active tool call and answer the client
-// capabilities Reasonix advertises (currently ping and roots/list).
+// capabilities Semantix advertises (currently ping and roots/list).
 type transport interface {
 	call(ctx context.Context, method string, params any) (json.RawMessage, error)
 	notify(ctx context.Context, method string, params any) error
@@ -247,7 +247,7 @@ type StartPolicy struct {
 
 	// SkipPersistence disables RecordStartup / SaveCachedSchema side effects.
 	// Use for read-only live probes (capability diagnostics) that must not
-	// write MCP stats or schema cache files under Reasonix home.
+	// write MCP stats or schema cache files under Semantix home.
 	SkipPersistence bool
 }
 
@@ -1494,7 +1494,7 @@ func (c *Client) withProgress(ctx context.Context, method string, params any) (a
 		return params, func() {}
 	}
 
-	token := fmt.Sprintf("reasonix-%d", c.progressID.Add(1))
+	token := fmt.Sprintf("semantix-%d", c.progressID.Add(1))
 	copyParams := make(map[string]any, len(callParams))
 	maps.Copy(copyParams, callParams)
 	meta := map[string]any{}
@@ -1595,7 +1595,7 @@ func (c *Client) initializeSession(ctx context.Context, recordCapabilities bool)
 	res, err := c.call(ctx, "initialize", map[string]any{
 		"protocolVersion": protocolVersion,
 		"capabilities":    capabilities,
-		"clientInfo":      map[string]any{"name": "reasonix", "version": "dev"},
+		"clientInfo":      map[string]any{"name": "semantix", "version": "dev"},
 	})
 	if err != nil {
 		return err
@@ -1786,7 +1786,7 @@ func (c *Client) cachedTools() ([]tool.Tool, bool) {
 	return append([]tool.Tool(nil), c.toolAdapters...), true
 }
 
-// toolName builds Reasonix's canonical model-visible name
+// toolName builds Semantix's canonical model-visible name
 // "mcp__<server>__<tool>". The registry separately resolves unique portable
 // and Claude plugin-qualified references without exposing duplicate schemas.
 func toolName(server, raw string) string {
@@ -1966,7 +1966,7 @@ func (t *remoteTool) ExecuteWithImages(ctx context.Context, args json.RawMessage
 		// is intentional and does not block; destructive promotion or lost
 		// authorization must produce zero tools/call.
 		if !t.MCPServerAuthorized() || destructive {
-			return "", nil, fmt.Errorf("MCP server %q changed the authorization or destructive classification for tool %q; the call was blocked before dispatch — retry so Reasonix can re-apply the current Planner MCP safety boundary", t.client.name, t.rawName)
+			return "", nil, fmt.Errorf("MCP server %q changed the authorization or destructive classification for tool %q; the call was blocked before dispatch — retry so Semantix can re-apply the current Planner MCP safety boundary", t.client.name, t.rawName)
 		}
 	}
 	res, err := t.client.call(ctx, "tools/call", map[string]any{

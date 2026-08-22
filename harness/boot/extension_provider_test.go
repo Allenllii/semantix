@@ -125,13 +125,13 @@ name = "plugin"
 kind = "openai"
 base_url = "https://example.invalid"
 model = "%s/fake/x"
-api_key_env = "REASONIX_TEST_KEY_UNSET"
+api_key_env = "SEMANTIX_TEST_KEY_UNSET"
 `, name))
 }
 
 func appendRuntimeFixture(t *testing.T, dir, extra string) {
 	t.Helper()
-	path := dir + "/reasonix.toml"
+	path := dir + "/semantix-agent.toml"
 	existing, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
@@ -147,7 +147,7 @@ func TestBootFailsOnUnclaimedExtensionProviderConflict(t *testing.T) {
 	t.Chdir(dir)
 	name := "conflicter"
 	writeRuntimeFixtureWithConflictingProvider(t, dir, name)
-	installBootFakePlugin(t, config.ReasonixHomeDir(), name, map[string]any{
+	installBootFakePlugin(t, config.SemantixHomeDir(), name, map[string]any{
 		"capabilities": []string{"providers"},
 		"env": map[string]string{
 			bootFakeEnvPluginName: name,

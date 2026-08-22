@@ -395,12 +395,12 @@ func TestRepairedSessionArmsFastPath(t *testing.T) {
 	}
 }
 
-// TestSaveLoadRoundTrip is the contract `reasonix --resume` depends on: a
+// TestSaveLoadRoundTrip is the contract `semantix-agent --resume` depends on: a
 // session written to disk reloads byte-for-byte, including tool calls and
 // reasoning content (which the model wants to keep across resumes for cache
 // hits on thinking-mode providers).
 func TestSaveLoadRoundTrip(t *testing.T) {
-	s := NewSession("you are reasonix")
+	s := NewSession("you are semantix")
 	s.Add(provider.Message{Role: provider.RoleUser, Content: "find the bug"})
 	s.Add(provider.Message{
 		Role:             provider.RoleAssistant,
@@ -2404,7 +2404,7 @@ func TestReconcileOverlongRenameStillReparentsWhenSidecarMigrationFails(t *testi
 
 // TestListSessionsOrdersByMTime makes sure the picker shows the most
 // recently used conversation first — that's what users reach for when they
-// hit `reasonix --continue`.
+// hit `semantix-agent --continue`.
 func TestListSessionsOrdersByMTime(t *testing.T) {
 	dir := t.TempDir()
 	// Write two sessions with explicit mtimes so the order is deterministic.

@@ -62,7 +62,7 @@ type Options struct {
 type installSourceTool struct {
 	root         string
 	home         string
-	reasonixHome string
+	semantixHome string
 	httpClient   *http.Client
 	connectMCP   MCPConnector
 	onDisconnect OnDisconnectFunc
@@ -94,13 +94,13 @@ func NewTool(opts Options) tool.Tool {
 			home = h
 		}
 	}
-	reasonixHome := ""
+	semantixHome := ""
 	if opts.HomeDir != "" {
-		reasonixHome = filepath.Join(home, ".reasonix")
-	} else if dir := config.ReasonixHomeDir(); dir != "" {
-		reasonixHome = dir
+		semantixHome = filepath.Join(home, ".semantix")
+	} else if dir := config.SemantixHomeDir(); dir != "" {
+		semantixHome = dir
 	} else if home != "" {
-		reasonixHome = filepath.Join(home, ".reasonix")
+		semantixHome = filepath.Join(home, ".semantix")
 	}
 	client := opts.HTTPClient
 	if client == nil {
@@ -113,7 +113,7 @@ func NewTool(opts Options) tool.Tool {
 	return &installSourceTool{
 		root:         root,
 		home:         home,
-		reasonixHome: reasonixHome,
+		semantixHome: semantixHome,
 		httpClient:   client,
 		connectMCP:   opts.ConnectMCP,
 		onDisconnect: opts.OnDisconnect,
@@ -125,7 +125,7 @@ func (*installSourceTool) Name() string   { return "install_source" }
 func (*installSourceTool) ReadOnly() bool { return false }
 
 func (*installSourceTool) Description() string {
-	return "Plan, install, or uninstall a Reasonix skill, MCP server, or plugin package from a URL, local file/folder, .mcp.json, executable, or package name. Two-phase: with apply=false (default) returns a deterministic plan with per-action risk level; with apply=true copies/registers skills, connects/persists MCP servers, or installs plugin packages after validation. op='uninstall' removes a previously installed skill, MCP server, or plugin package by name."
+	return "Plan, install, or uninstall a Semantix skill, MCP server, or plugin package from a URL, local file/folder, .mcp.json, executable, or package name. Two-phase: with apply=false (default) returns a deterministic plan with per-action risk level; with apply=true copies/registers skills, connects/persists MCP servers, or installs plugin packages after validation. op='uninstall' removes a previously installed skill, MCP server, or plugin package by name."
 }
 
 func (*installSourceTool) Schema() json.RawMessage {
@@ -215,7 +215,7 @@ func (t *installSourceTool) Execute(ctx context.Context, raw json.RawMessage) (s
 			Mode:     req.Mode,
 			PlanID:   planID,
 			Warnings: warnings,
-			Next:     "No installable Reasonix skill, MCP server, or plugin package was detected. Ask the user for a direct SKILL.md, skill root, .mcp.json, plugin manifest, MCP endpoint, or package name.",
+			Next:     "No installable Semantix skill, MCP server, or plugin package was detected. Ask the user for a direct SKILL.md, skill root, .mcp.json, plugin manifest, MCP endpoint, or package name.",
 		}
 		return marshalJSON(out), nil
 	}
@@ -449,19 +449,19 @@ func (t *installSourceTool) uninstallActionsForScope(name, scope string) []actio
 		}
 	}
 	if scope == "global" || scope == "" {
-		if st, err := pluginpkg.LoadState(t.reasonixHome); err == nil {
+		if st, err := pluginpkg.LoadState(t.semantixHome); err == nil {
 			for _, p := range st.Plugins {
 				if p.Name != name {
 					continue
 				}
-				root := pluginpkg.ResolveRoot(t.reasonixHome, p.Root)
+				root := pluginpkg.ResolveRoot(t.semantixHome, p.Root)
 				actions = append(actions, action{
 					Kind:         "plugin",
 					Action:       "remove_plugin_package",
 					Name:         p.Name,
 					Target:       root,
 					Scope:        "global",
-					ConfigPath:   pluginpkg.StatePath(t.reasonixHome),
+					ConfigPath:   pluginpkg.StatePath(t.semantixHome),
 					ManifestKind: p.ManifestKind,
 					Version:      p.Version,
 					RiskLevel:    RiskMedium,
@@ -486,12 +486,12 @@ func (t *installSourceTool) resolveSkillPath(name, scope string) (string, bool) 
 	}
 	var root string
 	if scope == "global" {
-		if t.reasonixHome == "" {
+		if t.semantixHome == "" {
 			return "", false
 		}
-		root = filepath.Join(t.reasonixHome, skill.SkillsDirname)
+		root = filepath.Join(t.semantixHome, skill.SkillsDirname)
 	} else {
-		root = filepath.Join(t.root, ".reasonix", skill.SkillsDirname)
+		root = filepath.Join(t.root, ".semantix", skill.SkillsDirname)
 	}
 	flat := filepath.Join(root, name+".md")
 	if _, err := lstat(flat); err == nil {
@@ -550,7 +550,7 @@ func (t *installSourceTool) configPath(scope string) string {
 			return p
 		}
 	}
-	return filepath.Join(t.root, "reasonix.toml")
+	return filepath.Join(t.root, "semantix-agent.toml")
 }
 
 func (t *installSourceTool) normalizeScope(scope string) (string, bool) {

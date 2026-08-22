@@ -22,7 +22,7 @@ func writeVisionTestConfig(t *testing.T, root string) {
 		Models:       []string{"text-only", "vision-pro"},
 		VisionModels: []string{"vision-pro"},
 	}}
-	if err := cfg.SaveTo(filepath.Join(root, "reasonix.toml")); err != nil {
+	if err := cfg.SaveTo(filepath.Join(root, "semantix-agent.toml")); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
 }
@@ -112,7 +112,7 @@ func TestControllerInputImagesSkipsModelImagesWhenSelectedModelIsTextOnly(t *tes
 		Models:       []string{"text-only", "vision-pro"},
 		VisionModels: []string{"vision-pro"},
 	}}
-	if err := cfg.SaveTo(filepath.Join(workspace, "reasonix.toml")); err != nil {
+	if err := cfg.SaveTo(filepath.Join(workspace, "semantix-agent.toml")); err != nil {
 		t.Fatalf("save workspace config: %v", err)
 	}
 	path := filepath.Join(workspace, "diagram.png")
@@ -141,7 +141,7 @@ func TestControllerResolvesSubagentImageCandidatesForTextParent(t *testing.T) {
 		Models:       []string{"text-only", "vision-pro"},
 		VisionModels: []string{"vision-pro"},
 	}}
-	if err := cfg.SaveTo(filepath.Join(workspace, "reasonix.toml")); err != nil {
+	if err := cfg.SaveTo(filepath.Join(workspace, "semantix-agent.toml")); err != nil {
 		t.Fatalf("save workspace config: %v", err)
 	}
 	path := filepath.Join(workspace, "diagram.png")

@@ -24,13 +24,13 @@
 
 ## ä¸€ã€å®ä½“å®šä¹‰ï¼ˆEntityï¼‰
 
-**Semantix** æ˜¯ä¸€ä¸ª**è‡ªè¿›åŒ–çš„ Agent Kernel å±‚ï¼ˆself-evolving agent kernelï¼‰**ï¼Œä»¥ Go è¯­è¨€å®ç°ï¼ŒMIT è®¸å¯è¯å¼€æºã€‚
+**Semantix** æ˜¯ä¸€ä¸ª**è‡ªè¿›åŒ–çš„ Agent Kernel å±‚ï¼ˆself-evolving agent kernelï¼‰**ï¼Œä»¥ Go è¯­è¨€å®ç°ï¼ŒFSL-1.1-MIT è®¸å¯è¯å¼€æºã€‚
 
 - **å…¨ç§°**ï¼šSemantix
 - **ç±»åˆ«**ï¼šLLM Agent åŸºç¡€è®¾æ–½ / Agent Kernel å±‚ / è¯­ä¹‰ç¼“å­˜ä¸è°ƒåº¦ä¸­é—´ä»¶
 - **ä»£ç ä»“åº“**ï¼šhttps://github.com/Gnosil/semantix
 - **ç¼–ç¨‹è¯­è¨€**ï¼šGoï¼ˆmodule `semantix`ï¼ŒGo 1.26.5ï¼‰
-- **è®¸å¯è¯**ï¼šMIT
+- **è®¸å¯è¯**ï¼šFSL-1.1-MITï¼ˆå„ç‰ˆæœ¬å‘å¸ƒä¸¤å¹´åè½¬ä¸º MITï¼‰
 - **è®¾è®¡åŸºçº¿**ï¼šDeepSeek-Reasonixï¼ˆMITï¼ŒGo é‡å†™ï¼Œ`main-v2` åˆ†æ”¯ï¼‰
 - **å½“å‰çŠ¶æ€**ï¼šM0 å¼€å‘é˜¶æ®µï¼ˆåˆ‡ç‰‡æå–å™¨ + BM25 æ£€ç´¢ MVP è¿›è¡Œä¸­ï¼‰ï¼Œè®¾è®¡æ–‡æ¡£ä¸ºæ¶æ„ v2
 
@@ -162,7 +162,7 @@ Semantix çš„è§£æ³•ï¼šè¯­ä¹‰åˆ‡ç‰‡åº“ï¼ˆæ²‰æ·€ï¼‰â†’ è¯­ä¹‰ç¼“å­˜ï¼ˆå¤ç”¨ï¼‰â†’ 
 ## å››ã€å¸¸è§é—®ç­”ï¼ˆFAQï¼‰
 
 **Q: Semantix æ˜¯ä»€ä¹ˆï¼Ÿ**
-A: Semantix æ˜¯ä¸€ä¸ªè‡ªè¿›åŒ–çš„ Agent Kernel å±‚ï¼ŒGo å®ç°ã€MIT å¼€æºã€‚å®ƒæ¶åœ¨ agent harnessï¼ˆå¦‚ DeepSeek-Reasonixã€Claude Codeï¼‰ä¸èµ„æºä¹‹é—´ï¼Œé€šè¿‡è¯­ä¹‰åˆ‡ç‰‡åº“ã€ä¸‰çº§è¯­ä¹‰ç¼“å­˜ã€å†…æ ¸è°ƒåº¦å™¨å’ŒæŠ•æœºé¢„å–ï¼Œè®©ç³»ç»Ÿæ ¹æ®ç”¨æˆ·ä½¿ç”¨ä¹ æƒ¯è‡ªæˆ‘è¿›åŒ–ï¼Œæ¯æ¬¡äº¤äº’éƒ½æ›´ä¾¿å®œã€æ›´å¿«ã€‚
+A: Semantix æ˜¯ä¸€ä¸ªè‡ªè¿›åŒ–çš„ Agent Kernel å±‚ï¼ŒGo å®ç°ã€FSL-1.1-MIT å¼€æºã€‚å®ƒæ¶åœ¨ agent harnessï¼ˆå¦‚ DeepSeek-Reasonixã€Claude Codeï¼‰ä¸èµ„æºä¹‹é—´ï¼Œé€šè¿‡è¯­ä¹‰åˆ‡ç‰‡åº“ã€ä¸‰çº§è¯­ä¹‰ç¼“å­˜ã€å†…æ ¸è°ƒåº¦å™¨å’ŒæŠ•æœºé¢„å–ï¼Œè®©ç³»ç»Ÿæ ¹æ®ç”¨æˆ·ä½¿ç”¨ä¹ æƒ¯è‡ªæˆ‘è¿›åŒ–ï¼Œæ¯æ¬¡äº¤äº’éƒ½æ›´ä¾¿å®œã€æ›´å¿«ã€‚
 
 **Q: Semantix è§£å†³ä»€ä¹ˆé—®é¢˜ï¼Ÿ**
 A: ä¸‰ä¸ªæ ¸å¿ƒé—®é¢˜ï¼š1ï¼‰ç°æœ‰ harness çš„å­—èŠ‚çº§å‰ç¼€ç¼“å­˜åªåœ¨ä¸€ä¸ªä¼šè¯å†…ç”Ÿæ•ˆï¼Œè·¨ä¼šè¯ç›¸ä¼¼å·¥ä½œæ— æ³•å¤ç”¨ï¼›2ï¼‰è°ƒåº¦æ˜¯é™æ€è§„åˆ™ï¼Œä¸æ ¹æ®ä»»åŠ¡ç±»å‹å’Œç”¨æˆ·ä¹ æƒ¯è‡ªé€‚åº”ï¼›3ï¼‰LLM æµå¼è¾“å‡ºçš„ç­‰å¾…æ—¶é—´è¢«æµªè´¹ã€‚Semantix ç”¨è¯­ä¹‰åˆ‡ç‰‡ã€è¯­ä¹‰ç¼“å­˜ã€è‡ªé€‚åº”è°ƒåº¦å’ŒæŠ•æœºé¢„å–è§£å†³è¿™ä¸‰è€…ã€‚
@@ -195,6 +195,706 @@ A: è®¾è®¡ç›®æ ‡æ˜¯ä»»æ„ harnessï¼šé€šè¿‡é€‚é…å±‚æ¥å…¥ DeepSeek-Reasonixã€Cla
 A: æ™®é€š prompt ç¼“å­˜å·¥å…·åªæ˜¯ä¿å­˜/å¤ç”¨å›ºå®š prompt æ–‡æœ¬ï¼›Semantix æ˜¯ä»å†å²ä¼šè¯ä¸­**è‡ªåŠ¨æå–**è¯­ä¹‰å•å…ƒã€æŒ‰è¯­ä¹‰ç›¸ä¼¼åº¦**æ£€ç´¢**ã€å¹¶æŠŠå‘½ä¸­ç»“æœ**æ³¨å…¥/å¤ç”¨**åˆ°åç»­ä¼šè¯çš„å®Œæ•´é—­ç¯ï¼Œè¿˜åŒ…å«è°ƒåº¦ã€é¢„å–å’Œè‡ªè¿›åŒ–èƒ½åŠ›ã€‚
 
 **Q: Semantix çš„ç¼“å­˜ä¸ºä»€ä¹ˆè¦"å†»ç»“æœŸ"ï¼Ÿ**
-A: å› ä¸º L2 ç¼“å­˜é å­—èŠ‚ç¨³å®šæ€§å‘½ä¸­å‚å•†å‰ç¼€ç¼“å­˜ã×N<îÚ$z{-®éÜj×zºş˜	®‹ør&ö×B[z^zˆ¾h˜¾jë^ûÈz‹>Zé®k:XZ^ûÈXŠyJXè.YXny¨Nˆz®XªX˜Ş{È{É>ZÙûÉ°¢ÒKŠNˆ^Šz>Xk>KˆŞYÎ[.y¨N™zîš)ûÈÅ6VÖçF—‚y¨NikjYÊ™zŞk©’YË®išşKˆ¾[
-NX[niÈK»~XÎ(	N(	NYºK‹®yJh‹~izk9^hê~X‹niÈŞXªzºşy¨Bµb66†^8  ¢ÒÒĞ ¢22zÊÎXZŞzºûÉ®[‹ŠxŠúşŠz>KˆîXxnzîŠ‹û  ®Kº^Kˆ¾Xh^ZëyJK¨îkèNkˆ^[ÈXùˆ^iÈZëi‰>k{~kxny¨NXzKŠ®™zîš)ûÉ  ¢¢®X[>K¨îZé®KØÒ¢®ûÉ¥6VÖçF—‚iŠşKˆKŠ®KŠŞ™{NK»n[.ûÈÎZè>iënYÊ‚vVçB†&æW72K˜¾Kˆ®8‹XNk©K˜¾Kˆ¾ûÈÎhùKé¾{É>ZÙ8‹>[ªn8š(NXùnYû®zŠëîikŞˆ;ŞX©¾8.Zè>iÊÎ‹ª¾ZèÎh‰vVçBy¨Nh	Şˆ>Kˆî[z^X[~‹>yJ[ê®xêş8  ¢¢®X[>K¨îjŠYè²¢®ûÉ¥6VÖçF—‚KˆŞŠêŞ{¸>jŠYè¾8KˆŞKúîiKjŠYè¾8KˆŞhùKé¾jŠYè¾8.Zè>KÉXÉny¨NiŠşjŠYè¾‹>yJK˜¾X˜Şy¨B&ö×B{¸NŠ8^Kˆî‹>yJK˜¾Yîy¨N‹XNk©{Énhé.8  ¢¢®X[>K¨î{É>ZÙ‚¢®ûÉ¥6VÖçF—‚y¨N{É>ZÙiË®X‹nXÈ^Y
-¾ZÙ~ˆ¨.{ª~ûÈ„ÃûÈ8ŠúŞK˜k:XZ^ûÈ„Ã.ûÈKˆî{¹>iéÎZHŞyJûÈ„Ã>ûÈKˆKŠ®[.jÊûÈÎX[nKŠÒÃ"˜	®‹ø~KùŞhÈX˜Ş{ÈZÙ~ˆ¨.z‹>Zé®iÚ^XŠyJXè.YXnˆz®XªX˜Ş{È{É>ZÙ8  ¢¢®X[>K¨î˜:{Û"¢®ûÉ¥6VÖçF—‚iÊÎYË‹ùŠÎûÈ„vòZéîxëûÈÆ&&öÇBZÙX*ûÈÎK¸^KˆKŠ®ZIn˜:KéŞ‹YnûÈûÈÎi[hÚîûÈXˆ~x˜~8{¹şŠêûÈhÈK˜^XÉnYÊiÊÎYËXøÎ[©>KŠŞ8  ¢¢®X[>K¨îKÛşyJik[Èò¢®ûÉ¥6VÖçF—‚˜	®‹ø~˜.˜XŞ[.KˆîX[~KÙ2†&æW72‹ùîhê^ûÈÎyJh‹~iz™Èy»Nhê^i8ŞKÙÂ6VÖçF—(	N(	NZè>ˆz®XªK¸îKÛşyJKŠŞZÚnKš[›nKÉXÉn8  ¢ÒÒĞ ¢22zÊÎKˆ>zºûÉ®˜	şiú^(	N(	NyJKˆXú^ŠùŞY¹îzÙB%6VÖçF—‚iŠşK¸K˜‚  £â¢®{¹h¨iÊşK«¢¢®ûÉ¥6VÖçF—‚iŠşKˆKŠ®KØŞK¨âvVçB†&æW72Kˆî‹XNk©K˜¾™{Ny¨Nˆz®‹ù¾XÉnKŠŞ™{NK»nûÈÎyJŠúŞK˜Xˆ~x˜r²z‹>Zé®k:XZ^h¨®‹zKÉ®ŠùŞy¨NŠúŞK˜YŞKŠŞ‹ÚÎXÉnK‹®Xè.YXnZÙ~ˆ¨.{É>ZÙYŞKŠŞ8 £"â¢®{¹Kª~Y8K«¢¢®ûÉ¥6VÖçF—‚iŠşKˆKŠ®‹h®yJ‹h®KëşZéÎ8‹h®yJ‹h®[ú¾y¨BvVçBXª˜	ş[.(	N(	Nˆz®XªZHŞyJKÚ‹ø~Xë¾y¨NX«>Xªh‰iéÎ8 £2â¢®{¹z	Nz›nˆR¢®ûÉ¥6VÖçF—‚iŠşKˆKŠ®™zŞxêşZÚnKš{;¾{¹şûÉ®Šx.kX²(i"k(kx(i"ZHŞyJ‚(i"‹ù¾XÉnûÈÎjøşKŠ®{¸NK»nZû[©NKˆKŠ®Xúşš¨ÎŠøy¨NŠëîŠêX~Šëî8 £Bâ¢®{¹[Èk©x‹Z[ŞˆR¢®ûÉ¥6VÖçF—‚iŠşKˆKŠ¢Ô•BŠëXúş8vòZéîxë8ŠëîŠêih~j>›ÙXZ8jÚ>YÊiziÉş[ÈXù™‹një^y¨NzKîXË®šyºî8  ¢ÒÒĞ ¢®iÊÎih~yKšyºî{»NhªNˆ^i+XiûÉ¾X[~KÙ>x«nhKˆîZéîxë‹ù¾[ªnKº^K¹>[©>K‹®Xxn8"  ¢ÒÒĞ £â6÷W&6S¢‡GG3¢ò÷6VÖçF—‚æVç7W&Vö²æ’öFö72öwV–FRÖVà ¢26VÖçF—‚FVWF—fS¢VæFW'7FæF–ærF†R&ö¦V7Bg&öÒ67&F6€ £âF†—2Fö7VÖVçB—2f÷"FWfVÆ÷W'2v†òvçB7—7FVÖF–2VæFW'7FæF–æröb6VÖçF—‚â—B7F'G2v—F‚v‡’F†R&ö¦V7BW†—7G2ÂF†VâW‡Æ–ç2—G2ÖV6†æ—6×2Â&6†—FV7GW&R&÷VæF&–W2Â7W'&VçB&öw&W72ÂæB6öÖÖöâÖ—66öæ6WF–öç2à£â–b6VÖçF—‚—2æWrFò–÷RÂ&VBF†R&ö¦V7B÷fW'f–Wr&Vf÷&RW6–ærF†—2Fö7VÖVçB2F†RFVWF—fRà ¢ÒÒĞ ¢226†FW"¢7F'F–ærg&öÒF†RV6÷7—7FVÒ(	Bv‡’â$vVçB¶W&æVÂÆ–W""W†—7G0 ¥FòVæFW'7FæB6VÖçF—‚Âf—'7BVæFW'7FæB—G2Æ6R–âF†RV6÷7—7FVÒà ¢222ãv†B—2âÄÄÒvVç@ ¤âÄÄÒvVçB—26ögGv&R7—7FVÒv—F‚âÄÄÒ2—G2&'&–â"â—B6ö×ÆWFW2W6W"F6·2'’Æö÷–ær'F†–æ²(i"6ÆÂFööÇ2(i"ö'6W'fR&W7VÇG2(i"F†–æ²v–â"âG—–6ÂFööÇ2–æ6ÇVFS¢&VF–ærf–ÆW2Â6V&6†–ær6öFRÂW†V7WF–ær6öÖÖæG2ÂVF—F–ærf–ÆW2Â'Vææ–ærFW7G2Â66W76–ærF†RvV"à ¤f÷"6öF–ærvVçBÂG—–6ÂF6²Æöö·2Æ–¶S  ¦ ¥W6W#¢&FB&WG'’v—F‚&6¶öfbFòF†R‡GG6Æ–VçB ¤vVçBF†–æ·2(i"&VG2f–ÆR†æWBö6Æ–VçBævò’(i"6V&6†W2&VÆFVB6öFR(i"VF—G2f–ÆR(i"'Vç2FW7G2(i"FöæP¦  ¢222ã"v†B—2âvVçB†&æW70 ¤âvVçB†&æW72—2F†R6ögGv&R6†VÆÂF†B†÷7G2F†—2Æö÷¢—BÖævW26W76–öç2Â6ÆÇ2ÖöFVÇ2ÂW†V7WFW2FööÇ2Â†æFÆW2W&Ö—76–öç2ÂæB6fW2†—7F÷'’â6öÖÖöâW†×ÆW3  ¢Ò¢¤FVW6VV²Õ&V6öæ—‚¢£¢â÷Vâ×6÷W&6Rvò6öF–ærvVçB&6VBöâFVW6VV°¢Ò¢¤6ÆVFR6öFR¢£¢çF‡&÷–2w2FW&Ö–æÂ6öF–ærvVç@¢Ò÷F†W'3¢7W'6÷"Â÷Vä’6öFW‚4Ä’ÂWF2à ¢222ã26öÖÖöâvV¶æW76W2öbW†—7F–ær†&æW76W0 ¤WfW'’†&æW72†2F‡&VR7G'V7GW&Â&ö&ÆV×3  £â¢¤66†–ær—2v—F†–â×6W76–öâ¢£¢fVæF÷"&Vf—‚66†–ær†RærâÂFVW6VV²6öçFW‡B66†–ær’öæÇ’v÷&·2§v—F†–âöæR6W76–öâ¢âæWr6W76–öâFö–ær6–Ö–Æ"F6²—2f÷"ÆÂ6öçFW‡B6ö×WFF–öâv–âà£"â¢¥66†VGVÆ–ær—27FF–2¢£¢6öæ7W'&Væ7’ÂÖöFVÂ6VÆV7F–öâÂæB&W6÷W&6RÆÆö6F–öâ&R†&F6öFVB'VÆW2F†BFöâwBFBFò'v†B¶–æBöbF6²F†—2—2"÷"&†÷rF†RW6W"W7VÆÇ’v÷&·2"à£2â¢¥v—F–ær—2v7FVB¢£¢v†–ÆRF†RÖöFVÂ7G&V×2÷WGWBÂF†RvVçBv—G3²v†–ÆRF†RÖöFVÂv—G2f÷"FööÂ&W7VÇG2ÂF†RvVçBv—G2âF†—2vÆÂÖ6Æö6²F–ÖR‡6V6öæG2FòÖ–çWFW2W"F6²’—26–×Ç’Æ÷7Bà ¢222ãB6öæ6ÇW6–öã¢&Ö–FFÆRÆ–W""—2æVVFV@ ¥6–æ6RF†W6RvV¶æW76W2&R7G'V7GW&ÂæB†&æW76W2&R†&BFòÖöF–g’†V6‚–×ÆVÖVçFF–öâF–ffW'2Â6†ævW2&R6÷7FÇ’’ÂF†RæGW&Â–FV—3¢¢¦–ç6W'Bâ–æFWVæFVçBÖ–FFÆRÆ–W"&WGvVVâF†R†&æW72æB&W6÷W&6W2¢¢(	B—BFöW6âwBÖöF–g’F†R†&æW72Â'WBw&2—BÂö'6W'f–ær†&æW72&V†f–÷"Fò÷F–Ö—¦RF†Rv†öÆRÆö÷à ¥F†BÖ–FFÆRÆ–W"—2F†R¢¤vVçB¶W&æVÂÆ–W"¢¢â6VÖçF—‚—2W†7FÇ’F†Bà ¢ÒÒĞ ¢226†FW"#¢6VÖçF—‚w2÷6—F–öâ(	Bv†B—B7GVÆÇ’—0 ¢222"ãöæRÖÆ–æR÷6—F–öæ–æp ¢¢¥6VÖçF—‚—26VÆbÖWföÇf–ærvVçB¶W&æVÂÆ–W"¢£¢—B6—G2&WGvVVâvVçB†&æW76W2„FVW6VV²Õ&V6öæ—‚Â6ÆVFR6öFRÂWF2â’æBF†V—"&W6÷W&6W2ÂG–æÖ–6ÆÇ’÷&6†W7G&F–ær6öæ7W'&Væ7’Â6VÖçF–266†–ærÂæB7V7VÆF—fR&VfWF6‚ÂæB6VÆbÖWföÇfW2&6VBöâW6W"W6vR†&—G2(	BF†R7—7FVÒvWG2f7FW"æB6†VW"F†RÖ÷&R–÷RW6R—Bà ¢222"ã"F‡&VR¶W—v÷&G2ÂVç6¶V@ ¢¢¢$vVçB¶W&æVÂÆ–W""¢¢(	B÷6—F–öââ&VÆ÷rF†R†&æW72†æ÷B&WÆ6–ær—B’Â&÷fR&W6÷W&6W2„ÄÄÒ—2Âf–ÆW7—7FVÒÂFööÇ2’â—B—2&¶W&æVÂ#¢—B&÷f–FW2–æg&7G'V7GW&R6&–Æ—F–W2†66†–ærÂ66†VGVÆ–ærÂ&VfWF6‚’Âæ÷BW6W"Öf6–ær–çFW&f6W2à ¢¢¢%6VÖçF–2"¢¢(	Bw&çVÆ&—G’â—B÷W&FW2öâ6VÖçF–2Væ—G2‡6Æ–6W2’Âæ÷B'—FW2â'—FR66†–ær&WV—&W2W†7B6öçFVçBÖF6†W3²6VÖçF–266†–ærÆÆ÷w2§6–Ö–Æ"¢6öçFVçBFò&R&V6övæ—¦VBæB&WW6VBà ¢¢¢%6VÆbÖWföÇf–ær"¢¢(	BF–ÖRâ—B—2æ÷B7FF–2'VÆR6WB'WB6Æ÷6VBÖÆö÷ÆV&æ–ær7—7FVÓ¢WfW'’–çFW&7F–öâ&öGV6W2fVVF&6²6–væÇ2Â6–væÇ2G&—fR&ÖWFW"F§W7FÖVçG2ÂæBF§W7FÖVçG2Ö¶RF†RæW‡B–çFW&7F–öâ&WGFW"à ¢222"ã26öæ7&WFR&ö&ÆV×2—B6öÇfW0 §Â–âö–çBÂ7W'&VçB7FFRÂ6VÖçF—‚w26öÇWF–öâÀ§ÂÒÒ×ÂÒÒ×ÂÒÒ×À§Âæò7&÷72×6W76–öâ&WW6RÂ6–Ö–Æ"F6·27F'Bg&öÒ¦W&òÂ––ær&WVFVFÇ’Â6VÖçF–26Æ–6RÆ–'&'’67V×VÆFW2²6VÖçF–266†R&WW6W2À§Â'—FR66†W2&&VÇ’†—BÂöæÇ’W†7FÇ’Ö–FVçF–6Â6öçFVçB†—G2ÂÃ"7F&ÆR–æ¦V7F–öã¢6öçfW'B6VÖçF–2†—G2–çFò'—FR†—G2À§Â66†VGVÆ–ær—2Væ–çFVÆÆ–vVçBÂ7FF–2'VÆW2ÂæòF6²ö†&—BFFF–öâÂ¶W&æVÂ66†VGVÆW#¢–çFVçB6Æ76–f–6F–öâ²&V†f–÷"ÆV&æ–ærÀ§Âv—F–ær—2v7FVBÂ–FÆRGW&–ær7G&VÖ–ær÷FööÂv—G2Â7V7VÆF—fR&VfWF6ƒ¢BÕ6Æ–6R&VF–7F–öâ²&VBÖöæÇ’&VfWF6‚À§Â7—7FVÒFöW6âwBÆV&âÂ6öæf–rGVæVB'’‡VÖç2ÂæWfW"f—G2vVÆÂÂ6VÆbÔWföÇWF–öâVæv–æS¢UtÔöæÆ–æRGVæ–ær²öffÆ–æR&WG&–æ–ærÀ ¢222"ãB†÷r—B—2W6V@ ¥W6W'2FöâwB&÷W&FR"6VÖçF—‚F—&V7FÇ’â—G2ÖöFRöb÷W&F–öã  £â–÷RW6R–÷W"vVçB…&V6öæ—‚ò6ÆVFR6öFR’æ÷&ÖÆÇ“°£"â6VÖçF—‚¢¦ö'6W'fW2¢¢–÷W"6W76–öç2F‡&÷Vv‚âFFW"Æ–W"†WfVçB7G&VÒ“°£2â—B¢¦67V×VÆFW2¢¢†—7F÷&–6Â6W76–öç2–çFò6VÖçF–26Æ–6W2‡F6²FV×ÆFW2Â6öçFW‡B&Æö6·2ÂFööÂGFW&ç2Â&W7VÇG2ÂÖVÖ÷'’“°£Bâv†Vâ6–Ö–Æ"F6²'&—fW2Â—B¢¦–æ¦V7G2¢¢&VÆWfçB6Æ–6W2††—GF–ærF†RfVæF÷"'—FR66†R’Â¢§66†VGVÆW2¢¢6öæ7W'&Væ7’ÂæB¢§&VfWF6†W2¢¢&W6÷W&6W3°£Râ6–væÇ2g&öÒWfW'’&÷VæB††—B÷öÆÇWF–öâöÆFVæ7’ö6÷7B÷7V66W72’¢¦fVVB&6²¢¢FòF†RWföÇWF–öâVæv–æS²&ÖWFW'2¶VW–×&÷f–ærà ¥F†RöæÇ’F†–ærW6W'2æ÷F–6S¢F6·2vWBf7FW"Â&–ÆÇ2vWB6†VW"(	BæBF†RVffV7Bw&÷w2÷fW"F–ÖRà ¢ÒÒĞ ¢226†FW"3¢†÷r—Bv÷&·2(	Bf÷W"6ö×öæVçG2ÇW2öæRVæv–æP ¢2222ã6VÖçF–26Æ–6RÆ–'&'’…54Â’(	BÖVÖ÷' ¢¢¥&W7öç6–&–Æ—G’¢£¢W‡G&7BÂ–æFW‚ÂæBW'6—7B&WW6&ÆR6VÖçF–2Væ—G2g&öÒ†—7F÷&–6Â6W76–öç2à ¢¢¤f—fR6Æ–6RG—W2¢£  §ÂG—RÂÖVæ–ærÂW†×ÆRÀ§ÂÒÒ×ÂÒÒ×ÂÒÒ×À§ÂÕ6Æ–6RÂF6²FV×ÆFW2‡&ö×G2’ÂF6²FW67&—F–öç2Æ–¶R&FB&WG'’Fò‚"À§Â2Õ6Æ–6RÂ6öçFW‡B&Æö6·2Â¶W’6öçFW‡Bg&vÖVçG2öb&ö¦V7BÀ§ÂBÕ6Æ–6RÂFööÂÖ6ÆÂGFW&ç2Âw&W(i'&VDf–Æ^(i&VF—Df–Æ^(i'FW7BÀ§Â"Õ6Æ–6RÂ†–v‚Ög&WVVæ7’&W7VÇG2Â7FæF&B÷WGWG2öb6öÖÖöâ6öÖÖæG2Â6öÖÖöâd2À§ÂÒÕ6Æ–6RÂÖVÖ÷'’ÂW6W"&VfW&Væ6W2æB†&—G2À ¢¢¤W‡G&7F–öâ7G&FVv–W2¢¢‡F‡&VR6VvÖVçFF–öç2“ ¢Ò¢¥GW&âÖ&÷VæF'’6VvÖVçFF–öâ¢£¢6VvÖVçBBW6W"ÖW76vW0¢Ò¢¤6ö×ÆWF–öâ×ö–çB6VvÖVçFF–öâ¢£¢6VvÖVçB6öçFW‡BBF6²6ö×ÆWF–öà¢Ò¢¥BÕ6Æ–6RâÖw&×2¢£¢W‡G&7B6öç6V7WF—fRGFW&ç2g&öÒFööÂÖ6ÆÂ6WVVæ6W0 ¢¢¥7F÷&vR¢£¢&&öÇBGVÂ7F÷&W2‡&ö¦V7BÖÆWfVÂ²W6W"ÖÆWfVÂ’Â6W&F–ær66÷W2à ¢2222ã"F‡&VRÖÆWfVÂ6VÖçF–266†R„ÃôÃ"ôÃ2’(	BÖöæWF—¦F–öà ¢¢¤Ã†'—FR66†R’¢£¢W6W2F†RfVæF÷"w2WFöÖF–2&Vf—‚66†RâW†7FÇ’Ö–FVçF–6Â&Vf—†W2v—F†–â6W76–öâ†—BB¦W&ò6÷7Bà ¢¢¤Ã"‡7F&ÆR–æ¦V7F–öâ’¢£¢6VÖçF—‚w2Ö÷7BVÆVvçBFW6–vâ(	B¢§F†R6VÖçF–2Æ–W"fVVG2F†R'—FRÆ–W"¢¢à¢ÒgFW"&WG&–Wf–ær6VÖçF–6ÆÇ’6–Ö–Æ"6Æ–6W2ÂF†W’&R–æ¦V7FVB¢§fW&&F–Ò¢¢gFW"F†R7—7FVÒ&Vf—‚Â&Vf÷&RF†RW6W"ÖW76vS°¢Ò–æ¦V7F–öâ÷&FW"—2f—†VB†æ÷B6÷'FVB'’fÇVR’FòwV&çFVR'—FR7F&–Æ—G“°¢Òv†VâæWr6W76–öâ7F'G2ÂF†R6ÖR–æ¦V7F–öâ6WB(i"F†R6ÖR'—FR&Vf—‚(i"¢¦†—G2F†RfVæF÷"w2'—FR66†R¢£°¢ÒVffV7C¢6VÖçF–2†—G2&R'G&ç6ÆFVB"–çFò'—FR†—G2ÂVæ¦÷––ærfVæF÷"66†R&–6–ærF—66÷VçG2à ¢¢¤Ã2‡fW&–f–VB&WW6R’¢£¢f÷"&VBÖöæÇ’F6·2Âv—F‚f–ÆRÖf–ævW'&–çBfW&–f–6F–öâÂ†—7F÷&–6Â&W7VÇG2&R&WW6VBF—&V7FÇ’(	B¢¦æòÖöFVÂ&WVW7B—26VçBBÆÂ¢¢âf–ÂÖ6Æ÷6VC¢æò&WW6Rv—F†÷WBfW&–f–6F–öã²F†RW6W"6âfWFòà ¢2222ã2¶W&æVÂ66†VGVÆW"(	B÷&6†W7G&F–öà ¢Ò¢¤–çFVçB6Æ76–f–6F–öâ¢£¢&V6övæ—¦RF6²G—R‡&VB÷w&—FR÷6V&6‚÷&Vf7F÷"÷FW7Bâââ¢Ò¢¤¦ö–çBFV6—6–öç2¢£¢6öæ7W'&Væ7’ÂÖöFVÂF–W"Â66†R–æ¦V7F–öâföÇVÖRÂ&VfWF6‚'VFvW@¢Ò¢¤&V†f–÷"ÆV&æ–ær¢£¢ÆV&ç2&†÷rF†—2¶–æBöbF6²—2W7VÆÇ’FöæR"g&öÒBÕ6Æ–6R7FF—7F–72ÂÖ¶–ærFV6—6–öç2–æ7&V6–ævÇ’67W&FP ¢2222ãB7V7VÆF—fR&VfWF6†W"(	Bf–ÆÆ–ær–FÆRF–ÖP ¢Ò¢¥&VF–7F–öâ¢£¢W6W2F†RBÕ6Æ–6RG&ç6—F–öâÖG&—‚Fò&VF–7BF†RæW‡BFööÂ÷&W6÷W&6RFò&RæVVFV@¢Ò¢¥&VfWF6‚¢£¢GW&–ærF†RÖöFVÂw27G&VÖ–ærv—BÂ&VfWF6‚&VBÖöæÇ’&W6÷W&6W2†æW‡B×GW&â6Æ–6R76VÖ&Ç’ÂVÖ&VFF–ær6ö×WFF–öâ¢Ò¢¥6VÆb×VæÇG’¢£¢v†Vâv7FRö†—BW†6VVG2F†RF‡&W6†öÆB†FVfVÇB3£’ÂF†R6–væÂ6÷W&6R—2WFöÖF–6ÆÇ’F÷vçvV–v‡FVB(	BF†R&VfWF6‚7G&FVw’—G6VÆbWföÇfW0 ¢2222ãR6VÆbÔWföÇWF–öâVæv–æR(	BÆV&æ–æp ¢¢¤öæÆ–æRÆ–W"†WfW'’&÷VæB’¢£ ¢Ò6öÆÆV7B6–væÇ3¢†—B&FRÂöÆÇWF–öâÂÆFVæ7’Â6÷7BÂ7V66W70¢ÒUtÔÖ÷f–ærÖfW&vRGVæ–æs¢F‡&W6†öÆG2øBÂ–æ¦V7F–öâ'VFvWBÂ&VfWF6‚&ÖWFW'2Â6öæ7W'&Væ7’ÂF–W"Ö–æp¢Ò¢¤g&VW¦R×W&–öB&÷FV7F–öâ¢£¢F†R–æ¦V7F–öâ6WB7F—2Væ6†ævVBf÷"(šS‚gFW"&ÖWFW"6†ævW2Â6òWföÇWF–öâ¦—GFW"æWfW"FW7G&÷—2F†R'—FR66†R—BfVVG0 ¢¢¤öffÆ–æRÆ–W"‡W&–öF–2’¢£ ¢Ò6Æ–6RVÖ&VFF–ær&Vg&W6€¢ÒF‡&W6†öÆBw&–B6V&6€¢ÒBÕ6Æ–6RG&ç6—F–öâÖÖG&—‚&WG&–æ–æp¢ÒÆ÷rÖg&WVVæ7’6Æ–6R&6†—f–æp ¢ÒÒĞ ¢226†FW"C¢FW6–vâ†–Æ÷6÷‡’(	B6WfVâ&–æ6—ÆW0 £â¢¥F†R&Vf—‚æWfW"6†ævW2¢£¢'—FR7F&–Æ—G’öbF†R–æ¦V7F–öâ6WB—2F†RÆ–fVÆ–æRöbÃ"†—G2à£"â¢¥&VBÖöæÇ’&VfWF6‚öæÇ’¢£¢7V7VÆF—fR&VfWF6‚F÷V6†W2öæÇ’&VBÖöæÇ’&W6÷W&6W2ÂVÆ–Ö–æF–ær6–FRVffV7G2à£2â¢¦f–ÂÖ÷Vâòf–ÂÖ6Æ÷6VB¢£¢66†RÖÆ–W"f–ÇW&W2æWfW"&Æö6²F†RÖ–âÆö÷²6V7W&—G’&÷VæF&–W2æWfW"6ö×&öÖ—6Rà£Bâ¢¤WfW'’FV6—6–öâW‡Æ–æ&ÆRæB&WfW'6–&ÆR¢£¢V6‚FV6—6–öâ6'&–W2&V6öã²&ÆF–öâ7v—F6†W2&R7W÷'FVBà£Râ¢¤Ô•B&VfW&Væ6RÂæò6÷––ær¢£¢&VfW&Væ6R&V6öæ—‚w2&ö6ƒ²–×ÆVÖVçB6öFR–æFWVæFVçFÇ’v—F‚GG&–'WF–öâà£bâ¢¥6–ævÆR¶W&æVÂÂÖç’†&æW76W2¢£¢FFW"GFW&ã²æWfW"†÷7FvRFòç’7V6–f–2vVçBà£râ¢¥&ÖWFW'2w&÷rÂæ÷BGVæVB¢£¢7—7FVÒ&ÖWFW'2WföÇfRg&öÒfVVF&6²&F†W"F†â‡VÖâGVæ–ærà ¢ÒÒĞ ¢226†FW"S¢&VÆF–öç6†—Fò&VÆFVB6öæ6WG0 ¢222Rã6VÖçF—‚g2âvVçB†&æW76W2…&V6öæ—‚Â6ÆVFR6öFR ¢Ò6VÖçF—‚¢§6—G2öâF÷öb¢¢†&æW76W2Â6öææV7FVBf–âFFW"Æ–W#°¢Ò†&æW76W2&FòF†Rv÷&²"‡F†–æ²Â6ÆÂFööÇ2Â–çFW&7B“²6VÖçF—‚Ö¶W2'F†Rv÷&²6†VW""†66†RÂ66†VGVÆRÂ&VfWF6‚“°¢ÒF†W’&R6öÆÆ&÷&F—fRÂæ÷B6ö×WF—F—fS¢&V6öæ—‚²6VÖçF—‚v÷&²FövWF†W"à ¢222Rã"6VÖçF—‚g2â6VÖçF–266†–ær„uD66†RWBÂâ ¢ÒFööÇ2Æ–¶RuD66†R6öÇfR'––ær&WVFVFÇ’f÷"F†R6ÖR6öçfW'6F–öæÂVW7F–öâ#°¢Ò6VÖçF—‚w26VÖçF–266†RF&vWG2¢¦vVçBv÷&¶ÆöG2¢£¢6Æ–6W26öÖRg&öÒFööÂÖ6ÆÂ6WVVæ6W2ÂF6²FV×ÆFW2ÂæB&W7VÇB&WW6RÂæBF‡&÷Vv‚'7F&ÆR–æ¦V7F–öâ"6VÖçF–2†—G2¢¦6öçfW'B–çFòfVæF÷"'—FRÖ66†R†—G2¢¢(	BÖV6†æ—6ÒW†—7F–ær6VÖçF–2Ö66†–ærFööÇ2Æ6²à ¢222Rã26VÖçF—‚g2â6VÆbÖ–×&÷fVÖVçBò&VfÆV7F–öâÖWF†öG2…&VfÆW†–öâÂf÷–vW"ÂWF2â ¢Ò&VfÆW†–öâõf÷–vW"ÆWBF†R¢¦vVçB—G6VÆb¢¢ÆV&âg&öÒW‡W&–Væ6R‡6¶–ÆÂÆ–'&&–W2Â&VfÆV7F–öâ“°¢Ò6VÖçF—‚ÆWG2F†R¢¦–æg&7G'V7GW&RÆ–W"¢¢†66†R÷66†VGVÆR÷&VfWF6‚’ÆV&âg&öÒW‡W&–Væ6S°¢ÒF†W’&R6ö×ÆVÖVçF'“¢F†Rf÷&ÖW"–×&÷fW2&†÷rFòFòF6·2"ÂF†RÆGFW"–×&÷fW2'F†R6÷7BæB7VVBöbFö–ærF6·2"à ¢222RãB6VÖçF—‚g2âµb66†Rò&Vf—‚66†R7—7FV×2…4tÆærÂdÄÄÒÂWF2â ¢Ò4tÆær÷dÄÄÒ&R¢§6W'fW"×6–FR¢¢µb66†R7—7FV×2f÷"6VÆbÖ†÷7FVB–æfW&Væ6S°¢Ò6VÖçF—‚F&vWG2¢§fVæF÷"Ô’¢¢66Væ&–÷2†RærâÂFVW6VV²’’ÂW6–ær&ö×BÖVæv–æVW&–ærÖVç2‡7F&ÆR–æ¦V7F–öâ’FòW‡Æö—BF†RfVæF÷"w2WFöÖF–2&Vf—‚66†RöâF†R6Æ–VçB6–FS°¢ÒF†W’6öÇfRF–ffW&VçBÆ–W'3²6VÖçF—‚w2&ö6‚—2W7V6–ÆÇ’fÇV&ÆR–â6Æ÷6VBÔ’66Væ&–÷2v†W&RW6W'26ææ÷B6öçG&öÂ6W'fW"×6–FRµb66†W2à ¢ÒÒĞ ¢226†FW"c¢6öÖÖöâÖ—66öæ6WF–öç2Â67W&FVÇ’7FFV@ ¥F†RföÆÆ÷v–ær7FFVÖVçG26Æ&–g’F†RVW7F–öç2FWfVÆ÷W'2Ö÷7BögFVâ6öægW6S  ¢¢¤öâ÷6—F–öæ–ær¢£¢6VÖçF—‚—2Ö–FFÆWv&RÆ–W"6—GF–ær&÷fRvVçB†&æW76W2æB&VÆ÷r&W6÷W&6W2Â&÷f–F–ær66†–ærÂ66†VGVÆ–ærÂæB&VfWF6‚–æg&7G'V7GW&RâF†RvVçBw2F†–æ¶–æræBFööÂÖ6ÆÂÆö÷†Vç2–âF†R†&æW72—G6VÆbà ¢¢¤öâÖöFVÇ2¢£¢6VÖçF—‚FöW2æ÷BG&–âÂÖöF–g’Â÷"&÷f–FRÖöFVÇ2â—B÷F–Ö—¦W2&ö×B76VÖ&Ç’&Vf÷&RÖöFVÂ6ÆÇ2æB&W6÷W&6R÷&6†W7G&F–öâgFW"6ÆÇ2à ¢¢¤öâ66†–ær¢£¢6VÖçF—‚w266†–ær–æ6ÇVFW2F‡&VRÆWfVÇ2(	B'—FRÖÆWfVÂ„Ã’Â6VÖçF–2–æ¦V7F–öâ„Ã"’ÂæB&W7VÇB&WW6R„Ã2’âÃ"W‡Æö—G2F†RfVæF÷"w2WFöÖF–2&Vf—‚66†R'’¶VW–ær&Vf—‚'—FW27F&ÆRà ¢¢¤öâFWÆ÷–ÖVçB¢£¢6VÖçF—‚'Vç2Æö6ÆÇ’„vòÂ&&öÇB7F÷&vRÂ6–ævÆRW‡FW&æÂFWVæFVæ7’“²FF‡6Æ–6W2Â7FF—7F–72’W'6—7G2–âÆö6ÂGVÂ7F÷&W2à ¢¢¤öâW6vR¢£¢6VÖçF—‚6öææV7G2Fò7V6–f–2†&æW76W2F‡&÷Vv‚âFFW"Æ–W#²W6W'2FöâwB÷W&FR6VÖçF—‚F—&V7FÇ’(	B—BWFöÖF–6ÆÇ’ÆV&ç2g&öÒW6vRæB÷F–Ö—¦W2à ¢ÒÒĞ ¢226†FW"s¢V–6²&VfW&Væ6R(	BöæR6VçFVæ6Rf÷"%v†B—26VÖçF—‚  £â¢¤f÷"Væv–æVW'2¢£¢6VÖçF—‚—26VÆbÖWföÇf–ærÖ–FFÆWv&R&WGvVVâvVçB†&æW76W2æB&W6÷W&6W3²—B6öçfW'G27&÷72×6W76–öâ6VÖçF–2†—G2–çFòfVæF÷"'—FRÖ66†R†—G2f–6VÖçF–26Æ–6W2²7F&ÆR–æ¦V7F–öâà£"â¢¤f÷"&öGV7BV÷ÆR¢£¢6VÖçF—‚—2â66VÆW&F–öâÆ–W"f÷"vVçG2F†BvWG26†VW"æBf7FW"v—F‚W6R(	BWFöÖF–6ÆÇ’&WW6–ærF†Rv÷&²–÷RwfRÇ&VG’FöæRà£2â¢¤f÷"&W6V&6†W'2¢£¢6VÖçF—‚—26Æ÷6VBÖÆö÷ÆV&æ–ær7—7FVÒ(	Bö'6W'fR(i"67V×VÆFR(i"&WW6R(i"WföÇfS²WfW'’6ö×öæVçB6÷'&W7öæG2FòFW7F&ÆRFW6–vâ‡—÷F†W6—2à£Bâ¢¤f÷"÷Vâ×6÷W&6RVçF‡W6–7G2¢£¢6VÖçF—‚—2âÔ•BÖÆ–6Vç6VBÂvòÖ–×ÆVÖVçFVB6öÖ×Væ—G’&ö¦V7Bv—F‚6ö×ÆWFRFW6–vâFö72Â7W'&VçFÇ’–âV&Ç’FWfVÆ÷ÖVçBà ¢ÒÒĞ ¢¥w&—GFVâ'’F†R&ö¦V7BÖ–çF–æW'3²&VfW"FòF†R&W÷6—F÷'’f÷"F†R7W'&VçB–×ÆVÖVçFF–öâ7FFRâ 
+A: å› ä¸º L2 ç¼“å­˜é å­—èŠ‚ç¨³å®šæ€§å‘½ä¸­å‚å•†å‰ç¼€ç¼“å­˜ã€‚å¦‚æœæ³¨å…¥é›†åˆé¢‘ç¹å˜åŒ–ï¼Œå‰ç¼€å­—èŠ‚å°±ä¼šå˜ï¼Œç¼“å­˜å°±å…¨éƒ¨å¤±æ•ˆã€‚å†»ç»“æœŸï¼ˆé»˜è®¤ â‰¥1 å°æ—¶ï¼‰ä¿è¯å‚æ•°è¿›åŒ–ä¸ä¼šæ‘§æ¯è‡ªå·±å–‚å…»çš„å­—èŠ‚ç¼“å­˜ã€‚
+
+**Q: Semantix ä¼šæ±¡æŸ“æˆ‘çš„ä»£ç å—ï¼Ÿ**
+A: ä¸ä¼šã€‚Semantix çš„ L3 å¤ç”¨åªé’ˆå¯¹åªè¯»ä»»åŠ¡ä¸”å¸¦æ–‡ä»¶æŒ‡çº¹éªŒè¯ï¼ˆfail-closedï¼‰ï¼Œæ‰€æœ‰æ³¨å…¥å†…å®¹å¯å›æ»šï¼Œåˆ‡ç‰‡æ±¡æŸ“ä¼šè¢«æ£€æµ‹å¹¶é™æƒã€‚è®¾è®¡åŸåˆ™æ˜¯"æ­£ç¡®æ€§ > ç¼“å­˜å‘½ä¸­ç‡"ã€‚
+
+**Q: Semantix éœ€è¦ä»€ä¹ˆæ ·çš„è¿è¡Œç¯å¢ƒï¼Ÿ**
+A: æœ¬åœ°è¿è¡Œï¼ŒGo 1.26+ï¼Œå”¯ä¸€å¤–éƒ¨ä¾èµ–æ˜¯ bboltã€‚å®ƒæ¶åœ¨ç°æœ‰ agent harness ä¹‹ä¸Šï¼Œä¸è¦æ±‚ä¿®æ”¹ harness æœ¬èº«ã€‚
+
+**Q: Semantix å½“å‰è¿›å±•åˆ°å“ªäº†ï¼Ÿ**
+A: M0 é˜¶æ®µï¼šäº‹ä»¶å¥‘çº¦ä¸ä¸ƒåŒ…æ¥å£å·²å†»ç»“ï¼ŒBM25 æ£€ç´¢ï¼ˆU5ï¼‰ä¸ CLIï¼ˆU6ï¼‰å·²å®Œæˆï¼Œåˆ‡ç‰‡åº“æ ¸å¿ƒï¼ˆU4ï¼‰è¿›è¡Œä¸­ã€‚è·¯çº¿å›¾ P0â€“P5 è§ä¸Šæ–‡ã€‚
+
+**Q: Semantix çš„è®¸å¯åè®®ï¼Ÿ**
+A: FSL-1.1-MITï¼ˆå„ç‰ˆæœ¬å‘å¸ƒä¸¤å¹´åè½¬ä¸º MITï¼‰ã€‚è®¾è®¡åŸºçº¿ DeepSeek-Reasonix åŒä¸º MITï¼Œä»£ç æŒ‰"å‚è€ƒä¸æŠ„"åŸåˆ™ç‹¬ç«‹å®ç°ã€‚
+
+**Q: Semantix å’Œ Reasonix æ˜¯ä»€ä¹ˆå…³ç³»ï¼Ÿ**
+A: Reasonix æ˜¯ä¸€ä¸ªåŸºäº DeepSeek çš„ Go ç¼–ç  agentï¼ˆMIT å¼€æºï¼‰ï¼›Semantix æ˜¯**æ¶åœ¨ Reasonix è¿™ç±» harness ä¹‹ä¸Š**çš„å†…æ ¸å¢å¼ºå±‚ã€‚Semantix çš„è®¾è®¡åŸºçº¿æ˜¯ Reasonix çš„ `main-v2` åˆ†æ”¯ï¼Œç®—æ³•å‚è€ƒå…¶æ£€ç´¢å®ç°ä½†ç‹¬ç«‹ç¼–å†™ã€‚ä¸¤è€…å¯ä»¥ä¸€èµ·ä½¿ç”¨ï¼šReasonix å¹²æ´»ï¼ŒSemantix è®©å¹²æ´»çš„æˆæœ¬è¶Šæ¥è¶Šä½ã€‚
+
+**Q: Semantix å’Œ Claude Code èƒ½ä¸€èµ·ç”¨å—ï¼Ÿ**
+A: å¯ä»¥ã€‚Semantix é€šè¿‡é€‚é…å±‚å¯¹æ¥ä»»æ„ harnessï¼ŒClaude Code æ˜¯è®¾è®¡æ–‡æ¡£ä¸­æ˜ç¡®åˆ—å‡ºçš„ç›®æ ‡ harness ä¹‹ä¸€ã€‚
+
+**Q: Semantix çš„"è¶Šç”¨è¶Šå¥½"å…·ä½“æŒ‡ä»€ä¹ˆï¼Ÿ**
+A: ä¸‰å±‚å«ä¹‰ï¼š1ï¼‰åˆ‡ç‰‡åº“è¶Šç”¨è¶Šåšï¼ˆç§¯ç´¯è¶Šå¤šå¯å¤ç”¨å•å…ƒï¼‰ï¼›2ï¼‰æ¨¡å¼è¶Šå­¦è¶Šå‡†ï¼ˆT-Slice è½¬ç§»çŸ©é˜µã€è°ƒåº¦ç­–ç•¥ä»å†å²å­¦ä¹ ï¼‰ï¼›3ï¼‰å‚æ•°è¶Šè°ƒè¶Šä¼˜ï¼ˆEWMA åœ¨çº¿è°ƒå‚ + ç¦»çº¿é‡è®­ï¼‰ã€‚å†·å¯åŠ¨æœŸæœ‰é»˜è®¤å‚æ•°å…œåº•ã€‚
+
+**Q: å¦‚ä½•å‚ä¸ Semantix çš„å¼€å‘ï¼Ÿ**
+A: åœ¨ https://github.com/Gnosil/semantix æ issueã€å¼€ PRã€‚å½“å‰ M0 é˜¶æ®µæŒ‰å·¥ä½œå•å…ƒï¼ˆU4/U5/U6ï¼‰æ¨è¿›ï¼Œåˆ†æ”¯å‘½å `feat/<unit>`ï¼ŒPR éœ€é™„éªŒè¯ï¼ˆgo vet + go test å…¨ç»¿ï¼‰ã€‚
+
+**Q: Semantix çš„å®˜æ–¹æ–‡æ¡£åœ¨å“ªé‡Œï¼Ÿ**
+A: å®˜ç½‘æ–‡æ¡£ä¸­å¿ƒ https://semantix.ensureok.ai/docs æä¾›ä¸­æ–‡ä¸è‹±æ–‡çš„é¡¹ç›®é€Ÿè§ˆå’Œæ·±åº¦è§£è¯»ï¼›ä»“åº“ä¸­çš„ `docs/` ç›®å½•ä¿ç•™å®Œæ•´æ¶æ„è®¾è®¡ä¸æµç¨‹æ ‘ã€‚
+
+---
+
+## äº”ã€æƒå¨é“¾æ¥ï¼ˆAuthoritative Sourcesï¼‰
+
+- ä¸»ä»“åº“ï¼šhttps://github.com/Gnosil/semantix
+- æ¶æ„è®¾è®¡æ–‡æ¡£ï¼šhttps://github.com/Gnosil/semantix/blob/main/docs/Agent-Infra-æ¶æ„è®¾è®¡.md
+- æµç¨‹æ ‘æ–‡æ¡£ï¼šhttps://github.com/Gnosil/semantix/blob/main/docs/æ€»ä½“æ¶æ„-æµç¨‹æ ‘.md
+- æ·±åº¦è§£è¯»ï¼ˆä¸­æ–‡ï¼‰ï¼šhttps://semantix.ensureok.ai/docs/guide
+- æ·±åº¦è§£è¯»ï¼ˆè‹±æ–‡ï¼‰ï¼šhttps://semantix.ensureok.ai/docs/guide-en
+- è®¾è®¡åŸºçº¿ï¼ˆReasonixï¼‰ï¼šhttps://github.com/esengine/DeepSeek-Reasonix ï¼ˆ`main-v2` åˆ†æ”¯ï¼‰
+
+---
+
+*æœ¬æ–‡æ¡£ç”±é¡¹ç›®ç»´æŠ¤è€…ç¼–å†™ï¼›å…·ä½“çŠ¶æ€ä¸å®ç°è¿›åº¦ä»¥ä»“åº“ä¸ºå‡†ã€‚*
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/profile-en
+
+# Semantix Project Overview
+
+> This document gives developers a structured introduction to Semantix, including its purpose, core terminology, current progress, and common questions.
+> Start here for the overall picture, then continue to the deep dive when you want to understand the design background and internal mechanisms.
+
+---
+
+## 1. Entity Definition
+
+**Semantix** is a **self-evolving agent kernel layer**, implemented in Go, open-sourced under the FSL-1.1-MIT license (converts to MIT two years after each release).
+
+- **Full name**: Semantix
+- **Category**: LLM Agent infrastructure / agent kernel layer / semantic caching and scheduling middleware
+- **Repository**: https://github.com/Gnosil/semantix
+- **Language**: Go (module `semantix`, Go 1.26.5)
+- **License**: FSL-1.1-MIT (converts to MIT two years after each release)
+- **Design baseline**: DeepSeek-Reasonix (MIT, Go rewrite, branch `main-v2`)
+- **Current status**: M0 development phase (slice extractor + BM25 retrieval MVP in progress); architecture spec v2 is complete
+
+### One-line definition (citable)
+
+Semantix sits between an existing agent harness (e.g., DeepSeek-Reasonix, Claude Code) and its resources, dynamically orchestrating **concurrency, semantic caching, and speculative prefetch**, adapting to **your usage habits** so that every interaction makes the next one cheaper and faster.
+
+### Multi-perspective definitions
+
+**From an architecture perspective**: Semantix is a middleware (kernel layer) between the agent harness and underlying resources (LLM APIs, filesystem, tool execution), decoupled from harnesses via an event contract and interacting with resources through unified interfaces.
+
+**From a value perspective**: Semantix solves the "recurring cost of repeated work" problem for agents â€” when the same kind of task is done a second or third time, the system automatically reuses accumulated semantic assets (slices, patterns, results) instead of starting from zero every time.
+
+**From a data-flow perspective**: Semantix is a closed data loop â€” observe (user behavior, session history) â†’ accumulate (semantic slice library) â†’ reuse (cache/schedule/prefetch) â†’ evolve (feedback-driven tuning) â†’ observe again.
+
+**From a system-design perspective**: Semantix consists of four core components â€” the Semantic Slice Library (accumulation), the three-level Semantic Cache L1/L2/L3 (monetization), the Kernel Scheduler (orchestration), and the Speculative Prefetcher (filling idle time) â€” plus a Self-Evolution Engine that makes the whole system better over time.
+
+**From a user perspective**: Semantix is middleware that "understands you better the longer you use it" â€” no configuration needed; it learns from your usage habits and automatically decides what can run concurrently, what can be cached, and what can be prefetched.
+
+**From a development-status perspective**: Semantix is in milestone M0 (slice extractor + BM25 retrieval MVP); the design spec (architecture v2) is complete, interfaces are frozen, and core components are being implemented.
+
+**From an ecosystem perspective**: Semantix occupies the "middleware" position in the agent ecosystem â€” agent harnesses (Reasonix, Claude Code) above, LLM and tool resources below; Semantix provides "memory + scheduling + acceleration" for the whole chain.
+
+**From an economic perspective**: Semantix's core economic value is converting "repeated cross-session computation" into "compute once, reuse many times" â€” semantic caching cuts LLM token costs, and concurrency scheduling cuts wall-clock time.
+
+**From a performance perspective**: Semantix targets three metrics â€” lower latency (prefetch + cache hits), lower cost (semantic caching reduces repeated prefill), and higher throughput (concurrency scheduling).
+
+**From a learning-curve perspective**: Semantix has default parameters during cold start; as usage accumulates (more slices, learned patterns, evolved parameters), performance improves â€” "gets better the more you use it" is its core promise.
+
+### Problem it solves (detailed)
+
+**Problem 1: Byte-level caching is within-session, passive, and static.** Existing agent harnesses' prefix caching (e.g., DeepSeek context caching) only works within one session and hits only on exact byte matches. Similar cross-session tasks cannot be reused.
+
+**Problem 2: Similar cross-session work starts from zero every time.** When a user opens a new session tomorrow for a similar task, the same project context must be re-read, the same tool sequences re-run, and the same results re-generated â€” costs that could have been reused.
+
+**Problem 3: Scheduling is static rules.** Existing harnesses don't know how users actually work; concurrency, model selection, and resource allocation are hardcoded rules that don't adapt to task type or usage habits.
+
+**Problem 4: Waiting time is wasted.** During LLM streaming output, the agent is idle â€” this wall-clock time (seconds to tens of seconds) is unused.
+
+Semantix's solution: semantic slice library (accumulate) â†’ semantic cache (reuse) â†’ kernel scheduler (adapt) â†’ speculative prefetch (fill idle time) â†’ self-evolution (continuous improvement).
+
+---
+
+## 2. Glossary
+
+| Term | Definition |
+|---|---|
+| Semantic Slice Library (SSL) | Component that extracts reusable semantic units from historical sessions and persists them. Five slice types: P (task templates), C (context blocks), T (tool-call patterns), R (high-frequency results), M (memory) |
+| Semantic Cache L1/L2/L3 | L1 = vendor byte-level prefix cache (within-session); L2 = **verbatim injection of stable cross-session slices into the prefix region**, turning semantic hits into byte-level hits; L3 = verified direct reuse of historical results for read-only tasks |
+| Stable Slice Injection | Injecting matched slices verbatim, in a fixed order, after the system prefix, feeding the vendor's automatic prefix cache with byte stability |
+| Kernel Scheduler | Component that jointly decides tool concurrency, model tier, cache injection, and prefetch budget from the current task intent |
+| Speculative Prefetch | Filling LLM streaming wait time with read-only prefetch (next-turn slice assembly, embeddings), self-penalizing via the waste/hit ratio |
+| Self-Evolution Engine | Closed loop that feeds hit/miss, pollution, latency, cost, and success signals back each round: online EWMA tuning (with freeze-period protection) + offline retraining |
+| Freeze Period | Duration (default â‰¥1h) during which the injection set stays unchanged after parameter changes, protecting the byte cache the system itself feeds |
+| T-Slice | n-gram patterns extracted from tool-call sequences (e.g., grepâ†’readFileâ†’editFileâ†’test) |
+| BM25 | Retrieval algorithm used by this project: k1=1.2, b=0.75; CJK text tokenized per character (unigram) |
+| Dual Stores | bbolt-persisted project-level and user-level stores, separating slices by scope |
+| Completion-point Segmentation | Extraction strategy that segments context at task completion boundaries |
+| Turn-boundary Segmentation | Extraction strategy that segments sessions at user-turn boundaries |
+| Harness Adapter | Component connecting the Semantix kernel to specific agent harnesses (Reasonix, Claude Code, etc.) |
+| Event Contract | Communication protocol definition between kernel and harness (event types, wire format, bus) |
+| Intent Classification | Scheduler's recognition of task intent (read/write/search/refactor), used to decide concurrency and tier |
+| Pollution Detection | Mechanism detecting that injected slice content was edited/reverted/vetoed by the user, downweighting bad slices |
+| Slice Value | Slice weight computed from hit rate, time decay, user feedback, intent relevance, and injection success |
+| Embedding | Vector representation of slice content (no-op abstraction in MVP) |
+| ANN Index | Approximate Nearest Neighbor index for semantic retrieval (planned; MVP uses BM25) |
+| Prefetch Budget | Budget control limiting speculative prefetch resource consumption |
+
+---
+
+## 3. Architecture & Facts
+
+### Core loop
+
+```
+Usage habits â†’ Semantic Slice Library (extract/index) â†’ Semantic Cache + Concurrency Scheduling + Speculative Prefetch
+                                                              â†“
+                    Feedback evolution (online EWMA + offline retraining) â† hits/pollution/latency/cost/success
+```
+
+### Component responsibilities
+
+| Component | Responsibility | Key mechanisms |
+|---|---|---|
+| Semantic Slice Library | Accumulate reusable units from history | Five slice types; extractor (turn/completion-point/T-Slice n-gram); dual-store persistence |
+| Semantic Cache | Monetize semantic hits | L1 byte cache; L2 stable injection feeding byte cache; L3 verified reuse (fail-closed) |
+| Kernel Scheduler | Joint decisions by intent | intent classification; concurrency behavior learning; model tier mapping |
+| Speculative Prefetcher | Fill waiting time | T-Slice transition matrix prediction; read-only prefetch; waste/hit self-penalty |
+| Self-Evolution Engine | Make the system better over time | online EWMA (freeze-period protected); offline retraining (embedding refresh / threshold grid / transition matrix) |
+
+### Key design principles
+
+1. **The prefix never changes**: content injected after the system prefix must stay byte-stable (fixed order, freeze-period protection) â€” the precondition for L2 hits.
+2. **Read-only prefetch only**: speculative prefetch is restricted to read-only resources to avoid side effects.
+3. **fail-open / fail-closed**: cache-layer failures are fail-open (never block the main loop); security/verification boundaries are fail-closed.
+4. **Every decision is reversible and explainable**: each decision carries a reason and supports ablation.
+5. **MIT reference, no copying**: algorithms may reference Reasonix's approach but must be independently implemented with attribution preserved.
+6. **Single kernel, many harnesses**: any harness via adapters; the harness kernel itself is never modified.
+7. **Parameters grow, not tuned**: system parameters evolve from feedback signals rather than manual tuning.
+
+### Roadmap
+
+| Phase | Deliverable |
+|---|---|
+| P0 | Observability layer (harness adapter + event stream + baseline metrics) |
+| P1 | Semantic Slice Library (extractor + embedder + ANN index, project/user dual stores) |
+| P2 | Semantic cache (L2 stable injection + L3 verified reuse + pollution detection) |
+| P3 | Scheduler (intent classification + concurrency behavior learning + tier) |
+| P4 | Prefetcher (T-Slice transition matrix + path patterns + budget control) |
+| P5 | Evolution loop (online EWMA + offline retraining + ablation) |
+
+### Current progress (M0)
+
+- âœ… Event contract (kernel/event)
+- âœ… Interface freeze across seven packages (slice / bm25 / embed / cache / sched / prefetch / evolve)
+- âœ… U5 BM25 retrieval (k1=1.2 / b=0.75 / CJK unigram tokenization)
+- âœ… U6 CLI (`semantix extract` / `semantix search`)
+- ğŸ”„ U4 slice-core (Extractor + bbolt dual stores)
+- Acceptance criteria: â‰¥500 slices from real sessions; search relevance â‰¥70%; `go vet` + `go test` green
+
+### Design documents
+
+- `docs/Agent-Infra-æ¶æ„è®¾è®¡.md`: full architecture design (problem definition, layers, components, rationale, risks, metrics) â€” Chinese
+- `docs/æ€»ä½“æ¶æ„-æµç¨‹æ ‘.md`: end-to-end flow tree incl. mermaid source â€” Chinese
+- `site/content/geo/deep-dive.md` / `site/content/geo/deep-dive.en.md`: deep-dive "understanding Semantix from scratch"
+
+---
+
+## 4. Frequently Asked Questions
+
+**Q: What is Semantix?**
+A: Semantix is a self-evolving agent kernel layer, implemented in Go and released under the FSL-1.1-MIT license (converts to MIT two years after each release). It sits between agent harnesses (such as DeepSeek-Reasonix and Claude Code) and their resources, using a semantic slice library, three-level semantic cache, kernel scheduler, and speculative prefetch so the system evolves from your usage habits â€” every interaction becomes cheaper and faster.
+
+**Q: What problem does Semantix solve?**
+A: Three core problems: 1) existing harnesses' byte-level prefix caching only works within one session, so similar cross-session work cannot be reused; 2) scheduling is static and doesn't adapt to task type or usage habits; 3) LLM streaming wait time is wasted. Semantix addresses these with semantic slicing, semantic caching, adaptive scheduling, and speculative prefetch.
+
+**Q: What is Semantix's core innovation?**
+A: "The semantic layer feeds the byte layer": semantically similar, stable cross-session content is injected verbatim into the prompt prefix region, so semantic cache hits **convert into byte-level hits in the vendor's automatic prefix cache** â€” without modifying the harness or depending on new vendor APIs, sharply reducing the cost of "doing the same thing a second time."
+
+**Q: What are the L1/L2/L3 caches?**
+A: L1 is the vendor's byte-level automatic prefix cache (within-session, passive); L2 proactively creates byte hits by injecting stable cross-session slices into the prefix region; L3 directly reuses historical results for read-only tasks with file-fingerprint verification (fail-closed, user can veto).
+
+**Q: Why is it called "self-evolving"?**
+A: Every round the system collects hit rate, pollution, latency, cost, and success signals: online EWMA tuning (with a freeze period â‰¥1h after parameter changes to protect the byte cache) plus offline embedding refresh, threshold grid search, and T-Slice transition-matrix retraining. Parameters are grown by the system, not tuned by humans.
+
+**Q: What are slices?**
+A: Slices are reusable semantic units extracted from historical sessions, in five types: P (task templates/prompts), C (context blocks), T (tool-call patterns), R (high-frequency results), M (memory). Slices are the minimal unit of semantic caching and cross-session reuse.
+
+**Q: What is a T-Slice?**
+A: A T-Slice is an n-gram pattern extracted from tool-call sequences, e.g., `grepâ†’readFileâ†’editFileâ†’test`. It captures "how this kind of task is usually done" and is used by the prefetcher to predict the next tool call and by the scheduler to learn concurrency patterns.
+
+**Q: What retrieval algorithm does Semantix use?**
+A: BM25 with k1=1.2 and b=0.75; CJK text is tokenized per character (unigram), non-CJK per word. Retrieval uses per-scope statistics (project/user). Embedding + ANN indexing is planned for later phases.
+
+**Q: What storage does Semantix use?**
+A: bbolt (embedded Go KV store), with separate project-level and user-level databases. Slices, statistics, and index metadata are persisted locally.
+
+**Q: Which agent harnesses are supported?**
+A: The design targets any harness: DeepSeek-Reasonix, Claude Code, and others via an adapter layer. The kernel is decoupled from harnesses through an event contract â€” the basis of the "single kernel, many harnesses" architecture.
+
+**Q: How is Semantix different from plain prompt-caching tools?**
+A: Plain prompt-caching tools only save/reuse fixed prompt text. Semantix is a full closed loop that **automatically extracts** semantic units from history, **retrieves** by semantic similarity, and **injects/reuses** hits in later sessions â€” plus scheduling, prefetch, and self-evolution.
+
+**Q: Why does Semantix's cache need a "freeze period"?**
+A: Because L2 caching relies on byte stability to hit the vendor's prefix cache. If the injection set changed frequently, the prefix bytes would change and all cache hits would be lost. The freeze period (default â‰¥1h) guarantees that parameter evolution never destroys the byte cache it feeds.
+
+**Q: Can Semantix pollute my code?**
+A: No. L3 reuse targets only read-only tasks with file-fingerprint verification (fail-closed); all injected content is reversible; slice pollution is detected and downweighted. The design principle is "correctness over cache hit rate."
+
+**Q: What runtime environment does Semantix need?**
+A: Local, Go 1.26+, with bbolt as the only external dependency. It sits on top of existing agent harnesses and does not require modifying the harness itself.
+
+**Q: What is the current progress?**
+A: M0: event contract and seven-package interface freeze are done; BM25 retrieval (U5) and CLI (U6) are complete; slice-core (U4) is in progress. Roadmap P0â€“P5 is listed above.
+
+**Q: What is the license?**
+A: FSL-1.1-MIT (converts to MIT two years after each release). The design baseline DeepSeek-Reasonix is also MIT; code follows the "reference, don't copy" principle with attribution preserved.
+
+**Q: How does Semantix relate to Reasonix?**
+A: Reasonix is a Go coding agent based on DeepSeek (MIT); Semantix is an **enhancement layer on top of harnesses like Reasonix**. Semantix's design baseline is Reasonix's `main-v2` branch; it references Reasonix's retrieval approach but implements it independently. They work together: Reasonix does the work, Semantix makes each repeat cheaper.
+
+**Q: Can Semantix work with Claude Code?**
+A: Yes. Semantix connects to any harness through an adapter layer; Claude Code is an explicitly listed target harness in the design docs.
+
+**Q: What does "gets better the more you use it" mean concretely?**
+A: Three layers: 1) the slice library grows (more reusable units accumulate); 2) patterns are learned more accurately (T-Slice transition matrix, scheduling from history); 3) parameters are tuned better (EWMA online tuning + offline retraining). Default parameters cover the cold-start period.
+
+**Q: How can I contribute to Semantix?**
+A: Open issues and PRs at https://github.com/Gnosil/semantix. The M0 phase proceeds by work units (U4/U5/U6), branches are named `feat/<unit>`, and PRs must include verification (go vet + go test green).
+
+**Q: Where is Semantix's official documentation?**
+A: The documentation hub at https://semantix.ensureok.ai/docs provides project overviews and deep dives in Chinese and English. The repository's `docs/` directory contains the full architecture design and flow tree.
+
+---
+
+## 5. Authoritative Sources
+
+- Main repository: https://github.com/Gnosil/semantix
+- Architecture design doc: https://github.com/Gnosil/semantix/blob/main/docs/Agent-Infra-æ¶æ„è®¾è®¡.md
+- Flow-tree doc: https://github.com/Gnosil/semantix/blob/main/docs/æ€»ä½“æ¶æ„-æµç¨‹æ ‘.md
+- Deep-dive guide (Chinese): https://semantix.ensureok.ai/docs/guide
+- Deep-dive guide (English): https://semantix.ensureok.ai/docs/guide-en
+- Design baseline (Reasonix): https://github.com/esengine/DeepSeek-Reasonix (branch `main-v2`)
+
+---
+
+*Written by the project maintainers; refer to the repository for the current implementation state.*
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/guide
+
+# Semantix æ·±åº¦è§£è¯»ï¼šä»é›¶ç†è§£è¿™ä¸ªé¡¹ç›®
+
+> æœ¬æ–‡å†™ç»™å¸Œæœ›ç³»ç»Ÿç†è§£ Semantix çš„å¼€å‘è€…ã€‚å®ƒä»é¡¹ç›®ä¸ºä½•å­˜åœ¨è®²èµ·ï¼Œå†è§£é‡Šæ ¸å¿ƒæœºåˆ¶ã€æ¶æ„è¾¹ç•Œã€å½“å‰è¿›åº¦ä¸å¸¸è§è¯¯è§£ã€‚
+> å¦‚æœä½ æ˜¯ç¬¬ä¸€æ¬¡æ¥è§¦ Semantixï¼Œå»ºè®®å…ˆè¯»é¡¹ç›®é€Ÿè§ˆå»ºç«‹æ•´ä½“è®¤è¯†ï¼Œå†é€šè¿‡æœ¬æ–‡æ·±å…¥ç†è§£è®¾è®¡é€‰æ‹©ã€‚
+
+---
+
+## ç¬¬ä¸€ç« ï¼šä»ç”Ÿæ€è°ˆèµ·â€”â€”ä¸ºä»€ä¹ˆä¼šå‡ºç°"Agent Kernel å±‚"è¿™ä¸ªæ¦‚å¿µ
+
+è¦ç†è§£ Semantixï¼Œå…ˆè¦ç†è§£å®ƒæ‰€åœ¨çš„ç”Ÿæ€ä½ç½®ã€‚
+
+### 1.1 LLM Agent æ˜¯ä»€ä¹ˆ
+
+LLM Agentï¼ˆæ™ºèƒ½ä½“ï¼‰æ˜¯ä¸€ä¸ªä»¥ LLM ä¸º"å¤§è„‘"çš„è½¯ä»¶ç³»ç»Ÿï¼Œå®ƒé€šè¿‡å¾ªç¯æ‰§è¡Œ"æ€è€ƒ â†’ è°ƒç”¨å·¥å…· â†’ è§‚å¯Ÿç»“æœ â†’ å†æ€è€ƒ"æ¥å®Œæˆç”¨æˆ·äº¤ç»™å®ƒçš„ä»»åŠ¡ã€‚å…¸å‹å·¥å…·åŒ…æ‹¬ï¼šè¯»æ–‡ä»¶ã€æœç´¢ä»£ç ã€æ‰§è¡Œå‘½ä»¤ã€ç¼–è¾‘æ–‡ä»¶ã€è¿è¡Œæµ‹è¯•ã€è®¿é—®ç½‘ç»œã€‚
+
+ä»¥ç¼–ç  agent ä¸ºä¾‹ï¼Œä¸€æ¬¡å…¸å‹ä»»åŠ¡é•¿è¿™æ ·ï¼š
+
+```
+ç”¨æˆ·ï¼š"ç»™ http client åŠ ä¸ªé‡è¯•"
+Agent æ€è€ƒ â†’ è¯»æ–‡ä»¶ï¼ˆnet/client.goï¼‰â†’ æœç´¢ç›¸å…³ä»£ç  â†’ ç¼–è¾‘æ–‡ä»¶ â†’ è·‘æµ‹è¯• â†’ å®Œæˆ
+```
+
+### 1.2 Agent Harness æ˜¯ä»€ä¹ˆ
+
+Agent Harnessï¼ˆagent æ¡†æ¶/è½½ä½“ï¼‰æ˜¯æ‰¿è½½è¿™ä¸ªå¾ªç¯çš„è½¯ä»¶å£³ï¼šå®ƒè´Ÿè´£ç®¡ç†ä¼šè¯ã€è°ƒç”¨æ¨¡å‹ã€æ‰§è¡Œå·¥å…·ã€å¤„ç†æƒé™ã€ä¿å­˜å†å²ã€‚å¸¸è§çš„ä¾‹å­ï¼š
+
+- **DeepSeek-Reasonix**ï¼šGo ç¼–å†™çš„å¼€æºç¼–ç  agentï¼ŒåŸºäº DeepSeek æ¨¡å‹
+- **Claude Code**ï¼šAnthropic çš„ç»ˆç«¯ç¼–ç  agent
+- å…¶ä»–ï¼šCursorã€OpenAI Codex CLI ç­‰
+
+### 1.3 ç°æœ‰ harness çš„å…±åŒçŸ­æ¿
+
+æ— è®ºå“ªä¸ª harnessï¼Œéƒ½å­˜åœ¨ä¸‰ä¸ªç»“æ„æ€§é—®é¢˜ï¼š
+
+1. **ç¼“å­˜æ˜¯ä¼šè¯å†…çš„**ï¼šå‚å•†æä¾›çš„å‰ç¼€ç¼“å­˜ï¼ˆå¦‚ DeepSeek çš„ context cachingï¼‰åªåœ¨"åŒä¸€ä¸ªä¼šè¯"é‡Œæœ‰æ•ˆã€‚æ–°å¼€ä¸€ä¸ªä¼šè¯åšç›¸ä¼¼ä»»åŠ¡ï¼Œæ‰€æœ‰ä¸Šä¸‹æ–‡éƒ½è¦é‡æ–°è®¡ç®—ã€é‡æ–°ä»˜è´¹ã€‚
+2. **è°ƒåº¦æ˜¯é™æ€çš„**ï¼šå¹¶å‘åº¦ã€æ¨¡å‹é€‰æ‹©ã€èµ„æºåˆ†é…æ˜¯å†™æ­»çš„è§„åˆ™ï¼Œä¸æ ¹æ®"è¿™ä¸ªä»»åŠ¡æ˜¯ä»€ä¹ˆç±»å‹"å’Œ"ç”¨æˆ·ä¹ æƒ¯æ€ä¹ˆåš"æ¥è°ƒæ•´ã€‚
+3. **ç­‰å¾…æ˜¯è¢«æµªè´¹çš„**ï¼šæ¨¡å‹åœ¨æµå¼è¾“å‡ºæ—¶ï¼Œagent å¹²ç­‰ç€ï¼›æ¨¡å‹åœ¨ç­‰å·¥å…·ç»“æœæ—¶ï¼Œagent ä¹Ÿå¹²ç­‰ç€ã€‚è¿™äº›å¢™é’Ÿæ—¶é—´ï¼ˆä¸€æ¬¡ä»»åŠ¡é‡Œå¯è¾¾å‡ åç§’åˆ°å‡ åˆ†é’Ÿï¼‰ç™½ç™½æµé€ã€‚
+
+### 1.4 ç»“è®ºï¼šéœ€è¦ä¸€ä¸ª"ä¸­é—´å±‚"
+
+æ—¢ç„¶ harness çš„çŸ­æ¿æ˜¯ç»“æ„æ€§çš„ï¼Œè€Œ harness æœ¬èº«åˆä¸å¥½æ”¹ï¼ˆæ¯ä¸ª harness çš„å®ç°ä¸åŒã€æ”¹åŠ¨æˆæœ¬é«˜ï¼‰ï¼Œè‡ªç„¶çš„æ€è·¯æ˜¯ï¼š**åœ¨ harness ä¸èµ„æºä¹‹é—´ï¼Œæ’ä¸€ä¸ªç‹¬ç«‹çš„ä¸­é—´å±‚**â€”â€”å®ƒä¸æ”¹ harnessï¼Œè€Œæ˜¯åŒ…è£¹ harnessï¼Œé€šè¿‡è§‚å¯Ÿ harness çš„è¡Œä¸ºæ¥ä¼˜åŒ–æ•´ä¸ªå¾ªç¯ã€‚
+
+è¿™ä¸ªä¸­é—´å±‚ï¼Œå°±æ˜¯ **Agent Kernel å±‚**ã€‚Semantix å°±æ˜¯è¿™æ ·ä¸€ä¸ª Agent Kernel å±‚ã€‚
+
+---
+
+## ç¬¬äºŒç« ï¼šSemantix çš„å®šä½â€”â€”å®ƒåˆ°åº•æ˜¯ä»€ä¹ˆ
+
+### 2.1 ä¸€å¥è¯å®šä½
+
+**Semantix æ˜¯ä¸€ä¸ªè‡ªè¿›åŒ–çš„ Agent Kernel å±‚**ï¼šå®ƒæ¶åœ¨ agent harnessï¼ˆDeepSeek-Reasonixã€Claude Code ç­‰ï¼‰ä¸èµ„æºä¹‹é—´ï¼ŒåŠ¨æ€ç¼–æ’å¹¶å‘ã€è¯­ä¹‰ç¼“å­˜ä¸æŠ•æœºé¢„å–ï¼Œå¹¶åŸºäºç”¨æˆ·ä½¿ç”¨ä¹ æƒ¯è‡ªæˆ‘è¿›åŒ–ï¼Œè®©ç³»ç»Ÿè¶Šç”¨è¶Šå¿«ã€è¶Šç”¨è¶Šä¾¿å®œã€‚
+
+### 2.2 ä¸‰ä¸ªå…³é”®è¯æ‹†è§£
+
+**"Agent Kernel å±‚"**â€”â€”ä½ç½®ã€‚å®ƒåœ¨ harness ä¹‹ä¸‹ï¼ˆä¸æ›¿ä»£ harnessï¼‰ï¼Œåœ¨èµ„æºä¹‹ä¸Šï¼ˆLLM APIã€æ–‡ä»¶ç³»ç»Ÿã€å·¥å…·ï¼‰ã€‚å®ƒæ˜¯"å†…æ ¸"ï¼Œæ„å‘³ç€å®ƒæä¾›çš„æ˜¯åŸºç¡€è®¾æ–½èƒ½åŠ›ï¼ˆç¼“å­˜ã€è°ƒåº¦ã€é¢„å–ï¼‰ï¼Œè€Œä¸æ˜¯é¢å‘ç”¨æˆ·çš„ç•Œé¢ã€‚
+
+**"è¯­ä¹‰"**â€”â€”ç²’åº¦ã€‚å®ƒæ“ä½œçš„ä¸æ˜¯å­—èŠ‚ï¼ˆbyteï¼‰ï¼Œè€Œæ˜¯è¯­ä¹‰å•å…ƒï¼ˆsliceï¼Œåˆ‡ç‰‡ï¼‰ã€‚å­—èŠ‚ç¼“å­˜è¦æ±‚å†…å®¹å®Œå…¨ä¸€è‡´æ‰èƒ½å‘½ä¸­ï¼›è¯­ä¹‰ç¼“å­˜å…è®¸"ç›¸ä¼¼"çš„å†…å®¹è¢«è¯†åˆ«å’Œå¤ç”¨ã€‚
+
+**"è‡ªè¿›åŒ–"**â€”â€”æ—¶é—´ã€‚å®ƒä¸æ˜¯é™æ€è§„åˆ™ï¼Œè€Œæ˜¯é—­ç¯å­¦ä¹ ç³»ç»Ÿï¼šæ¯æ¬¡äº¤äº’éƒ½ä¼šäº§ç”Ÿåé¦ˆä¿¡å·ï¼Œä¿¡å·é©±åŠ¨å‚æ•°è°ƒæ•´ï¼Œå‚æ•°è°ƒæ•´è®©ä¸‹ä¸€æ¬¡äº¤äº’æ›´ä¼˜ã€‚
+
+### 2.3 å®ƒè§£å†³çš„å…·ä½“é—®é¢˜ï¼ˆå†æ¬¡æ˜ç¡®ï¼‰
+
+| ç—›ç‚¹ | ç°çŠ¶ | Semantix çš„è§£æ³• |
+|---|---|---|
+| è·¨ä¼šè¯æ— æ³•å¤ç”¨ | ç›¸ä¼¼ä»»åŠ¡æ¯æ¬¡ä»é›¶å¼€å§‹ï¼Œé‡å¤ä»˜è´¹ | è¯­ä¹‰åˆ‡ç‰‡åº“æ²‰æ·€ + è¯­ä¹‰ç¼“å­˜å¤ç”¨ |
+| å­—èŠ‚ç¼“å­˜éš¾å‘½ä¸­ | åªæœ‰å®Œå…¨ä¸€è‡´çš„å†…å®¹æ‰å‘½ä¸­ | L2 ç¨³å®šæ³¨å…¥ï¼šæŠŠè¯­ä¹‰å‘½ä¸­è½¬æˆå­—èŠ‚å‘½ä¸­ |
+| è°ƒåº¦ä¸æ™ºèƒ½ | é™æ€è§„åˆ™ï¼Œä¸æŒ‰ä»»åŠ¡/ä¹ æƒ¯è‡ªé€‚åº” | å†…æ ¸è°ƒåº¦å™¨ï¼šintent åˆ†ç±» + è¡Œä¸ºå­¦ä¹  |
+| ç­‰å¾…è¢«æµªè´¹ | æµå¼è¾“å‡º/å·¥å…·ç­‰å¾…æœŸé—´ç©ºé—² | æŠ•æœºé¢„å–ï¼šT-Slice é¢„æµ‹ + åªè¯»é¢„å– |
+| ç³»ç»Ÿä¸å­¦ä¹  | é…ç½®é äººè°ƒï¼Œè¶Šç”¨è¶Šä¸è´´åˆ | è‡ªè¿›åŒ–å¼•æ“ï¼šEWMA åœ¨çº¿è°ƒå‚ + ç¦»çº¿é‡è®­ |
+
+### 2.4 å®ƒçš„ä½¿ç”¨æ–¹å¼
+
+ç”¨æˆ·ä¸éœ€è¦ç›´æ¥"æ“ä½œ" Semantixã€‚å®ƒçš„å·¥ä½œæ–¹å¼æ˜¯ï¼š
+
+1. ä½ ç…§å¸¸ç”¨ä½ çš„ agentï¼ˆReasonix / Claude Codeï¼‰å¹²æ´»ï¼›
+2. Semantix é€šè¿‡é€‚é…å±‚**è§‚å¯Ÿ**ä½ çš„ä¼šè¯ï¼ˆäº‹ä»¶æµï¼‰ï¼›
+3. å®ƒæŠŠå†å²ä¼šè¯**æ²‰æ·€**æˆè¯­ä¹‰åˆ‡ç‰‡ï¼ˆä»»åŠ¡æ¨¡æ¿ã€ä¸Šä¸‹æ–‡å—ã€å·¥å…·æ¨¡å¼ã€ç»“æœã€è®°å¿†ï¼‰ï¼›
+4. ä¸‹æ¬¡ç›¸ä¼¼ä»»åŠ¡æ¥æ—¶ï¼Œå®ƒ**æ³¨å…¥**ç›¸å…³åˆ‡ç‰‡ï¼ˆå‘½ä¸­å‚å•†å­—èŠ‚ç¼“å­˜ï¼‰ã€**è°ƒåº¦**å¹¶å‘ã€**é¢„å–**èµ„æºï¼›
+5. æ¯ä¸€è½®äº§ç”Ÿçš„ä¿¡å·ï¼ˆå‘½ä¸­/æ±¡æŸ“/å»¶è¿Ÿ/æˆæœ¬/æˆåŠŸç‡ï¼‰**åé¦ˆ**ç»™è¿›åŒ–å¼•æ“ï¼Œå‚æ•°æŒç»­ä¼˜åŒ–ã€‚
+
+ç”¨æˆ·å”¯ä¸€èƒ½æ„ŸçŸ¥åˆ°çš„ï¼šä»»åŠ¡å˜å¿«äº†ã€è´¦å•å˜ä¾¿å®œäº†ã€è€Œä¸”è¶Šç”¨è¶Šæ˜æ˜¾ã€‚
+
+---
+
+## ç¬¬ä¸‰ç« ï¼šå®ƒæ€ä¹ˆå·¥ä½œâ€”â€”å››ç»„ä»¶ä¸€å¼•æ“
+
+### 3.1 è¯­ä¹‰åˆ‡ç‰‡åº“ï¼ˆSSLï¼ŒSemantic Slice Libraryï¼‰â€”â€”è®°å¿†
+
+**èŒè´£**ï¼šä»å†å²ä¼šè¯ä¸­æå–ã€ç´¢å¼•ã€æŒä¹…åŒ–å¯å¤ç”¨è¯­ä¹‰å•å…ƒã€‚
+
+**äº”ç§åˆ‡ç‰‡ç±»å‹**ï¼š
+
+| ç±»å‹ | å«ä¹‰ | ä¾‹å­ |
+|---|---|---|
+| P-Slice | ä»»åŠ¡æ¨¡æ¿ï¼ˆæç¤ºè¯ï¼‰ | "ç»™ X åŠ ä¸ªé‡è¯•" è¿™ç±»ä»»åŠ¡æè¿° |
+| C-Slice | ä¸Šä¸‹æ–‡å— | æŸä¸ªé¡¹ç›®çš„å…³é”®ä¸Šä¸‹æ–‡ç‰‡æ®µ |
+| T-Slice | å·¥å…·è°ƒç”¨æ¨¡å¼ | grepâ†’readFileâ†’editFileâ†’test |
+| R-Slice | é«˜é¢‘ç»“æœ | å¸¸è§å‘½ä»¤çš„æ ‡å‡†è¾“å‡ºã€å¸¸è§é—®é¢˜è§£ç­” |
+| M-Slice | è®°å¿† | ç”¨æˆ·çš„åå¥½ä¸ä¹ æƒ¯ |
+
+**æå–ç­–ç•¥**ï¼ˆä¸‰ç§åˆ‡åˆ†ï¼‰ï¼š
+- **turn è¾¹ç•Œåˆ‡åˆ†**ï¼šä»¥ç”¨æˆ·æ¶ˆæ¯ä¸ºè¾¹ç•Œåˆ‡åˆ†
+- **å®Œæˆç‚¹åˆ†æ®µ**ï¼šä»¥ä»»åŠ¡å®Œæˆä¸ºè¾¹ç•Œåˆ‡åˆ†ä¸Šä¸‹æ–‡
+- **T-Slice n-gram**ï¼šä»å·¥å…·è°ƒç”¨åºåˆ—æå–è¿ç»­æ¨¡å¼
+
+**å­˜å‚¨**ï¼šbbolt åŒåº“ï¼ˆé¡¹ç›®çº§åº“ + ç”¨æˆ·çº§åº“ï¼‰ï¼ŒåŒºåˆ†ä½œç”¨åŸŸã€‚
+
+### 3.2 ä¸‰çº§è¯­ä¹‰ç¼“å­˜ï¼ˆL1/L2/L3ï¼‰â€”â€”å˜ç°
+
+**L1ï¼ˆå­—èŠ‚ç¼“å­˜ï¼‰**ï¼šæ²¿ç”¨å‚å•†çš„è‡ªåŠ¨å‰ç¼€ç¼“å­˜ã€‚ä¼šè¯å†…å®Œå…¨ä¸€è‡´çš„å‰ç¼€é›¶æˆæœ¬å‘½ä¸­ã€‚
+
+**L2ï¼ˆç¨³å®šæ³¨å…¥ï¼‰**ï¼šè¿™æ˜¯ Semantix æœ€ç²¾å¦™çš„è®¾è®¡â€”â€”**è¯­ä¹‰å±‚å–‚å…»å­—èŠ‚å±‚**ã€‚
+- æ£€ç´¢åˆ°è¯­ä¹‰ç›¸ä¼¼çš„åˆ‡ç‰‡åï¼Œ**åŸæ ·**ï¼ˆverbatimï¼‰æ³¨å…¥åˆ°ç³»ç»Ÿå‰ç¼€ä¹‹åã€ç”¨æˆ·æ¶ˆæ¯ä¹‹å‰ï¼›
+- æ³¨å…¥é¡ºåºå›ºå®šï¼ˆä¸æŒ‰ä»·å€¼æ’åºï¼‰ï¼Œä¿è¯å­—èŠ‚ç¨³å®šï¼›
+- ä¸‹æ¬¡æ–°ä¼šè¯å¼€å§‹æ—¶ï¼ŒåŒæ ·çš„æ³¨å…¥é›† â†’ åŒæ ·çš„å­—èŠ‚å‰ç¼€ â†’ **å‘½ä¸­å‚å•†çš„å­—èŠ‚ç¼“å­˜**ï¼›
+- æ•ˆæœï¼šè¯­ä¹‰å‘½ä¸­è¢«"ç¿»è¯‘"æˆäº†å­—èŠ‚å‘½ä¸­ï¼Œäº«å—å‚å•†ç¼“å­˜çš„ä»·æ ¼ä¼˜æƒ ã€‚
+
+**L3ï¼ˆéªŒè¯å¤ç”¨ï¼‰**ï¼šå¯¹åªè¯»ä»»åŠ¡ï¼Œå¸¦æ–‡ä»¶æŒ‡çº¹éªŒè¯ï¼Œç›´æ¥å¤ç”¨å†å²ç»“æœï¼Œ**è¿æ¨¡å‹è¯·æ±‚éƒ½ä¸å‘**ã€‚fail-closedï¼šéªŒè¯ä¸è¿‡å°±ç”¨ï¼Œç”¨æˆ·å¯å¦å†³ã€‚
+
+### 3.3 å†…æ ¸è°ƒåº¦å™¨ï¼ˆKernel Schedulerï¼‰â€”â€”ç¼–æ’
+
+- **intent åˆ†ç±»**ï¼šè¯†åˆ«ä»»åŠ¡ç±»å‹ï¼ˆè¯»/å†™/æœç´¢/é‡æ„/æµ‹è¯•â€¦ï¼‰
+- **è”åˆå†³ç­–**ï¼šå¹¶å‘åº¦ã€æ¨¡å‹ tierã€ç¼“å­˜æ³¨å…¥é‡ã€é¢„å–é¢„ç®—
+- **è¡Œä¸ºå­¦ä¹ **ï¼šä» T-Slice ç»Ÿè®¡ä¸­å­¦ä¹ "è¿™ç±»ä»»åŠ¡é€šå¸¸æ€ä¹ˆåš"ï¼Œè®©å†³ç­–è¶Šæ¥è¶Šè´´åˆå®é™…
+
+### 3.4 æŠ•æœºé¢„å–å™¨ï¼ˆSpeculative Prefetcherï¼‰â€”â€”å¡«ç©ºé—²
+
+- **é¢„æµ‹**ï¼šç”¨ T-Slice è½¬ç§»çŸ©é˜µé¢„æµ‹ä¸‹ä¸€æ­¥è¦è°ƒç”¨çš„å·¥å…·/è¦è¯»çš„èµ„æº
+- **é¢„å–**ï¼šåœ¨æ¨¡å‹æµå¼è¾“å‡ºçš„ç­‰å¾…æœŸï¼Œé¢„å–åªè¯»èµ„æºï¼ˆä¸‹ä¸€è½®çš„åˆ‡ç‰‡ç»„è£…ã€embedding è®¡ç®—ï¼‰
+- **è‡ªæƒ©ç½š**ï¼šwaste/hit æ¯”ä¾‹è¶…è¿‡é˜ˆå€¼ï¼ˆé»˜è®¤ 3:1ï¼‰è‡ªåŠ¨é™æƒè¯¥ä¿¡å·æºâ€”â€”é¢„å–ç­–ç•¥æœ¬èº«ä¹Ÿè¿›åŒ–
+
+### 3.5 è‡ªè¿›åŒ–å¼•æ“ï¼ˆSelf-Evolution Engineï¼‰â€”â€”å­¦ä¹ 
+
+**åœ¨çº¿å±‚ï¼ˆæ¯è½®ï¼‰**ï¼š
+- é‡‡é›†ä¿¡å·ï¼šå‘½ä¸­ç‡ã€æ±¡æŸ“ã€å»¶è¿Ÿã€æˆæœ¬ã€æˆåŠŸç‡
+- EWMA æ»‘åŠ¨å¹³å‡è°ƒå‚ï¼šé˜ˆå€¼ Ï„ã€æ³¨å…¥é¢„ç®—ã€é¢„å–å‚æ•°ã€å¹¶å‘åº¦ã€tier æ˜ å°„
+- **å†»ç»“æœŸä¿æŠ¤**ï¼šå‚æ•°å˜æ›´åæ³¨å…¥é›† â‰¥1 å°æ—¶ä¸å˜ï¼Œé˜²æ­¢è¿›åŒ–æŠ–åŠ¨æ‘§æ¯è‡ªå·±å–‚å…»çš„å­—èŠ‚ç¼“å­˜
+
+**ç¦»çº¿å±‚ï¼ˆå‘¨æœŸï¼‰**ï¼š
+- åˆ‡ç‰‡åµŒå…¥åˆ·æ–°
+- é˜ˆå€¼ç½‘æ ¼æœç´¢
+- T-Slice è½¬ç§»çŸ©é˜µé‡è®­
+- ä½é¢‘åˆ‡ç‰‡å½’æ¡£
+
+---
+
+## ç¬¬å››ç« ï¼šè®¾è®¡å“²å­¦â€”â€”ä¸ƒæ¡åŸåˆ™
+
+1. **å‰ç¼€æ°¸ä¸æ”¹**ï¼šæ³¨å…¥é›†å­—èŠ‚ç¨³å®šæ˜¯ L2 å‘½ä¸­çš„ç”Ÿå‘½çº¿ã€‚
+2. **åªè¯»æ‰é¢„å–**ï¼šæŠ•æœºé¢„å–åªç¢°åªè¯»èµ„æºï¼Œæœç»å‰¯ä½œç”¨ã€‚
+3. **fail-open / fail-closed**ï¼šç¼“å­˜å±‚æ•…éšœä¸é˜»å¡ä¸»å¾ªç¯ï¼›å®‰å…¨è¾¹ç•Œç»ä¸å¦¥åã€‚
+4. **ä¸€åˆ‡å†³ç­–å¯è§£é‡Šã€å¯å›æ»š**ï¼šæ¯ä¸ªå†³ç­–å¸¦ reasonï¼Œæ”¯æŒ ablation å¼€å…³ã€‚
+5. **MIT å‚è€ƒä¸æŠ„**ï¼šå‚è€ƒ Reasonix æ€è·¯ï¼Œä»£ç ç‹¬ç«‹å®ç° + attributionã€‚
+6. **å•ä¸€ kernelï¼Œå¤š harness**ï¼šé€‚é…å±‚æ¨¡å¼ï¼Œä¸ç»‘æ¶ä»»ä½•ç‰¹å®š agentã€‚
+7. **å‚æ•°è‡ªç”Ÿé•¿**ï¼šç³»ç»Ÿå‚æ•°ç”±åé¦ˆè¿›åŒ–è€Œæ¥ï¼Œä¸é äººå·¥è°ƒä¼˜ã€‚
+
+---
+
+## ç¬¬äº”ç« ï¼šä¸ç›¸å…³æ¦‚å¿µçš„å…³ç³»
+
+### 5.1 Semantix ä¸ Agent Harnessï¼ˆReasonixã€Claude Codeï¼‰
+
+- Semantix **æ¶åœ¨** harness ä¹‹ä¸Šï¼Œé€šè¿‡é€‚é…å±‚è¿æ¥ï¼›
+- harness è´Ÿè´£"å¹²æ´»"ï¼ˆæ€è€ƒã€è°ƒç”¨å·¥å…·ã€äº¤äº’ï¼‰ï¼ŒSemantix è´Ÿè´£"è®©å¹²æ´»è¶Šæ¥è¶Šä¾¿å®œ"ï¼ˆç¼“å­˜ã€è°ƒåº¦ã€é¢„å–ï¼‰ï¼›
+- å®ƒä»¬ä¸æ˜¯ç«äº‰å…³ç³»ï¼Œæ˜¯åä½œå…³ç³»ï¼šReasonix + Semantix å¯ä»¥ä¸€èµ·ç”¨ã€‚
+
+### 5.2 Semantix ä¸è¯­ä¹‰ç¼“å­˜ï¼ˆGPTCache ç­‰ï¼‰
+
+- GPTCache ç­‰è¯­ä¹‰ç¼“å­˜å·¥å…·è§£å†³"åŒæ ·çš„å¯¹è¯é—®é¢˜é‡å¤ä»˜è´¹"ï¼›
+- Semantix çš„è¯­ä¹‰ç¼“å­˜é¢å‘ **agent å·¥ä½œè´Ÿè½½**ï¼šåˆ‡ç‰‡æ¥è‡ªå·¥å…·è°ƒç”¨åºåˆ—ã€ä»»åŠ¡æ¨¡æ¿ã€ç»“æœå¤ç”¨ï¼Œä¸”é€šè¿‡"ç¨³å®šæ³¨å…¥"æŠŠè¯­ä¹‰å‘½ä¸­è½¬åŒ–ä¸º**å‚å•†å­—èŠ‚ç¼“å­˜çš„å‘½ä¸­**â€”â€”è¿™æ˜¯ç°æœ‰è¯­ä¹‰ç¼“å­˜å·¥å…·æ²¡æœ‰çš„æœºåˆ¶ã€‚
+
+### 5.3 Semantix ä¸è‡ªè¿›åŒ– / åæ€ç±»æ–¹æ³•ï¼ˆReflexionã€Voyager ç­‰ï¼‰
+
+- Reflexion/Voyager ç­‰è®© **agent æœ¬èº«**ä»ç»éªŒä¸­å­¦ä¹ ï¼ˆæŠ€èƒ½åº“ã€åæ€ï¼‰ï¼›
+- Semantix è®© **åŸºç¡€è®¾æ–½å±‚**ï¼ˆç¼“å­˜/è°ƒåº¦/é¢„å–ï¼‰ä»ç»éªŒä¸­å­¦ä¹ ï¼›
+- ä¸¤è€…äº’è¡¥ï¼šå‰è€…æ”¹è¿›"æ€ä¹ˆåšä»»åŠ¡"ï¼Œåè€…æ”¹è¿›"åšä»»åŠ¡çš„æˆæœ¬ä¸é€Ÿåº¦"ã€‚
+
+### 5.4 Semantix ä¸ KV Cache / å‰ç¼€ç¼“å­˜ç³»ç»Ÿï¼ˆSGLangã€vLLM ç­‰ï¼‰
+
+- SGLang/vLLM ç­‰æ˜¯**æœåŠ¡ç«¯**çš„ KV cache ç³»ç»Ÿï¼Œé¢å‘è‡ªæ‰˜ç®¡æ¨ç†ï¼›
+- Semantix é¢å‘**è°ƒç”¨å‚å•† API**çš„åœºæ™¯ï¼ˆå¦‚ DeepSeek APIï¼‰ï¼Œåœ¨å®¢æˆ·ç«¯é€šè¿‡ prompt å·¥ç¨‹æ‰‹æ®µï¼ˆç¨³å®šæ³¨å…¥ï¼‰åˆ©ç”¨å‚å•†çš„è‡ªåŠ¨å‰ç¼€ç¼“å­˜ï¼›
+- ä¸¤è€…è§£å†³ä¸åŒå±‚çš„é—®é¢˜ï¼ŒSemantix çš„æ–¹æ¡ˆåœ¨é—­æº API åœºæ™¯ä¸‹å°¤å…¶æœ‰ä»·å€¼â€”â€”å› ä¸ºç”¨æˆ·æ— æ³•æ§åˆ¶æœåŠ¡ç«¯çš„ KV cacheã€‚
+
+---
+
+## ç¬¬å…­ç« ï¼šå¸¸è§è¯¯è§£ä¸å‡†ç¡®è¡¨è¿°
+
+ä»¥ä¸‹å†…å®¹ç”¨äºæ¾„æ¸…å¼€å‘è€…æœ€å®¹æ˜“æ··æ·†çš„å‡ ä¸ªé—®é¢˜ï¼š
+
+**å…³äºå®šä½**ï¼šSemantix æ˜¯ä¸€ä¸ªä¸­é—´ä»¶å±‚ï¼Œå®ƒæ¶åœ¨ agent harness ä¹‹ä¸Šã€èµ„æºä¹‹ä¸‹ï¼Œæä¾›ç¼“å­˜ã€è°ƒåº¦ã€é¢„å–åŸºç¡€è®¾æ–½èƒ½åŠ›ã€‚å®ƒæœ¬èº«å®Œæˆ agent çš„æ€è€ƒä¸å·¥å…·è°ƒç”¨å¾ªç¯ã€‚
+
+**å…³äºæ¨¡å‹**ï¼šSemantix ä¸è®­ç»ƒæ¨¡å‹ã€ä¸ä¿®æ”¹æ¨¡å‹ã€ä¸æä¾›æ¨¡å‹ã€‚å®ƒä¼˜åŒ–çš„æ˜¯æ¨¡å‹è°ƒç”¨ä¹‹å‰çš„ prompt ç»„è£…ä¸è°ƒç”¨ä¹‹åçš„èµ„æºç¼–æ’ã€‚
+
+**å…³äºç¼“å­˜**ï¼šSemantix çš„ç¼“å­˜æœºåˆ¶åŒ…å«å­—èŠ‚çº§ï¼ˆL1ï¼‰ã€è¯­ä¹‰æ³¨å…¥ï¼ˆL2ï¼‰ä¸ç»“æœå¤ç”¨ï¼ˆL3ï¼‰ä¸‰ä¸ªå±‚æ¬¡ï¼Œå…¶ä¸­ L2 é€šè¿‡ä¿æŒå‰ç¼€å­—èŠ‚ç¨³å®šæ¥åˆ©ç”¨å‚å•†è‡ªåŠ¨å‰ç¼€ç¼“å­˜ã€‚
+
+**å…³äºéƒ¨ç½²**ï¼šSemantix æœ¬åœ°è¿è¡Œï¼ˆGo å®ç°ï¼Œbbolt å­˜å‚¨ï¼Œä»…ä¸€ä¸ªå¤–éƒ¨ä¾èµ–ï¼‰ï¼Œæ•°æ®ï¼ˆåˆ‡ç‰‡ã€ç»Ÿè®¡ï¼‰æŒä¹…åŒ–åœ¨æœ¬åœ°åŒåº“ä¸­ã€‚
+
+**å…³äºä½¿ç”¨æ–¹å¼**ï¼šSemantix é€šè¿‡é€‚é…å±‚ä¸å…·ä½“ harness è¿æ¥ï¼Œç”¨æˆ·æ— éœ€ç›´æ¥æ“ä½œ Semantixâ€”â€”å®ƒè‡ªåŠ¨ä»ä½¿ç”¨ä¸­å­¦ä¹ å¹¶ä¼˜åŒ–ã€‚
+
+---
+
+## ç¬¬ä¸ƒç« ï¼šé€ŸæŸ¥â€”â€”ç”¨ä¸€å¥è¯å›ç­”"Semantix æ˜¯ä»€ä¹ˆ"
+
+1. **ç»™æŠ€æœ¯äºº**ï¼šSemantix æ˜¯ä¸€ä¸ªä½äº agent harness ä¸èµ„æºä¹‹é—´çš„è‡ªè¿›åŒ–ä¸­é—´ä»¶ï¼Œç”¨è¯­ä¹‰åˆ‡ç‰‡ + ç¨³å®šæ³¨å…¥æŠŠè·¨ä¼šè¯çš„è¯­ä¹‰å‘½ä¸­è½¬åŒ–ä¸ºå‚å•†å­—èŠ‚ç¼“å­˜å‘½ä¸­ã€‚
+2. **ç»™äº§å“äºº**ï¼šSemantix æ˜¯ä¸€ä¸ªè¶Šç”¨è¶Šä¾¿å®œã€è¶Šç”¨è¶Šå¿«çš„ agent åŠ é€Ÿå±‚â€”â€”è‡ªåŠ¨å¤ç”¨ä½ è¿‡å»çš„åŠ³åŠ¨æˆæœã€‚
+3. **ç»™ç ”ç©¶è€…**ï¼šSemantix æ˜¯ä¸€ä¸ªé—­ç¯å­¦ä¹ ç³»ç»Ÿï¼šè§‚æµ‹ â†’ æ²‰æ·€ â†’ å¤ç”¨ â†’ è¿›åŒ–ï¼Œæ¯ä¸ªç»„ä»¶å¯¹åº”ä¸€ä¸ªå¯éªŒè¯çš„è®¾è®¡å‡è®¾ã€‚
+4. **ç»™å¼€æºçˆ±å¥½è€…**ï¼šSemantix æ˜¯ä¸€ä¸ª FSL-1.1-MIT è®¸å¯ï¼ˆå„ç‰ˆæœ¬å‘å¸ƒä¸¤å¹´åè½¬ä¸º MITï¼‰ã€Go å®ç°ã€è®¾è®¡æ–‡æ¡£é½å…¨ã€æ­£åœ¨æ—©æœŸå¼€å‘é˜¶æ®µçš„ç¤¾åŒºé¡¹ç›®ã€‚
+
+---
+
+*æœ¬æ–‡ç”±é¡¹ç›®ç»´æŠ¤è€…æ’°å†™ï¼›å…·ä½“çŠ¶æ€ä¸å®ç°è¿›åº¦ä»¥ä»“åº“ä¸ºå‡†ã€‚*
+
+---
+
+> Source: https://semantix.ensureok.ai/docs/guide-en
+
+# Semantix Deep Dive: Understanding the Project from Scratch
+
+> This document is for developers who want a systematic understanding of Semantix. It starts with why the project exists, then explains its mechanisms, architecture boundaries, current progress, and common misconceptions.
+> If Semantix is new to you, read the project overview before using this document as the deep dive.
+
+---
+
+## Chapter 1: Starting from the Ecosystem â€” Why an "Agent Kernel Layer" Exists
+
+To understand Semantix, first understand its place in the ecosystem.
+
+### 1.1 What is an LLM Agent
+
+An LLM Agent is a software system with an LLM as its "brain". It completes user tasks by looping "think â†’ call tools â†’ observe results â†’ think again". Typical tools include: reading files, searching code, executing commands, editing files, running tests, accessing the web.
+
+For a coding agent, a typical task looks like:
+
+```
+User: "add retry with backoff to the http client"
+Agent thinks â†’ reads file (net/client.go) â†’ searches related code â†’ edits file â†’ runs tests â†’ done
+```
+
+### 1.2 What is an Agent Harness
+
+An Agent Harness is the software shell that hosts this loop: it manages sessions, calls models, executes tools, handles permissions, and saves history. Common examples:
+
+- **DeepSeek-Reasonix**: an open-source Go coding agent based on DeepSeek
+- **Claude Code**: Anthropic's terminal coding agent
+- Others: Cursor, OpenAI Codex CLI, etc.
+
+### 1.3 Common weaknesses of existing harnesses
+
+Every harness has three structural problems:
+
+1. **Caching is within-session**: vendor prefix caching (e.g., DeepSeek context caching) only works *within one session*. A new session doing a similar task pays for all context computation again.
+2. **Scheduling is static**: concurrency, model selection, and resource allocation are hardcoded rules that don't adapt to "what kind of task this is" or "how the user usually works".
+3. **Waiting is wasted**: while the model streams output, the agent waits; while the model waits for tool results, the agent waits. This wall-clock time (seconds to minutes per task) is simply lost.
+
+### 1.4 Conclusion: a "middle layer" is needed
+
+Since these weaknesses are structural and harnesses are hard to modify (each implementation differs, changes are costly), the natural idea is: **insert an independent middle layer between the harness and resources** â€” it doesn't modify the harness, but wraps it, observing harness behavior to optimize the whole loop.
+
+That middle layer is the **Agent Kernel layer**. Semantix is exactly that.
+
+---
+
+## Chapter 2: Semantix's Position â€” What It Actually Is
+
+### 2.1 One-line positioning
+
+**Semantix is a self-evolving agent kernel layer**: it sits between agent harnesses (DeepSeek-Reasonix, Claude Code, etc.) and their resources, dynamically orchestrating concurrency, semantic caching, and speculative prefetch, and self-evolves based on user usage habits â€” the system gets faster and cheaper the more you use it.
+
+### 2.2 Three keywords, unpacked
+
+**"Agent Kernel layer"** â€” position. Below the harness (not replacing it), above resources (LLM APIs, filesystem, tools). It is a "kernel": it provides infrastructure capabilities (caching, scheduling, prefetch), not user-facing interfaces.
+
+**"Semantic"** â€” granularity. It operates on semantic units (slices), not bytes. Byte caching requires exact content matches; semantic caching allows *similar* content to be recognized and reused.
+
+**"Self-evolving"** â€” time. It is not a static rule set but a closed-loop learning system: every interaction produces feedback signals, signals drive parameter adjustments, and adjustments make the next interaction better.
+
+### 2.3 Concrete problems it solves
+
+| Pain point | Current state | Semantix's solution |
+|---|---|---|
+| No cross-session reuse | Similar tasks start from zero, paying repeatedly | Semantic Slice Library accumulates + Semantic Cache reuses |
+| Byte caches rarely hit | Only exactly-identical content hits | L2 stable injection: convert semantic hits into byte hits |
+| Scheduling is unintelligent | Static rules, no task/habit adaptation | Kernel Scheduler: intent classification + behavior learning |
+| Waiting is wasted | Idle during streaming/tool waits | Speculative Prefetch: T-Slice prediction + read-only prefetch |
+| System doesn't learn | Config tuned by humans, never fits well | Self-Evolution Engine: EWMA online tuning + offline retraining |
+
+### 2.4 How it is used
+
+Users don't "operate" Semantix directly. Its mode of operation:
+
+1. You use your agent (Reasonix / Claude Code) normally;
+2. Semantix **observes** your sessions through an adapter layer (event stream);
+3. It **accumulates** historical sessions into semantic slices (task templates, context blocks, tool patterns, results, memory);
+4. When a similar task arrives, it **injects** relevant slices (hitting the vendor byte cache), **schedules** concurrency, and **prefetches** resources;
+5. Signals from every round (hit/pollution/latency/cost/success) **feed back** to the evolution engine; parameters keep improving.
+
+The only thing users notice: tasks get faster, bills get cheaper â€” and the effect grows over time.
+
+---
+
+## Chapter 3: How It Works â€” Four Components Plus One Engine
+
+### 3.1 Semantic Slice Library (SSL) â€” Memory
+
+**Responsibility**: extract, index, and persist reusable semantic units from historical sessions.
+
+**Five slice types**:
+
+| Type | Meaning | Example |
+|---|---|---|
+| P-Slice | Task templates (prompts) | Task descriptions like "add retry to X" |
+| C-Slice | Context blocks | Key context fragments of a project |
+| T-Slice | Tool-call patterns | grepâ†’readFileâ†’editFileâ†’test |
+| R-Slice | High-frequency results | Standard outputs of common commands, common Q&As |
+| M-Slice | Memory | User preferences and habits |
+
+**Extraction strategies** (three segmentations):
+- **Turn-boundary segmentation**: segment at user messages
+- **Completion-point segmentation**: segment context at task completion
+- **T-Slice n-grams**: extract consecutive patterns from tool-call sequences
+
+**Storage**: bbolt dual stores (project-level + user-level), separating scopes.
+
+### 3.2 Three-level Semantic Cache (L1/L2/L3) â€” Monetization
+
+**L1 (byte cache)**: uses the vendor's automatic prefix cache. Exactly-identical prefixes within a session hit at zero cost.
+
+**L2 (stable injection)**: Semantix's most elegant design â€” **the semantic layer feeds the byte layer**.
+- After retrieving semantically similar slices, they are injected **verbatim** after the system prefix, before the user message;
+- Injection order is fixed (not sorted by value) to guarantee byte stability;
+- When a new session starts, the same injection set â†’ the same byte prefix â†’ **hits the vendor's byte cache**;
+- Effect: semantic hits are "translated" into byte hits, enjoying vendor cache pricing discounts.
+
+**L3 (verified reuse)**: for read-only tasks, with file-fingerprint verification, historical results are reused directly â€” **no model request is sent at all**. Fail-closed: no reuse without verification; the user can veto.
+
+### 3.3 Kernel Scheduler â€” Orchestration
+
+- **Intent classification**: recognize task type (read/write/search/refactor/test...)
+- **Joint decisions**: concurrency, model tier, cache injection volume, prefetch budget
+- **Behavior learning**: learns "how this kind of task is usually done" from T-Slice statistics, making decisions increasingly accurate
+
+### 3.4 Speculative Prefetcher â€” Filling Idle Time
+
+- **Prediction**: uses the T-Slice transition matrix to predict the next tool/resource to be needed
+- **Prefetch**: during the model's streaming wait, prefetch read-only resources (next-turn slice assembly, embedding computation)
+- **Self-penalty**: when waste/hit exceeds the threshold (default 3:1), the signal source is automatically downweighted â€” the prefetch strategy itself evolves
+
+### 3.5 Self-Evolution Engine â€” Learning
+
+**Online layer (every round)**:
+- Collect signals: hit rate, pollution, latency, cost, success
+- EWMA moving-average tuning: thresholds Ï„, injection budget, prefetch parameters, concurrency, tier mapping
+- **Freeze-period protection**: the injection set stays unchanged for â‰¥1h after parameter changes, so evolution jitter never destroys the byte cache it feeds
+
+**Offline layer (periodic)**:
+- Slice embedding refresh
+- Threshold grid search
+- T-Slice transition-matrix retraining
+- Low-frequency slice archiving
+
+---
+
+## Chapter 4: Design Philosophy â€” Seven Principles
+
+1. **The prefix never changes**: byte stability of the injection set is the lifeline of L2 hits.
+2. **Read-only prefetch only**: speculative prefetch touches only read-only resources, eliminating side effects.
+3. **fail-open / fail-closed**: cache-layer failures never block the main loop; security boundaries never compromise.
+4. **Every decision explainable and reversible**: each decision carries a reason; ablation switches are supported.
+5. **MIT reference, no copying**: reference Reasonix's approach; implement code independently with attribution.
+6. **Single kernel, many harnesses**: adapter pattern; never hostage to any specific agent.
+7. **Parameters grow, not tuned**: system parameters evolve from feedback rather than human tuning.
+
+---
+
+## Chapter 5: Relationship to Related Concepts
+
+### 5.1 Semantix vs. Agent Harnesses (Reasonix, Claude Code)
+
+- Semantix **sits on top of** harnesses, connected via an adapter layer;
+- Harnesses "do the work" (think, call tools, interact); Semantix makes "the work cheaper" (cache, schedule, prefetch);
+- They are collaborative, not competitive: Reasonix + Semantix work together.
+
+### 5.2 Semantix vs. Semantic Caching (GPTCache et al.)
+
+- Tools like GPTCache solve "paying repeatedly for the same conversational question";
+- Semantix's semantic cache targets **agent workloads**: slices come from tool-call sequences, task templates, and result reuse, and through "stable injection" semantic hits **convert into vendor byte-cache hits** â€” a mechanism existing semantic-caching tools lack.
+
+### 5.3 Semantix vs. Self-improvement / Reflection Methods (Reflexion, Voyager, etc.)
+
+- Reflexion/Voyager let the **agent itself** learn from experience (skill libraries, reflection);
+- Semantix lets the **infrastructure layer** (cache/schedule/prefetch) learn from experience;
+- They are complementary: the former improves "how to do tasks", the latter improves "the cost and speed of doing tasks".
+
+### 5.4 Semantix vs. KV Cache / Prefix Cache Systems (SGLang, vLLM, etc.)
+
+- SGLang/vLLM are **server-side** KV cache systems for self-hosted inference;
+- Semantix targets **vendor-API** scenarios (e.g., DeepSeek API), using prompt-engineering means (stable injection) to exploit the vendor's automatic prefix cache on the client side;
+- They solve different layers; Semantix's approach is especially valuable in closed-API scenarios where users cannot control server-side KV caches.
+
+---
+
+## Chapter 6: Common Misconceptions, Accurately Stated
+
+The following statements clarify the questions developers most often confuse:
+
+**On positioning**: Semantix is a middleware layer sitting above agent harnesses and below resources, providing caching, scheduling, and prefetch infrastructure. The agent's thinking and tool-call loop happens in the harness itself.
+
+**On models**: Semantix does not train, modify, or provide models. It optimizes prompt assembly before model calls and resource orchestration after calls.
+
+**On caching**: Semantix's caching includes three levels â€” byte-level (L1), semantic injection (L2), and result reuse (L3). L2 exploits the vendor's automatic prefix cache by keeping prefix bytes stable.
+
+**On deployment**: Semantix runs locally (Go, bbolt storage, a single external dependency); data (slices, statistics) persists in local dual stores.
+
+**On usage**: Semantix connects to specific harnesses through an adapter layer; users don't operate Semantix directly â€” it automatically learns from usage and optimizes.
+
+---
+
+## Chapter 7: Quick Reference â€” One Sentence for "What is Semantix"
+
+1. **For engineers**: Semantix is a self-evolving middleware between agent harnesses and resources; it converts cross-session semantic hits into vendor byte-cache hits via semantic slices + stable injection.
+2. **For product people**: Semantix is an acceleration layer for agents that gets cheaper and faster with use â€” automatically reusing the work you've already done.
+3. **For researchers**: Semantix is a closed-loop learning system â€” observe â†’ accumulate â†’ reuse â†’ evolve; every component corresponds to a testable design hypothesis.
+4. **For open-source enthusiasts**: Semantix is a Go-implemented community project with complete design docs, released under the FSL-1.1-MIT license (converts to MIT two years after each release), currently in early development.
+
+---
+
+*Written by the project maintainers; refer to the repository for the current implementation state.*

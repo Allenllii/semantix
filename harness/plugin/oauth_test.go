@@ -128,12 +128,12 @@ func TestAuthorizeHTTPMCPUsesDiscoveryPKCEAndPersistsPrivateToken(t *testing.T) 
 				registeredRedirect, _ = redirects[0].(string)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"client_id":                  "reasonix-test",
+				"client_id":                  "semantix-test",
 				"client_secret":              "client-secret",
 				"token_endpoint_auth_method": "client_secret_basic",
 			})
 		case "/token":
-			if user, pass, ok := r.BasicAuth(); !ok || user != "reasonix-test" || pass != "client-secret" {
+			if user, pass, ok := r.BasicAuth(); !ok || user != "semantix-test" || pass != "client-secret" {
 				t.Errorf("token endpoint client authentication = (%q, %q, %v)", user, pass, ok)
 			}
 			if err := r.ParseForm(); err != nil {
@@ -269,7 +269,7 @@ func TestAuthorizeHTTPMCPDoesNotHoldStateLockDuringBrowser(t *testing.T) {
 		case "/.well-known/oauth-authorization-server":
 			return response(http.StatusOK, `{"issuer":"https://mcp.example.test","authorization_endpoint":"https://mcp.example.test/authorize","token_endpoint":"https://mcp.example.test/token","registration_endpoint":"https://mcp.example.test/register","code_challenge_methods_supported":["S256"],"token_endpoint_auth_methods_supported":["client_secret_basic"]}`)
 		case "/register":
-			return response(http.StatusOK, `{"client_id":"reasonix-test","client_secret":"client-secret","token_endpoint_auth_method":"client_secret_basic"}`)
+			return response(http.StatusOK, `{"client_id":"semantix-test","client_secret":"client-secret","token_endpoint_auth_method":"client_secret_basic"}`)
 		case "/token":
 			return response(http.StatusOK, `{"access_token":"access-one","refresh_token":"refresh-one","token_type":"Bearer","expires_in":3600}`)
 		default:
@@ -559,7 +559,7 @@ func TestSameCanonicalResourceRejectsURLUserinfo(t *testing.T) {
 	}
 }
 
-func TestClearHTTPMCPOAuthRemovesOnlyReasonixState(t *testing.T) {
+func TestClearHTTPMCPOAuthRemovesOnlySemantixState(t *testing.T) {
 	stateDir := t.TempDir()
 	if err := saveMCPOAuthState(stateDir, mcpOAuthState{
 		Version: 1, Resource: "https://mcp.example.test/mcp", Issuer: "https://auth.example.test",

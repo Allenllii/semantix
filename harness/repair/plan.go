@@ -418,7 +418,7 @@ func PreviewRepairPlan(plan RepairPlan, opts ApplyPlanOptions) ([]RepairPlanPrev
 			if err != nil {
 				return nil, fmt.Errorf("action %d: no rollback-ready update: %w", i+1, err)
 			}
-			preview.Description = fmt.Sprintf("Restore Reasonix %s over probationary %s", tx.FromVersion, tx.ToVersion)
+			preview.Description = fmt.Sprintf("Restore Semantix %s over probationary %s", tx.FromVersion, tx.ToVersion)
 			preview.StateID, preview.fileStates = pendingUpdateBoundPreview(tx)
 		}
 		previews = append(previews, preview)
@@ -847,7 +847,7 @@ func configSnapshotByID(id string) (ConfigSnapshot, error) {
 func projectConfigPath(root string) string {
 	root = strings.TrimSpace(root)
 	if root == "" || root == "." {
-		return "reasonix.toml"
+		return "semantix-agent.toml"
 	}
-	return filepath.Join(root, "reasonix.toml")
+	return filepath.Join(root, "semantix-agent.toml")
 }

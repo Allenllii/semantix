@@ -20,15 +20,15 @@ import (
 )
 
 const (
-	reasonixStatusSchemaVersion = 1
-	sessionStatusMethod         = "_reasonix.io/session/status"
-	sessionStatusUpdateMethod   = "_reasonix.io/session/status_update"
+	semantixStatusSchemaVersion = 1
+	sessionStatusMethod         = "_semantix.io/session/status"
+	sessionStatusUpdateMethod   = "_semantix.io/session/status_update"
 )
 
-// ReasonixSchemaCapability advertises one versioned vendor extension in
+// SemantixSchemaCapability advertises one versioned vendor extension in
 // agentCapabilities._meta. The method name is the map key so clients can fail
 // closed before opening a session.
-type ReasonixSchemaCapability struct {
+type SemantixSchemaCapability struct {
 	SchemaVersion int `json:"schemaVersion"`
 }
 
@@ -65,20 +65,20 @@ type SessionRuntimeStateParams struct {
 }
 
 // SessionRuntimeStateProvider exposes effective process/session policy without
-// coupling the ACP adapter to Reasonix configuration internals.
+// coupling the ACP adapter to Semantix configuration internals.
 type SessionRuntimeStateProvider interface {
 	SessionRuntimeState(ctx context.Context, p SessionRuntimeStateParams) (SessionRuntimeState, error)
 }
 
-type ReasonixStatusGoal struct {
+type SemantixStatusGoal struct {
 	Status    string `json:"status"`
 	Objective string `json:"objective,omitempty"`
 	// Runtime is the optional Goal usage/runtime summary; absent for old
 	// hosts or when no goal is active.
-	Runtime *ReasonixGoalRuntime `json:"runtime,omitempty"`
+	Runtime *SemantixGoalRuntime `json:"runtime,omitempty"`
 }
 
-type ReasonixGoalRuntime struct {
+type SemantixGoalRuntime struct {
 	TurnsUsed        int    `json:"turnsUsed"`
 	TurnsLimit       int    `json:"turnsLimit"` // Deprecated: always 0.
 	TokensUsed       int    `json:"tokensUsed"`
@@ -92,18 +92,18 @@ type ReasonixGoalRuntime struct {
 	BudgetExtensions int    `json:"budgetExtensions"` // Deprecated: always 0.
 }
 
-type ReasonixTurnOutcome struct {
+type SemantixTurnOutcome struct {
 	Kind   string `json:"kind"`
 	Reason string `json:"reason,omitempty"`
 }
 
-type ReasonixFinalReadiness struct {
+type SemantixFinalReadiness struct {
 	ReadyForReview bool     `json:"readyForReview"`
 	Summary        string   `json:"summary"`
 	Risks          []string `json:"risks"`
 }
 
-type ReasonixUsage struct {
+type SemantixUsage struct {
 	PromptTokens     int                `json:"promptTokens"`
 	CompletionTokens int                `json:"completionTokens"`
 	ReasoningTokens  int                `json:"reasoningTokens"`
@@ -122,14 +122,14 @@ type ReasonixUsage struct {
 	UsageSource      string             `json:"usageSource"`
 }
 
-type ReasonixStatusUsage struct {
-	Turn       ReasonixUsage `json:"turn"`
-	Cumulative ReasonixUsage `json:"cumulative"`
+type SemantixStatusUsage struct {
+	Turn       SemantixUsage `json:"turn"`
+	Cumulative SemantixUsage `json:"cumulative"`
 }
 
-// ReasonixSessionStatus is the stable schemaVersion=1 recovery snapshot.
+// SemantixSessionStatus is the stable schemaVersion=1 recovery snapshot.
 // Reasoning text and unbounded terminal output are intentionally absent.
-type ReasonixSessionStatus struct {
+type SemantixSessionStatus struct {
 	SchemaVersion  int                    `json:"schemaVersion"`
 	Sequence       uint64                 `json:"sequence"`
 	SessionID      string                 `json:"sessionId"`
@@ -139,20 +139,20 @@ type ReasonixSessionStatus struct {
 	Mode           string                 `json:"mode"`
 	WorkMode       string                 `json:"workMode"`
 	PlannerMode    string                 `json:"plannerMode"`
-	Goal           ReasonixStatusGoal     `json:"goal"`
+	Goal           SemantixStatusGoal     `json:"goal"`
 	Phase          string                 `json:"phase"`
-	TurnOutcome    ReasonixTurnOutcome    `json:"turnOutcome"`
-	FinalReadiness ReasonixFinalReadiness `json:"finalReadiness"`
+	TurnOutcome    SemantixTurnOutcome    `json:"turnOutcome"`
+	FinalReadiness SemantixFinalReadiness `json:"finalReadiness"`
 	Sandbox        SessionSandboxState    `json:"sandbox"`
-	Usage          ReasonixStatusUsage    `json:"usage"`
+	Usage          SemantixStatusUsage    `json:"usage"`
 }
 
-type ReasonixStatusUpdate struct {
+type SemantixStatusUpdate struct {
 	SchemaVersion int                   `json:"schemaVersion"`
 	Sequence      uint64                `json:"sequence"`
 	SessionID     string                `json:"sessionId"`
 	Event         string                `json:"event"`
-	Status        ReasonixSessionStatus `json:"status"`
+	Status        SemantixSessionStatus `json:"status"`
 }
 
 type usageAccumulator struct {
@@ -251,8 +251,8 @@ func (a *usageAccumulator) addQuoted(u *provider.Usage, pricing *provider.Pricin
 	}
 }
 
-func (a usageAccumulator) wire() ReasonixUsage {
-	usage := ReasonixUsage{
+func (a usageAccumulator) wire() SemantixUsage {
+	usage := SemantixUsage{
 		PromptTokens:     a.promptTokens,
 		CompletionTokens: a.completionTokens,
 		ReasoningTokens:  a.reasoningTokens,
@@ -302,8 +302,8 @@ type statusTelemetry struct {
 	sequence       uint64
 	state          string
 	phase          string
-	turnOutcome    ReasonixTurnOutcome
-	finalReadiness ReasonixFinalReadiness
+	turnOutcome    SemantixTurnOutcome
+	finalReadiness SemantixFinalReadiness
 	turnUsage      usageAccumulator
 	cumulative     usageAccumulator
 	goalOverride   string
@@ -313,8 +313,8 @@ func newStatusTelemetry() *statusTelemetry {
 	return &statusTelemetry{
 		state:       "idle",
 		phase:       "idle",
-		turnOutcome: ReasonixTurnOutcome{Kind: "none"},
-		finalReadiness: ReasonixFinalReadiness{
+		turnOutcome: SemantixTurnOutcome{Kind: "none"},
+		finalReadiness: SemantixFinalReadiness{
 			Risks: []string{},
 		},
 	}
@@ -332,8 +332,8 @@ func (t *statusTelemetry) beginTurn() {
 	t.mutate(func(t *statusTelemetry) {
 		t.state = "running"
 		t.phase = "starting"
-		t.turnOutcome = ReasonixTurnOutcome{Kind: "none"}
-		t.finalReadiness = ReasonixFinalReadiness{Risks: []string{}}
+		t.turnOutcome = SemantixTurnOutcome{Kind: "none"}
+		t.finalReadiness = SemantixFinalReadiness{Risks: []string{}}
 		t.turnUsage = usageAccumulator{}
 		t.goalOverride = ""
 	})
@@ -379,20 +379,20 @@ func (t *statusTelemetry) finishTurn(runErr error, cancelled bool, goalStatus, s
 		switch {
 		case cancelled:
 			t.phase = "cancelled"
-			t.turnOutcome = ReasonixTurnOutcome{Kind: "cancelled"}
+			t.turnOutcome = SemantixTurnOutcome{Kind: "cancelled"}
 			t.goalOverride = "cancelled"
 			eventName = "completion"
 		case runErr == nil && goalStatus == control.GoalStatusComplete:
 			t.phase = "review_ready"
-			t.turnOutcome = ReasonixTurnOutcome{Kind: "completed"}
+			t.turnOutcome = SemantixTurnOutcome{Kind: "completed"}
 			t.finalReadiness.ReadyForReview = true
 		case runErr == nil && (goalStatus == "" || goalStatus == control.GoalStatusStopped):
 			t.phase = "completed"
-			t.turnOutcome = ReasonixTurnOutcome{Kind: "completed"}
+			t.turnOutcome = SemantixTurnOutcome{Kind: "completed"}
 			t.finalReadiness.ReadyForReview = true
 		case goalStatus == control.GoalStatusBlocked:
 			t.phase = "paused"
-			t.turnOutcome = ReasonixTurnOutcome{Kind: "paused", Reason: "goal blocked"}
+			t.turnOutcome = SemantixTurnOutcome{Kind: "paused", Reason: "goal blocked"}
 			eventName = "pause"
 		default:
 			var readinessErr *agent.FinalReadinessError
@@ -400,21 +400,21 @@ func (t *statusTelemetry) finishTurn(runErr error, cancelled bool, goalStatus, s
 			switch {
 			case errors.As(runErr, &readinessErr):
 				t.phase = "readiness_paused"
-				t.turnOutcome = ReasonixTurnOutcome{Kind: "paused", Reason: clipStatusText(readinessErr.Error(), 2_048)}
+				t.turnOutcome = SemantixTurnOutcome{Kind: "paused", Reason: clipStatusText(readinessErr.Error(), 2_048)}
 				t.finalReadiness.Risks = redactStatusTexts(readinessErr.Missing, 2_048)
 				eventName = "pause"
 			case errors.As(runErr, &recoveryPause):
 				t.phase = "recovery_paused"
-				t.turnOutcome = ReasonixTurnOutcome{Kind: "paused", Reason: clipStatusText(recoveryPause.Error(), 2_048)}
+				t.turnOutcome = SemantixTurnOutcome{Kind: "paused", Reason: clipStatusText(recoveryPause.Error(), 2_048)}
 				eventName = "pause"
 			case runErr != nil:
 				t.phase = "error"
-				t.turnOutcome = ReasonixTurnOutcome{Kind: "error", Reason: clipStatusText(runErr.Error(), 2_048)}
+				t.turnOutcome = SemantixTurnOutcome{Kind: "error", Reason: clipStatusText(runErr.Error(), 2_048)}
 				t.goalOverride = "failed"
 				eventName = "error"
 			default:
 				t.phase = "paused"
-				t.turnOutcome = ReasonixTurnOutcome{Kind: "paused", Reason: "goal is not complete"}
+				t.turnOutcome = SemantixTurnOutcome{Kind: "paused", Reason: "goal is not complete"}
 				eventName = "pause"
 			}
 		}
@@ -426,10 +426,10 @@ type statusTelemetrySnapshot struct {
 	sequence       uint64
 	state          string
 	phase          string
-	turnOutcome    ReasonixTurnOutcome
-	finalReadiness ReasonixFinalReadiness
-	turnUsage      ReasonixUsage
-	cumulative     ReasonixUsage
+	turnOutcome    SemantixTurnOutcome
+	finalReadiness SemantixFinalReadiness
+	turnUsage      SemantixUsage
+	cumulative     SemantixUsage
 	goalOverride   string
 }
 
@@ -452,8 +452,8 @@ type persistedStatusTelemetry struct {
 	Sequence       uint64                    `json:"sequence"`
 	State          string                    `json:"state"`
 	Phase          string                    `json:"phase"`
-	TurnOutcome    ReasonixTurnOutcome       `json:"turnOutcome"`
-	FinalReadiness ReasonixFinalReadiness    `json:"finalReadiness"`
+	TurnOutcome    SemantixTurnOutcome       `json:"turnOutcome"`
+	FinalReadiness SemantixFinalReadiness    `json:"finalReadiness"`
 	TurnUsage      persistedUsageAccumulator `json:"turnUsage"`
 	Cumulative     persistedUsageAccumulator `json:"cumulative"`
 	GoalOverride   string                    `json:"goalOverride,omitempty"`
@@ -497,7 +497,7 @@ func (t *statusTelemetry) persisted() *persistedStatusTelemetry {
 	return &persistedStatusTelemetry{
 		Sequence: t.sequence, State: t.state, Phase: t.phase,
 		TurnOutcome: t.turnOutcome,
-		FinalReadiness: ReasonixFinalReadiness{
+		FinalReadiness: SemantixFinalReadiness{
 			ReadyForReview: t.finalReadiness.ReadyForReview,
 			Summary:        clipStatusText(t.finalReadiness.Summary, 16_384),
 			Risks:          redactStatusTexts(t.finalReadiness.Risks, 2_048),
@@ -523,7 +523,7 @@ func restoreStatusTelemetry(saved *persistedStatusTelemetry) *statusTelemetry {
 	if t.turnOutcome.Kind == "" {
 		t.turnOutcome.Kind = "none"
 	}
-	t.finalReadiness = ReasonixFinalReadiness{
+	t.finalReadiness = SemantixFinalReadiness{
 		ReadyForReview: saved.FinalReadiness.ReadyForReview,
 		Summary:        clipStatusText(saved.FinalReadiness.Summary, 16_384),
 		Risks:          redactStatusTexts(saved.FinalReadiness.Risks, 2_048),
@@ -534,7 +534,7 @@ func restoreStatusTelemetry(saved *persistedStatusTelemetry) *statusTelemetry {
 	if interrupted {
 		t.sequence++
 		t.phase = "recovery_paused"
-		t.turnOutcome = ReasonixTurnOutcome{Kind: "paused", Reason: "previous turn interrupted"}
+		t.turnOutcome = SemantixTurnOutcome{Kind: "paused", Reason: "previous turn interrupted"}
 		t.finalReadiness.ReadyForReview = false
 	}
 	return t
@@ -547,10 +547,10 @@ func (t *statusTelemetry) snapshot() statusTelemetrySnapshot {
 		sequence: t.sequence,
 		state:    t.state,
 		phase:    t.phase,
-		turnOutcome: ReasonixTurnOutcome{
+		turnOutcome: SemantixTurnOutcome{
 			Kind: t.turnOutcome.Kind, Reason: clipStatusText(t.turnOutcome.Reason, 2_048),
 		},
-		finalReadiness: ReasonixFinalReadiness{
+		finalReadiness: SemantixFinalReadiness{
 			ReadyForReview: t.finalReadiness.ReadyForReview,
 			Summary:        clipStatusText(t.finalReadiness.Summary, 16_384),
 			Risks:          redactStatusTexts(t.finalReadiness.Risks, 2_048),
@@ -706,8 +706,8 @@ func (s *service) publishStatus(sess *acpSession, eventName string) {
 		return
 	}
 	status := sess.statusSnapshot()
-	_ = s.conn.Notify(sessionStatusUpdateMethod, ReasonixStatusUpdate{
-		SchemaVersion: reasonixStatusSchemaVersion,
+	_ = s.conn.Notify(sessionStatusUpdateMethod, SemantixStatusUpdate{
+		SchemaVersion: semantixStatusSchemaVersion,
 		Sequence:      status.Sequence,
 		SessionID:     status.SessionID,
 		Event:         eventName,
@@ -715,7 +715,7 @@ func (s *service) publishStatus(sess *acpSession, eventName string) {
 	})
 }
 
-func (s *acpSession) statusSnapshot() ReasonixSessionStatus {
+func (s *acpSession) statusSnapshot() SemantixSessionStatus {
 	s.mu.Lock()
 	id := s.id
 	ctrl := s.ctrl
@@ -733,13 +733,13 @@ func (s *acpSession) statusSnapshot() ReasonixSessionStatus {
 	t := telemetry.snapshot()
 	goalStatus := "none"
 	goalObjective := ""
-	var goalRuntime *ReasonixGoalRuntime
+	var goalRuntime *SemantixGoalRuntime
 	if ctrl != nil {
 		goalStatus = normalizeGoalStatus(ctrl.GoalStatus())
 		goalObjective = clipStatusText(ctrl.Goal(), 16_384)
 		if strings.TrimSpace(goalObjective) != "" {
 			rt := ctrl.GoalRuntime()
-			goalRuntime = &ReasonixGoalRuntime{
+			goalRuntime = &SemantixGoalRuntime{
 				TurnsUsed:        rt.TurnsUsed,
 				TurnsLimit:       rt.TurnsLimit,
 				TokensUsed:       rt.TokensUsed,
@@ -785,8 +785,8 @@ func (s *acpSession) statusSnapshot() ReasonixSessionStatus {
 	if state != "running" {
 		state = "idle"
 	}
-	return ReasonixSessionStatus{
-		SchemaVersion: reasonixStatusSchemaVersion,
+	return SemantixSessionStatus{
+		SchemaVersion: semantixStatusSchemaVersion,
 		Sequence:      t.sequence,
 		SessionID:     id,
 		State:         state,
@@ -795,7 +795,7 @@ func (s *acpSession) statusSnapshot() ReasonixSessionStatus {
 		Mode:          mode,
 		WorkMode:      workMode,
 		PlannerMode:   runtimeState.PlannerMode,
-		Goal: ReasonixStatusGoal{
+		Goal: SemantixStatusGoal{
 			Status:    goalStatus,
 			Objective: goalObjective,
 			Runtime:   goalRuntime,
@@ -804,7 +804,7 @@ func (s *acpSession) statusSnapshot() ReasonixSessionStatus {
 		TurnOutcome:    t.turnOutcome,
 		FinalReadiness: t.finalReadiness,
 		Sandbox:        runtimeState.Sandbox,
-		Usage: ReasonixStatusUsage{
+		Usage: SemantixStatusUsage{
 			Turn:       t.turnUsage,
 			Cumulative: t.cumulative,
 		},

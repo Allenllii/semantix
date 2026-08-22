@@ -17,7 +17,7 @@
 
 | # | 验收标准 | 状态 | 证据 |
 |---|---|---|---|
-| c1 | `semantix install --target reasonix\|claude-code\|custom` 按 agent-skill/ 现有文档落盘 skill + 工具 schema | 通过 | 实测落盘 6 文件（SKILL.md、tools/semantix-lookup.md、hooks/session-bypass.md、config/、scripts/×2）字节一致；默认目录正确（reasonix→`~/.semantix/agent-skill`，claude-code→`~/.claude/skills/semantix`，custom 无 `--dir`→exit 2）；`TestInstallCopiesPayload` |
+| c1 | `semantix install --target semantix-agent\|claude-code\|custom` 按 agent-skill/ 现有文档落盘 skill + 工具 schema | 通过 | 实测落盘 6 文件（SKILL.md、tools/semantix-lookup.md、hooks/session-bypass.md、config/、scripts/×2）字节一致；默认目录正确（semantix→`~/.semantix/agent-skill`，claude-code→`~/.claude/skills/semantix`，custom 无 `--dir`→exit 2）；`TestInstallCopiesPayload` |
 | c2 | 幂等：重复安装可安全重跑 | 通过 | 第二次运行 6×`[unchanged]`、0 次写盘、exit 0（单测 + 二进制实测）；`TestInstallIdempotent`、`TestInstallUpdateOverwritesChangedFiles` |
 | c3 | 提供卸载说明或 `--uninstall` | 通过 | `--uninstall` 精确移除 manifest 记录文件、用户文件保留、二次卸载安全 no-op、manifest 自删、空目录自底向上裁剪；QUICKSTART 有文档；`TestInstallUninstall*` 4 用例 |
 | c4 | 引用 agent-skill/SKILL.md 与 hooks/session-bypass.md | 通过 | 三个 target 的 next-steps 均引用两文件（修复后 claude-code 补齐 session-bypass.md 引用）；payload 本身含两文件；`TestInstallCopiesPayload` 断言输出包含 |

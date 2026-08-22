@@ -137,7 +137,7 @@ func (p *mcpManager) renderDetail(width int) string {
 	} else if v.Source == config.MCPSourceProjectMCPJSON {
 		writeMCPDetailField(&b, "Config location", "current project .mcp.json")
 	} else if v.Source == config.MCPSourceProjectConfig {
-		writeMCPDetailField(&b, "Config location", "current project reasonix.toml")
+		writeMCPDetailField(&b, "Config location", "current project semantix-agent.toml")
 	} else {
 		loc := fallbackText(p.snapshot.configPath, "not saved")
 		if loc != "not saved" {

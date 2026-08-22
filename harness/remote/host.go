@@ -127,7 +127,7 @@ func ResolveHost(cfg *config.Config, nameOrTarget string, sshCfg *SSHConfigSourc
 	return r, nil
 }
 
-// ResolveJumpHosts resolves every ProxyJump token through the same Reasonix
+// ResolveJumpHosts resolves every ProxyJump token through the same Semantix
 // host table and ~/.ssh/config layers as the final target. A jump entry's own
 // ProxyJump is deliberately cleared: the caller-provided chain is already the
 // complete left-to-right route, and recursively expanding nested chains would

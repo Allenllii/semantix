@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Reasonix</title>
+<title>Semantix</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -377,7 +377,7 @@ input,textarea{font:inherit;color:inherit}
 <div class="app">
   <aside class="sidebar">
     <div class="sidebar__brand">
-      <img src="/assets/logo-wordmark.svg" alt="Reasonix" class="brand-wordmark brand-wordmark--sidebar" draggable="false">
+      <img src="/assets/logo-wordmark.svg" alt="Semantix" class="brand-wordmark brand-wordmark--sidebar" draggable="false">
     </div>
 <nav class="sidebar__nav" style="border-top:none;padding-top:0">
       <div class="sidebar__item sidebar__item--accent" id="btn-new">
@@ -432,7 +432,7 @@ input,textarea{font:inherit;color:inherit}
 
   <section class="transcript" id="log">
     <div class="welcome" id="welcome">
-      <div class="welcome__brand"><img src="/assets/logo-wordmark.svg" alt="Reasonix" class="brand-wordmark brand-wordmark--welcome" draggable="false"></div>
+      <div class="welcome__brand"><img src="/assets/logo-wordmark.svg" alt="Semantix" class="brand-wordmark brand-wordmark--welcome" draggable="false"></div>
       <div class="welcome__tag">__('welcome_tag')</div>
       <div class="welcome__meta">
         <div class="welcome__pill"><strong>__('model')</strong><span id="welcome-model">-</span></div>
@@ -621,7 +621,7 @@ const __T = {
     'ready': 'Ready',
     'thinking': 'Thinking...',
     'retrying_status': 'Retrying ({attempt}/{max})...',
-    'recovery_paused': 'Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.',
+    'recovery_paused': 'Automatic retries paused. Semantix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.',
     'stats': 'Stats',
     'statistics': 'Statistics',
     'model': 'Model',
@@ -634,7 +634,7 @@ const __T = {
     'connected': 'Connected',
     'reconnecting': 'Reconnecting...',
     'disconnected': 'Disconnected',
-    'placeholder': 'Message Reasonix...  / for commands',
+    'placeholder': 'Message Semantix...  / for commands',
     'cmd_compact': 'Compact conversation',
     'cmd_new': 'New session',
     'cmd_resume': 'Resume session',
@@ -767,7 +767,7 @@ const __T = {
     'ready': '就绪',
     'thinking': '思考中...',
     'retrying_status': '正在重试 ({attempt}/{max})...',
-    'recovery_paused': '已暂停自动重试。Reasonix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。',
+    'recovery_paused': '已暂停自动重试。Semantix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。',
     'stats': '统计',
     'statistics': '统计',
     'model': '模型',
@@ -780,7 +780,7 @@ const __T = {
     'connected': '已连接',
     'reconnecting': '重新连接...',
     'disconnected': '已断开',
-    'placeholder': '给 Reasonix 发消息...  / 查看命令',
+    'placeholder': '给 Semantix 发消息...  / 查看命令',
     'cmd_compact': '压缩对话',
     'cmd_new': '新建会话',
     'cmd_resume': '恢复会话',
@@ -1245,9 +1245,9 @@ function renderToolResult(tool) {
   scrollDown();
 }
 function renderToolProgress(tool) {
-  // Reserved sub-agent progress channels (reasonix.subagent.*) are an internal
+  // Reserved sub-agent progress channels (semantix.subagent.*) are an internal
   // local-frontend contract; they must never land in ordinary tool output.
-  if (tool.name && tool.name.indexOf('reasonix.subagent.') === 0) return;
+  if (tool.name && tool.name.indexOf('semantix.subagent.') === 0) return;
   const card=toolCards[tool.id]; if(!card)return;
   const body=card.querySelector(':scope > .card-body'); if(!body)return;
   if(card.dataset.userToggled!=='true')card.dataset.open='true';

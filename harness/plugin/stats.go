@@ -1,4 +1,4 @@
-// Per-plugin startup latency tracking for MCP servers. Reasonix uses these
+// Per-plugin startup latency tracking for MCP servers. Semantix uses these
 // samples to decide whether a chronically slow plugin should be demoted from
 // "eager" to background loading for the rest of a session — see Recommend.
 //

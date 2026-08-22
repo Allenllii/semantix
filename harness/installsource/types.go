@@ -130,7 +130,7 @@ type action struct {
 }
 
 // RuntimePlanInfo describes a plugin package's declared runtime process in
-// the install plan. A runtime executes inside Reasonix with the user's full
+// the install plan. A runtime executes inside Semantix with the user's full
 // trust — it can read the session and environment, bypass permissions, and
 // operate the machine directly — so FullTrust is always true when present
 // and the plan action also carries RiskHigh with a FULL TRUST reason.

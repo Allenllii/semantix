@@ -60,7 +60,7 @@ type SessionParams struct {
 }
 
 // Factory builds the per-session controller. The composition root (the cli's
-// `reasonix acp` command) implements it by reusing setup()'s assembly: a
+// `semantix-agent acp` command) implements it by reusing setup()'s assembly: a
 // Provider for Model, a tool Registry rooted at Cwd via builtin.Workspace, a
 // per-session MCP host from MCPServers, the event Sink, all wired into a
 // control.Controller. The returned controller owns its own cleanup (Close stops
@@ -106,7 +106,7 @@ type SessionDirProvider interface {
 // would use, and the session state (history, approval grants, goal/recovery,
 // lifecycle) migrates off old inside the boot layer. The caller keeps the
 // swap/close ordering. Factories that do not implement it leave
-// _reasonix.io/session/reloadExtensions reporting unavailable.
+// _semantix.io/session/reloadExtensions reporting unavailable.
 type SessionRebuilder interface {
 	RebuildSession(ctx context.Context, p SessionParams, old *control.Controller) (*control.Controller, error)
 }
@@ -120,7 +120,7 @@ type AgentInfo struct {
 // Serve runs an ACP agent on r/w (stdin/stdout in production) until the input
 // ends or ctx is cancelled. It owns the JSON-RPC connection and the session
 // registry; the Factory supplies the kernel wiring. This is the single entry
-// point the `reasonix acp` command calls.
+// point the `semantix-agent acp` command calls.
 //
 // stdout is the JSON-RPC channel: callers must keep all other output (logs,
 // diagnostics) off w and on stderr, or the wire corrupts.
@@ -205,17 +205,17 @@ func (s *service) clientCapabilities() ClientCapabilities {
 }
 
 // extensionSurfaceSupported reports whether the connected client advertised
-// reasonix.extensionSurface support in its initialize handshake.
+// semantix.extensionSurface support in its initialize handshake.
 func (s *service) extensionSurfaceSupported() bool {
 	return clientExtensionSurfaceSupported(s.clientCapabilities())
 }
 
 // clientExtensionSurfaceSupported tolerantly parses the client's vendor
-// capability block: _meta["reasonix.io"]["extensionSurface"]["supported"] must
+// capability block: _meta["semantix.io"]["extensionSurface"]["supported"] must
 // be an explicit true. Absent keys, wrong shapes, or a malformed block all
 // mean unsupported — the sink then sends only the text fallback.
 func clientExtensionSurfaceSupported(caps ClientCapabilities) bool {
-	vendor, ok := caps.Meta["reasonix.io"].(map[string]any)
+	vendor, ok := caps.Meta["semantix.io"].(map[string]any)
 	if !ok {
 		return false
 	}
@@ -290,7 +290,7 @@ type acpSession struct {
 	// work-mode change queued back to back during one turn both survive to the
 	// drain instead of the second overwriting the first.
 	pendingConfig []sessionConfigDelta
-	// pendingReload coalesces _reasonix.io/session/reloadExtensions requests
+	// pendingReload coalesces _semantix.io/session/reloadExtensions requests
 	// made while a turn or a rebuild is in flight; the finishTurn /
 	// post-maintenance drains run it once the session is idle.
 	pendingReload bool
@@ -585,7 +585,7 @@ func (s *service) initialize(_ context.Context, raw json.RawMessage) (any, error
 			},
 			MCPCapabilities: MCPCapabilities{HTTP: true, SSE: false},
 			Meta: map[string]any{
-				"reasonix.io": ReasonixExtensionCapabilities{
+				"semantix.io": SemantixExtensionCapabilities{
 					SessionSteer: &SessionSteerCapability{Method: sessionSteerMethod},
 					SessionInbox: &SessionInboxCapability{
 						SchemaVersion: sessionInboxSchemaVersion,
@@ -602,22 +602,22 @@ func (s *service) initialize(_ context.Context, raw json.RawMessage) (any, error
 						},
 					},
 					SessionReloadExtensions: &SessionReloadExtensionsCapability{Method: sessionReloadExtensionsMethod},
-					ExtensionSurface:        &ExtensionSurfaceCapability{Supported: true, SchemaVersion: reasonixExtensionSurfaceSchemaVersion},
+					ExtensionSurface:        &ExtensionSurfaceCapability{Supported: true, SchemaVersion: semantixExtensionSurfaceSchemaVersion},
 				},
-				sessionStatusMethod:       ReasonixSchemaCapability{SchemaVersion: reasonixStatusSchemaVersion},
-				sessionStatusUpdateMethod: ReasonixSchemaCapability{SchemaVersion: reasonixStatusSchemaVersion},
+				sessionStatusMethod:       SemantixSchemaCapability{SchemaVersion: semantixStatusSchemaVersion},
+				sessionStatusUpdateMethod: SemantixSchemaCapability{SchemaVersion: semantixStatusSchemaVersion},
 			},
 		},
 		AgentInfo:   Implementation{Name: s.info.Name, Version: s.info.Version},
-		AuthMethods: []AuthMethod{reasonixSetupAuthMethod()},
+		AuthMethods: []AuthMethod{semantixSetupAuthMethod()},
 	}, nil
 }
 
-func reasonixSetupAuthMethod() AuthMethod {
+func semantixSetupAuthMethod() AuthMethod {
 	return AuthMethod{
-		ID:          "reasonix-setup",
-		Name:        "Reasonix setup",
-		Description: "Configure Reasonix providers and credentials in a terminal",
+		ID:          "semantix-setup",
+		Name:        "Semantix setup",
+		Description: "Configure Semantix providers and credentials in a terminal",
 		Type:        "terminal",
 		Args:        []string{"setup"},
 	}
@@ -628,7 +628,7 @@ func (s *service) authenticate(_ context.Context, raw json.RawMessage) (any, err
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil, &RPCError{Code: ErrInvalidParams, Message: "authenticate: " + err.Error()}
 	}
-	if strings.TrimSpace(p.MethodID) != reasonixSetupAuthMethod().ID {
+	if strings.TrimSpace(p.MethodID) != semantixSetupAuthMethod().ID {
 		return nil, &RPCError{Code: ErrInvalidParams, Message: "authenticate: unknown methodId " + p.MethodID}
 	}
 	return AuthenticateResult{}, nil

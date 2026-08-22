@@ -279,7 +279,7 @@ func (m chatTUI) clearMCPAuthentication(v mcpServerView) (tea.Model, tea.Cmd) {
 	workspace := m.mcpWorkspaceRoot()
 	if _, err := plugin.ClearHTTPMCPOAuth(plugin.Spec{
 		Name:     v.Name,
-		StateDir: plugin.MCPStateDir(config.ReasonixHomeDir(), workspace, v.Name),
+		StateDir: plugin.MCPStateDir(config.SemantixHomeDir(), workspace, v.Name),
 	}); err != nil {
 		m.notice("clear authentication: " + err.Error())
 		return m, nil

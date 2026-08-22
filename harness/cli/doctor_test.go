@@ -41,7 +41,7 @@ func TestRunDispatchesDoctor(t *testing.T) {
 
 func TestDoctorSessionsIsReadOnly(t *testing.T) {
 	cache := t.TempDir()
-	t.Setenv("REASONIX_CACHE_HOME", cache)
+	t.Setenv("SEMANTIX_CACHE_HOME", cache)
 	out := captureStdout(t, func() {
 		if rc := doctorCommand([]string{"sessions", "--json"}, "test-version"); rc != 0 {
 			t.Fatalf("doctor sessions rc = %d, want 0", rc)
@@ -60,8 +60,8 @@ func TestSessionsReindexRebuildsOnlyCatalog(t *testing.T) {
 	cache := t.TempDir()
 	home := t.TempDir()
 	sessions := filepath.Join(home, "sessions")
-	t.Setenv("REASONIX_CACHE_HOME", cache)
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_CACHE_HOME", cache)
+	t.Setenv("SEMANTIX_HOME", home)
 	if err := os.MkdirAll(sessions, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestSessionsReindexRebuildsOnlyCatalog(t *testing.T) {
 
 func TestDefaultSessionCatalogTargetsIncludeDesktopProjects(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_HOME", home)
 	projectRoot := filepath.Join(t.TempDir(), "project")
 	projects := `{"projects":[{"root":` + strconv.Quote(projectRoot) + `}]}`
 	if err := os.WriteFile(filepath.Join(home, "desktop-projects.json"), []byte(projects), 0o600); err != nil {
@@ -113,7 +113,7 @@ func TestDefaultSessionCatalogTargetsIncludeDesktopProjects(t *testing.T) {
 
 func TestDoctorSessionCommandWritesBundle(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_HOME", home)
 	sessionDir := filepath.Join(home, "sessions")
 	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -137,7 +137,7 @@ func TestDoctorSessionCommandWritesBundle(t *testing.T) {
 
 func TestDoctorQualityCommandPrintsPublicSafeJSON(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_HOME", home)
 	sessionDir := filepath.Join(home, "sessions")
 	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -187,7 +187,7 @@ func captureStdout(t *testing.T, fn func()) string {
 
 func TestDoctorSessionCommandOutEqualsForm(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_HOME", home)
 	sessionDir := filepath.Join(home, "sessions")
 	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
 		t.Fatal(err)

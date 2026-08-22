@@ -47,9 +47,9 @@ type cliPalette struct {
 }
 
 type cliThemeStyle struct {
-	name        string
-	mode        string
-	accent      cliColor
+	name   string
+	mode   string
+	accent cliColor
 	// success, when non-nil, overrides the palette success color. Only the
 	// Semantix Design style sets it (brand green #009c6d, h4-branding.md);
 	// other styles keep their palette default.
@@ -134,7 +134,7 @@ func configureCLITheme(mode string) {
 }
 
 func configureCLIThemeWithStyle(mode, style string) {
-	if env := strings.TrimSpace(os.Getenv("REASONIX_THEME")); env != "" {
+	if env := strings.TrimSpace(os.Getenv("SEMANTIX_THEME")); env != "" {
 		if st, ok := cliThemeStyleByName(env); ok {
 			mode = st.mode
 			style = st.name
@@ -142,7 +142,7 @@ func configureCLIThemeWithStyle(mode, style string) {
 			mode = env
 		}
 	}
-	if env := strings.TrimSpace(os.Getenv("REASONIX_THEME_STYLE")); env != "" {
+	if env := strings.TrimSpace(os.Getenv("SEMANTIX_THEME_STYLE")); env != "" {
 		style = env
 	}
 	activeCLITheme = resolveCLIThemeWithStyle(mode, style)

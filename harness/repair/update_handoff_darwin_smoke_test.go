@@ -16,14 +16,14 @@ import (
 //
 // Run with:
 //
-//	REASONIX_MACOS_APPLICATIONS_SMOKE=1 go test ./internal/repair \
+//	SEMANTIX_MACOS_APPLICATIONS_SMOKE=1 go test ./internal/repair \
 //	  -run TestDarwinApplicationsOrphanBackupLifecycleSmoke -count=1
 func TestDarwinApplicationsOrphanBackupLifecycleSmoke(t *testing.T) {
-	if os.Getenv("REASONIX_MACOS_APPLICATIONS_SMOKE") != "1" {
-		t.Skip("set REASONIX_MACOS_APPLICATIONS_SMOKE=1 to probe /Applications")
+	if os.Getenv("SEMANTIX_MACOS_APPLICATIONS_SMOKE") != "1" {
+		t.Skip("set SEMANTIX_MACOS_APPLICATIONS_SMOKE=1 to probe /Applications")
 	}
 
-	smokeRoot, err := os.MkdirTemp("/Applications", ".reasonix-updater-smoke-")
+	smokeRoot, err := os.MkdirTemp("/Applications", ".semantix-updater-smoke-")
 	if err != nil {
 		t.Fatalf("create isolated /Applications smoke root (allow the terminal in App Management): %v", err)
 	}
@@ -45,16 +45,16 @@ func TestDarwinApplicationsOrphanBackupLifecycleSmoke(t *testing.T) {
 		}
 	})
 
-	t.Setenv("REASONIX_HOME", t.TempDir())
-	app := filepath.Join(smokeRoot, "Reasonix.app")
-	executable := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	backup := app + ".reasonix-update-backup"
-	staging, err := os.MkdirTemp("", "reasonix-mac-update-*")
+	t.Setenv("SEMANTIX_HOME", t.TempDir())
+	app := filepath.Join(smokeRoot, "Semantix.app")
+	executable := filepath.Join(app, "Contents", "MacOS", "Semantix")
+	backup := app + ".semantix-update-backup"
+	staging, err := os.MkdirTemp("", "semantix-mac-update-*")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(staging) })
-	stagedApp := filepath.Join(staging, "Reasonix.app")
+	stagedApp := filepath.Join(staging, "Semantix.app")
 	for _, dir := range []string{filepath.Dir(executable), backup, stagedApp} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)

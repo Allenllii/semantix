@@ -86,7 +86,7 @@ func isolateControlConfigHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("REASONIX_CREDENTIALS_STORE", "file")
+	t.Setenv("SEMANTIX_CREDENTIALS_STORE", "file")
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AppData", filepath.Join(home, "AppData"))
@@ -684,7 +684,7 @@ func TestSetGoalDurableNeverCreatesLegacyArchive(t *testing.T) {
 	if err := c.SetGoalDurable(goal); err == nil {
 		t.Fatal("SetGoalDurable succeeded despite an invalid sidecar parent")
 	}
-	if _, err := os.Stat(filepath.Join(root, ".reasonix", "autoresearch")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, ".semantix", "autoresearch")); !os.IsNotExist(err) {
 		t.Fatalf("durable Goal update created legacy archive: %v", err)
 	}
 	for _, notice := range sink.notices() {
@@ -765,25 +765,25 @@ func TestResumeRestoresRunningAutoResearchGoalFromSidecar(t *testing.T) {
 	}
 	path := filepath.Join(root, "session.jsonl")
 	taskID := "investigate-runtime-resume"
-	if err := os.MkdirAll(filepath.Join(root, ".reasonix", "autoresearch", taskID, "state"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, ".semantix", "autoresearch", taskID, "state"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(root, ".reasonix", "autoresearch", taskID, "logs"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, ".semantix", "autoresearch", taskID, "logs"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".reasonix", "autoresearch", taskID, "state", "task_spec.json"), []byte(`{"task_id":"investigate-runtime-resume","goal":"investigate runtime resume","allowed_operations":{"write":true},"success_criteria":[{"id":"criterion-1","description":"resume keeps Goal active","required":true}]}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".semantix", "autoresearch", taskID, "state", "task_spec.json"), []byte(`{"task_id":"investigate-runtime-resume","goal":"investigate runtime resume","allowed_operations":{"write":true},"success_criteria":[{"id":"criterion-1","description":"resume keeps Goal active","required":true}]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".reasonix", "autoresearch", taskID, "state", "progress.json"), []byte(`{"task_id":"investigate-runtime-resume","iteration":2,"current_direction":"verify resume","stale_count":1,"pivot_count":0,"updated_at":"2026-06-30T00:00:00Z"}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".semantix", "autoresearch", taskID, "state", "progress.json"), []byte(`{"task_id":"investigate-runtime-resume","iteration":2,"current_direction":"verify resume","stale_count":1,"pivot_count":0,"updated_at":"2026-06-30T00:00:00Z"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".reasonix", "autoresearch", taskID, "state", "directions_tried.json"), []byte(`{"task_id":"investigate-runtime-resume","directions":[]}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".semantix", "autoresearch", taskID, "state", "directions_tried.json"), []byte(`{"task_id":"investigate-runtime-resume","directions":[]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".reasonix", "autoresearch", taskID, "state", "findings.jsonl"), nil, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".semantix", "autoresearch", taskID, "state", "findings.jsonl"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".reasonix", "autoresearch", taskID, "logs", "heartbeat.jsonl"), nil, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".semantix", "autoresearch", taskID, "logs", "heartbeat.jsonl"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(goalStatePath(path), []byte(`{"goal":"investigate runtime resume","status":"running","researchMode":1,"autoResearchTaskID":"investigate-runtime-resume"}`), 0o644); err != nil {
@@ -2650,7 +2650,7 @@ func TestTwoModelPlannerApprovalUsesHostGate(t *testing.T) {
 		t.Fatal("executor did not run after approval")
 	}
 	reqText := requestMessagesText(execProv.requests[0].Messages)
-	if !strings.Contains(reqText, "Reasonix executor handoff") || !strings.Contains(reqText, "Edit main.go") {
+	if !strings.Contains(reqText, "Semantix executor handoff") || !strings.Contains(reqText, "Edit main.go") {
 		t.Fatalf("approved executor request missing planner handoff:\n%s", reqText)
 	}
 }
@@ -2758,7 +2758,7 @@ func TestTwoModelShortChoiceReplySkipsPlanner(t *testing.T) {
 	if !strings.Contains(reqText, "1. Subagent-Driven") {
 		t.Fatalf("executor request lost the previous assistant options:\n%s", reqText)
 	}
-	if strings.Contains(reqText, "Reasonix executor handoff") {
+	if strings.Contains(reqText, "Semantix executor handoff") {
 		t.Fatalf("short choice reply should not be wrapped as a planner handoff:\n%s", reqText)
 	}
 	if got := agent.StripTransientUserBlocks(lastUserMessage(execProv.requests[0].Messages)); got != "1" {
@@ -2827,7 +2827,7 @@ func TestDisconnectMCPServerRemovesLazyPlaceholder(t *testing.T) {
 }
 
 func TestRegisterMCPServerOnDemandDefersConnectionUntilFirstUse(t *testing.T) {
-	t.Setenv("REASONIX_CACHE_HOME", t.TempDir())
+	t.Setenv("SEMANTIX_CACHE_HOME", t.TempDir())
 	var requests atomic.Int32
 	var initializes atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -2901,7 +2901,7 @@ func TestRegisterMCPServerOnDemandDefersConnectionUntilFirstUse(t *testing.T) {
 }
 
 func TestControllerMCPHotLifecycleUpdatesCapabilityRuntime(t *testing.T) {
-	t.Setenv("REASONIX_CACHE_HOME", t.TempDir())
+	t.Setenv("SEMANTIX_CACHE_HOME", t.TempDir())
 	host := plugin.NewHost()
 	defer host.Close()
 	reg := tool.NewRegistry()
@@ -2961,7 +2961,7 @@ func TestAddMCPServerAuthorizesExplicitUserAddBeforeConnecting(t *testing.T) {
 func TestAddMCPServerWritesGlobalConfigWithoutShadowingProject(t *testing.T) {
 	isolateControlConfigHome(t)
 	workspace := t.TempDir()
-	projectPath := filepath.Join(workspace, "reasonix.toml")
+	projectPath := filepath.Join(workspace, "semantix-agent.toml")
 	if err := os.WriteFile(projectPath, []byte(`
 [[plugins]]
 name = "project-only"
@@ -3024,7 +3024,7 @@ command = "project-only"
 func TestAddMCPServerRejectsProjectNameCollision(t *testing.T) {
 	isolateControlConfigHome(t)
 	workspace := t.TempDir()
-	if err := os.WriteFile(filepath.Join(workspace, "reasonix.toml"), []byte(`
+	if err := os.WriteFile(filepath.Join(workspace, "semantix-agent.toml"), []byte(`
 [[plugins]]
 name = "shared"
 command = "project-shared"
@@ -3081,7 +3081,7 @@ func TestConnectConfiguredProjectMCPIsTrustedByDefault(t *testing.T) {
 		})
 	}))
 	defer server.Close()
-	if err := os.WriteFile(filepath.Join(workspace, "reasonix.toml"), fmt.Appendf(nil, `
+	if err := os.WriteFile(filepath.Join(workspace, "semantix-agent.toml"), fmt.Appendf(nil, `
 [[plugins]]
 name = "project-docs"
 type = "http"
@@ -3257,7 +3257,7 @@ func TestRemoveMCPServerRemovesUnconnectedLazyPlaceholder(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AppData", filepath.Join(home, "AppData", "Roaming"))
 	t.Chdir(dir)
-	if err := os.WriteFile("reasonix.toml", []byte(`
+	if err := os.WriteFile("semantix-agent.toml", []byte(`
 [[plugins]]
 name = "mock"
 command = "mock-mcp"
@@ -3300,7 +3300,7 @@ func TestConfiguredMCPNamesUseControllerWorkspaceInsteadOfProcessCWD(t *testing.
 	workspace := t.TempDir()
 	other := t.TempDir()
 	t.Chdir(other)
-	if err := os.WriteFile(filepath.Join(workspace, "reasonix.toml"), []byte(`
+	if err := os.WriteFile(filepath.Join(workspace, "semantix-agent.toml"), []byte(`
 [[plugins]]
 name = "workspace-mcp"
 command = "workspace-mcp"
@@ -3334,20 +3334,20 @@ func TestRemoveMCPServerKeepsRuntimeOnlyToolsWhenPersistenceRemovalFails(t *test
 
 func TestRemoveMCPServerRejectsPluginManagedTools(t *testing.T) {
 	home := isolateControlConfigHome(t)
-	reasonixHome := filepath.Join(home, ".reasonix")
-	t.Setenv("REASONIX_HOME", reasonixHome)
-	root := filepath.Join(reasonixHome, "plugins", "superpowers")
+	semantixHome := filepath.Join(home, ".semantix")
+	t.Setenv("SEMANTIX_HOME", semantixHome)
+	root := filepath.Join(semantixHome, "plugins", "superpowers")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, pluginpkg.NativeManifest), []byte(`{"apiVersion":"reasonix.io/plugin/v2","name":"superpowers","version":"1.0.0","mcpServers":{"helper":{"command":"bin/helper"}}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, pluginpkg.NativeManifest), []byte(`{"apiVersion":"semantix.io/plugin/v2","name":"superpowers","version":"1.0.0","mcpServers":{"helper":{"command":"bin/helper"}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := pluginpkg.Upsert(reasonixHome, pluginpkg.InstalledPlugin{
+	if err := pluginpkg.Upsert(semantixHome, pluginpkg.InstalledPlugin{
 		Name:         "superpowers",
 		Root:         "plugins/superpowers",
 		Version:      "1.0.0",
-		ManifestKind: "reasonix",
+		ManifestKind: "semantix",
 		Enabled:      true,
 	}); err != nil {
 		t.Fatal(err)
@@ -4149,7 +4149,7 @@ func TestApprovalPersistentBashPrefixRememberRule(t *testing.T) {
 		}),
 		OnRemember: func(rule string) RememberResult {
 			remembered = rule
-			return RememberResult{Rule: rule, Path: "reasonix.toml", Saved: true}
+			return RememberResult{Rule: rule, Path: "semantix-agent.toml", Saved: true}
 		},
 	})
 	go func() {
@@ -4163,7 +4163,7 @@ func TestApprovalPersistentBashPrefixRememberRule(t *testing.T) {
 	if remembered != "Bash(go test:*)" {
 		t.Fatalf("remembered rule = %q, want Bash(go test:*)", remembered)
 	}
-	if len(notices) != 1 || !strings.Contains(notices[0], "Bash(go test:*)") || !strings.Contains(notices[0], "reasonix.toml") {
+	if len(notices) != 1 || !strings.Contains(notices[0], "Bash(go test:*)") || !strings.Contains(notices[0], "semantix-agent.toml") {
 		t.Fatalf("notices = %v, want saved rule notice", notices)
 	}
 }
@@ -4183,7 +4183,7 @@ func TestApprovalPersistenceFailureKeepsSessionGrant(t *testing.T) {
 			}
 		}),
 		OnRemember: func(rule string) RememberResult {
-			return RememberResult{Rule: rule, Path: "reasonix.toml", Err: errors.New("disk unavailable")}
+			return RememberResult{Rule: rule, Path: "semantix-agent.toml", Err: errors.New("disk unavailable")}
 		},
 	})
 	go func() {
@@ -4223,7 +4223,7 @@ func TestPlanModeReadOnlyTrustApprovalPersistsBashCommandTrust(t *testing.T) {
 		}),
 		OnRememberPlanModeReadOnlyCommand: func(prefix string) PlanModeReadOnlyCommandTrustResult {
 			rememberedPrefix = prefix
-			return PlanModeReadOnlyCommandTrustResult{Prefix: prefix, Path: "reasonix.toml", Saved: true}
+			return PlanModeReadOnlyCommandTrustResult{Prefix: prefix, Path: "semantix-agent.toml", Saved: true}
 		},
 	})
 
@@ -4932,7 +4932,7 @@ func TestReloadCommandsFromFilesystem(t *testing.T) {
 	t.Setenv("AppData", filepath.Join(home, "AppData"))
 
 	wsRoot := t.TempDir()
-	cmdDir := filepath.Join(wsRoot, ".reasonix", "commands")
+	cmdDir := filepath.Join(wsRoot, ".semantix", "commands")
 	writeCmdFile(t, cmdDir, "review", "Review code", "Review $1")
 	writeCmdFile(t, cmdDir, "test", "Run tests", "Test $1")
 
@@ -5030,7 +5030,7 @@ func TestReloadCommandsDeleteFile(t *testing.T) {
 	t.Setenv("AppData", filepath.Join(home, "AppData"))
 
 	wsRoot := t.TempDir()
-	cmdDir := filepath.Join(wsRoot, ".reasonix", "commands")
+	cmdDir := filepath.Join(wsRoot, ".semantix", "commands")
 	writeCmdFile(t, cmdDir, "alpha", "Alpha cmd", "Alpha $1")
 	writeCmdFile(t, cmdDir, "beta", "Beta cmd", "Beta $1")
 
@@ -5085,7 +5085,7 @@ func TestReloadCommandsMalformedFile(t *testing.T) {
 	t.Setenv("AppData", filepath.Join(home, "AppData"))
 
 	wsRoot := t.TempDir()
-	cmdDir := filepath.Join(wsRoot, ".reasonix", "commands")
+	cmdDir := filepath.Join(wsRoot, ".semantix", "commands")
 	writeCmdFile(t, cmdDir, "good", "Good cmd", "Good $1")
 
 	// Write a malformed file (no valid frontmatter)
@@ -5127,8 +5127,8 @@ func TestReloadCommandsMalformedFile(t *testing.T) {
 
 // TestReloadCommandsSameNameAcrossDirs verifies that when the same command
 // name exists in multiple convention directories, the later-scanned directory
-// (higher priority) wins. ConventionDirs = [".reasonix", ".agents", ".agent",
-// ".claude"], scanned in reverse, so .reasonix is highest priority.
+// (higher priority) wins. ConventionDirs = [".semantix", ".agents", ".agent",
+// ".claude"], scanned in reverse, so .semantix is highest priority.
 func TestReloadCommandsSameNameAcrossDirs(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -5142,9 +5142,9 @@ func TestReloadCommandsSameNameAcrossDirs(t *testing.T) {
 	claudeDir := filepath.Join(wsRoot, ".claude", "commands")
 	writeCmdFile(t, claudeDir, "greet", "Claude greet", "Hello from Claude: $1")
 
-	// Higher priority: .reasonix/commands
-	reasonixDir := filepath.Join(wsRoot, ".reasonix", "commands")
-	writeCmdFile(t, reasonixDir, "greet", "Reasonix greet", "Hello from Reasonix: $1")
+	// Higher priority: .semantix/commands
+	semantixDir := filepath.Join(wsRoot, ".semantix", "commands")
+	writeCmdFile(t, semantixDir, "greet", "Semantix greet", "Hello from Semantix: $1")
 
 	reg := tool.NewRegistry()
 	c := New(Options{
@@ -5169,13 +5169,13 @@ func TestReloadCommandsSameNameAcrossDirs(t *testing.T) {
 		t.Fatalf("expected exactly 1 'greet' command, got %d", count)
 	}
 
-	// The winning version should be from .reasonix (highest priority)
+	// The winning version should be from .semantix (highest priority)
 	sent, ok := c.CustomCommand("/greet world")
 	if !ok {
 		t.Fatal("/greet should be found")
 	}
-	if !strings.Contains(sent, "Hello from Reasonix") {
-		t.Errorf("expected .reasonix version to win, got render: %q", sent)
+	if !strings.Contains(sent, "Hello from Semantix") {
+		t.Errorf("expected .semantix-agent version to win, got render: %q", sent)
 	}
 }
 
@@ -5185,10 +5185,10 @@ func TestReloadCommandsUsesCanonicalPluginNameAlongsideProjectShortName(t *testi
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AppData", filepath.Join(home, "AppData"))
-	reasonixHome := filepath.Join(home, ".reasonix")
-	t.Setenv("REASONIX_HOME", reasonixHome)
+	semantixHome := filepath.Join(home, ".semantix")
+	t.Setenv("SEMANTIX_HOME", semantixHome)
 
-	pluginRoot := filepath.Join(reasonixHome, "plugins", "pwf")
+	pluginRoot := filepath.Join(semantixHome, "plugins", "pwf")
 	if err := os.MkdirAll(filepath.Join(pluginRoot, ".claude-plugin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -5197,12 +5197,12 @@ func TestReloadCommandsUsesCanonicalPluginNameAlongsideProjectShortName(t *testi
 	}
 	writeCmdFile(t, filepath.Join(pluginRoot, "commands"), "plan", "Plugin plan", "PLUGIN $1")
 	writeCmdFile(t, filepath.Join(pluginRoot, "commands"), "status", "Plugin status", "STATUS $1")
-	if err := pluginpkg.Upsert(reasonixHome, pluginpkg.InstalledPlugin{Name: "pwf", Root: "plugins/pwf", ManifestKind: "claude", Enabled: true}); err != nil {
+	if err := pluginpkg.Upsert(semantixHome, pluginpkg.InstalledPlugin{Name: "pwf", Root: "plugins/pwf", ManifestKind: "claude", Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
 
 	workspace := t.TempDir()
-	writeCmdFile(t, filepath.Join(workspace, ".reasonix", "commands"), "plan", "Project plan", "PROJECT $1")
+	writeCmdFile(t, filepath.Join(workspace, ".semantix", "commands"), "plan", "Project plan", "PROJECT $1")
 	c := New(Options{Sink: &typedNilControllerSink{}, Registry: tool.NewRegistry(), WorkspaceRoot: workspace})
 	if err := c.ReloadCommands(context.Background()); err != nil {
 		t.Fatalf("ReloadCommands: %v", err)
@@ -5247,7 +5247,7 @@ func TestReloadCommandsEmptySet(t *testing.T) {
 	t.Setenv("AppData", filepath.Join(home, "AppData"))
 
 	wsRoot := t.TempDir()
-	cmdDir := filepath.Join(wsRoot, ".reasonix", "commands")
+	cmdDir := filepath.Join(wsRoot, ".semantix", "commands")
 	writeCmdFile(t, cmdDir, "temp", "Temp cmd", "Temp $1")
 
 	sk := skill.Skill{
@@ -5310,7 +5310,7 @@ func TestReloadCommandsDesktopManagementNotice(t *testing.T) {
 	t.Setenv("AppData", filepath.Join(home, "AppData"))
 
 	wsRoot := t.TempDir()
-	cmdDir := filepath.Join(wsRoot, ".reasonix", "commands")
+	cmdDir := filepath.Join(wsRoot, ".semantix", "commands")
 	writeCmdFile(t, cmdDir, "hello", "Greet", "Hello $1")
 	writeCmdFile(t, cmdDir, "review", "Review code", "Review $1")
 

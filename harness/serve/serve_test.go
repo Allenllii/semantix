@@ -442,8 +442,8 @@ func TestServeIndexPresentsRecoveryPauseAsNotice(t *testing.T) {
 	for _, want := range []string{
 		"e.outcome==='recovery_paused'",
 		"showNotice('⏸ '+__('recovery_paused'))",
-		"'recovery_paused': 'Automatic retries paused. Reasonix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.'",
-		"'recovery_paused': '已暂停自动重试。Reasonix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。'",
+		"'recovery_paused': 'Automatic retries paused. Semantix stopped repeated attempts and kept completed work. Send “Continue” to start a fresh attempt, or add instructions to change direction.'",
+		"'recovery_paused': '已暂停自动重试。Semantix 已停止重复尝试，并保留已完成的工作。发送“继续”即可开始新一轮，也可以补充要求来调整方向。'",
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("serve index missing recovery pause support %q", want)
@@ -684,7 +684,7 @@ func TestServeSwitchEffortUsesModelRefForDuplicateModelNames(t *testing.T) {
 func writeServeModelConfig(t *testing.T) {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_HOME", home)
 	cfgPath := config.UserConfigPath()
 	if cfgPath == "" {
 		t.Fatal("user config path is empty")

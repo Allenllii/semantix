@@ -249,7 +249,7 @@ func TestHTTPTransportDoesNotLoadOAuthStateWithStaticAPIKey(t *testing.T) {
 	}
 	defer transport.close()
 	if transport.oauth != nil {
-		t.Fatal("static authentication must disable Reasonix OAuth state")
+		t.Fatal("static authentication must disable Semantix OAuth state")
 	}
 	resp, err := transport.do(context.Background(), []byte(`{}`))
 	if err != nil {

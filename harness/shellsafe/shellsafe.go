@@ -135,7 +135,7 @@ func ClassifyReadOnlyCommand(command string) (base, sub string, fields []string,
 	return "", "", nil, false
 }
 
-const resolvedSubstitutionPlaceholder = "__reasonix_read_only_substitution__"
+const resolvedSubstitutionPlaceholder = "__semantix_read_only_substitution__"
 
 var substitutionSafeCommands = map[string]bool{
 	"cat": true, "head": true, "tail": true, "ls": true,

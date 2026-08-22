@@ -16,7 +16,7 @@ func TestUnifiedSurfaceExposesUseCapabilityForAllRoleSettings(t *testing.T) {
 	isolateConfigHome(t)
 	dir := robustTempDir(t)
 	t.Chdir(dir)
-	writeFile(t, dir, "reasonix.toml", `
+	writeFile(t, dir, "semantix-agent.toml", `
 default_model = "test-model"
 
 [agent]
@@ -78,7 +78,7 @@ func TestUseCapabilityCallDispatchesHiddenGrep(t *testing.T) {
 	dir := robustTempDir(t)
 	t.Chdir(dir)
 	writeFile(t, dir, "a.go", "package a\n// needle_token\n")
-	writeFile(t, dir, "reasonix.toml", `
+	writeFile(t, dir, "semantix-agent.toml", `
 default_model = "test-model"
 
 [agent]

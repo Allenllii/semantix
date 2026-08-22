@@ -84,7 +84,7 @@ func prepareServeFrontend(opts serveFrontendOptions) (_ *serveFrontendResources,
 		resources.artifacts = append(resources.artifacts, opts.pidFile)
 	}
 	if opts.command == "web" {
-		resources.registration, err = registerWebInstance(config.ReasonixHomeDir(), resources.displayAddr)
+		resources.registration, err = registerWebInstance(config.SemantixHomeDir(), resources.displayAddr)
 		if err != nil {
 			return nil, err
 		}

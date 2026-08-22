@@ -28,7 +28,7 @@ import (
 // deliberate, reviewed change to the provider-visible contract ever happens,
 // regenerate with:
 //
-//	REASONIX_UPDATE_GOLDEN=1 go test ./internal/boot -run TestGoldenBaseline -count=1
+//	SEMANTIX_UPDATE_GOLDEN=1 go test ./internal/boot -run TestGoldenBaseline -count=1
 //
 // and call the cache impact out in the commit message.
 //
@@ -53,7 +53,7 @@ func captureGoldenBaseline(t *testing.T) goldenBaseline {
 	dir := robustTempDir(t)
 	t.Chdir(dir)
 
-	writeFile(t, dir, "reasonix.toml", `
+	writeFile(t, dir, "semantix-agent.toml", `
 default_model = "test-model"
 
 [agent]
@@ -73,7 +73,7 @@ name = "test-model"
 kind = "openai"
 base_url = "https://example.invalid"
 model = "x"
-api_key_env = "REASONIX_TEST_KEY_UNSET"
+api_key_env = "SEMANTIX_TEST_KEY_UNSET"
 `)
 
 	ctrl, err := Build(context.Background(), Options{})
@@ -174,7 +174,7 @@ func normalizeGoldenRoot(prompt string, roots ...string) string {
 }
 
 func TestNormalizeGoldenRootReplacesQuotedWindowsPath(t *testing.T) {
-	root := `C:\Users\RUNNER~1\AppData\Local\Temp\reasonix-test-123`
+	root := `C:\Users\RUNNER~1\AppData\Local\Temp\semantix-test-123`
 	prompt := "Current workspace: " + strconv.Quote(root)
 	if got, want := normalizeGoldenRoot(prompt, root), `Current workspace: "<ROOT>"`; got != want {
 		t.Fatalf("normalizeGoldenRoot = %q, want %q", got, want)
@@ -182,8 +182,8 @@ func TestNormalizeGoldenRootReplacesQuotedWindowsPath(t *testing.T) {
 }
 
 func TestNormalizeGoldenRootReplacesEveryAlias(t *testing.T) {
-	prompt := "long=/tmp/reasonix-long short=/tmp/reasonix-short"
-	got := normalizeGoldenRoot(prompt, "/tmp/reasonix-long", "/tmp/reasonix-short")
+	prompt := "long=/tmp/semantix-long short=/tmp/semantix-short"
+	got := normalizeGoldenRoot(prompt, "/tmp/semantix-long", "/tmp/semantix-short")
 	if got != "long=<ROOT> short=<ROOT>" {
 		t.Fatalf("normalizeGoldenRoot = %q", got)
 	}
@@ -225,7 +225,7 @@ func TestGoldenBaselineNoExtensions(t *testing.T) {
 		"prefix_shape.json":     shapeJSON,
 	}
 
-	if os.Getenv("REASONIX_UPDATE_GOLDEN") == "1" {
+	if os.Getenv("SEMANTIX_UPDATE_GOLDEN") == "1" {
 		if err := os.MkdirAll(goldenDir, 0o755); err != nil {
 			t.Fatalf("mkdir golden dir: %v", err)
 		}
@@ -241,11 +241,11 @@ func TestGoldenBaselineNoExtensions(t *testing.T) {
 	for name, want := range artifacts {
 		got, err := os.ReadFile(filepath.Join(goldenDir, name))
 		if err != nil {
-			t.Fatalf("read golden %s: %v (record it with REASONIX_UPDATE_GOLDEN=1)", name, err)
+			t.Fatalf("read golden %s: %v (record it with SEMANTIX_UPDATE_GOLDEN=1)", name, err)
 		}
 		if string(got) != string(want) {
 			t.Fatalf("golden %s drifted from the pre-refactor baseline (%d bytes golden, %d bytes actual); first diff: %q\n"+
-				"If this drift is deliberate, regenerate with REASONIX_UPDATE_GOLDEN=1 and document the cache impact.",
+				"If this drift is deliberate, regenerate with SEMANTIX_UPDATE_GOLDEN=1 and document the cache impact.",
 				name, len(got), len(want), firstDivergence(string(got), string(want)))
 		}
 	}

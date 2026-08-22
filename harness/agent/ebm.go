@@ -22,7 +22,7 @@ const ebmNudge = "[evidence nudge] You have made several unverified mutations. B
 // ebmEnabled gates enforcement for the A/B experiment; eligibility is always
 // recorded so baseline arms carry the same shadow. Env-scoped on purpose —
 // graduation to config waits on the experiment's verdict.
-var ebmEnabled = os.Getenv("REASONIX_EXPERIMENT_EBM") == "1"
+var ebmEnabled = os.Getenv("SEMANTIX_EXPERIMENT_EBM") == "1"
 
 type ebmState struct {
 	fired        bool

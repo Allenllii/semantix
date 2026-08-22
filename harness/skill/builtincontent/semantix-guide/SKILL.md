@@ -1,10 +1,10 @@
 ---
-name: reasonix-guide
-description: "Troubleshoot and configure Reasonix capabilities: Skills (project/custom/global/builtin priority, discovery dirs), Commands (override order, /dir:file naming), Hooks (11 events, automatic project loading, matchers, timeouts), MCP (reasonix.toml + .mcp.json + plugin packages, auto_start), plugin packages (native/Codex/Claude manifests), and AGENTS.md / instruction docs. Use when the user asks how to configure, debug missing skills/commands/hooks/MCP/plugins, or diagnose capability loading."
+name: semantix-guide
+description: "Troubleshoot and configure Semantix capabilities: Skills (project/custom/global/builtin priority, discovery dirs), Commands (override order, /dir:file naming), Hooks (11 events, automatic project loading, matchers, timeouts), MCP (semantix-agent.toml + .mcp.json + plugin packages, auto_start), plugin packages (native/Codex/Claude manifests), and AGENTS.md / instruction docs. Use when the user asks how to configure, debug missing skills/commands/hooks/MCP/plugins, or diagnose capability loading."
 runAs: inline
 ---
 
-# Reasonix self-diagnostics guide
+# Semantix self-diagnostics guide
 
 This skill is **inlined**. Prefer evidence over guessing.
 
@@ -13,13 +13,13 @@ This skill is **inlined**. Prefer evidence over guessing.
 1. Run a **static** capability report (no network, no MCP subprocesses):
 
 ```bash
-reasonix doctor capabilities --json
+semantix-agent doctor capabilities --json
 ```
 
 2. Only if the user **explicitly** allows starting third-party MCP servers (may network and pass configured env/headers), run live probe:
 
 ```bash
-reasonix doctor capabilities --live --timeout 5s --json
+semantix-agent doctor capabilities --live --timeout 5s --json
 ```
 
 3. On desktop, open **Settings → Diagnostics** for the same report model. The desktop "include current session runtime" toggle only **reads** the active tab Host (connected/failed/deferred/disabled); it does **not** start MCP.
@@ -34,22 +34,22 @@ Do not invent auto-fixes. Surface stable issue codes, sources, and remediations 
 
 Winner per skill name (highest first):
 
-1. **project** — `<workspace>/{.reasonix,.agents,.agent,.claude}/skills/`
+1. **project** — `<workspace>/{.semantix,.agents,.agent,.claude}/skills/`
 2. **custom** — `[skills].paths` (and plugin package skill roots)
-3. **global** — `<Reasonix home>/skills` and home convention dirs
+3. **global** — `<Semantix home>/skills` and home convention dirs
 4. **builtin** — shipped skills (including this guide)
 
 Same name: higher scope wins; lower scopes are **shadowed**. `[skills].disabled_skills` hides a name from List/Read entirely.
 
-Discovery conventions: `.reasonix`, `.agents`, `.agent`, `.claude` (see `config.ConventionDirs`). Layouts: `<name>/SKILL.md` or flat `<name>.md` (Claude flat files need skill frontmatter).
+Discovery conventions: `.semantix`, `.agents`, `.agent`, `.claude` (see `config.ConventionDirs`). Layouts: `<name>/SKILL.md` or flat `<name>.md` (Claude flat files need skill frontmatter).
 
 ### Checks
 
 | Entry | How |
 | --- | --- |
-| CLI | `reasonix doctor capabilities` → Skills section |
+| CLI | `semantix-agent doctor capabilities` → Skills section |
 | Desktop | Settings → Skills; Settings → Diagnostics |
-| Agent | `/skill` list, `/reasonix-guide`, `run_skill` |
+| Agent | `/skill` list, `/semantix-guide`, `run_skill` |
 
 ### Symptom → cause → fix
 
@@ -62,7 +62,7 @@ Discovery conventions: `.reasonix`, `.agents`, `.agent`, `.claude` (see `config.
 
 ### Ordered triage
 
-1. `reasonix doctor capabilities --json` → Skills
+1. `semantix-agent doctor capabilities --json` → Skills
 2. Confirm name not in `disabled_skills`
 3. Confirm winner Path/Scope; if shadowed, inspect lower-priority roots
 4. Missing description: skill may load but index placeholder is weak — add `description:`
@@ -74,7 +74,7 @@ Discovery conventions: `.reasonix`, `.agents`, `.agent`, `.claude` (see `config.
 
 ### Priority
 
-`config.CommandDirsForRoot`: home convention commands → Reasonix home commands → project convention commands. **Later directory overrides earlier** on name clash (`command.Load`).
+`config.CommandDirsForRoot`: home convention commands → Semantix home commands → project convention commands. **Later directory overrides earlier** on name clash (`command.Load`).
 
 Name from path: `git/commit.md` → `/git:commit` (slashes → `:`).
 
@@ -102,9 +102,9 @@ CLI/Desktop Diagnostics → Commands; invoke `/name` in chat.
 
 ### Sources
 
-- Project: `<workspace>/.reasonix/settings.json` — loaded automatically
+- Project: `<workspace>/.semantix/settings.json` — loaded automatically
 - Plugin packages: installed enabled packages
-- Global: `<Reasonix home>/settings.json` (always)
+- Global: `<Semantix home>/settings.json` (always)
 
 Match field is an **anchored** regex: `file` does **not** match `read_file`; use `.*file` or `*`. Timeout is **milliseconds** (defaults 5s gating / 30s other).
 
@@ -116,7 +116,7 @@ Match field is an **anchored** regex: `file` does **not** match `read_file`; use
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| Project hooks silent | Wrong workspace / restart required | Confirm the project path and restart Reasonix after saving |
+| Project hooks silent | Wrong workspace / restart required | Confirm the project path and restart Semantix after saving |
 | Matcher never fires | Non-anchored assumption / bad regex | Fix match (`hook.invalid_matcher`) |
 | Command missing | Empty command / missing context file | Fix settings entry |
 | Malformed JSON | Invalid settings.json | Repair JSON (file yields no hooks, no crash) |
@@ -160,17 +160,17 @@ Env/header values may contain secrets — diagnostics list **keys only**.
 
 ### Manifests
 
-- Native: `reasonix-plugin.json`
+- Native: `semantix-plugin.json`
 - Codex: `.codex-plugin/plugin.json`
 - Claude: `.claude-plugin/plugin.json` (+ limited Claude compatibility paths)
 
-State: `<Reasonix home>/plugin-packages.json`. Disabled packages do not contribute skills/hooks/MCP.
+State: `<Semantix home>/plugin-packages.json`. Disabled packages do not contribute skills/hooks/MCP.
 
-Unmapped Claude-only features may appear as compatibility warnings — Reasonix does not invent support.
+Unmapped Claude-only features may appear as compatibility warnings — Semantix does not invent support.
 
 ### Checks
 
-`reasonix plugin doctor <name>`, Settings → Plugins, Diagnostics → Plugins.
+`semantix-agent plugin doctor <name>`, Settings → Plugins, Diagnostics → Plugins.
 
 ### Symptom → cause → fix
 
@@ -182,13 +182,13 @@ Unmapped Claude-only features may appear as compatibility warnings — Reasonix 
 
 ---
 
-## Instructions (AGENTS.md / REASONIX.md)
+## Instructions (AGENTS.md / SEMANTIX.md)
 
 ### Load order (ascending specificity)
 
 User global docs → ancestor chain → project docs → project-local (`*.local.md`).
 
-Recognized names: `REASONIX.md`, `AGENTS.md`, `CLAUDE.md` (and `*.local.md` variants). Multiple files in one directory can load; symlink identity is deduped.
+Recognized names: `SEMANTIX.md`, `AGENTS.md`, `CLAUDE.md` (and `*.local.md` variants). Multiple files in one directory can load; symlink identity is deduped.
 
 Instructions fold into the system prompt at session boot (cache-stable prefix);
 Hooks remain runtime event handlers loaded from their configured locations.

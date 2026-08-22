@@ -15,7 +15,7 @@
 ## 办案场景落地路径
 
 ```
-用户会话（Reasonix fork，HarnessSink 自动旁路）
+用户会话（Semantix fork，HarnessSink 自动旁路）
   → semantix extract --scope user --fingerprint <案卷/法条文件>
   → user.db（~/.semantix/user.db，跨项目）
   → 下次办案：inject --scope user → 偏好 + 相关流程 + 经验自动注入系统提示

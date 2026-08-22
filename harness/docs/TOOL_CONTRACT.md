@@ -2,7 +2,7 @@
 
 <a href="./TOOL_CONTRACT.zh-CN.md">简体中文</a>
 
-This document records the provider-visible contract for Reasonix compile-time built-in tools. It is generated from the same canonical schema path used by the runtime registry.
+This document records the provider-visible contract for Semantix compile-time built-in tools. It is generated from the same canonical schema path used by the runtime registry.
 
 | Tool | Read-only | Description |
 | --- | --- | --- |
@@ -41,7 +41,7 @@ The test checks that every registered built-in tool has a documented name, read-
 
 ## Default Full Boot Surface
 
-In a default full-token boot, Reasonix sends the built-in tools above plus the
+In a default full-token boot, Semantix sends the built-in tools above plus the
 session, memory, skill, subagent, LSP, install, and slash-command tools below:
 
 Single-model Balanced uses this exact executor tool surface. Balanced with a
@@ -120,7 +120,7 @@ flags and canonical schemas.
 
 ## Token Economy Boot Surface
 
-In token economy mode, Reasonix starts with nine tools: four direct coding tools,
+In token economy mode, Semantix starts with nine tools: four direct coding tools,
 the three background-shell lifecycle tools, `ask`, and the connector used to
 enable optional sources on demand:
 

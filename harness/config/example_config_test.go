@@ -8,10 +8,10 @@ import (
 
 // TestExampleConfigDefaultsToGLM pins the shipped package behavior (B1): the
 // config template a fresh download installs defaults to GLM and keeps DeepSeek
-// available so the user can switch. It loads the real reasonix.example.toml so
+// available so the user can switch. It loads the real semantix-agent.example.toml so
 // the file and the loader can never drift apart silently.
 func TestExampleConfigDefaultsToGLM(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "reasonix.example.toml"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "semantix-agent.example.toml"))
 	if err != nil {
 		t.Fatalf("read example config: %v", err)
 	}
@@ -19,7 +19,7 @@ func TestExampleConfigDefaultsToGLM(t *testing.T) {
 	project := t.TempDir()
 	home := t.TempDir()
 	launch := t.TempDir()
-	if err := os.WriteFile(filepath.Join(project, "reasonix.toml"), raw, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(project, "semantix-agent.toml"), raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(launch)

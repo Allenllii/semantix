@@ -26,7 +26,7 @@ H1 子进程协议（`docs/reports/h1-mount-design.md`）已满足 harness 闭�
 ### 2.1 inject：每会话恰好 1 次（挂在 systemPrompt 一次性组装点）
 
 - H1 挂载设计（`docs/reports/h1-mount-design.md` U8a）：inject 挂在 fork 的 `internal/agent/agent.go:2641 systemPrompt()` 末尾，config 开关 `semantix.inject` 开启时注入。
-- Reasonix 的 system prompt **在 boot 一次性组装且不再变**（`docs/reports/reasonix-kvcache-mechanisms.md` 机制①：`internal/boot/boot.go:547-640`；`boot_test.go:137-139` 断言 base 保持缓存前缀稳定）→ 整个会话只触发 **1 次** inject，无 per-turn 重复。
+- Semantix 的 system prompt **在 boot 一次性组装且不再变**（`docs/reports/semantix-kvcache-mechanisms.md` 机制①：`internal/boot/boot.go:547-640`；`boot_test.go:137-139` 断言 base 保持缓存前缀稳定）→ 整个会话只触发 **1 次** inject，无 per-turn 重复。
 - 会话中新增内容（记忆更新/任务完成/hook/召回）全部注入**当前用户消息尾部**，绝不改 system prompt（`internal/control/input.go:174-214`）→ 不会因会话增长而增加 inject 次数。
 
 ### 2.2 lookup：模型按需调用，无强制频次

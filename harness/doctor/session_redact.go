@@ -35,9 +35,9 @@ type RedactSessionsResult struct {
 	Errors         []string `json:"errors,omitempty"`
 }
 
-// RedactSessions masks credential-shaped values already persisted in Reasonix
+// RedactSessions masks credential-shaped values already persisted in Semantix
 // session transcripts, event logs, branch metadata, goal state, and
-// background-job artifacts. It is intentionally scoped to known Reasonix
+// background-job artifacts. It is intentionally scoped to known Semantix
 // session directories; it is not a general-purpose filesystem scrubber.
 //
 // Every JSON-bearing artifact is decoded before masking and re-encoded after:

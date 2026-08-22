@@ -131,12 +131,12 @@ type webInstanceRegistration struct {
 	releaseOne sync.Once
 }
 
-func registerWebInstance(reasonixHome, addr string) (*webInstanceRegistration, error) {
-	if strings.TrimSpace(reasonixHome) == "" {
+func registerWebInstance(semantixHome, addr string) (*webInstanceRegistration, error) {
+	if strings.TrimSpace(semantixHome) == "" {
 		return nil, errors.New("cannot register Web instance: Semantix home is empty")
 	}
 	registry := &webInstanceRegistry{
-		dir:               filepath.Join(reasonixHome, "server", webInstanceDirectoryName),
+		dir:               filepath.Join(semantixHome, "server", webInstanceDirectoryName),
 		now:               time.Now,
 		heartbeatInterval: webInstanceHeartbeat,
 		processAlive:      webInstanceProcessAlive,

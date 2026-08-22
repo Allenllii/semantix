@@ -1,4 +1,4 @@
-// Package semantix bridges the reasonix harness to the semantix kernel:
+// Package semantix bridges the semantix harness to the semantix kernel:
 // session events are mirrored to kernel-compatible session JSONL, and kernel
 // retrieval (lookup/inject) is exposed to the agent via subprocess calls.
 package semantix

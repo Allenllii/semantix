@@ -110,7 +110,7 @@ func (m *usageManager) close(ctx context.Context) error {
 	return closeErr
 }
 
-// The single usage catalog projects the single authoritative Reasonix stats
+// The single usage catalog projects the single authoritative Semantix stats
 // directory. Test/custom writers retain the exact JSONL implementation rather
 // than accidentally sharing rollups with the production cache database.
 func sameUsageDirectory(left, right string) bool {

@@ -21,7 +21,7 @@
 
 ## 1. Agile 1 — 首个可下载 agent（品牌化产品）
 
-> 目标（一页化）：**reasonix+semantix 完整 bundle 可下载、安装即用；跨会话复用可被用户感知（命中数/节省成本可视化）**。
+> 目标（一页化）：**semantix+semantix 完整 bundle 可下载、安装即用；跨会话复用可被用户感知（命中数/节省成本可视化）**。
 
 ### 范围与阶段（蓝图 H1-H4）
 
@@ -29,7 +29,7 @@
 |---|---|---|
 | M0（U1-U10） | kernel 骨架 + 事件契约 / 切片提取器 + BM25 / fork 适配 / M0-Gate | ✅ 全部完成，Gate 有条件通过 |
 | M1（U11-U18） | 真实数据验证 / embedding / fork 闭环 / evolve / L3 / 成本仪表 | 🚧 已实现，遗留 #58 |
-| H1 接入 | fork Reasonix 挂载 U7/U8（事件旁路 + 注入工具），跨会话闭环真实会话跑通 | ✅ 合入（issue #64 closed） |
+| H1 接入 | fork Semantix 挂载 U7/U8（事件旁路 + 注入工具），跨会话闭环真实会话跑通 | ✅ 合入（issue #64 closed） |
 | H2 资源层 / H3 编排 / H4 UI 重构 | ResourceLayer / sched 编排 / Semantix Design TUI+桌面 | ⏳ 归入 Agile 2（H2/H3），H4 可并行 |
 
 ### 当前状态
@@ -42,7 +42,7 @@
 
 ### DoD（完成定义）
 
-- [ ] v1.0 发布：单二进制 bundle（reasonix+semantix）安装即用
+- [ ] v1.0 发布：单二进制 bundle（semantix+semantix）安装即用
 - [ ] #58 真实数据命中率 ≥70%（verify 回放）
 - [ ] 复用可视化在 TUI/桌面端可见（命中切片数 + 节省成本 + 来源会话）
 
@@ -68,7 +68,7 @@
 - ✅ `kernel/prefetch`（Planner 离线转置矩阵 / MatrixPrefetcher 在线 hit-waste 学习 / Runner 串行只读执行 + 结果落 Result 切片）
 - ✅ `kernel/evolve` MVP（独立已实现）
 
-**战略决策（2026-08-17，Song）**：停止在 DeepSeek-Reasonix fork 仓库改动。Reasonix agent 系统
+**战略决策（2026-08-17，Song）**：停止在 DeepSeek-Reasonix fork 仓库改动。Semantix agent 系统
 **vendor 进本仓 `harness/`**（MIT + attribution），在集成分支 `harness-integration` 上与 kernel
 **进程内**结合，换 Semantix Design 视觉。`patches/` 模式废弃（U13c 成果作迁移对照表）。
 这是蓝图 §6「停止跟随上游」风险项的正式落地；#158 桌面端随之重定位到本仓（等 U38 后续作）。
@@ -81,7 +81,7 @@
 | U | 内容 | 阶段 |
 |---|---|---|
 | U37 | Harness 合体 + 资源编排契约 spec 评审（C0 vendor 方案 + ResourceCatalog + RoundPlan 扩展） | 门禁（评审意见已回写 spec §10，待批准解锁 U38-U43） |
-| U38 | C0：vendor Reasonix agent 系统进 `harness/`（模块改写 + 构建 + 冒烟） | 合体 |
+| U38 | C0：vendor Semantix agent 系统进 `harness/`（模块改写 + 构建 + 冒烟） | 合体 |
 | U39 | C5：Semantix Design 视觉基线（主题 token + U33 复用面板迁移进程内化） | H4 |
 | U40 | C1/C2：kernel 进程内接线（Decider 直连 + ResourceCatalog + SuspendTools 执行点） | H2/H3 |
 | U41 | C3：BudgetController 阶梯降级（70/90/100 三阈值） | H2 |
@@ -147,7 +147,7 @@ spec `docs/specs/issue-272-markov-metrics.md`）——指标三元组透出进�
 | 维度 | 形态 |
 |---|---|
 | 技术 | 单 kernel 多 harness（"one kernel, many harnesses"）；CLI 为统一调用面，serve 为常驻加速；kernel 保持独立 module、零 harness 代码耦合 |
-| 产品 | Agile 1 品牌化 bundle（reasonix+semantix）→ Agile 3 独立 kernel 层 + adapter 生态 |
+| 产品 | Agile 1 品牌化 bundle（semantix+semantix）→ Agile 3 独立 kernel 层 + adapter 生态 |
 | 指标 | L2 命中 ≥40% / 组合缓存 ≥90% / 成本降 ≥50% / 命中率随使用上升（自进化曲线） |
 
 ---

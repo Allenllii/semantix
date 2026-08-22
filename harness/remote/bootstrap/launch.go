@@ -6,9 +6,9 @@ import (
 )
 
 // StatePaths are the absolute remote-side paths for one workspace's serve
-// state. All are under ~/.reasonix/remote.
+// state. All are under ~/.semantix/remote.
 type StatePaths struct {
-	Dir       string // ~/.reasonix/remote
+	Dir       string // ~/.semantix/remote
 	StateJSON string
 	TokenFile string
 	LogFile   string
@@ -63,7 +63,7 @@ func LaunchCommand(bin, workspace string, p StatePaths) string {
 func StopCommand(pid int, p StatePaths) string {
 	return fmt.Sprintf(
 		"T=%s; P=%s; ours() { A=$(ps -p %d -o args= 2>/dev/null || ps -p %d -o command= 2>/dev/null); "+
-			"case \"$A\" in *reasonix*serve*\"$T\"*\"$P\"*) return 0;; *) return 1;; esac; }; "+
+			"case \"$A\" in *semantix*serve*\"$T\"*\"$P\"*) return 0;; *) return 1;; esac; }; "+
 			"ours || exit 0; kill -TERM %d 2>/dev/null; "+
 			"for i in 1 2 3 4 5; do kill -0 %d 2>/dev/null || exit 0; ours || exit 0; sleep 1; done; "+
 			"ours && kill -KILL %d 2>/dev/null; exit 0",
@@ -72,14 +72,14 @@ func StopCommand(pid int, p StatePaths) string {
 }
 
 // ServeAliveCommand prints "1" only when pid is running AND its command line
-// looks like a reasonix serve process. Checking the args (not just `kill -0`)
+// looks like a semantix-agent serve process. Checking the args (not just `kill -0`)
 // prevents a recycled PID — now owned by an unrelated process — from being
 // mistaken for the serve and later signalled by StopCommand.
 func ServeAliveCommand(pid int, p StatePaths) string {
 	return fmt.Sprintf(
 		"T=%s; P=%s; kill -0 %d 2>/dev/null || { echo 0; exit 0; }; "+
 			"A=$(ps -p %d -o args= 2>/dev/null || ps -p %d -o command= 2>/dev/null); "+
-			"case \"$A\" in *reasonix*serve*\"$T\"*\"$P\"*) echo 1;; *) echo 0;; esac",
+			"case \"$A\" in *semantix*serve*\"$T\"*\"$P\"*) echo 1;; *) echo 0;; esac",
 		shellQuote(p.TokenFile), shellQuote(p.PortFile), pid, pid, pid,
 	)
 }
@@ -97,7 +97,7 @@ func LogsCommand(logFile string, n int) string {
 // the flag name registered in runServe.
 const servePortFileMarker = "port-file"
 
-// LocateCommand probes for a usable reasonix binary. It prints three lines:
+// LocateCommand probes for a usable semantix binary. It prints three lines:
 // the resolved path (or empty), the `--version` output, and "portfile:yes" when
 // `serve --help` advertises the --port-file flag. The bootstrap gates on the
 // flag, not the version number, because --port-file/--token-file ship in this
@@ -105,9 +105,9 @@ const servePortFileMarker = "port-file"
 // already-released binary would pass a numeric gate yet still lack the flags.
 func LocateCommand(uploadedBin string) string {
 	return fmt.Sprintf(
-		"BIN=\"$(command -v reasonix 2>/dev/null)\"; "+
+		"BIN=\"$(command -v semantix 2>/dev/null)\"; "+
 			"if [ -z \"$BIN\" ] && [ -x %s ]; then BIN=%s; fi; "+
-			"if [ -z \"$BIN\" ]; then P=\"$(npm prefix -g 2>/dev/null)\"; if [ -n \"$P\" ] && [ -x \"$P/bin/reasonix\" ]; then BIN=\"$P/bin/reasonix\"; fi; fi; "+
+			"if [ -z \"$BIN\" ]; then P=\"$(npm prefix -g 2>/dev/null)\"; if [ -n \"$P\" ] && [ -x \"$P/bin/semantix\" ]; then BIN=\"$P/bin/semantix\"; fi; fi; "+
 			"echo \"$BIN\"; "+
 			"if [ -n \"$BIN\" ]; then \"$BIN\" --version 2>/dev/null; "+
 			"if \"$BIN\" serve --help 2>&1 | grep -q -- %s; then echo portfile:yes; else echo portfile:no; fi; fi",

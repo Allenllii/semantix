@@ -1,17 +1,17 @@
-# Migrating to Reasonix 1.0 (the Go rewrite)
+# Migrating to Semantix 1.0 (the Go rewrite)
 
-Reasonix 1.0 is a **ground-up rewrite in Go**. It is a new codebase, not an
+Semantix 1.0 is a **ground-up rewrite in Go**. It is a new codebase, not an
 incremental upgrade of the `0.x` TypeScript releases. This guide explains what
 changed and how to move over.
 
 ## TL;DR
 
-| | Legacy (v1) | Reasonix 1.0+ (v2) |
+| | Legacy (v1) | Semantix 1.0+ (v2) |
 |---|---|---|
 | Language | TypeScript / Node | Go |
 | Branch | [`v1`](https://github.com/esengine/DeepSeek-Reasonix/tree/v1) (maintenance only) | `main-v2` (default, active) |
 | Versions | `0.x` (up to v0.54.x) | `1.0.0`+ |
-| Install | `npm i -g reasonix@0.53.2` (pin a `0.x` version) | `npm i -g reasonix` — `latest` points at the current official `1.x` release; or a release archive / `go build` |
+| Install | `npm i -g semantix@0.53.2` (pin a `0.x` version) | `npm i -g semantix` — `latest` points at the current official `1.x` release; or a release archive / `go build` |
 | Code intelligence | embedding semantic search + tree-sitter symbols | LSP-assisted code reading plus grep/read_file/glob; semantic index is not yet ported |
 
 "v1" and "v2" are **codebase generations**, not semver: the v1 line never reached
@@ -23,7 +23,7 @@ changed and how to move over.
 same way esbuild/biome ship native binaries via npm). The binary itself is a
 standalone Go executable; npm is only the installer, not a runtime dependency.
 
-**`npm i -g reasonix` installs the current official `1.x` release.** npm's `latest` tag
+**`npm i -g semantix` installs the current official `1.x` release.** npm's `latest` tag
 moved to the Go line with `1.17.5` — the earlier "`latest` stays pinned to
 `0.x`" migration guard silently downgraded `npm update -g` users once 1.x went
 official (#5822), so it was retired. Public release candidates are no longer
@@ -31,11 +31,11 @@ published. The legacy `next` and `canary` tags are compatibility aliases for
 the same official version; `0.x` stays installable by pinning:
 
 ```sh
-npm i -g reasonix          # current official 1.x release
-npm i -g reasonix@0.53.2   # pin the legacy TS build
+npm i -g semantix          # current official 1.x release
+npm i -g semantix@0.53.2   # pin the legacy TS build
 ```
 
-Prebuilt archives (`reasonix-<os>-<arch>.tar.gz` / `.zip`) and the desktop
+Prebuilt archives (`semantix-<os>-<arch>.tar.gz` / `.zip`) and the desktop
 installer are attached to each GitHub release. These are a **separate channel**
 from npm: the installer drops a standalone desktop/binary build and does not
 touch a CLI you installed with `npm i -g`, so the two coexist — an npm `0.53` in
@@ -44,25 +44,25 @@ from source:
 
 ```sh
 git clone https://github.com/esengine/DeepSeek-Reasonix   # default: main-v2 (Go)
-cd DeepSeek-Reasonix && make build                        # -> bin/reasonix(.exe)
+cd DeepSeek-Reasonix && make build                        # -> bin/semantix(.exe)
 ```
 
 ## Configuration
 
-| Legacy | Reasonix 1.0 |
+| Legacy | Semantix 1.0 |
 |---|---|
-| TS config files | `reasonix.toml` (project) / `config.toml` in Reasonix home (`~/.reasonix/` on macOS/Linux; `%AppData%\reasonix\` on Windows) from v1.8.1 — see `reasonix.example.toml` and [Configuration paths](./CONFIG_PATHS.md) |
-| env / API keys | Provider config keeps `api_key_env`; saved key values live in Reasonix home `.env` (`DEEPSEEK_API_KEY`, `MIMO_API_KEY`, …) |
-| project memory | `REASONIX.md` (+ auto-memory), Claude-Code-compatible |
-| MCP servers | `[[plugins]]` in `reasonix.toml`, or a Claude-Code `.mcp.json` (read as-is) |
+| TS config files | `semantix-agent.toml` (project) / `config.toml` in Semantix home (`~/.semantix/` on macOS/Linux; `%AppData%\semantix\` on Windows) from v1.8.1 — see `semantix.example.toml` and [Configuration paths](./CONFIG_PATHS.md) |
+| env / API keys | Provider config keeps `api_key_env`; saved key values live in Semantix home `.env` (`DEEPSEEK_API_KEY`, `MIMO_API_KEY`, …) |
+| project memory | `SEMANTIX.md` (+ auto-memory), Claude-Code-compatible |
+| MCP servers | `[[plugins]]` in `semantix-agent.toml`, or a Claude-Code `.mcp.json` (read as-is) |
 
 On first launch, v1.8.1+ runs a one-time, **non-destructive** import: it reads
-legacy config from `~/Library/Application Support/reasonix/config.toml`,
-`~/.config/reasonix/config.toml`, `~/.reasonix/reasonix.toml`, or v0.x
-`~/.reasonix/config.json` (API key, base URL, language, MCP servers), migrates
-legacy credentials into `<Reasonix home>/.env` when a key is missing there, and
+legacy config from `~/Library/Application Support/semantix/config.toml`,
+`~/.config/semantix/config.toml`, `~/.semantix/semantix-agent.toml`, or v0.x
+`~/.semantix/config.json` (API key, base URL, language, MCP servers), migrates
+legacy credentials into `<Semantix home>/.env` when a key is missing there, and
 imports past sessions from legacy session directories. Old files are left
-untouched, and Reasonix prints a boot notice when it imports data. Each session lands in the
+untouched, and Semantix prints a boot notice when it imports data. Each session lands in the
 workspace it belonged to (read from its v0.x sidecar meta, summary carried over
 as the title), so the desktop sidebar lists it under the right project; sessions
 whose workspace no longer exists land in the global session dir. Imported
@@ -73,7 +73,7 @@ across by hand.
 
 If the automatic pass missed data because you opened a v1.8.1+ CLI/desktop build
 before the old paths were available, run `/migrate` from an interactive session.
-The command is available only in Go-based Reasonix builds that include it; if you
+The command is available only in Go-based Semantix builds that include it; if you
 see `unknown command`, upgrade first. It prints progress while it checks legacy
 config and credentials, scans legacy memory and session directories, imports
 memory files and sessions that were not previously imported, and summarizes the
@@ -81,7 +81,7 @@ result. `/migrate` keeps the same safety rules as startup migration: it does not
 overwrite an existing `config.toml` or memory file, it respects session import
 markers, and it is not available in the legacy 0.x TypeScript line. If the old
 v0.x sessions are in a custom Windows install/data directory, use
-`/migrate --from "D:\OldReasonix"` to import sessions from that explicit source.
+`/migrate --from "D:\OldSemantix"` to import sessions from that explicit source.
 See
 [Configuration paths](./CONFIG_PATHS.md) for the full path list and limitations.
 
@@ -92,7 +92,7 @@ re-index command, or new configuration:
 
 | Existing data | Upgrade behavior |
 | --- | --- |
-| `REASONIX.md`, `AGENTS.md`, `CLAUDE.md` | Loaded as standing instructions with source, directory, precedence, imports, and diagnostics. Existing file names remain valid. |
+| `SEMANTIX.md`, `AGENTS.md`, `CLAUDE.md` | Loaded as standing instructions with source, directory, precedence, imports, and diagnostics. Existing file names remain valid. |
 | Nested instruction files | Resolve from workspace root to the active target path; within one directory, `.local.md` wins. Deeper directories still outrank broader ones. |
 | Legacy fact without `id` / `revision` | Receives a deterministic scope-aware `legacy-*` ID and starts at revision 1. Migration is idempotent. |
 | Legacy fact without `metadata.scope` | Scope is inferred from the project/global directory that already owns the file. |
@@ -103,7 +103,7 @@ re-index command, or new configuration:
 | `[agent].memory_compiler` | Retired and removed by the existing one-time config migration. |
 
 The first current boot persists missing identity/timestamp metadata without
-changing the fact body. Compatibility routing fields keep older Reasonix
+changing the fact body. Compatibility routing fields keep older Semantix
 clients from moving a fact into the wrong scope directory if versions share the
 same state root.
 
@@ -148,12 +148,12 @@ and DeepSeek prefix-cache–oriented design.
 - **MCP setup is now add-and-use.** Servers added by the user (Desktop, CLI,
   user config, legacy user import, or a user-installed plugin package) are
   trusted immediately and global installs persist to `config.toml`. Repository
-  `reasonix.toml` / `.mcp.json` servers stay project-scoped and are trusted
+  `semantix-agent.toml` / `.mcp.json` servers stay project-scoped and are trusted
   without a separate launch confirmation. Project entries override same-name
-  global entries; `reasonix.toml` overrides `.mcp.json` inside the project.
+  global entries; `semantix-agent.toml` overrides `.mcp.json` inside the project.
   Treat opening an unfamiliar repository as opting into executable project
-  configuration: review `.reasonix/settings.json`, `reasonix.toml`, and
-  `.mcp.json` before starting Reasonix. If a repository causes unexpected MCP
+  configuration: review `.semantix/settings.json`, `semantix-agent.toml`, and
+  `.mcp.json` before starting Semantix. If a repository causes unexpected MCP
   or Hook behavior, close that workspace and correct or remove the project-local
   entries before reopening it.
 - **stdio MCP connections are persistent.** This fixes stateful servers that
@@ -182,7 +182,7 @@ and DeepSeek prefix-cache–oriented design.
   out of those explicitly read-only child registries. Ordinary writer-capable
   delegation in Plan uses Permissions/Sandbox.
 - **Web dashboard remains available; desktop is recommended**: run
-  `reasonix serve` when a local browser UI is useful. For the primary visual
+  `semantix-agent serve` when a local browser UI is useful. For the primary visual
   experience, prefer the Wails desktop app; CLI/TUI remains the terminal-native
   path.
 - Some granular v1 tools are intentionally consolidated (e.g. file-management ops
@@ -190,7 +190,7 @@ and DeepSeek prefix-cache–oriented design.
 
 ## File encoding
 
-Reasonix 1.0 supports reading and editing files in UTF-8, UTF-8 BOM, UTF-16
+Semantix 1.0 supports reading and editing files in UTF-8, UTF-8 BOM, UTF-16
 LE/BE, and GB18030 (a superset of GBK). This matches v1's behavior.
 
 - `read_file` decodes any supported encoding to UTF-8 for the model.

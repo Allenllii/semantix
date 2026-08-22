@@ -14,7 +14,7 @@ body:
     attributes:
       label: Integration target
       description: Name the agent, harness, protocol, or session format.
-      placeholder: "Reasonix, Codex, Claude Code, or a custom harness"
+      placeholder: "Semantix, Codex, Claude Code, or a custom harness"
     validations:
       required: true
 

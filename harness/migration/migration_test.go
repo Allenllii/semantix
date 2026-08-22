@@ -21,9 +21,9 @@ func migrationRescueHome(t *testing.T) string {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AppData", filepath.Join(home, "AppData"))
-	t.Setenv("REASONIX_HOME", "")
-	t.Setenv("REASONIX_STATE_HOME", filepath.Join(home, "new-state"))
-	t.Setenv("REASONIX_CREDENTIALS_STORE", "file")
+	t.Setenv("SEMANTIX_HOME", "")
+	t.Setenv("SEMANTIX_STATE_HOME", filepath.Join(home, "new-state"))
+	t.Setenv("SEMANTIX_CREDENTIALS_STORE", "file")
 	t.Chdir(t.TempDir())
 	return home
 }
@@ -31,8 +31,8 @@ func migrationRescueHome(t *testing.T) string {
 func isolateMigrationHome(t *testing.T) string {
 	t.Helper()
 	home := migrationRescueHome(t)
-	t.Setenv("REASONIX_HOME", filepath.Join(home, "new-reasonix"))
-	t.Setenv("REASONIX_STATE_HOME", "")
+	t.Setenv("SEMANTIX_HOME", filepath.Join(home, "new-reasonix"))
+	t.Setenv("SEMANTIX_STATE_HOME", "")
 	return home
 }
 
@@ -186,7 +186,7 @@ func TestRunLegacyRescueSkipsImplicitSourcesWhenIsolated(t *testing.T) {
 		t.Fatalf("isolated rescue imported legacy memory, stat err=%v", err)
 	}
 	joined := strings.Join(notices, "\n")
-	if !strings.Contains(joined, "REASONIX_HOME is set; implicit legacy migration is skipped") {
+	if !strings.Contains(joined, "SEMANTIX_HOME is set; implicit legacy migration is skipped") {
 		t.Fatalf("missing isolated skip notice in:\n%s", joined)
 	}
 }
@@ -244,8 +244,8 @@ func TestMigrateLegacySessionSourcesSkipsCurrentProjectTree(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("AppData", filepath.Join(home, "AppData"))
-	t.Setenv("REASONIX_HOME", "")
-	t.Setenv("REASONIX_STATE_HOME", "")
+	t.Setenv("SEMANTIX_HOME", "")
+	t.Setenv("SEMANTIX_STATE_HOME", "")
 	if !samePath(config.MemoryUserDir(), filepath.Join(home, ".reasonix")) {
 		t.Skip("current Reasonix home is not ~/.reasonix on this platform")
 	}

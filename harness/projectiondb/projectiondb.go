@@ -192,7 +192,7 @@ func diskFileDSN(path string) string {
 func open(ctx context.Context, opts OpenOptions, mode Mode) (*sql.DB, error) {
 	var dsn string
 	if mode == ModeMemory {
-		dsn = fmt.Sprintf("file:reasonix-%s-%d?mode=memory&cache=shared", url.PathEscape(opts.MemoryName), opts.Now().UnixNano())
+		dsn = fmt.Sprintf("file:semantix-%s-%d?mode=memory&cache=shared", url.PathEscape(opts.MemoryName), opts.Now().UnixNano())
 	} else {
 		dsn = diskFileDSN(opts.Path)
 	}

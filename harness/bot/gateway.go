@@ -75,7 +75,7 @@ type GatewayConfig struct {
 	// Desktop, when the gateway is embedded in the desktop app, gives bot
 	// chats a god view over desktop sessions (/desktop commands): global
 	// status, event subscriptions, and remote approvals for any live desktop
-	// session. Nil when the gateway runs standalone (reasonix bot start).
+	// session. Nil when the gateway runs standalone (semantix-agent bot start).
 	Desktop DesktopBridge
 }
 
@@ -162,7 +162,7 @@ type AdapterHealthSnapshot struct {
 	Closed        bool      `json:"closed"`
 }
 
-// BotGateway 是 reasonix bot 消息网关，管理 Controller 生命周期、session 并发、
+// BotGateway 是 semantix-agent bot 消息网关，管理 Controller 生命周期、session 并发、
 // 事件渲染和平台适配器。
 type BotGateway struct {
 	cfg      GatewayConfig
@@ -1184,7 +1184,7 @@ func (gw *BotGateway) offerPairing(ctx context.Context, adapter Adapter, msg Inb
 	if !created {
 		prefix = "你已有待批准的配对请求。"
 	}
-	text := fmt.Sprintf("%s\n配对码: %s\n请在本机运行: reasonix bot pairing approve %s\n此码将在 %s 过期。",
+	text := fmt.Sprintf("%s\n配对码: %s\n请在本机运行: semantix-agent bot pairing approve %s\n此码将在 %s 过期。",
 		prefix, req.Code, req.Code, req.ExpiresAt.Local().Format("2006-01-02 15:04"))
 	_ = gw.sendText(ctx, adapter, msg, text)
 	return true
@@ -1411,7 +1411,7 @@ func (gw *BotGateway) handleSlashCommand(ctx context.Context, adapter Adapter, k
 					gw.logger.Warn("new session lease failed", "err", control.SessionInUseMessage(err))
 					gw.unlinkAndCloseSessionState(key, state)
 					gw.sessions.ForceRelease(key)
-					_ = gw.sendText(ctx, adapter, msg, "新会话创建失败：无法取得写入权限。请关闭其他 Reasonix 窗口或进程后重试。")
+					_ = gw.sendText(ctx, adapter, msg, "新会话创建失败：无法取得写入权限。请关闭其他 Semantix 窗口或进程后重试。")
 					return
 				}
 			}

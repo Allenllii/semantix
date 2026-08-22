@@ -237,7 +237,7 @@ func TestStatuslineShowsGitAndEffortInPersistentFooter(t *testing.T) {
 	if !strings.Contains(lines[0], "MODEL deepseek-v4-flash   EFFORT auto") {
 		t.Fatalf("session row should keep effort beside the model:\n%s", strings.Join(lines, "\n"))
 	}
-	if !strings.Contains(lines[2], "Reasonix@codex/demo  +3 -1 ?2") {
+	if !strings.Contains(lines[2], "Semantix@codex/demo  +3 -1 ?2") {
 		t.Fatalf("telemetry row should start with git identity:\n%s", strings.Join(lines, "\n"))
 	}
 }
@@ -343,7 +343,7 @@ func renderStatuslineViewWithGitAndEffort(t *testing.T) string {
 	m.label = "deepseek-v4-flash"
 	m.effortLevel = "auto"
 	m.gitStatus = gitStatus{
-		Repo:      "Reasonix",
+		Repo:      "Semantix",
 		Branch:    "codex/demo",
 		Added:     3,
 		Removed:   1,

@@ -1,6 +1,6 @@
 // Package acp implements the Agent Client Protocol (https://agentclientprotocol.com)
 // transport: a stdio JSON-RPC 2.0 agent that editors and other host clients speak
-// to drive Reasonix. Many tools integrated with the v1 (main-branch) agent over
+// to drive Semantix. Many tools integrated with the v1 (main-branch) agent over
 // ACP, so v2 keeps the wire contract identical — the wire types in this file are a
 // faithful port of main's src/acp/protocol.ts (ACP protocol version 1).
 //
@@ -46,7 +46,7 @@ type InitializeParams struct {
 // ClientCapabilities is what the client offers the agent: filesystem proxy
 // methods (fs/read_text_file, fs/write_text_file) that see unsaved editor
 // buffers, and host-owned terminals (terminal/*). Meta carries vendor
-// capability blocks (e.g. _meta["reasonix.io"]) for tolerant parse — unknown
+// capability blocks (e.g. _meta["semantix.io"]) for tolerant parse — unknown
 // or malformed entries simply mean the vendor feature stays off.
 type ClientCapabilities struct {
 	FS       FSCapabilities `json:"fs,omitempty"`
@@ -86,9 +86,9 @@ type AgentCapabilities struct {
 	Meta                map[string]any      `json:"_meta,omitempty"`
 }
 
-// ReasonixExtensionCapabilities advertises Reasonix-specific ACP extensions.
+// SemantixExtensionCapabilities advertises Semantix-specific ACP extensions.
 // ACP v1 reserves agentCapabilities._meta for vendor capability discovery.
-type ReasonixExtensionCapabilities struct {
+type SemantixExtensionCapabilities struct {
 	SessionSteer *SessionSteerCapability `json:"sessionSteer,omitempty"`
 	// SessionInbox advertises the durable session-level instruction queue.
 	SessionInbox *SessionInboxCapability `json:"sessionInbox,omitempty"`
@@ -117,12 +117,12 @@ type SessionReloadExtensionsCapability struct {
 }
 
 const (
-	// reasonixExtensionSurfaceSchemaVersion versions the extension-surface DTO
+	// semantixExtensionSurfaceSchemaVersion versions the extension-surface DTO
 	// carried by the vendor session/update variant.
-	reasonixExtensionSurfaceSchemaVersion = 1
+	semantixExtensionSurfaceSchemaVersion = 1
 	// extensionSurfaceUpdateKind discriminates the vendor session/update
 	// variant that carries a structured extension-UI surface.
-	extensionSurfaceUpdateKind = "_reasonix.io/extension_surface"
+	extensionSurfaceUpdateKind = "_semantix.io/extension_surface"
 )
 
 // ExtensionSurfaceCapability advertises that a participant renders structured
@@ -197,11 +197,11 @@ type MCPServerSpec struct {
 }
 
 // MCPEnv accepts ACP's official EnvVariable[] shape while still accepting the
-// older map shape that Reasonix v1 clients used.
+// older map shape that Semantix v1 clients used.
 type MCPEnv map[string]string
 
 // MCPHeaders accepts ACP's official HTTPHeader[] shape while still accepting
-// the older map shape that Reasonix v1 clients used. The official spec
+// the older map shape that Semantix v1 clients used. The official spec
 // (https://agentclientprotocol.com) ships HTTP/SSE MCP headers as an array of
 // {name,value} objects, even when empty.
 type MCPHeaders map[string]string
@@ -392,7 +392,7 @@ type SessionListParams struct {
 	Cursor string `json:"cursor,omitempty"`
 }
 
-// SessionListResult is the first and only page of sessions Reasonix currently
+// SessionListResult is the first and only page of sessions Semantix currently
 // returns. NextCursor is omitted because the in-process list is unpaged.
 type SessionListResult struct {
 	Sessions   []SessionInfo `json:"sessions"`
@@ -477,7 +477,7 @@ type SessionPromptParams struct {
 	Prompt    []ContentBlock `json:"prompt"`
 }
 
-// SessionSteerParams is the Reasonix ACP v1 extension for injecting user
+// SessionSteerParams is the Semantix ACP v1 extension for injecting user
 // guidance into an active prompt without cancelling it.
 type SessionSteerParams struct {
 	SessionID string         `json:"sessionId"`
@@ -491,19 +491,19 @@ type SessionSteerResult struct {
 }
 
 // sessionSteerMethod follows ACP v1's reserved vendor-extension namespace.
-const sessionSteerMethod = "_reasonix.io/session/steer"
+const sessionSteerMethod = "_semantix.io/session/steer"
 
 const (
 	sessionInboxSchemaVersion = 1
-	sessionInboxEnqueueMethod = "_reasonix.io/session/inbox/enqueue"
-	sessionInboxListMethod    = "_reasonix.io/session/inbox/list"
-	sessionInboxGetMethod     = "_reasonix.io/session/inbox/get"
-	sessionInboxUpdateMethod  = "_reasonix.io/session/inbox/update"
-	sessionInboxDeleteMethod  = "_reasonix.io/session/inbox/delete"
-	sessionInboxMoveMethod    = "_reasonix.io/session/inbox/move"
-	sessionInboxPauseMethod   = "_reasonix.io/session/inbox/setPaused"
-	sessionInboxRetryMethod   = "_reasonix.io/session/inbox/retry"
-	sessionInboxRefreshMethod = "_reasonix.io/session/inbox/refresh"
+	sessionInboxEnqueueMethod = "_semantix.io/session/inbox/enqueue"
+	sessionInboxListMethod    = "_semantix.io/session/inbox/list"
+	sessionInboxGetMethod     = "_semantix.io/session/inbox/get"
+	sessionInboxUpdateMethod  = "_semantix.io/session/inbox/update"
+	sessionInboxDeleteMethod  = "_semantix.io/session/inbox/delete"
+	sessionInboxMoveMethod    = "_semantix.io/session/inbox/move"
+	sessionInboxPauseMethod   = "_semantix.io/session/inbox/setPaused"
+	sessionInboxRetryMethod   = "_semantix.io/session/inbox/retry"
+	sessionInboxRefreshMethod = "_semantix.io/session/inbox/refresh"
 )
 
 // SessionInboxEnqueueParams is the durable inbox enqueue request.
@@ -554,9 +554,9 @@ type SessionReloadExtensionsResult struct {
 
 // sessionReloadExtensionsMethod follows ACP v1's reserved vendor-extension
 // namespace, like sessionSteerMethod: only the "_<vendor>/" prefix is reserved
-// for vendor methods, so the bare "reasonix/session/reloadExtensions" form
+// for vendor methods, so the bare "semantix/session/reloadExtensions" form
 // could collide with a future official ACP method and must not be used.
-const sessionReloadExtensionsMethod = "_reasonix.io/session/reloadExtensions"
+const sessionReloadExtensionsMethod = "_semantix.io/session/reloadExtensions"
 
 // StopReason tells the client why a turn ended. Values match main's wire.
 type StopReason string
@@ -597,10 +597,10 @@ type messageChunk struct {
 
 // extensionSurfaceUpdate is the vendor session/update variant that carries one
 // structured extension-UI surface to clients that negotiated
-// reasonix.extensionSurface in initialize. ACP has no standard notification for
+// semantix.extensionSurface in initialize. ACP has no standard notification for
 // extension surfaces, so the DTO (the shared eventwire JSON contract) rides
-// _meta["reasonix.io"]["extensionSurface"], mirroring how the initialize
-// handshake namespaces vendor data under "reasonix.io". The sink always pairs
+// _meta["semantix.io"]["extensionSurface"], mirroring how the initialize
+// handshake namespaces vendor data under "semantix.io". The sink always pairs
 // it with a flattened agent_message_chunk text fallback (belt and suspenders):
 // a client that ignores the vendor variant still shows the content.
 type extensionSurfaceUpdate struct {
@@ -700,7 +700,7 @@ type currentModeUpdate struct {
 // fs/* (agent → client requests)
 
 // FSReadTextFileParams asks the client for a file's current text, including
-// unsaved editor state. Line (1-based) and Limit page the content; Reasonix
+// unsaved editor state. Line (1-based) and Limit page the content; Semantix
 // always reads whole files and pages locally, so it sends neither.
 type FSReadTextFileParams struct {
 	SessionID string `json:"sessionId"`
@@ -726,7 +726,7 @@ type FSWriteTextFileParams struct {
 
 // TerminalCreateParams starts a command in a client-owned terminal.
 // Env follows ACP v1's official EnvVariable[] shape (same as MCP env): only
-// the overrides Reasonix owns (typically TMPDIR/TMP/TEMP) are sent — never a
+// the overrides Semantix owns (typically TMPDIR/TMP/TEMP) are sent — never a
 // full host environment dump.
 type TerminalCreateParams struct {
 	SessionID       string        `json:"sessionId"`

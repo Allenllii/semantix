@@ -24,9 +24,9 @@ type Options struct {
 	// existing Host (desktop active session). Collect never starts MCP when
 	// RuntimeHost is set unless Live is also true (desktop passes Live=false).
 	RuntimeHost *plugin.Host
-	// HomeDir and ReasonixHomeDir override discovery roots (tests).
+	// HomeDir and SemantixHomeDir override discovery roots (tests).
 	HomeDir         string
-	ReasonixHomeDir string
+	SemantixHomeDir string
 }
 
 // Report is the stable capability diagnostics payload.
@@ -75,7 +75,7 @@ type InstructionsReport struct {
 	Docs []InstructionDoc `json:"docs"`
 }
 
-// InstructionDoc is one REASONIX.md / AGENTS.md / CLAUDE.md source.
+// InstructionDoc is one SEMANTIX.md / AGENTS.md / CLAUDE.md source.
 type InstructionDoc struct {
 	Path      string `json:"path"`
 	Scope     string `json:"scope"`

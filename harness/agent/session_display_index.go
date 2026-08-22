@@ -40,7 +40,7 @@ const sessionDisplayIndexMaxLineBytes = 16 << 20
 // (json.Marshal(msg) + '\n', with the real CreatedAt, not the zeroed form the
 // content digest hashes). The .jsonl file is maintained as a random-read model
 // of the authoritative event log, so published ranges are file-exact. A crash
-// or an older Reasonix build may leave that model behind; consumers compare
+// or an older Semantix build may leave that model behind; consumers compare
 // TranscriptSize and identity before reading and rebuild it on mismatch.
 type SessionDisplayIndex struct {
 	SchemaVersion  int                 `json:"schema_version"`

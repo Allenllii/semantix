@@ -23,7 +23,7 @@ var supersededAppUpdateAfterBackupArchive = func(string) {}
 // target bundle. It is intentionally limited to the two unrecoverable legacy
 // shapes: the rollback backup identity was never recorded, or the recorded
 // backup no longer exists. A surviving backup is content-bound and moved aside;
-// the original transaction is archived under Reasonix repair state. Neither is
+// the original transaction is archived under Semantix repair state. Neither is
 // deleted, so support can still inspect or manually recover the old bundle.
 func ArchiveSupersededPendingAppBundleUpdate(runningVersion string) (bool, error) {
 	tx, err := ReadPendingUpdate()
@@ -187,7 +187,7 @@ func archiveSupersededAppBundleBackup(tx *UpdateTransaction, transactionID strin
 	if len(shortID) > 16 {
 		shortID = shortID[:16]
 	}
-	base := fmt.Sprintf("%s.reasonix-retired-%s-%s", tx.BackupPath, shortID, time.Now().UTC().Format("20060102T150405.000000000Z"))
+	base := fmt.Sprintf("%s.semantix-retired-%s-%s", tx.BackupPath, shortID, time.Now().UTC().Format("20060102T150405.000000000Z"))
 	for attempt := range 16 {
 		archive := fmt.Sprintf("%s-%d", base, attempt)
 		if err := renameRepairNodeNoReplace(tx.BackupPath, archive); err != nil {

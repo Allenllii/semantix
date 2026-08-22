@@ -46,7 +46,7 @@ type agentServices struct {
 	// unconfined after the OS sandbox failed to start.
 	sandboxEscape sandbox.EscapeApprover
 	// configWrite can ask the user whether a file tool may write a
-	// Reasonix-managed config file outside the workspace roots.
+	// Semantix-managed config file outside the workspace roots.
 	configWrite tool.ConfigWriteApprover
 	// hooks fires PreToolUse / PostToolUse shell hooks around each tool call.
 	hooks ToolHooks
