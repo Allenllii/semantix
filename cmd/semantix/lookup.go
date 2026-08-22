@@ -30,10 +30,10 @@ func runLookup(args []string, stdout, stderr io.Writer, deps dependencies) error
 	if err := flags.Parse(args); err != nil {
 		return usageWrap(err)
 	}
-	if err := zf.applyConfigZones(flags, deps.resolved); err != nil {
+	if err := zf.applyEvolveParams(flags, *evolveDB); err != nil {
 		return usagef("%v", err)
 	}
-	if err := zf.applyEvolveParams(flags, *evolveDB); err != nil {
+	if err := zf.applyConfigZones(flags, deps.resolved); err != nil {
 		return usagef("%v", err)
 	}
 	if err := zf.validate(); err != nil {
@@ -133,10 +133,10 @@ func runInject(args []string, stdout, stderr io.Writer, deps dependencies) error
 	if err := flags.Parse(args); err != nil {
 		return usageWrap(err)
 	}
-	if err := zf.applyConfigZones(flags, deps.resolved); err != nil {
+	if err := zf.applyEvolveParams(flags, *evolveDB); err != nil {
 		return usagef("%v", err)
 	}
-	if err := zf.applyEvolveParams(flags, *evolveDB); err != nil {
+	if err := zf.applyConfigZones(flags, deps.resolved); err != nil {
 		return usagef("%v", err)
 	}
 	if err := zf.validate(); err != nil {

@@ -250,6 +250,8 @@ func (e *Engine) Observe(sliceID string, negative bool, curTau float64) {
 			ent.TauLow = base
 			if !tighter {
 				ent.Relaxed = true // loosening is gated by MinHits
+			} else {
+				ent.Relaxed = false // tightening applies immediately again
 			}
 			ent.Frozen = e.cfg.FreezeEpochs
 			e.adjustments++

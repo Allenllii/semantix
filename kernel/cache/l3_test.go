@@ -793,3 +793,38 @@ func TestDecideL3AdaptiveTauLow(t *testing.T) {
 	}
 }
 
+
+// With a threshold band narrower than minGreyWidth, the adaptive clamp
+// must never turn a tighten into a loosening: the value in effect is the
+// floor (review finding, Issue #259 阶段 3).
+func TestDecideL3AdaptiveClampNeverLoosens(t *testing.T) {
+	// tau_high 0.56 / tau_low 0.55: band is 0.01 < minGreyWidth 0.05.
+	narrow := zone.Zones{TauHigh: 0.56, TauLow: 0.55, AbsHigh: 0.7, AbsLow: 0.45}
+	// Learned 0.60 would clamp to 0.51 (TauHigh-0.05) — below the prior
+	// 0.55; the floor must keep the prior so classification never widens.
+	d := &L3Decider{Index: &fixedIndex{hits: []slice.Hit{hitOf("weak", slice.Result, 0.7), hitOf("strong", slice.Result, 1.0)}},
+		Root: t.TempDir(), Zones: &narrow, Adapt: stubAdapt{tau: 0.60}}
+	var acc ObsAccum
+	d.Obs = &acc
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "q", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// With prior 0.55 the weak candidate (relConf 0.70) is grey-routed;
+	// if the clamp had loosened it to 0.51 it would still be grey, so the
+	// observable difference is the MISS path: use a weak score below the
+	// prior but above the loosened clamp. relConf 0.53: >= 0.51 (loosened)
+	// → grey; < 0.55 (prior floor) → Miss.
+	d2 := &L3Decider{Index: &fixedIndex{hits: []slice.Hit{hitOf("weak", slice.Result, 0.53), hitOf("strong", slice.Result, 1.0)}},
+		Root: t.TempDir(), Zones: &narrow, Adapt: stubAdapt{tau: 0.60}}
+	var acc2 ObsAccum
+	d2.Obs = &acc2
+	res2, err := d2.DecideL3(context.Background(), Query{UserInput: "q", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acc2.Snapshot().Grey != 0 || res2 == nil || res2.SliceID != "strong" {
+		t.Fatalf("loosened clamp would grey-route relConf 0.53; got grey=%d res=%+v (want Miss + strong reuse)", acc2.Snapshot().Grey, res2)
+	}
+	_ = res
+}

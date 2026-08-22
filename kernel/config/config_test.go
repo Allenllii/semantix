@@ -278,3 +278,23 @@ func TestLoadRejectsInvalidByType(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadRejectsNonFiniteThresholds(t *testing.T) {
+	cases := []struct{ name, content string }{
+		{"global tau nan", "[retrieval]\ntau_high = nan\n"},
+		{"global abs inf", "[retrieval]\nabs_low = inf\n"},
+		{"by_type tau nan", "[retrieval.by_type.result]\ntau_low = nan\n"},
+		{"by_type abs inf", "[retrieval.by_type.context]\nabs_high = -inf\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "semantix.toml")
+			if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(Options{ConfigPath: path}); err == nil {
+				t.Fatalf("Load must reject non-finite %s", tc.name)
+			}
+		})
+	}
+}

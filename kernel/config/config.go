@@ -6,6 +6,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -465,11 +466,11 @@ func (r *Resolved) validate() error {
 				errs = append(errs, "retrieval.bm25_weight: must be in [0,1]")
 			}
 		case "retrieval.tau_high", "retrieval.tau_low":
-			if v, ok := f.Value.(float64); ok && (v <= 0 || v > 1) {
+			if v, ok := f.Value.(float64); ok && (math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 1) {
 				errs = append(errs, fmt.Sprintf("%s: must be in (0,1]", f.Key))
 			}
 		case "retrieval.abs_high", "retrieval.abs_low":
-			if v, ok := f.Value.(float64); ok && v < 0 {
+			if v, ok := f.Value.(float64); ok && (math.IsNaN(v) || math.IsInf(v, 0) || v < 0) {
 				errs = append(errs, fmt.Sprintf("%s: must be >= 0", f.Key))
 			}
 		case "inject.budget":
@@ -509,11 +510,11 @@ func (r *Resolved) validate() error {
 		}
 		switch field {
 		case "tau_high", "tau_low":
-			if v <= 0 || v > 1 {
+			if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 1 {
 				errs = append(errs, fmt.Sprintf("%s: must be in (0,1]", f.Key))
 			}
 		case "abs_high", "abs_low":
-			if v < 0 {
+			if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
 				errs = append(errs, fmt.Sprintf("%s: must be >= 0", f.Key))
 			}
 		default:

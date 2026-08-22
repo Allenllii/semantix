@@ -203,3 +203,26 @@ func TestDefaultAdaptDB(t *testing.T) {
 		t.Fatalf("DefaultAdaptDB = %q, want %q", got, want)
 	}
 }
+
+// A relax-then-tighten sequence resets the Relaxed gate: after tightening,
+// the learned value applies immediately even with Pos below MinHits —
+// negative evidence must never be gated behind traffic volume (review
+// finding, Issue #259 阶段 3).
+func TestTightenAfterRelaxResetsGate(t *testing.T) {
+	cfg := smallCfg()
+	cfg.MinHits = 5 // generous gate: a relaxed value would stay hidden
+	e := New(cfg, filepath.Join(t.TempDir(), "adapt.json"))
+	// Relax first (high error bound → clean observation loosens).
+	e.Observe("s1", false, 0.55) // learn 0.50, Relaxed=true, Pos=1
+	if got := e.TauLow("s1", 0.55); got != 0.55 {
+		t.Fatalf("relaxed value must be gated at Pos=1 < MinHits 5, got %v", got)
+	}
+	// Then a negative observation (frozen window passes in one step).
+	e.Observe("s1", true, 0.55) // frozen: counts fold, no adjust
+	e.Observe("s1", true, 0.55) // NegEWMA > bound → tighten to 0.55, Relaxed=false
+	// Query with a different global (0.60): the learned 0.55 must apply
+	// immediately — a gated value would return the global 0.60.
+	if got := e.TauLow("s1", 0.60); !closeEnough(got, 0.55) {
+		t.Fatalf("tightened value must apply immediately after relax→tighten, got %v (want 0.55)", got)
+	}
+}

@@ -207,13 +207,21 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 		// baseline when the type is not configured).
 		tz := z.ForType(s.Type.String())
 		// Per-entry adaptive TauLow (Issue #259 阶段 3): the learned value
-		// replaces the effective TauLow; it is clamped below TauHigh so
+		// replaces the effective TauLow. It is clamped below TauHigh so
 		// the grey zone never collapses (ambiguous candidates must still
-		// reach the judge rather than flip to Miss).
+		// reach the judge rather than flip to Miss); when the configured
+		// threshold band is narrower than minGreyWidth, the clamp floor
+		// is the value in effect — a tighten must never turn into a
+		// loosening because of the ceiling.
 		if d.Adapt != nil {
-			tz.TauLow = d.Adapt.TauLow(s.ID, tz.TauLow)
-			if tz.TauLow > tz.TauHigh-minGreyWidth {
-				tz.TauLow = tz.TauHigh - minGreyWidth
+			prior := tz.TauLow
+			tz.TauLow = d.Adapt.TauLow(s.ID, prior)
+			cap := tz.TauHigh - minGreyWidth
+			if cap < prior {
+				cap = prior
+			}
+			if tz.TauLow > cap {
+				tz.TauLow = cap
 			}
 		}
 		verdict := tz.ClassifyL3(h.Score, resultTop1, globalTop1)
