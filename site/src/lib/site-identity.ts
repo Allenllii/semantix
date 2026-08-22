@@ -2,7 +2,7 @@ export const siteIdentity = {
   productName: "Semantix",
   productUrl: "https://semantix.ensureok.ai",
   repositoryUrl: "https://github.com/Gnosil/semantix",
-  licenseName: "FSL-1.1-MIT",
+  licenseName: "MIT",
   lastUpdated: "2026-08-12",
   operator: {
     legalName: "确石人工智能科技（上海）有限公司",
@@ -64,7 +64,7 @@ export const softwareApplicationJsonLd = {
     "@type": "Offer",
     price: "0",
     priceCurrency: "USD",
-    description: "Open source (FSL-1.1-MIT, converts to MIT)",
+    description: "Open source (MIT)",
   },
   publisher: { "@id": `${siteIdentity.operator.url}#organization` },
 };

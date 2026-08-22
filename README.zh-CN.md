@@ -6,7 +6,7 @@
 
 **语义缓存 · 自适应调度 · 投机预取 · 跨会话学习**
 
-[![License: FSL-1.1-MIT](https://img.shields.io/badge/License-FSL--1.1--MIT-blue.svg?style=flat-square)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](./LICENSE)
 [![Status](https://img.shields.io/badge/status-v0.6.0-green?style=flat-square)](#项目状态)
 [![Version](https://img.shields.io/badge/release-0.6.0-blue?style=flat-square)](https://github.com/Gnosil/semantix/releases)
 [![GitHub stars](https://img.shields.io/github/stars/Gnosil/semantix?style=flat-square\&logo=github)](https://github.com/Gnosil/semantix/stargazers)
@@ -291,6 +291,6 @@ semantix install --target reasonix      # Reasonix fork 已内置集成
 
 ## 许可与致谢
 
-- 许可证：**FSL-1.1-MIT**（各版本发布两年后转为 MIT）
+- 许可证：**MIT**
 - 设计基线：[DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)（MIT）——算法参考其思路但按「参考不抄」原则独立实现，保留 attribution
 - 贡献：提 [issue](https://github.com/Gnosil/semantix/issues)、开 PR（分支命名 `feat/<unit>`，PR 需附 `go vet` + `go test -race` 全绿验证）
