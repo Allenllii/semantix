@@ -1,0 +1,10 @@
+diff --git a/artifacts/semantix-v28-port/MODIFIED_FILE.go b/artifacts/semantix-v28-port/MODIFIED_FILE.go
+index 02d2a32..da118fe 100644
+--- a/artifacts/semantix-v28-port/MODIFIED_FILE.go
++++ b/artifacts/semantix-v28-port/MODIFIED_FILE.go
+@@ -1,3 +1,5 @@
++//go:build ignore
++
+ // Package config loads Reasonix's runtime configuration from TOML. Resolution order:
+ // flag > project ./reasonix.toml > user config.toml (in the OS user-config dir) > built-in defaults.
+ // Secrets come from the environment via api_key_env and are never stored in

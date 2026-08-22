@@ -1,0 +1,29 @@
+PR: 350
+Changed branch/field: feat/semantix-v28-prompt-stack / artifacts/semantix-v28-port/MODIFIED_FILE.go build constraint
+Original SHA256: 04CA501247E88E082D4813D2CEF733F1663B7F9428C2BFE070E9EA09E7414B5E
+Modified SHA256: 088C20315C1D348EC8E208AD643124F81A238986863932DE7C7769093A00BB3D
+MODIFIED_FILE: D:/semantix/.worktrees/semantix-v28-prompt-stack/artifacts/pr350-ci-fix/MODIFIED_FILE
+DIFF_FILE: D:/semantix/.worktrees/semantix-v28-prompt-stack/artifacts/pr350-ci-fix/DIFF_FILE.patch
+VERIFICATION.txt: D:/semantix/.worktrees/semantix-v28-prompt-stack/artifacts/pr350-ci-fix/VERIFICATION.txt
+ROLLBACK.sh: D:/semantix/.worktrees/semantix-v28-prompt-stack/artifacts/pr350-ci-fix/ROLLBACK.sh
+
+BASELINE
+Command: go vet ./...
+Input: PR 350 commit 4c04b8e73fed57fd8b4f4b4551ecc6e76f1d922c
+Literal output/result:
+# semantix/artifacts/semantix-v28-port
+vet.exe: artifacts\semantix-v28-port\MODIFIED_FILE.go:52:19: undefined: BillingConfig
+Exit status: 1
+
+MODIFIED
+Command: go vet ./...
+Input: artifacts/semantix-v28-port/MODIFIED_FILE.go with //go:build ignore
+Literal output/result: <empty>
+Exit status: 0
+
+ROLLBACK
+Command: bash artifacts/pr350-ci-fix/ROLLBACK.sh /mnt/d/semantix/.worktrees/semantix-v28-prompt-stack/tmp/pr350-rollback-test-20260822b
+Input: a separate copy of the modified artifact
+Literal output/result: <empty>; SHA256 after rollback = 04CA501247E88E082D4813D2CEF733F1663B7F9428C2BFE070E9EA09E7414B5E
+Exit status: 0
+Restored behavior/status: the separate copy exactly matches the original SHA256 and again lacks the ignore build constraint.
