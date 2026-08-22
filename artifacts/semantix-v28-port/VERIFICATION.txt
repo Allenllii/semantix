@@ -1,0 +1,45 @@
+BRANCH / FIELD
+branch=feat/semantix-v28-prompt-stack
+changed_branch=V16 compact default + V24.1 actual HEAD diff + V25 isolated repair + V28 conditional semantic review
+feature_gate=SEMANTIX_SEMANTIC_REVIEW=1
+base=0b62f6b6e6365cbb4750b969828501b12bad4c24 (upstream/main)
+
+FOUR ARTIFACTS
+MODIFIED_FILE=D:/semantix/.worktrees/semantix-v28-prompt-stack/artifacts/semantix-v28-port/MODIFIED_FILE.go
+DIFF_FILE=D:/semantix/.worktrees/semantix-v28-prompt-stack/artifacts/semantix-v28-port/DIFF_FILE.patch
+VERIFICATION=D:/semantix/.worktrees/semantix-v28-prompt-stack/artifacts/semantix-v28-port/VERIFICATION.txt
+ROLLBACK=D:/semantix/.worktrees/semantix-v28-prompt-stack/artifacts/semantix-v28-port/ROLLBACK.sh
+
+BASELINE
+command=go test ./harness/config ./harness/boot ./harness/control ./harness/agent ./harness/semanticreview ./kernel/judge
+input=upstream/main before port
+literal_output=# ./harness/semanticreview
+stat D:\semantix\.worktrees\semantix-v28-prompt-stack\harness\semanticreview: directory not found
+FAIL ./harness/semanticreview [setup failed]
+result=feature package absent
+exit_status=1
+
+MODIFIED
+command=go test ./harness/semanticreview ./harness/config ./harness/control -run 'TestReviewerBudgetStaysBelowV24|TestDefaultSystemPromptStaysLean|TestSemanticReviewAppliesOnlyToBoundaryTasks|TestSemanticReviewReceiptsAreBounded|TestSemanticReviewDiffIncludesStagedChanges' -count=1
+input=ported V16/V24.1/V25/V28 implementation
+literal_output=ok  semantix/harness/semanticreview 0.915s
+ok  semantix/harness/config 2.129s
+ok  semantix/harness/control 4.376s
+result=prompt, budget, conditional routing, bounded receipts, and staged-diff tests passed
+exit_status=0
+
+Additional modified suite observation:
+command=go test ./harness/semanticreview ./harness/config ./harness/control ./harness/boot ./harness/agent ./kernel/judge -count=1
+literal_output=ok semantix/harness/semanticreview 1.171s; ok semantix/harness/config 33.673s; ok semantix/harness/control 143.877s
+result=remaining packages did not finish in the observation window; command was interrupted and is not reported as a full pass
+exit_status=1 (interrupted)
+
+ROLLBACK
+command="C:/Program Files/Git/bin/bash.exe" artifacts/semantix-v28-port/ROLLBACK.sh /d/semantix/.worktrees/semantix-v28-prompt-stack /c/Users/liwen/AppData/Local/Temp/semantix-rollback-0b8060477adf4effb770b505a574c1fc
+input=separate copy containing all modified and newly added paths
+literal_output=ROLLBACK_EXIT=0
+ROLLBACK_CONFIG_BLOB=e67815cb193801a18f1e9f6f2fa23c5f48b936bc
+BASE_CONFIG_BLOB=e67815cb193801a18f1e9f6f2fa23c5f48b936bc
+NEW_FILE_ABSENT=True
+result=original config behavior/blob restored and feature-only files removed on rollback copy; working MODIFIED_FILE remains changed
+exit_status=0
