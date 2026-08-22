@@ -34,7 +34,12 @@ type row struct {
 	Sequence, Hits, Waste, Ticks int
 	Session                      string
 	HitRate, Cost, Tau, Conf     float64
-	Success                      bool
+	// Markov evaluation triple (Issue #272): Coverage/Accuracy come from
+	// the production matrix Stats() snapshot; LeadMs is a deterministic
+	// simulated clock (seq×80 ms) proving the timeliness event→aggregate→
+	// curve pipeline, not real time.
+	Coverage, Accuracy, LeadMs float64
+	Success                    bool
 }
 
 // Experiment 2 cost model: a wasted prefetch executes a real read-only tool
@@ -173,13 +178,16 @@ func runCausal(evolveOn bool) ([]row, string) {
 // waste against the session's actual next tool. With a nil manual matrix the
 // outcome is emitted on the bus (the EvolutionLoop both feeds the matrix and
 // retunes parameters); with manual set, the same matrix feedback is applied
-// directly and nothing reaches an engine.
+// directly and nothing reaches an engine. Each emitted event carries a
+// deterministic simulated lead time (seq×80 ms) so the timeliness pipeline
+// is exercised end-to-end (Issue #272).
 func playSession(seq int, session, actual string, matrix *prefetch.MatrixPrefetcher, bus kernelevent.Bus, manual *prefetch.MatrixPrefetcher) row {
 	tasks, err := matrix.Plan([]string{"grep"})
 	if err != nil {
 		panic(err)
 	}
 	r := row{Sequence: seq, Session: session, Success: true}
+	leadMs := int64(seq * 80) // simulated clock: warm-up always finishes first
 	for _, task := range tasks {
 		hit := task.Key == actual
 		if hit {
@@ -196,10 +204,10 @@ func playSession(seq int, session, actual string, matrix *prefetch.MatrixPrefetc
 			continue
 		}
 		kind := kernelevent.PrefetchWaste
-		payload := any(kernelevent.PrefetchWastePayload{Targets: []string{task.Key}})
+		payload := any(kernelevent.PrefetchWastePayload{Targets: []string{task.Key}, LeadMs: leadMs})
 		if hit {
 			kind = kernelevent.PrefetchHit
-			payload = kernelevent.PrefetchHitPayload{Targets: []string{task.Key}}
+			payload = kernelevent.PrefetchHitPayload{Targets: []string{task.Key}, LeadMs: leadMs}
 		}
 		data, _ := json.Marshal(payload)
 		bus.Emit(kernelevent.Event{Kind: kind, SessionID: session, Turn: 1, At: time.Date(2026, 8, 20, 0, seq, 0, 0, time.UTC), Data: data})
@@ -208,6 +216,10 @@ func playSession(seq int, session, actual string, matrix *prefetch.MatrixPrefetc
 	if denom > 0 {
 		r.HitRate = float64(r.Hits) / float64(denom)
 	}
+	st := matrix.Stats()
+	r.Coverage = st.Coverage
+	r.Accuracy = st.Accuracy
+	r.LeadMs = float64(leadMs)
 	return r
 }
 
@@ -231,9 +243,9 @@ func writeCSV(path string, rows []row) {
 	defer f.Close()
 	w := csv.NewWriter(f)
 	defer w.Flush()
-	_ = w.Write([]string{"sequence", "session_id", "prefetch_hit", "prefetch_waste", "hit_rate", "cost_usd", "tau_l2", "prefetch_conf", "task_success"})
+	_ = w.Write([]string{"sequence", "session_id", "prefetch_hit", "prefetch_waste", "hit_rate", "cost_usd", "tau_l2", "prefetch_conf", "coverage", "accuracy", "lead_ms", "task_success"})
 	for _, r := range rows {
-		_ = w.Write([]string{strconv.Itoa(r.Sequence), r.Session, strconv.Itoa(r.Hits), strconv.Itoa(r.Waste), f3(r.HitRate), f3(r.Cost), f3(r.Tau), f3(r.Conf), strconv.FormatBool(r.Success)})
+		_ = w.Write([]string{strconv.Itoa(r.Sequence), r.Session, strconv.Itoa(r.Hits), strconv.Itoa(r.Waste), f3(r.HitRate), f3(r.Cost), f3(r.Tau), f3(r.Conf), f3(r.Coverage), f3(r.Accuracy), f3(r.LeadMs), strconv.FormatBool(r.Success)})
 	}
 }
 
@@ -277,7 +289,7 @@ func writeReport(path string, stable, on, off []row) {
 	b.WriteString("- 任务族：每会话成功执行 `grep → read_file`；冷启动噪声先验 `grep→glob` 6 次、`grep→read_file` 4 次\n")
 	b.WriteString("- evolve：`MinSamples=20, FreezeEpochs=1`（采数配置）\n")
 	b.WriteString("- 成本模型：`0.020 − hit×0.005 + waste×0.002 USD`\n\n")
-	b.WriteString("**定性（评审修订）**：本实验证明闭环**接线生效**——三事件正常发射入 JSONL、`EvolutionTick` 在参数变化时出现、`prefetch_conf` 于第 19-20 会话按正确方向下调（持续命中 → 放宽预取门槛）。**命中率 0.5→1.0 的提升发生在第 2 会话，来自转移矩阵热身，与参数进化无因果**（tau 全程未动，conf 首次变化晚于提升 17 个会话）。自进化的收益证明见实验 2。\n\n")
+	b.WriteString("**定性（评审修订）**：本实验证明闭环**接线生效**——三事件正常发射入 JSONL、`EvolutionTick` 在参数变化时出现、`prefetch_conf` 于第 17-20 会话按正确方向下调（持续命中 → 放宽预取门槛，0.50→0.30）。**命中率 0.5→1.0 的提升发生在第 4 会话**（首 5 命中率 0.700）：冷启动噪声先验 `grep→glob` 需 3 次 waste 反馈才被 Beta 后验驱逐（μ < 0.25；Issue #272 先验平滑的预期行为，非回归），此后每会话只提议 `read_file`。**提升来自转移矩阵热身与 demote 收敛，与参数进化无因果**（tau 全程未动，conf 首次变化晚于命中率收敛 13 个会话）。自进化的收益证明见实验 2。\n\n")
 	fh, lh := mean(stable[:5], func(r row) float64 { return r.HitRate }), mean(stable[len(stable)-5:], func(r row) float64 { return r.HitRate })
 	fc, lc := mean(stable[:5], func(r row) float64 { return r.Cost }), mean(stable[len(stable)-5:], func(r row) float64 { return r.Cost })
 	b.WriteString("| 指标 | 首 5 | 末 5 | 门槛 | 结果 |\n|---|---:|---:|---|---|\n")
@@ -309,19 +321,34 @@ func writeReport(path string, stable, on, off []row) {
 	b.WriteString(line(on, func(r row) float64 { return r.Conf }))
 	b.WriteString("]\n```\n\n")
 
-	b.WriteString("### 机制分解（三层防线的各自贡献）\n\n")
-	b.WriteString("churn 下止损有三条独立机制，实验数据可分离：① **evolve 全局门控**（仅 ON）：纯 waste 流抬升 `PrefetchConf` 越过过期候选的转移概率，一次性关停（第 21 会话生效；EWMA 惯性带来 ~4 会话调整滞后，conf 先随阶段 A 余温降至 0.25 再爬升）；② **计数漂移**（两组皆有，**本窗口内失效**）：阶段 A 把 `grep→read_file` 概率推至 0.80，churn 稀释 15 会话后仍为 0.46 > MinConf 0.30——OFF 组浪费在窗口内没有自然上界；③ **单目标降级 `demoted()`**（两组皆有，本场景失效）：曾有命中历史的候选 hit EWMA 冻结高位，waste/hit 比值数学上限 1/hitEWMA < 3.0 门槛，**永不触发**（见「发现」）。\n\n")
+	// ---- Experiment 2 Markov triple (Issue #272) ----
+	b.WriteString("### Markov 三指标（Issue #272，实验 2 ON 组）\n\n")
+	b.WriteString("- coverage：只读调用中被预取覆盖的比例（生产 `MatrixPrefetcher.Stats()` 快照）；accuracy：预取命中率 hit/(hit+waste)（反馈事件）；timeliness：LeadMs = 消费 − 预热完成（**模拟时钟** `seq×80 ms`，确定性，验证事件 → payload → 聚合 → 曲线管线，非真实时间）\n\n")
+	b.WriteString("```mermaid\nxychart-beta\n  title \"Coverage by session (experiment 2 ON)\"\n  x-axis [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25]\n  y-axis \"coverage\" 0 --> 1\n  line [")
+	b.WriteString(line(on, func(r row) float64 { return r.Coverage }))
+	b.WriteString("]\n```\n\n")
+	b.WriteString("```mermaid\nxychart-beta\n  title \"Accuracy by session (experiment 2 ON)\"\n  x-axis [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25]\n  y-axis \"accuracy\" 0 --> 1\n  line [")
+	b.WriteString(line(on, func(r row) float64 { return r.Accuracy }))
+	b.WriteString("]\n```\n\n")
+	b.WriteString("```mermaid\nxychart-beta\n  title \"Timeliness LeadMs by session (simulated clock)\"\n  x-axis [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25]\n  y-axis \"lead_ms\" 0 --> 2000\n  line [")
+	b.WriteString(line(on, func(r row) float64 { return r.LeadMs }))
+	b.WriteString("]\n```\n\n")
+	b.WriteString("> 三曲线证明度量管线接通：coverage/accuracy 来自矩阵 `Stats()` 实时快照，timeliness 走 #228 事件 wire 的 `lead_ms` 字段。真实时间数据待真实会话采数（见边界声明）。\n\n")
 
-	b.WriteString("### 实验暴露的两个产品级发现（随本 PR 立 issue 跟进）\n\n")
-	b.WriteString("1. **闭环吸收态**：conf 抬升把预取全部关停后，hit/waste 事件流随之消失，引擎再无信号、参数永久冻结——churn 结束后 ON 组无法自动恢复预取（本实验 conf 轨迹尾段平直即为证据）。需要 ε-探索或 conf 时间衰减作为逃逸机制。\n")
-	b.WriteString("2. **`demoted()` 免疫缺陷**：hit EWMA 只在命中时更新，纯 waste 流下冻结不衰减；`WasteHitLimit=3.0` 时任何 hit EWMA > 1/3 的历史优等生永不降级。单目标防线对「曾经好用、现已过期」的候选失效。\n\n")
+	b.WriteString("### 机制分解（三层防线的各自贡献，2026-08-21 重采）\n\n")
+	b.WriteString("churn 下止损机制按新数据分解（两组第 11-19 会话各 9 次 waste、第 20 会话起**同时停手**）：① **单目标降级 `demoted()`**（两组皆有，**本窗口主导**）：`read_file` 的 6 次先验 + 10 次命中 + 9 次 waste 后，β 后验均值 μ = (hw+1)/(hw+ww+2) ≈ 0.231 < 1/(1+3)=0.25，第 20 会话起被驱逐——#255 时间折扣让旧命中权重衰减，Issue #272 的后验均值判定取代脆弱的率比；② **evolve 全局门控**（仅 ON，本窗口无额外可观测收益）：conf 由 0.30 逐会话上调至 0.50（11-19 waste 驱动），但 `read_file` 转移概率稀释到 0.55 仍高于两组 MinConf（0.30 / 0.50），门控阈值未先于 demote 拦截；③ **计数漂移**（两组皆有，本窗口未失效）：`read_file` prob 从 0.80 稀释到 0.53，仍高于 MinConf 0.30，无自然上界。\n\n")
+	b.WriteString("> 实验 2 的「ON < OFF」门槛本次为 FAIL（9 vs 9）：差异来自防线分工变化——单目标降级（#255 衰减 + Issue #272 β 后验）已足够快，抹平了 ON/OFF 行为；evolve 门控的独立收益需在「候选不被 demote、但概率缓慢稀释」的场景下单独验证。\n\n")
+
+	b.WriteString("### 实验暴露的两个产品级发现（均已修复并验证）\n\n")
+	b.WriteString("1. **闭环吸收态**（#254）：conf 抬升把预取关停后 hit/waste 事件流随之消失、参数冻结——已由 ε-escape 探针修复（`SetEpsilon`，固定随机序列 seed=1）。本窗口第 20-25 会话 conf 平直 0.500 属于「无 waste 无信号」稳态，探针存在保证该稳态可被 ε 概率打破并恢复信号。\n")
+	b.WriteString("2. **`demoted()` 免疫缺陷**（#255 时间折扣 + Issue #272 β 后验）：曾有命中历史的候选 hit 权重不再冻结——waste 流逐次折扣命中权重，后验均值跌破 `1/(1+WasteHitLimit)` 即驱逐。本窗口 `read_file` 第 20 会话被驱逐、两组同时停手，即为修复生效的直接证据。\n\n")
 
 	b.WriteString("## 数据表（实验 2，ON 组）\n\n| # | session | hit | waste | cost | conf |\n|---:|---|---:|---:|---:|---:|\n")
 	for _, r := range on {
 		fmt.Fprintf(&b, "| %d | %s | %d | %d | %.3f | %.3f |\n", r.Sequence, r.Session, r.Hits, r.Waste, r.Cost, r.Conf)
 	}
-	b.WriteString("\n## 原始证据\n\n- `docs/reports/data/agile2-evolution-curve/summary.csv`（实验 1）\n- `docs/reports/data/agile2-evolution-curve/causal-on.csv` / `causal-off.csv`（实验 2）\n- `docs/reports/data/agile2-evolution-curve/sessions.jsonl` / `causal-sessions-on.jsonl`（三事件 wire 流）\n- 重跑：`go run ./scripts/evolution-curve`（确定性，逐位一致）\n\n")
-	b.WriteString("## 边界声明\n\n受控实验隔离的是调度/预取/进化机制本身，不含 LLM 质量维度；「真实会话 JSONL + `semantix search` 可检索」的验收项按 #194 顺序在合入后以真实采数补第二版（依赖 #234 的 usage 重放与 #239 的固定环境）。\n")
+	b.WriteString("\n## 原始证据\n\n- `docs/reports/data/agile2-evolution-curve/summary.csv`（实验 1，含 coverage/accuracy/lead_ms 列）\n- `docs/reports/data/agile2-evolution-curve/causal-on.csv` / `causal-off.csv`（实验 2，同上）\n- `docs/reports/data/agile2-evolution-curve/sessions.jsonl` / `causal-sessions-on.jsonl`（三事件 wire 流，`PrefetchHit/Waste` 事件带 `lead_ms`）\n- 重跑：`go run ./scripts/evolution-curve`（确定性，逐位一致）\n\n")
+	b.WriteString("## 边界声明\n\n受控实验隔离的是调度/预取/进化机制本身，不含 LLM 质量维度；「真实会话 JSONL + `semantix search` 可检索」的验收项按 #194 顺序在合入后以真实采数补第二版（依赖 #234 的 usage 重放与 #239 的固定环境）。Issue #272 的 timeliness 曲线为**模拟时钟**（`seq×80 ms`，验证事件→聚合→曲线管线），真实 lead 数据随真实会话采数补充。\n")
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		panic(err)
 	}

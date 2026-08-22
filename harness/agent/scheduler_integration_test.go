@@ -61,6 +61,8 @@ func TestSchedulerReceivesFrozenTurnIntent(t *testing.T) {
 	reg.Add(&testTool{name: "read_file"})
 	d := &sequenceDecider{}
 	a := New(nil, reg, NewSession(""), Options{Decider: d}, event.Discard)
+	a.prefetchWaitMS.Store(120)
+	a.prefetchTaskMS.Store(40)
 	turn := &turnRuntime{}
 	turn.policy.Intent = taskintent.Mutation
 	turn.policySet = true
@@ -71,6 +73,9 @@ func TestSchedulerReceivesFrozenTurnIntent(t *testing.T) {
 	defer d.mu.Unlock()
 	if len(d.inputs) != 1 || d.inputs[0].Intent != "mutation" {
 		t.Fatalf("scheduler input intent = %+v, want mutation", d.inputs)
+	}
+	if got := d.inputs[0].PrefetchLoad; got.WaitWindowMS != 120 || got.TaskEstimateMS != 40 {
+		t.Fatalf("scheduler prefetch load = %+v", got)
 	}
 }
 

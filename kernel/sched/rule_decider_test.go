@@ -314,7 +314,7 @@ func TestRoundPlanJSONKeepsLegacyNamesAndOmitsZeroExtensions(t *testing.T) {
 	if !strings.Contains(text, `"ParallelGroups"`) || !strings.Contains(text, `"Tier"`) {
 		t.Fatalf("legacy field names changed: %s", text)
 	}
-	for _, field := range []string{"tierReason", "suspendTools", "maxParallel", "budgetAction"} {
+	for _, field := range []string{"tierReason", "prefetchReason", "suspendTools", "maxParallel", "budgetAction"} {
 		if strings.Contains(text, field) {
 			t.Fatalf("zero extension %q was not omitted: %s", field, text)
 		}
@@ -378,6 +378,49 @@ func TestPrefetchPlanFuncNil(t *testing.T) {
 	}})
 	if plan.PrefetchIDs != nil {
 		t.Fatalf("want nil prefetch, got %v", plan.PrefetchIDs)
+	}
+}
+
+func TestLoadAwarePrefetchReceivesNormalizedLoad(t *testing.T) {
+	d := NewRuleDecider(Config{MaxParallel: 5})
+	var got PrefetchLoadHint
+	d.SetLoadAwarePrefetchPlanFunc(func(_ []string, hint PrefetchLoadHint) PrefetchPlanResult {
+		got = hint
+		return PrefetchPlanResult{Reason: "load_saturated"}
+	})
+	calls := []ToolCallInfo{
+		call("a", "read_a", true), call("b", "read_b", true),
+		call("c", "read_c", true), call("d", "read_d", true),
+	}
+	plan, err := d.DecideRound(context.Background(), RoundInput{
+		ToolCalls:    calls,
+		PrefetchLoad: PrefetchLoadHint{WaitWindowMS: 100, TaskEstimateMS: 20},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ConcurrencyUsed != 4 || got.ConcurrencyLimit != 5 || got.WaitWindowMS != 100 {
+		t.Fatalf("normalized hint = %+v", got)
+	}
+	if plan.PrefetchReason != "load_saturated" || plan.PrefetchIDs != nil {
+		t.Fatalf("plan = %+v", plan)
+	}
+}
+
+func TestBudgetPrefetchReasonOverridesCandidate(t *testing.T) {
+	d := NewRuleDecider(Config{})
+	d.SetLoadAwarePrefetchPlanFunc(func(_ []string, _ PrefetchLoadHint) PrefetchPlanResult {
+		return PrefetchPlanResult{IDs: []string{"read_file"}, Reason: "candidate"}
+	})
+	plan, err := d.DecideRound(context.Background(), RoundInput{
+		ToolCalls: []ToolCallInfo{call("a", "read_a", true)},
+		Budget:    BudgetState{LimitUSD: 1, SpentUSD: 0.7},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.PrefetchIDs != nil || plan.PrefetchReason != "budget:halt_prefetch" {
+		t.Fatalf("plan = %+v", plan)
 	}
 }
 

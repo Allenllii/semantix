@@ -43,6 +43,7 @@ L3 运行时决策(DecideL3)
 | `FingerprintReject` | 依赖失效:指纹门错误、mtime/sha256 变更、`L3Safe=false` 无 deps 拒绝 | `RuleGate.Chain` 指纹门 + `L3Decider.verified` |
 | `IsolatedReject` | 上下文/model 隔离拒绝(Issue #133):带 stamp 查询与条目 stamp 不匹配 | `DecideL3` ContextHash/Model 校验 |
 | `JudgeReject` | judge 判定拒绝(approve=false) | `RuleGate.Chain` judge 分支 |
+| `JudgeError` | judge 调用失败:不可用,不是判决(Issue #245) | `RuleGate.Chain` judge 错误分支 |
 | `JudgeApproved` | judge 判定批准 | 同上 |
 | `Reused` | 最终复用(全部 gate 通过) | `DecideL3` 返回处 |
 
@@ -66,6 +67,7 @@ type Obs struct {
     FingerprintReject int // 指纹门错误 / mtime/sha256 变更 / L3Safe=false
     IsolatedReject    int // 上下文/model 隔离拒绝
     JudgeReject       int // judge 判定拒绝
+    JudgeError        int // judge 调用失败(Issue #245)
     JudgeApproved     int // judge 判定批准(后续 gate 仍可能兜底拒绝)
     Reused            int // 最终复用
 }
@@ -81,7 +83,7 @@ type Obs struct {
 计数规则:
 
 1. `judgeGrey` 内改为 `gate := judge.RuleGate{Judge: d.Judge, Stats: &gs}`(局部
-   `judge.Stats`),Chain 返回后把 `gs` 的 RulesReject/Fingerprint/JudgeReject/
+   `judge.Stats`),Chain 返回后把 `gs` 的 RulesReject/Fingerprint/JudgeReject/JudgeError/
    JudgeApproved 合并进 `d.Obs`,并 `Obs.Grey++`;
 2. `DecideL3` 检索循环内:`s.Type == Result` 时 `Candidates++`;zone.Miss 时
    `RulesReject++`;ContextHash/Model 不匹配时 `IsolatedReject++`;
@@ -96,6 +98,7 @@ type Obs struct {
 ```go
 L3GreyCandidates    int  `json:"l3_grey_candidates,omitempty"`
 L3JudgeReject       int  `json:"l3_judge_reject,omitempty"`
+L3JudgeError        int  `json:"l3_judge_error,omitempty"`   // Issue #245
 L3JudgeApproved     int  `json:"l3_judge_approved,omitempty"`
 L3RulesReject       int  `json:"l3_rules_reject,omitempty"`
 L3FingerprintReject int  `json:"l3_fingerprint_reject,omitempty"`
@@ -142,6 +145,36 @@ type l3ReuseEntry struct {
 阈值经 `CacheConfig.FalseHitSim`(`[cache] false_hit_sim`,默认 0.6,-1 关闭检测)
 下发,不新增 CLI flag。
 
+### 3.4 `semantix verify --calibrate`:分桶校准报告(Issue #262 建议 3)
+
+回放表之后追加校准块:`--calibrate` 按相对置信度 `r = top2/top1`
+(`classifyTop1` 实际判定轴)把回放流分 10 桶,每桶输出当前阈值下的
+hit/grey/miss 分布与 top1 均值;随后输出三段占比漂移——当前阈值 vs
+`zone.Default()` 的三段占比对比。阈值调坏(如 `--abs-high` 超过全部 top1
+分数)会在漂移块显示非零 delta,阈值失配可被发现(Issue #262 验收思路)。
+
+可选 `--labels <tsv>`(格式 `session<TAB>turn<TAB>1|0`,`#` 注释行跳过,
+隐含 `--calibrate`):oracle 标记该 turn 是否相关,报告增加每桶
+fp(判 hit 但 oracle 判不相关)与 precision —— P-CHR 简化版
+(GPT Semantic Cache,arXiv:2411.05276)。无标记时 fp/precision 列显示 `-`。
+
+JSON 信封:`verify --calibrate --json` 的 `data.calibration` 对象含
+`bins/current/default/labeled`。语义与 `calibrate --usage` 的运行时块一致
+(同一 usage 口径),但 verify 的回放是离线流,两者禁止合并呈现。
+
+### 3.5 `usage --evolve-db`:负向信号进 EWMA(Issue #262 建议 4)
+
+`feedEvolve` 重放循环在 cache_hit 信号之外补 inject_pollution 信号,
+与 #267 的 SliceReject 生产者同口径,让 TauL2 的 EWMA 有双向证据:
+
+- 该 turn 有 L3 活动(`L3GreyCandidates/RulesReject/FingerprintReject/
+  IsolatedReject` 任一 > 0,或 `L3Reuse=true`,或 `L3FalseHit=true`)时,
+  记录 `inject_pollution` 信号,`value = (L3JudgeReject + L3FalseHit) /
+  (决策数 + 1)`(clamp [0,1]);干净活动 turn 记 0(EWMA 回落),无 L3 活动
+  turn 不记(老日志行为不变);
+- 负向证据把 polEWMA 推过 `PollutionRiseAt` → TauL2 收紧(`+TauStep`),
+  与纯 cache_hit 重放(单调放松)形成双向证据。
+
 ## 4. `semantix calibrate` 命令契约
 
 ### 4.1 用法与输入
@@ -178,7 +211,7 @@ consistency_pct  false_approve_pct  false_reject_pct  precision  recall  f1  del
 **运行时汇总块**(usage 日志,仅 `--usage`):
 
 ```
-l3_reuses  l3_grey  judge_reject  judge_approved  rules_reject  fingerprint_reject  isolated_reject  false_hits  false_hit_rate_pct
+l3_reuses  l3_grey  judge_reject  judge_error  judge_approved  rules_reject  fingerprint_reject  isolated_reject  false_hits  false_hit_rate_pct
 12         5        2             3               40            1                    2                1           8.3
 ```
 
@@ -204,7 +237,7 @@ JSON 输出 `runtime.na=true`,不退出 1(运行时观测失败开放,网关新�
 ## 5. 验收标准
 
 - [ ] **c1 运行时负向统计可查询**:`semantix usage --json` 输出含
-  `l3_grey_candidates/judge_reject/judge_approved/rules_reject/fingerprint_reject/isolated_reject/false_hits`
+  `l3_grey_candidates/judge_reject/judge_error/judge_approved/rules_reject/fingerprint_reject/isolated_reject/false_hits`
   聚合(usage 日志为空时输出零值,不报错);
 - [ ] **c2 拒绝分原因可见**:gateway 端到端(或单测)验证 L3Decider 各拒绝路径
   分别计数,规则/指纹/隔离/judge 四类拒绝互不混淆;
@@ -216,7 +249,12 @@ JSON 输出 `runtime.na=true`,不退出 1(运行时观测失败开放,网关新�
 - [ ] **c5 运行时汇总与离线分栏**:`calibrate --usage` 输出运行时汇总,误命中率
   复用数为 0 时输出 N/A;offline/runtime 口径不混算(JSON 两个对象);
 - [ ] **c6 兼容性**:usage.Event 仅 additive,旧日志 JSON 可读、旧字段不删;
-  `go vet ./...` 干净、`go test ./...` 全绿(新增测试覆盖 c1-c5)。
+  `go vet ./...` 干净、`go test ./...` 全绿(新增测试覆盖 c1-c5);
+- [ ] **c7 分桶校准与阈值失配可见**:`verify --calibrate` 输出分桶命中分布
+  与三段占比漂移;调坏阈值(如 `--abs-high 7` > 实际 top1 分数)后漂移块
+  显示非零 delta;`--labels` 提供 oracle 标记时输出每桶 fp/precision;
+- [ ] **c8 evolve 双向证据**:`usage --evolve-db` 重放污染历史(judge 拒绝/
+  误命中)收紧 TauL2,干净历史放松;老日志(无负向字段)行为不变。
 
 ## 6. 测试计划(按风险放置)
 
@@ -226,6 +264,8 @@ JSON 输出 `runtime.na=true`,不退出 1(运行时观测失败开放,网关新�
 | kernel/usage | Summarize 新字段聚合 + 旧日志容错 | c1/c6 |
 | gateway | `TestL3FalseHitRetryBypass`(同 session 重试)、`TestL3FalseHitSimThreshold`、`TestL3ReuseMapBound`(1024 上限) | c3 |
 | cmd/semantix | `TestCalibrateConfusionMatrix`、`TestCalibrateGate`(exit 3)、`TestCalibrateRuntimeOnly`、`TestCalibrateJSONEnvelope` | c4/c5 |
+| cmd/semantix | `TestVerifyCalibrateReportStructure`、`TestVerifyCalibrateDetectsMistunedThreshold`、`TestVerifyCalibrateLabelsPrecision`、`TestVerifyCalibrateJSONEnvelope` | c7 |
+| cmd/semantix | `TestFeedEvolveNegativeSignalTightensTau`、`TestFeedEvolveFalseHitRaisesPollution` | c8 |
 
 ## 7. 参考
 

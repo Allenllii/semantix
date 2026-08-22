@@ -232,18 +232,22 @@ func (b *Bridge) recordInjection(ids []string, bytes int) {
 	}()
 }
 
-// RecordPrefetch emits one terminal outcome for a warmed result.
-func (b *Bridge) RecordPrefetch(hit bool, targets []string, turn int) {
+// RecordPrefetch emits one terminal outcome for a warmed result. lead is
+// the time between warm-up completion and the outcome decision: positive
+// for hits (completed before consumption — Markov timeliness, Issue #272);
+// for wastes it carries the survival time, not a consumption lead.
+func (b *Bridge) RecordPrefetch(hit bool, targets []string, turn int, lead time.Duration) {
 	if b == nil || !b.Enabled() || len(targets) == 0 {
 		return
 	}
 	targets = append([]string(nil), targets...)
 	sort.Strings(targets)
 	kind := kernelevent.PrefetchWaste
-	var payload any = kernelevent.PrefetchWastePayload{Targets: targets}
+	leadMs := int64(lead / time.Millisecond)
+	var payload any = kernelevent.PrefetchWastePayload{Targets: targets, LeadMs: leadMs}
 	if hit {
 		kind = kernelevent.PrefetchHit
-		payload = kernelevent.PrefetchHitPayload{Targets: targets}
+		payload = kernelevent.PrefetchHitPayload{Targets: targets, LeadMs: leadMs}
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

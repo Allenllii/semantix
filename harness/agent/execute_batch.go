@@ -104,6 +104,7 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 	// replaces the static partitionToolCalls grouping below; when no
 	// scheduler is wired (nil), the static grouping is used unchanged.
 	plan := a.decideRound(ctx, turn, calls)
+	a.armPrefetch(plan.PrefetchReason)
 	suspended := suspendedToolSet(plan.SuspendTools)
 	// U41 C3 hard_stop (kernel path): a plan-issued hard_stop blocks every
 	// call in this round before any tool runs. Outcomes stay paired with the
@@ -608,6 +609,10 @@ func (a *Agent) decideRound(ctx context.Context, turn *turnRuntime, calls []prov
 		ToolCalls:      info,
 		SuspendedTools: suspended,
 		Budget:         sched.BudgetState{LimitUSD: budget.LimitUSD, SpentUSD: budget.SpentUSD, Window: budget.Window},
+		PrefetchLoad: sched.PrefetchLoadHint{
+			WaitWindowMS:   a.prefetchWaitMS.Load(),
+			TaskEstimateMS: a.prefetchTaskMS.Load(),
+		},
 	})
 	if err != nil {
 		if a.resources != nil {

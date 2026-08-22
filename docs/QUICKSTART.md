@@ -71,16 +71,16 @@ semantix verify --session <会话目录> --project demo > eval.tsv
 |---|---|---|
 | `extract` | 会话 JSONL → 语义切片入库 | `--input` `--db` `--scope` `--project` |
 | `search` | 检索切片 | `--query` `--retriever bm25\|vector\|hybrid` `--limit` `--json` |
-| `verify` | 离线回放命中率验证（门禁） | `--session` `--holdout` `--db` `--strict` |
+| `verify` | 离线回放命中率验证（门禁）；`--calibrate` 分桶校准报告 | `--session` `--holdout` `--db` `--strict` `--calibrate` `--labels` |
 | `eval` | 检索策略比较（单阈值 vs 三段） | `--set` `--train-frac` `--tau-*` |
 | `eval-judge` | LLM judge 真实性评估（门禁） | `--stub` `--audit` `--min-consistency` |
+| `calibrate` | L3 负向校准报告（judge vs oracle + 运行时汇总） | `--audit` `--usage` `--stub` `--min-consistency` |
 | `usage` | 成本节省统计 | `--db` `--evolve-db` |
 | `lookup` | semantix_lookup 工具（JSON） | `--query` `--limit` `--scope` `--evolve-db` |
 | `inject` | L2 注入块（规范序/预算截断） | `--query` `--budget` `--k` `--evolve-db` |
 
 **产品与管理**：`doctor` 健康检查（db / config / embedder / judge，任一 FAIL 退出码 3）、
-`install` 一键安装、`completion` 生成 shell 补全脚本（bash / zsh / fish，加载方式见下文）、
-`init` `config` `version` 已实现。
+`install` 一键安装、`version`。
 
 `semantix install` 按 `agent-skill/` 现有文档（SKILL.md + tools/ + hooks/ + config/ + scripts/）
 落盘到目标 harness，幂等可重跑，`--uninstall` 精确移除安装的文件：
@@ -97,9 +97,11 @@ semantix install --target custom --dir ./agent  # 自定义目录
 semantix install --target claude-code --uninstall   # 卸载（仅移除 install 记录的文件）
 ```
 
-**维护**：`export`（JSONL 备份）`import`（恢复）`gc`（评分 + 清理 + 上限淘汰）已实现。`gc` 默认重算价值权重并按 `store.max_slices`（默认 5000）归档超限切片到 `<db>.archive.jsonl`（`import` 可还原）；`--retention-days` / `--min-weight` / `--max-slices` / `--no-rescore` / `--no-archive` / `--dry-run`。淘汰是**类型感知 + 确定性**的（Issue #277）：`result`/`tool_pattern` 先出局、`prompt`/`context` 最耐淘汰，`--json` 输出 `evicted_by_type` 分布。
-
-**服务模式**：`serve` `watch` 为规划中命令（执行会报 unknown command）。
+**维护**：`gc`（清理过期/低权重切片，评分 + 上限淘汰）。切片库是单个 JSONL 文件，备份/恢复直接
+`cp`（`slice.Export`/`Import` 的行格式仍是库内归档与 harness ccswitch 的内部机制，
+不再暴露为独立 CLI 命令）。淘汰是**类型感知 + 确定性**的（Issue #277）：`result`/`tool_pattern`
+先出局、`prompt`/`context` 最耐淘汰，`--json` 输出 `evicted_by_type` 分布；`gc` 默认重算价值
+权重并按 `store.max_slices`（默认 5000）归档超限切片到 `<db>.archive.jsonl`。
 
 **退出码契约**（所有命令统一）：
 
@@ -109,27 +111,6 @@ semantix install --target claude-code --uninstall   # 卸载（仅移除 install
 | 1 | 运行错误（IO、db、检索失败） |
 | 2 | 用法错误（未知命令、flag 非法） |
 | 3 | 门禁未达标（`verify --strict`、`eval-judge` 一致性） |
-
-## Shell completion（bash / zsh / fish）
-
-`semantix completion bash|zsh|fish` 输出对应 shell 的补全脚本，覆盖全部子命令、
-主要 flag 及枚举值（`--scope`、`--retriever`、`--embedder`、`--stub`、
-`--judge-protocol`）。加载方式：
-
-```bash
-# bash：追加到 ~/.bashrc
-source <(semantix completion bash)
-
-# zsh：追加到 ~/.zshrc（需已启用 compinit）
-autoload -Uz compinit && compinit
-source <(semantix completion zsh)
-
-# fish：追加到 ~/.config/fish/config.fish
-semantix completion fish | source
-```
-
-脚本由命令树注册表直接生成（与 `semantix help` 同一真源），新增命令或 flag
-后重新执行一次即可刷新。
 
 ## 配置
 

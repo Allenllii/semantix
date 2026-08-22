@@ -80,7 +80,7 @@ Weight  = clamp(decay · freq · success · fb, 0.001, 1.0) // 下限 0.001 避�
 - **cap 无豁免**（与阈值类判据的威胁模型不同：阈值是绝对差判断，legacy 没资格被判差；
   cap 是相对挤出，豁免会让上限失效）——legacy 经中性先验评分公平竞争，平局按 CreatedAt
   兜底。grace 只后置不豁免：全 grace 库仍可强制达标，上限永远可达。
-- **归档**：Delete 前追加写 `<db>.archive.jsonl`（Export 同行格式 → `semantix import`
+- **归档**：Delete 前追加写 `<db>.archive.jsonl`（Export 同行格式 → `slice.Import`
   可整体还原，Stats/Weight 保留；0600；先归档后删，崩溃最坏产生重复行，Import 幂等无害）。
   `--no-archive` 退化硬删。**默认归档 ON 覆盖全部三条淘汰路径**（既有 gc 从硬删变
   「移动」，朝安全方向的契约变更，此处明示）。归档文件自身不设上限，v1 用户自行清理。

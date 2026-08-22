@@ -40,8 +40,8 @@
 | `SliceHit` | 5 | 语义缓存命中（L1 字节 / L2 语义注入 / L3 结果复用） | `layer`("L1"\|"L2"\|"L3"), `slice_ids`, `scores`(omitempty) | kernel 缓存层 |
 | `SliceInject` | 6 | L2 稳定切片注入（按规范序） | `slice_ids`(canonical order), `bytes` | kernel 注入器 |
 | `SliceReject` | 7 | 注入污染被拒绝（用户编辑/回滚） | `slice_id`, `reason`(omitempty) | kernel 验证层 |
-| `PrefetchHit` | 8 | 投机预取被使用 | `targets` | kernel 预取器 |
-| `PrefetchWaste` | 9 | 投机预取未被使用 | `targets` | kernel 预取器 |
+| `PrefetchHit` | 8 | 投机预取被使用 | `targets`, `lead_ms`(omitempty，消费−预热完成 ms，正=赶趟，#272) | kernel 预取器 |
+| `PrefetchWaste` | 9 | 投机预取未被使用 | `targets`, `lead_ms`(omitempty，存活时长 ms，#272) | kernel 预取器 |
 | `Compact` | 10 | 上下文压缩（snip/prune/summary）或库级淘汰（evict） | `trigger`("snip"\|"prune"\|"summary"\|"evict"), `before_tokens`, `after_tokens`, `evicted_by_type`(仅 evict) | harness 压缩器 / gateway 启动淘汰 |
 | `EvolutionTick` | 11 | 进化参数快照更新 | `params`(raw JSON) | kernel 进化引擎 |
 

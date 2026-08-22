@@ -7,8 +7,8 @@
 **Semantic Caching · Adaptive Scheduling · Speculative Prefetch · Cross-Session Learning**
 
 [![License: FSL-1.1-MIT](https://img.shields.io/badge/License-FSL--1.1--MIT-blue.svg?style=flat-square)](./LICENSE)
-[![Status](https://img.shields.io/badge/status-v0.3.1-green?style=flat-square)](#project-status)
-[![Version](https://img.shields.io/badge/release-0.3.1-blue?style=flat-square)](https://github.com/Gnosil/semantix/releases)
+[![Status](https://img.shields.io/badge/status-v0.6.0-green?style=flat-square)](#project-status)
+[![Version](https://img.shields.io/badge/release-0.6.0-blue?style=flat-square)](https://github.com/Gnosil/semantix/releases)
 [![GitHub stars](https://img.shields.io/github/stars/Gnosil/semantix?style=flat-square\&logo=github)](https://github.com/Gnosil/semantix/stargazers)
 [![GitHub contributors](https://img.shields.io/github/contributors/Gnosil/semantix?style=flat-square\&logo=github)](https://github.com/Gnosil/semantix/graphs/contributors)
 [![Website](https://img.shields.io/badge/website-semantix.ensureok.ai-168b6d?style=flat-square)](https://semantix.ensureok.ai)
@@ -1004,7 +1004,7 @@ Cross-project reuse must avoid leaking project-specific secrets or paths.
 
 # Project Status
 
-> **Semantix v0.3.1 is released** (2026-08-13), and **M2 CLI v2 (U19–U27) shipped** (2026-08-14): command tree, config wiring, `--json` envelope, shell completion, doctor, install, gc/export/import. The remaining gate before scaling up is **real-data validation of the cross-session hit rate**.
+> **Semantix v0.6.0 is released** (2026-08-21, "Agile 2 complete"), bundling `semantix-agent` + `semantix` + `semantix-gateway` for four platforms. **Agile 2 (self-evolving loop) is closed**: kernel-orchestrated scheduling, speculative prefetch, and the closed evolution loop (U37–U43) shipped, plus the first batch of GLM-5.x cache adaptation (prefix hygiene + per-provider hit metering, GLM P0). The remaining gate before scaling up is **real-data validation of the cross-session hit rate** (#58, Agile 1's v1.0 gate).
 
 Architecture specification v2 is complete.
 
@@ -1019,14 +1019,16 @@ Agile 1 · First downloadable agent   🚧 M0 ✅ · M1 near-complete (gate #58)
   · Observability (P0)               ✅  kernel/event + kernel/usage
   · Semantic Slice Library (P1)      🚧  extract + BM25/hybrid shipped ✅ · local embeddings + ANN pending
   · Semantic Cache (P2)              🚧  L2 + L3 shipped ✅ · real-harness e2e pending
-  · bundle + reuse visualization     🚧  v0.3.1 shipped; CLI reuse viz (U28–U31) ✅ · H4 UI pending
+  · bundle + reuse visualization     🚧  v0.6.0 shipped; CLI reuse viz (U28–U31) ✅ · H4 UI pending
 
-Agile 2 · Self-evolving loop          🚧 kernel-side MVP landed (M1-U18b); harness side pending
+Agile 2 · Self-evolving loop          ✅ shipped & released (v0.6.0, 2026-08-21) — U37–U43
   · Adaptive Scheduler (P3)           ✅  kernel/sched.RuleDecider (MVP)
   · Speculative Prefetch (P4)         ✅  Planner + MatrixPrefetcher + Runner (MVP)
-  · Value scoring & eviction          ✅  kernel/slice scorer + capped/archived gc
-  · Evolution Loop (P5)               ✅  kernel/evolve (MVP); closed-loop wiring pending
-  · H2 ResourceLayer / H3 orchestration ⏳ blueprint only
+  · Value scoring & eviction          ✅  kernel/slice scorer + capped/archived gc (type-aware, Issue #277)
+  · Evolution Loop (P5)               ✅  kernel/evolve; closed-loop wired (U43, causal curve)
+  · H2 ResourceLayer / H3 orchestration ✅ shipped (U37–U43)
+
+GLM adaptation · GLM-5.x provider     🚧 first-class provider, switchable w/ DeepSeek via `setup` · cache P0 shipped (v0.6.0) · P1/P2 planned
 
 Agile 3 · Multi-harness ecosystem     ⏳  paths documented (agent-skill/); no adapter shipped
 ```
@@ -1035,7 +1037,7 @@ Agile 3 · Multi-harness ecosystem     ⏳  paths documented (agent-skill/); no 
 
 **Gate**: M0-Gate passed conditionally (2026-08-09) — technical feasibility and cost savings (79.8% on synthetic replay, `docs/reports/m0-cost-comparison.md`) are verified; **real-data cross-session hit rate ≥ 70%** (`semantix verify`) is the remaining gate, per `docs/reports/m0-gate.md`.
 
-**Agile roadmap**: Agile 1 (first downloadable, brandable agent) is in progress — M0 shipped, M1 nearly complete, with #58 (real-data hit rate) as the remaining gate; Agile 2 (self-evolving loop) and Agile 3 (multi-harness ecosystem) are defined in [`docs/Agile路线图.md`](./docs/Agile路线图.md).
+**Agile roadmap**: Agile 1 (first downloadable, brandable agent) is in progress — M0 shipped, M1 nearly complete, with #58 (real-data hit rate) as the remaining gate. Agile 2 (self-evolving loop) shipped and released as **v0.6.0** (2026-08-21); Agile 3 (multi-harness ecosystem) is defined in [`docs/Agile路线图.md`](./docs/Agile路线图.md).
 
 ---
 
@@ -1046,7 +1048,7 @@ Execution is organized in **Agile cycles** — one downloadable milestone per Ag
 | Agile | Milestone                                               | Technical scope                              | Status                                                                 |
 | ----- | ------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------- |
 | **1** | First downloadable, brandable agent (v1.0)              | P0–P2 + bundle + reuse visualization (H4)     | 🚧 M0 ✅ · M1 near-complete · gate #58 · CLI v2 (U19–U27) ✅             |
-| **2** | Self-evolving loop — kernel orchestrates the harness    | P3–P5 + H2 ResourceLayer + H3 orchestration  | 🚧 kernel-side MVP landed (M1-U18b); harness side pending               |
+| **2** | Self-evolving loop — kernel orchestrates the harness    | P3–P5 + H2 ResourceLayer + H3 orchestration  | ✅ shipped & released (v0.6.0, 2026-08-21) — U37–U43                     |
 | **3** | Multi-harness ecosystem                                 | CLI install / serve / adapter contribution    | ⏳ paths documented; not started                                        |
 
 ### Technical phases (P0–P5) detail
@@ -1058,7 +1060,7 @@ Execution is organized in **Agile cycles** — one downloadable milestone per Ag
 | **P2** | Semantic cache — stable L2 injection, verified L3 reuse, pollution detection    | 🚧 L2 + L3 shipped ✅; real-harness e2e pending                      | 1        |
 | **P3** | Adaptive scheduler — intent classification, concurrency learning, model tier    | ✅ `kernel/sched.RuleDecider` MVP (M1-U18b); learning overlay pending | 2        |
 | **P4** | Speculative prefetch — T-Slice prediction, path patterns, budget control        | ✅ Planner + MatrixPrefetcher + Runner MVP (M1-U18b)                 | 2        |
-| **P5** | Evolution loop — online adaptation, offline optimization, ablation              | ✅ slice scoring/eviction shipped (`kernel/slice`); `kernel/evolve` MVP, closed-loop wiring + ablation pending | 2        |
+| **P5** | Evolution loop — online adaptation, offline optimization, ablation              | ✅ slice scoring/eviction shipped (`kernel/slice`, type-aware #277); `kernel/evolve` closed-loop wired (U43, causal curve); ablation pending | 2        |
 
 Each stage should remain independently measurable.
 

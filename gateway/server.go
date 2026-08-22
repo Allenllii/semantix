@@ -42,12 +42,27 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		g.handleModels(w)
 		return
+	case "/v1/quota":
+		if !g.authenticate(w, r) {
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeAPIError(w, http.StatusMethodNotAllowed, "invalid_request_error", "method not allowed")
+			return
+		}
+		g.handleQuota(w, r)
+		return
 	case "/v1/chat/completions":
 		if !g.authenticate(w, r) {
 			return
 		}
 		if r.Method != http.MethodPost {
 			writeAPIError(w, http.StatusMethodNotAllowed, "invalid_request_error", "method not allowed")
+			return
+		}
+		// Free-tier gate (gateway/quota.go): blocked installs get the 402 +
+		// recharge URL here, before any upstream or cache work is spent.
+		if !g.admitQuota(w, r) {
 			return
 		}
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodyBytes))
@@ -133,7 +148,13 @@ type apiError struct {
 
 // writeAPIError writes an OpenAI-format error response.
 func writeAPIError(w http.ResponseWriter, status int, typ, message string) {
-	raw, _ := json.Marshal(apiErrorBody{Error: apiError{Message: message, Type: typ}})
+	writeAPIErrorCode(w, status, typ, "", message)
+}
+
+// writeAPIErrorCode is writeAPIError with the optional machine-readable
+// error.code field (e.g. "free_tier_exhausted") clients can branch on.
+func writeAPIErrorCode(w http.ResponseWriter, status int, typ, code, message string) {
+	raw, _ := json.Marshal(apiErrorBody{Error: apiError{Message: message, Type: typ, Code: code}})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_, _ = w.Write(raw)

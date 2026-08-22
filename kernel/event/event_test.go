@@ -204,3 +204,25 @@ func TestUnmarshalDataMismatch(t *testing.T) {
 		t.Fatal("expected error for type mismatch")
 	}
 }
+
+// T11 (Issue #272, c4): Prefetch payloads are wire-additive — an old event
+// without lead_ms decodes to 0, and the new field round-trips.
+func TestPrefetchPayloadLeadMsAdditive(t *testing.T) {
+	old := []byte(`{"targets":["f1.go"]}`)
+	var p PrefetchHitPayload
+	if err := json.Unmarshal(old, &p); err != nil {
+		t.Fatalf("old payload must decode: %v", err)
+	}
+	if p.LeadMs != 0 || len(p.Targets) != 1 {
+		t.Fatalf("old payload: lead_ms must default to 0, got %+v", p)
+	}
+	hit := PrefetchHitPayload{Targets: []string{"f1.go"}, LeadMs: 750}
+	data, err := json.Marshal(hit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back PrefetchHitPayload
+	if err := json.Unmarshal(data, &back); err != nil || back.LeadMs != 750 {
+		t.Fatalf("lead_ms roundtrip failed: %v %+v", err, back)
+	}
+}

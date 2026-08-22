@@ -83,8 +83,14 @@ func TestCalibrateRuntimeOnly(t *testing.T) {
 	if !strings.Contains(o, "# runtime (usage log)") {
 		t.Errorf("runtime block header missing:\n%s", o)
 	}
-	// l3_reuses=1, false_hits=1 → rate 100.0 (1/1).
-	if !strings.Contains(o, "1\t0\t0\t0\t0\t0\t0\t1\t100.0") {
+	// The header and the data row are hand-maintained parallel lists with no
+	// compiler check, so pin both: a header edit that forgets the row (or vice
+	// versa) ships a silently misaligned report (Issue #245 added judge_error).
+	if !strings.Contains(o, "judge_reject\tjudge_error\tjudge_approved") {
+		t.Errorf("runtime header missing judge_error column:\n%s", o)
+	}
+	// l3_reuses=1, false_hits=1 → rate 100.0 (1/1). 10 columns since #245.
+	if !strings.Contains(o, "1\t0\t0\t0\t0\t0\t0\t0\t1\t100.0") {
 		t.Errorf("runtime row missing/wrong:\n%s", o)
 	}
 }
