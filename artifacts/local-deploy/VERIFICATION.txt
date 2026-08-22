@@ -1,0 +1,14 @@
+DEPLOYED_FILE=D:/semantix/.worktrees/semantix-v28-prompt-stack/artifacts/local-deploy/semantix-agent-v28.exe
+SHA256=3D7861D2ABFAD5E9E521E71AB85FE06A3B3D376523A3B3A3D27855D5F9D03E80
+BUILD_COMMAND=go build -o artifacts/local-deploy/semantix-agent-v28.exe ./cmd/semantix-agent
+BUILD_EXIT_STATUS=0
+HARD_TEST_COMMAND=python %TEMP%/run_local_v28_hard.py
+HARD_TEST_LITERAL_RESULT={"variant":"local-port-v28","passed":5,"total":5,"duration_ms":98664,"input_tokens":264676,"output_tokens":6959,"cost":0.028201784}
+HARD_TEST_EXIT_STATUS=0
+SWE_COMMAND=python swebench_windows_runner.py -d swe5-v24-r5r6-dataset.json -p artifacts/local-deploy/swe-django-local-v28-pred.jsonl --max_workers 1 -t 1800 -id local-v28-django --report_dir artifacts/local-deploy/swe-reports
+SWE_LITERAL_RESULT=Total instances: 1; Instances completed: 1; Instances resolved: 1; infrastructure failures: 0; errors: 0
+SWE_EXIT_STATUS=0
+ROLLBACK_COMMAND=ROLLBACK.sh <separate deployment copy>
+ROLLBACK_LITERAL_RESULT=ROLLBACK_EXIT=0; DEPLOYED_FILE_ABSENT=True
+ROLLBACK_EXIT_STATUS=0
+RESTORED_STATUS=separate deployment copy returned to pre-deploy state; primary deployed binary remains present
