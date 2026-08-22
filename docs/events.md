@@ -42,11 +42,15 @@
 | `SliceReject` | 7 | 注入污染被拒绝（用户编辑/回滚） | `slice_id`, `reason`(omitempty) | kernel 验证层 |
 | `PrefetchHit` | 8 | 投机预取被使用 | `targets`, `lead_ms`(omitempty，消费−预热完成 ms，正=赶趟，#272) | kernel 预取器 |
 | `PrefetchWaste` | 9 | 投机预取未被使用 | `targets`, `lead_ms`(omitempty，存活时长 ms，#272) | kernel 预取器 |
-| `Compact` | 10 | 上下文压缩（snip/prune/summary） | `trigger`("snip"\|"prune"\|"summary"), `before_tokens`, `after_tokens` | harness 压缩器 |
+| `Compact` | 10 | 上下文压缩（snip/prune/summary）或库级淘汰（evict） | `trigger`("snip"\|"prune"\|"summary"\|"evict"), `before_tokens`, `after_tokens`, `evicted_by_type`(仅 evict) | harness 压缩器 / gateway 启动淘汰 |
 | `EvolutionTick` | 11 | 进化参数快照更新 | `params`(raw JSON) | kernel 进化引擎 |
 
 **不变量**：
-- `SliceHit.Layer ∈ {L1, L2, L3}`；`Compact.Trigger ∈ {snip, prune, summary}`。
+- `SliceHit.Layer ∈ {L1, L2, L3}`；`Compact.Trigger ∈ {snip, prune, summary, evict}`。
+- `Compact` 的 `evict` trigger 由 gateway 启动淘汰发射（库级，sessionID 固定为
+  `maintenance`，非会话事件）：`before_tokens`/`after_tokens` 此时携带**切片
+  条目数**（字段名保持 wire 稳定），`evicted_by_type` 按类型 wire 名统计
+  （result/tool_pattern/memory/prompt/context；Issue #277）。当前零消费者。
 - `ToolResult.latency_ns` 为纳秒（Go `time.Duration` 的 wire 编码）。
 - `SliceInject.SliceIDs` 必须保持规范序（确定性注入，见架构设计 §4.2）。
 
@@ -78,7 +82,7 @@ Semantix 的 adapter 监听 Reasonix（或任意 harness）并翻译为上述契
 |---|---|
 | `TurnStarted` / `ToolDispatch` / `ToolResult` / `ToolRoundEnd` | 切片提取器（turn 切分 + T-Slice n-gram） |
 | `Usage` | 成本统计、缓存收益核算 |
-| `SliceHit` / `SliceInject` / `SliceReject` | 切片评分（命中/污染信号 → 进化引擎） |
+| `SliceHit` / `SliceInject` / `SliceReject` | 切片评分（命中/污染信号 → 进化引擎）。现状（2026-08-16）：切片评分原料由 store 统计回写直接采集（`slice.ApplyStats`，lookup/inject/gateway 四挂点），这三个事件仍零生产者，留给 harness 闭环接线 |
 | `PrefetchHit` / `PrefetchWaste` | 预取策略调参 |
 | `Compact` | 压缩统计 |
 | `EvolutionTick` | 参数持久化 + 审计 |

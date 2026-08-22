@@ -17,6 +17,20 @@ type fakeExtractor struct {
 	meta  slice.SliceMeta
 }
 
+// openTestStore opens a real file store and registers Close so the journal
+// handle is released before t.TempDir() teardown — on Windows the .journal
+// file stays locked while any handle is open, which fails RemoveAll cleanup
+// (CI on Linux can unlink open files, so this only bites local Windows runs).
+func openTestStore(t *testing.T, path string) slice.Store {
+	t.Helper()
+	st, err := slice.NewFileStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeStore(st) })
+	return st
+}
+
 func (f *fakeExtractor) Extract(_ []byte, meta slice.SliceMeta) ([]*slice.Slice, error) {
 	f.meta = meta
 	return f.items, nil
@@ -218,10 +232,7 @@ func TestExtractWithProductionDependencies(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("run() code = %d, want 0; stderr = %q", code, stderr.String())
 	}
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	items, err := store.List(slice.Project)
 	if err != nil {
 		t.Fatal(err)

@@ -132,11 +132,16 @@ type PrefetchWastePayload struct {
 	LeadMs int64 `json:"lead_ms,omitempty"`
 }
 
-// CompactPayload reports a context compaction. Trigger is "snip"|"prune"|"summary".
+// CompactPayload reports a context compaction. Trigger is "snip"|"prune"|"summary"
+// (session compaction) or "evict" (slice-library eviction, Issue #277).
 type CompactPayload struct {
 	Trigger string `json:"trigger"`
 	Before  int    `json:"before_tokens"`
 	After   int    `json:"after_tokens"`
+	// EvictedByType counts the slices evicted per type wire name; set only
+	// when Trigger is "evict". For "evict", Before/After carry slice counts
+	// rather than tokens (field names stay wire-stable).
+	EvictedByType map[string]int `json:"evicted_by_type,omitempty"`
 }
 
 // EvolutionTickPayload carries the evolution parameter snapshot.

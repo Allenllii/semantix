@@ -151,7 +151,10 @@ KB 跨项目写入通路出现时，需在写入路径落地「T/R 强制降为 
                   （用户习惯跨项目复用；项目模式项目内复用）
      ──► ④评分器：价值 = f(命中率, 时效衰减 exp(-λt), 用户反馈±, 
                           意图相关度, 注入成功率)
-     ──► ⑤淘汰器：容量预算（磁盘/内存双层）；价值低于阈值的降级/归档
+     ──► ⑤淘汰器：容量预算（磁盘/内存双层）；价值低于阈值的降级/归档；
+                  类型感知确定性排序（Issue #277）：result/tool_pattern 先淘汰、
+                  prompt/context 耐淘汰，序 = grace → 类型 → Weight → 创建时间 → ID，
+                  无 LLM、同库同钟逐字节可复现
 ```
 
 ### 3.3 关键数据结构
@@ -174,6 +177,10 @@ type SliceStats struct {
     UserFeedback                     float64 // +1 保留 / -1 拒绝 / 0 无
 }
 ```
+
+> 落地注（2026-08-16）：实现中 `LastUsed` 为 unix 秒 `int64`（journal max-merge 合并）；
+> `FirstSeen` 不单独落盘——语义等同 `Slice.CreatedAt`，刻意去重。评分器④/淘汰器⑤
+> 已落地于 `kernel/slice`（score.go + GC 上限/归档），见 `docs/specs/slice-value-eviction.md`。
 
 ### 3.4 与记忆/线程的联动
 

@@ -97,9 +97,11 @@ semantix install --target custom --dir ./agent  # 自定义目录
 semantix install --target claude-code --uninstall   # 卸载（仅移除 install 记录的文件）
 ```
 
-**维护**：`gc`（清理过期/低权重切片）。切片库是单个 JSONL 文件，备份/恢复直接
+**维护**：`gc`（清理过期/低权重切片，评分 + 上限淘汰）。切片库是单个 JSONL 文件，备份/恢复直接
 `cp`（`slice.Export`/`Import` 的行格式仍是库内归档与 harness ccswitch 的内部机制，
-不再暴露为独立 CLI 命令）。
+不再暴露为独立 CLI 命令）。淘汰是**类型感知 + 确定性**的（Issue #277）：`result`/`tool_pattern`
+先出局、`prompt`/`context` 最耐淘汰，`--json` 输出 `evicted_by_type` 分布；`gc` 默认重算价值
+权重并按 `store.max_slices`（默认 5000）归档超限切片到 `<db>.archive.jsonl`。
 
 **退出码契约**（所有命令统一）：
 

@@ -137,6 +137,14 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	rawBytes, storedBytes, compressionRatio := extractionCompression(storedItems)
 	fmt.Fprintf(stdout, "extracted=%d stored=%d scope=%s db=%s raw_bytes=%d stored_bytes=%d compression_ratio=%.4f\n",
 		len(items), stored, scopeName(scope), dbPath, rawBytes, storedBytes, compressionRatio)
+	// Water-level hint (never an error, never triggers eviction here — the
+	// hot write path stays O(1); the cap is enforced at gc / gateway boot).
+	if maxSlices := cfgInt(deps.resolved, "store.max_slices", 5000); maxSlices > 0 {
+		if all, err := store.ListAll(); err == nil && len(all)*10 >= maxSlices*9 {
+			fmt.Fprintf(stderr, "semantix: library at %d/%d slices (>=90%%) — run `semantix gc` to rescore and archive low-value slices\n",
+				len(all), maxSlices)
+		}
+	}
 	return nil
 }
 
