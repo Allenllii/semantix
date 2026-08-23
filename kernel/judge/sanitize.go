@@ -42,12 +42,30 @@ func Sanitize(s string) string {
 				return b.String()
 			}
 			s = consumeESCSeq(s)
-		// C1 control values are intentionally NOT matched here: per the design
-		// note above, a C1 byte is only an escape when it appears as its own raw
-		// byte (handled on the RuneError path). A legally UTF-8-encoded C1 rune
-		// (e.g. 0xC2 0x9B → U+009B) is ordinary content and must survive — the
-		// old case re-entered consumeC1Seq with the UTF-8 lead byte at s[0],
-		// mis-dispatching and silently deleting unrelated text (Issue #358).
+		case 0x90, 0x98, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f:
+			// A multi-byte-encoded C1 escape (e.g. 0xC2 0x9B → U+009B). It must
+			// still be stripped — a terminal may act on it — but dispatch on the
+			// DECODED value and scan the bytes AFTER the encoding (s[size:]). The
+			// old code passed the un-advanced s to consumeC1Seq, whose switch saw
+			// the UTF-8 lead byte 0xC2, always fell to the OSC/DCS (to-ST) branch,
+			// and over-consumed unrelated text up to a distant BEL/ST (Issue #358).
+			rest := s[size:]
+			switch r {
+			case 0x9b: // CSI: consume up to its own final byte
+				if out, ok := consumeToFinal(rest); ok {
+					s = out
+				} else {
+					s = rest
+				}
+			case 0x9c: // lone ST: nothing follows to consume
+				s = rest
+			default: // DCS/OSC/PM/APC/SOS: consume up to ST
+				if out, ok := consumeToST(rest); ok {
+					s = out
+				} else {
+					s = rest
+				}
+			}
 		default:
 			b.WriteString(s[:size])
 			s = s[size:]
