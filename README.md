@@ -174,7 +174,7 @@ Architectural assumptions are open to challenge; testing them is part of the wor
 
 ## License
 
-[MIT](./LICENSE). Architecture baseline: [DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) (MIT).
+[MIT](./LICENSE). [DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) (MIT).
 
 ---
 
@@ -344,7 +344,7 @@ Semantix 处于早期阶段。语义缓存、检索、调度、投机执行、�
 
 ## 许可与致谢
 
-[MIT](./LICENSE)。架构基线 [DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)（MIT）。
+[MIT](./LICENSE)。[DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix)（MIT）。
 
 ---
 
