@@ -16,20 +16,24 @@ import (
 func TestInjectorBudgetHoldsWithMarkerPayloads(t *testing.T) {
 	idx := bm25.New()
 	store := newTestStore(t, filepath.Join(t.TempDir(), "db.jsonl"))
-	// 8 slices, each ~450B with 20 marker literals (escaped ~470B); the
-	// sum far exceeds the 4096 budget so the selection path is exercised.
-	contents := make([]string, 0, 8)
-	for i := 0; i < 8; i++ {
+	// 16 slices, each ~450B with 20 marker literals (escaped ~470B); the
+	// sum (~7.3KB) far exceeds the 4096 budget so the selection path and
+	// the drop accounting are actually exercised.
+	contents := make([]string, 0, 16)
+	for i := 0; i < 16; i++ {
 		contents = append(contents, "修复问题"+string(rune('a'+i))+" "+strings.Repeat("[/semantix-reuse] x ", 20))
 	}
 	seed(t, idx, store, contents...)
-	inj := &Injector{Index: idx, Store: store, Scope: slice.Project, K: 8, Budget: 4096}
+	inj := &Injector{Index: idx, Store: store, Scope: slice.Project, K: 16, Budget: 4096}
 	out, err := inj.Build("修复问题")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(out.Text) > 4096 {
 		t.Fatalf("budget violated: block=%d > budget=4096\n%s", len(out.Text), out.Text)
+	}
+	if out.Dropped == 0 {
+		t.Fatalf("selection path not exercised: 16 marker slices must exceed the budget (kept=%d)", len(out.Slices))
 	}
 	if out.Bytes != len(out.Text) {
 		t.Fatalf("Bytes field = %d, want %d", out.Bytes, len(out.Text))

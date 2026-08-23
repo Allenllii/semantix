@@ -65,11 +65,11 @@ for _, h := range hits {
 
 ## 4. 验收标准
 
-- [ ] 回归测试：多切片含 marker 字面量 → `len(block) <= Budget`
-      （现实现下即绿，作为锁定）；
-- [ ] 边界测试：构造接近 Budget 的候选集，断言最终块 ≤ Budget 且
+- [x] 回归测试：多切片含 marker 字面量 → `len(block) <= Budget`
+      （16 切片 ~7.3KB 超预算场景，drop 路径真实触发）；
+- [x] 边界测试：构造接近 Budget 的候选集，断言最终块 ≤ Budget 且
       top slice 保留语义不变；
-- [ ] 现有注入测试全绿（canonical 输出、转义、#278 净化、#259
+- [x] 现有注入测试全绿（canonical 输出、转义、#278 净化、#259
       per-type 等——输出字节不变）；`go vet`、`git diff --check`。
 
 ## 5. 参考
