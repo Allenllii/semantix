@@ -15,13 +15,15 @@ import (
 // so a controller turn that re-enters the agent (plan turn, then approved
 // execution turn) sees a different model response each time.
 type scriptedTurns struct {
-	turns [][]provider.Chunk
-	call  int
+	turns    [][]provider.Chunk
+	requests []provider.Request
+	call     int
 }
 
 func (s *scriptedTurns) Name() string { return "scripted" }
 
-func (s *scriptedTurns) Stream(_ context.Context, _ provider.Request) (<-chan provider.Chunk, error) {
+func (s *scriptedTurns) Stream(_ context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+	s.requests = append(s.requests, req)
 	i := s.call
 	if i >= len(s.turns) {
 		i = len(s.turns) - 1
@@ -189,5 +191,46 @@ func TestPlanGateRejectionStaysInPlan(t *testing.T) {
 	}
 	if prov.call != 1 {
 		t.Fatalf("provider called %d times, want 1 (plan only, no execution)", prov.call)
+	}
+	history := c.History()
+	if len(history) == 0 || !strings.HasSuffix(history[len(history)-1].Content,
+		"(The user did not approve this plan; execution was not started.)") {
+		t.Fatalf("empty rejection marker missing from history: %+v", history)
+	}
+}
+
+func TestPlanGateRevisionFeedbackReentersGate(t *testing.T) {
+	prov := &scriptedTurns{turns: [][]provider.Chunk{
+		textTurn("Plan:\n1. Use a short retry window"),
+		textTurn("Revised plan:\n1. Widen the retry window"),
+	}}
+	ag := agent.New(prov, tool.NewRegistry(), agent.NewSession(""), agent.Options{}, event.Discard)
+	approvalIDs := make(chan string, 2)
+	c := New(Options{
+		Runner: ag, Executor: ag,
+		Sink: event.FuncSink(func(e event.Event) {
+			if e.Kind == event.ApprovalRequest && e.Approval.Tool == planApprovalTool {
+				approvalIDs <- e.Approval.ID
+			}
+		}),
+	})
+	c.SetPlanMode(true)
+	go func() {
+		_ = c.ResolvePlanDecision(<-approvalIDs, PlanDecisionRevisePlan, "widen the retry window")
+		second := <-approvalIDs
+		c.SetPlanMode(false)
+		_ = c.ResolvePlanDecision(second, PlanDecisionExitPlan, "")
+	}()
+
+	if err := c.runTurnWithRaw(context.Background(), "plan the retry change", "plan the retry change"); err != nil {
+		t.Fatalf("runTurnWithRaw: %v", err)
+	}
+	if prov.call != 2 || len(prov.requests) != 2 {
+		t.Fatalf("provider calls=%d requests=%d, want two gated plan frames", prov.call, len(prov.requests))
+	}
+	msgs := prov.requests[1].Messages
+	if len(msgs) == 0 || msgs[len(msgs)-1].Role != provider.RoleUser ||
+		!strings.Contains(msgs[len(msgs)-1].Content, "widen the retry window") {
+		t.Fatalf("second request must end with user revision note: %+v", msgs)
 	}
 }

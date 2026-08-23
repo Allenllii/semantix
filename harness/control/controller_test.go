@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"semantix/harness/agent"
 	"semantix/harness/checkpoint"
@@ -43,11 +44,12 @@ func (*typedNilControllerSink) Emit(event.Event) {}
 
 func TestResolvePlanDecisionRecordsDistinctOutcomes(t *testing.T) {
 	tests := []struct {
-		action PlanDecisionAction
-		allow  bool
+		action   PlanDecisionAction
+		allow    bool
+		feedback string
 	}{
 		{action: PlanDecisionStartExecution, allow: true},
-		{action: PlanDecisionRevisePlan, allow: false},
+		{action: PlanDecisionRevisePlan, allow: false, feedback: "widen the retry window"},
 		{action: PlanDecisionExitPlan, allow: false},
 	}
 	for _, tt := range tests {
@@ -58,13 +60,19 @@ func TestResolvePlanDecisionRecordsDistinctOutcomes(t *testing.T) {
 			c := New(Options{Executor: exec})
 			id, reply := c.approval.registerDecisionKind(planApprovalTool, "", "", true, false, "plan", nil)
 
-			if err := c.ResolvePlanDecision(id, tt.action); err != nil {
+			if err := c.ResolvePlanDecision(id, tt.action, tt.feedback); err != nil {
 				t.Fatalf("ResolvePlanDecision: %v", err)
 			}
 			select {
 			case got := <-reply:
 				if got.allow != tt.allow {
 					t.Fatalf("reply allow = %v, want %v", got.allow, tt.allow)
+				}
+				if got.feedback != tt.feedback {
+					t.Fatalf("reply feedback = %q, want %q", got.feedback, tt.feedback)
+				}
+				if got.planAction != tt.action {
+					t.Fatalf("reply plan action = %q, want %q", got.planAction, tt.action)
 				}
 			default:
 				t.Fatal("plan decision did not unblock the approval waiter")
@@ -79,6 +87,22 @@ func TestResolvePlanDecisionRecordsDistinctOutcomes(t *testing.T) {
 				t.Fatalf("receipt = %+v, want plan/%s", receipt, tt.action)
 			}
 		})
+	}
+}
+
+func TestResolvePlanDecisionClipsFeedbackOnUTF8Boundary(t *testing.T) {
+	c := New(Options{})
+	id, reply := c.approval.registerDecisionKind(planApprovalTool, "", "", true, false, "plan", nil)
+	feedback := strings.Repeat("界", 2000)
+	if err := c.ResolvePlanDecision(id, PlanDecisionRevisePlan, feedback); err != nil {
+		t.Fatalf("ResolvePlanDecision: %v", err)
+	}
+	got := <-reply
+	if len(got.feedback) > 4*1024 || !utf8.ValidString(got.feedback) {
+		t.Fatalf("clipped feedback bytes=%d valid=%v", len(got.feedback), utf8.ValidString(got.feedback))
+	}
+	if got.feedback == "" || !strings.HasPrefix(feedback, got.feedback) {
+		t.Fatalf("clipped feedback is not a non-empty prefix")
 	}
 }
 
