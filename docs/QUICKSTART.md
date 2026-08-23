@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/Gnosil/semantix/main/agent-skill/sc
 - **`semantix`** —— 记忆内核 **兼** umbrella 启动器；
 - **`semantix-agent`** —— 交互式 coding agent（umbrella 会 exec 它）。
 
-固定版本 / 架构：`... install.sh | sh -s -- v0.4.0 arm64`。校验用 `SHA256SUMS.txt`。
+固定版本 / 架构：`... install.sh | sh -s -- v0.7.2 arm64`。校验用 `SHA256SUMS.txt`。
 
 ### 全局 `semantix` 怎么用
 
