@@ -73,10 +73,10 @@ func isUsage(err error) bool {
 type commandGroup int
 
 const (
-	groupKernelOps commandGroup = iota // kernel 运维（U19：现有 8 命令，行为不变）
-	groupProduct                       // 产品与管理（U21/U23/U24/U25 挂载）
-	groupMaintenance                   // 维护（U26 挂载）
-	groupService                       // 服务模式（U27 挂载）
+	groupKernelOps   commandGroup = iota // kernel 运维（U19：现有 8 命令，行为不变）
+	groupProduct                         // 产品与管理（U21/U23/U24/U25 挂载）
+	groupMaintenance                     // 维护（U26 挂载）
+	groupService                         // 服务模式（U27 挂载）
 )
 
 func (g commandGroup) String() string {
@@ -183,6 +183,16 @@ func buildCommands() []commandSpec {
 			usage:   "semantix gc [--retention-days N] [--min-weight W] [--max-slices M] [--no-rescore] [--no-archive] [--dry-run] [--json]",
 			summary: "rescore weights, prune stale / low-weight slices, enforce the library cap",
 			run:     errCommand("gc", runGC)},
+		{name: "trust", group: groupMaintenance,
+			usage:   "semantix trust <slice-id> [--origin user-curated] [--db <path>] [--audit-db <path>]",
+			summary: "upgrade a slice's provenance tag (Issue #279, audit-logged)",
+			run:     depsCommand(runTrust),
+		},
+		{name: "import", group: groupMaintenance,
+			usage:   "semantix import --input <file.jsonl> [--trust] [--db <path>] [--audit-db <path>]",
+			summary: "restore slices from JSONL, stamped as import (Issue #279)",
+			run:     depsCommand(runImport),
+		},
 	}
 }
 
@@ -229,6 +239,28 @@ func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
 }
 
 // findCommand looks a command up in the command tree by name.
+// reorderPositional moves non-flag arguments to the end of args so Go's
+// flag package (which stops at the first non-flag argument) keeps parsing
+// flags that follow a positional value, e.g. `trust <id> --db x`.
+func reorderPositional(args []string) []string {
+	var positional, rest []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "-" || a == "--" || strings.HasPrefix(a, "-") {
+			rest = append(rest, a)
+			// A flag's value is the next argument unless it also starts
+			// with '-' or the flag used the --flag=value form.
+			if !strings.Contains(a, "=") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				i++
+				rest = append(rest, args[i])
+			}
+		} else {
+			positional = append(positional, a)
+		}
+	}
+	return append(rest, positional...)
+}
+
 func findCommand(name string) *commandSpec {
 	for i := range commands {
 		if commands[i].name == name {

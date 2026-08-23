@@ -67,7 +67,11 @@ const maxImportLine = 8 * 1024 * 1024
 // converges to the same store state without duplicates. Corrupt, ID-less and
 // oversized (> 8 MiB) lines are skipped and counted, so one bad line never
 // aborts a restore. Returns imported and skipped counts.
-func Import(store Store, r io.Reader) (imported, skipped int, err error) {
+//
+// origin is forced onto every imported slice (Issue #279): the import
+// channel is untrusted, so an origin claim inside the file is never
+// inherited — the caller (semantix import) decides the tag.
+func Import(store Store, r io.Reader, origin Origin) (imported, skipped int, err error) {
 	br := bufio.NewReader(r)
 	for {
 		line, tooLong, err := readJSONLLine(br)
@@ -97,6 +101,7 @@ func Import(store Store, r io.Reader) (imported, skipped int, err error) {
 			skipped++
 			continue
 		}
+		sl.Meta.Origin = origin // untrusted channel: never inherit file claims
 		if err := store.Put(&sl); err != nil {
 			return imported, skipped, err
 		}
