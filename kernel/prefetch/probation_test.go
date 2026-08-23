@@ -64,6 +64,9 @@ func TestProbationKeepsWastingCandidateOnProbeRoundsOnly(t *testing.T) {
 				plans, len(tasks) > 0, onProbeRound, tasks)
 		}
 		for _, task := range tasks {
+			if !task.Probe {
+				t.Fatalf("plans=%d: probation task must be marked as a probe: %+v", plans, task)
+			}
 			probed++
 			m.ObserveWaste(task.Key)
 		}

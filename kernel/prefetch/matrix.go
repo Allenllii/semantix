@@ -357,9 +357,10 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 	}
 	if probation != nil && cost+m.cfg.BaseCost <= m.cfg.MaxCost {
 		tasks = append(tasks, PrefetchTask{
-			Kind: "slice-assembly",
-			Key:  probation.key,
-			Cost: m.cfg.BaseCost,
+			Kind:  "slice-assembly",
+			Key:   probation.key,
+			Cost:  m.cfg.BaseCost,
+			Probe: true,
 		})
 		cost += m.cfg.BaseCost
 	}
@@ -374,6 +375,7 @@ func (m *MatrixPrefetcher) Plan(lastToolNames []string) ([]PrefetchTask, error) 
 				Kind:     "slice-assembly",
 				Key:      probe.key,
 				Cost:     m.cfg.BaseCost,
+				Probe:    true,
 				Locality: LocalityLocal, // in-process slice-library read (Issue #273)
 			})
 		}

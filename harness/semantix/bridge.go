@@ -236,18 +236,19 @@ func (b *Bridge) recordInjection(ids []string, bytes int) {
 // the time between warm-up completion and the outcome decision: positive
 // for hits (completed before consumption — Markov timeliness, Issue #272);
 // for wastes it carries the survival time, not a consumption lead.
-func (b *Bridge) RecordPrefetch(hit bool, targets []string, turn int, lead time.Duration) {
+func (b *Bridge) RecordPrefetch(hit bool, targets, probeTargets []string, turn int, lead time.Duration) {
 	if b == nil || !b.Enabled() || len(targets) == 0 {
 		return
 	}
 	targets = append([]string(nil), targets...)
 	sort.Strings(targets)
+	probeTargets = canonicalPrefetchTargets(probeTargets)
 	kind := kernelevent.PrefetchWaste
 	leadMs := int64(lead / time.Millisecond)
-	var payload any = kernelevent.PrefetchWastePayload{Targets: targets, LeadMs: leadMs}
+	var payload any = kernelevent.PrefetchWastePayload{Targets: targets, ProbeTargets: probeTargets, LeadMs: leadMs}
 	if hit {
 		kind = kernelevent.PrefetchHit
-		payload = kernelevent.PrefetchHitPayload{Targets: targets, LeadMs: leadMs}
+		payload = kernelevent.PrefetchHitPayload{Targets: targets, ProbeTargets: probeTargets, LeadMs: leadMs}
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -257,6 +258,21 @@ func (b *Bridge) RecordPrefetch(hit bool, targets []string, turn int, lead time.
 	session := b.label
 	b.mu.Unlock()
 	b.events.Emit(kernelevent.Event{Kind: kind, SessionID: session, Turn: turn, At: time.Now().UTC(), Data: data})
+}
+
+func canonicalPrefetchTargets(targets []string) []string {
+	if len(targets) == 0 {
+		return nil
+	}
+	targets = append([]string(nil), targets...)
+	sort.Strings(targets)
+	out := targets[:0]
+	for _, target := range targets {
+		if target != "" && (len(out) == 0 || out[len(out)-1] != target) {
+			out = append(out, target)
+		}
+	}
+	return out
 }
 
 // Reuse gathers the per-turn reuse panel data (U33/H4a) in-process: the

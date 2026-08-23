@@ -16,9 +16,10 @@ type fakePrefetcher struct {
 }
 
 func TestAsLoadAwarePlanFuncFallsBackToFrozenPlan(t *testing.T) {
-	f := &fakePrefetcher{tasks: []PrefetchTask{{Key: "read_file"}}}
+	f := &fakePrefetcher{tasks: []PrefetchTask{{Key: "read_file"}, {Key: "grep", Probe: true}}}
 	got := AsLoadAwarePlanFunc(f)([]string{"search"}, sched.PrefetchLoadHint{ConcurrencyUsed: 8, ConcurrencyLimit: 8})
-	if !reflect.DeepEqual(got.IDs, []string{"read_file"}) || got.Reason != string(ReasonCandidate) {
+	if !reflect.DeepEqual(got.IDs, []string{"read_file", "grep"}) ||
+		!reflect.DeepEqual(got.ProbeIDs, []string{"grep"}) || got.Reason != string(ReasonCandidate) {
 		t.Fatalf("result = %+v", got)
 	}
 }

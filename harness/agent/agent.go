@@ -2961,6 +2961,7 @@ func (a *Agent) startInjectWarm(ctx context.Context) {
 	if input == "" {
 		return
 	}
+	probeTargets := a.prefetchProbeTargets()
 	go func() {
 		// Detach from the stream context so cancellation of the current
 		// request does not cancel the warm-up; Inject applies its own 3s cap.
@@ -2974,7 +2975,7 @@ func (a *Agent) startInjectWarm(ctx context.Context) {
 			a.prefetchTaskMS.Store(elapsed)
 		}()
 		if result := a.semantix.InjectDetailed(warmCtx, input); result.Text != "" {
-			a.storePrefetch(&prefetchedInjectResult{Text: result.Text, Targets: result.Targets, Turn: a.semantixTurn.Load(), WarmAt: time.Now()})
+			a.storePrefetch(&prefetchedInjectResult{Text: result.Text, Targets: result.Targets, Turn: a.semantixTurn.Load(), WarmAt: time.Now(), ProbeTargets: probeTargets})
 		}
 	}()
 }
