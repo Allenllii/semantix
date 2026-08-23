@@ -114,24 +114,25 @@ git commit -m "feat(control): re-enter plan gate with revision feedback"
 
 **Interfaces:**
 - Consumes: `approvalReply.feedback`
-- Produces: persisted planner revision request or shared declined marker
+- Produces: persisted planner revision request without duplicating the coordinator-owned marker
 
 - [ ] **Step 1: Add failing planner denial tests**
 
 Resolve a planner approval with non-empty feedback and assert a user-role
 history message contains it. Resolve another with empty feedback and assert the
-shared declined marker.
+adapter does not duplicate the coordinator-owned declined marker.
 
 - [ ] **Step 2: Run RED**
 
-Run: `go test ./harness/control -run 'TestPlannerPlanApproval(PreservesRevisionFeedback|PersistsEmptyDenialMarker)$' -count=1`
+Run: `go test ./harness/control -run 'TestPlannerPlanApproval(PreservesRevisionFeedback|LeavesEmptyDenialMarkerToCoordinator)$' -count=1`
 
 Expected: FAIL because the adapter discards the full reply.
 
 - [ ] **Step 3: Implement planner history preservation**
 
 Use `requestFreshApprovalDecision`; on denial append a user revision request
-when feedback is non-empty, otherwise append the shared assistant marker.
+when feedback is non-empty and leave empty-marker persistence to the existing
+coordinator caller.
 
 - [ ] **Step 4: Run GREEN**
 
@@ -179,4 +180,3 @@ Run `git diff upstream/main...HEAD --check`, push
 `codex/issue-328-plan-revision-feedback`, and create a PR against
 `Gnosil/semantix:main` with `Closes #328`, scope boundaries, hook behavior, and
 exact validation evidence.
-

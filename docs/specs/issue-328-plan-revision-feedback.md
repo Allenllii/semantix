@@ -38,8 +38,9 @@ by the frontend work in #329. It does not change any frontend call site.
 9. The planner approval adapter consumes the full reply too. Because its
    callback surface can start execution but cannot recursively request a new
    planner proposal, non-empty feedback is preserved as a user-role revision
-   request in session history for the next planner turn; empty denial appends
-   the shared marker. It does not silently drop feedback.
+   request in session history for the next planner turn. Empty denial remains
+   owned by the coordinator's existing marker path, avoiding duplicates. It
+   does not silently drop feedback.
 10. Decision receipt schema and outcomes remain unchanged.
 11. No file under `harness/cli/` changes. HTTP, ACP, bot, and serve bindings keep
     their boolean-only `Approve` behavior.
@@ -75,8 +76,9 @@ Its interface exposes only an execution callback and cannot safely nest a new
 coordinator run while the current coordinator is blocked. It therefore
 preserves non-empty feedback in session history as a synthetic user-role
 revision request, allowing the next planner frame to consume it. Empty denial
-uses the shared assistant-role declined marker. This explicitly removes the
-feedback drop without inventing a re-entrant planner API.
+is left to the coordinator's existing `plannerPlanNotApprovedNote` append after
+the adapter returns. This explicitly removes the feedback drop without
+inventing a re-entrant planner API or duplicating the established marker.
 
 ### History helpers
 
@@ -106,9 +108,8 @@ format changes are introduced.
   user message contains the note, then observes a second plan approval request.
 - Plan mode stays enabled throughout revision.
 - Empty denial performs one provider call and appends `planNotApprovedNote`.
-- Planner approval denial preserves non-empty feedback and shares the empty
-  denial marker.
+- Planner approval denial preserves non-empty feedback and leaves the existing
+  empty-denial marker responsibility with the coordinator.
 - Existing plan rejection and approved-plan hook invariants pass.
 - `go build ./...`, `go vet ./...`, and affected control tests pass; race tests
   pass where the host toolchain supports them.
-

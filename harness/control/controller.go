@@ -2387,11 +2387,17 @@ type plannerPlanApprover struct {
 
 func (p plannerPlanApprover) RunWithPlannerApproval(ctx context.Context, plan string, run func(context.Context) error) error {
 	c := p.c
-	allow, _, err := c.requestApprovalWithReason(ctx, planApprovalTool, "", nil, "Planner requested host approval before execution.")
+	reply, err := c.requestFreshApprovalDecision(ctx, planApprovalTool, "", nil, "Planner requested host approval before execution.")
 	if err != nil {
 		return err
 	}
-	if !allow {
+	if !reply.allow {
+		// Coordinator already persists the shared empty-denial marker after this
+		// adapter returns. Preserve only non-empty inline feedback here so it is
+		// available to the next planner frame without duplicating that marker.
+		if revision := planRevisionMessage(reply.feedback); revision != "" {
+			c.appendPlanHistory(provider.RoleUser, revision)
+		}
 		return nil
 	}
 	todoArgs := c.seedPlanTodos(plan)
