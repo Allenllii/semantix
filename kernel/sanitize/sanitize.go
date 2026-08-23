@@ -201,6 +201,10 @@ var featurePhrases = []string{
 	// Role-play takeover (high-confidence full forms only).
 	"from now on you are",
 	"pretend you are",
+	// Command-substitution guides (spec §2.2; the concrete command after
+	// the guide is not in the v1 table — redaction/guardrails handle it).
+	"执行以下命令",
+	"运行以下命令",
 	// Chinese payload forms.
 	"忽略之前的指令",
 	"忽略以上所有内容",
