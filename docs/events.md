@@ -40,8 +40,8 @@
 | `SliceHit` | 5 | 语义缓存命中（L1 字节 / L2 语义注入 / L3 结果复用） | `layer`("L1"\|"L2"\|"L3"), `slice_ids`, `scores`(omitempty) | kernel 缓存层 |
 | `SliceInject` | 6 | L2 稳定切片注入（按规范序） | `slice_ids`(canonical order), `bytes` | kernel 注入器 |
 | `SliceReject` | 7 | 注入污染被拒绝（用户编辑/回滚） | `slice_id`, `reason`(omitempty) | kernel 验证层 |
-| `PrefetchHit` | 8 | 投机预取被使用 | `targets`, `lead_ms`(omitempty，消费−预热完成 ms，正=赶趟，#272) | kernel 预取器 |
-| `PrefetchWaste` | 9 | 投机预取未被使用 | `targets`, `lead_ms`(omitempty，存活时长 ms，#272) | kernel 预取器 |
+| `PrefetchHit` | 8 | 投机预取被使用 | `targets`, `lead_ms`(omitempty，消费−预热完成 ms，正=赶趟，#272), `probe_targets`(omitempty，仅探索候选，#302) | kernel 预取器 |
+| `PrefetchWaste` | 9 | 投机预取未被使用 | `targets`, `lead_ms`(omitempty，存活时长 ms，#272), `probe_targets`(omitempty，仅探索候选，#302) | kernel 预取器 |
 | `Compact` | 10 | 上下文压缩（snip/prune/summary）或库级淘汰（evict） | `trigger`("snip"\|"prune"\|"summary"\|"evict"), `before_tokens`, `after_tokens`, `evicted_by_type`(仅 evict) | harness 压缩器 / gateway 启动淘汰 |
 | `EvolutionTick` | 11 | 进化参数快照更新 | `params`(raw JSON) | kernel 进化引擎 |
 
@@ -50,6 +50,8 @@
 - `Compact` 的 `evict` trigger 由 gateway 启动淘汰发射（库级，sessionID 固定为
   `maintenance`，非会话事件）：`before_tokens`/`after_tokens` 此时携带**切片
   条目数**（字段名保持 wire 稳定），`evicted_by_type` 按类型 wire 名统计
+- `PrefetchHit` / `PrefetchWaste` 的 `probe_targets` 非空时，结果仍计入事件、
+  成本与局部命中/浪费反馈，但不驱动全局 evolve `PrefetchConf`（#302）。
   （result/tool_pattern/memory/prompt/context；Issue #277）。当前零消费者。
 - `ToolResult.latency_ns` 为纳秒（Go `time.Duration` 的 wire 编码）。
 - `SliceInject.SliceIDs` 必须保持规范序（确定性注入，见架构设计 §4.2）。
