@@ -361,3 +361,51 @@ func TestInjectorSanitizeIdempotentBlocks(t *testing.T) {
 		t.Fatalf("blocks differ across builds:\n%q\n%q", a.Text, b.Text)
 	}
 }
+
+// TestInjectorMinOriginFiltersLowIntegrity covers Issue #279: with a
+// session-auto floor, import/legacy slices never enter the injection
+// block; session-auto and above inject normally; the zero floor
+// admits everything (embedding-caller default).
+func TestInjectorMinOriginFiltersLowIntegrity(t *testing.T) {
+	idx := bm25.New()
+	store := newTestStore(t, filepath.Join(t.TempDir(), "db.jsonl"))
+	// Identical, clearly-relevant content under three origins: only the
+	// provenance differs, so the zone filter admits all of them and any
+	// exclusion below is the origin gate's doing.
+	seed := func(id string, origin slice.Origin) {
+		sl := &slice.Slice{ID: id, Type: slice.Prompt, Scope: slice.Project,
+			Content: []byte("修复 go 测试失败"), Meta: slice.SliceMeta{Origin: origin}}
+		if err := store.Put(sl); err != nil {
+			t.Fatal(err)
+		}
+		if err := idx.Insert(sl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed("o-auto", slice.OriginSessionAuto)
+	seed("o-imp", slice.OriginImport)
+	seed("o-leg", "") // unlabelled -> level 1
+
+	z := zone.Default()
+	in := &Injector{Index: idx, Scope: slice.Project, K: 5, Zones: &z, MinOrigin: slice.OriginSessionAuto}
+	inj, err := in.Build("修复测试失败")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(inj.Text, "o-auto") {
+		t.Fatalf("session-auto slice must inject:\n%s", inj.Text)
+	}
+	if strings.Contains(inj.Text, "o-imp") || strings.Contains(inj.Text, "o-leg") {
+		t.Fatalf("low-integrity slice leaked into the block:\n%s", inj.Text)
+	}
+
+	// Zero floor (kernel default): provenance never excludes.
+	open := &Injector{Index: idx, Scope: slice.Project, K: 5, Zones: &z}
+	injOpen, err := open.Build("修复测试失败")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(injOpen.Text, "o-imp") || !strings.Contains(injOpen.Text, "o-leg") {
+		t.Fatalf("zero floor must admit import/legacy slices (embedding-caller default):\n%s", injOpen.Text)
+	}
+}
