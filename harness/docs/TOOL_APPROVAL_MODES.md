@@ -30,7 +30,8 @@ as `Bash=<literal>`.
 - `←` / `→` cycle the highlighted action.
 - `Enter` confirms the highlighted ordinary tool-approval action, which defaults to “Allow once”.
 - `1` / `2` / `3` / `4` select the matching numbered ordinary tool-approval action.
-- Plan confirmation has three direct actions: **Start execution** / **Revise plan** / **Exit without executing**. On Desktop, use one click or the matching number key. On CLI, use the matching number key or select a row and press `Enter`; `n` / `Esc` keeps planning for compatibility. Exiting rejects the pending plan and returns to Normal without starting an execution turn.
+- Plan confirmation has three direct actions: **Start execution** / **Revise plan** / **Exit without executing**. On Desktop, use one click or the matching number key. On CLI, use the matching number key or select a row and press `Enter`; `n` / `Esc` keeps planning for compatibility. Exiting rejects the pending plan and returns to Normal without starting an execution turn. Each action is recorded under its own name, so exiting is never filed as a revision.
+- On CLI, **Revise plan** opens a note field in the composer rather than deciding immediately: type what should change, `Enter` sends the note along with the decision so the next plan answers it, and `Esc` returns to the rows without deciding. An empty note behaves exactly like `n` / `Esc` — keep planning, say nothing. The Auto Guard card's revise action collects a note the same way. Clients that cannot express free text (HTTP, ACP) keep sending an empty note and behave as before.
 - Outside a pending CLI Plan confirmation, `Esc` stops the current task.
 - If you `Tab` to a button and press `Enter`, that focused button runs (it is not overridden by the highlight).
 

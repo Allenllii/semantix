@@ -1029,7 +1029,7 @@ func TestApprovalChoicesPreserveDecisionSemantics(t *testing.T) {
 		{
 			name: "plan decision",
 			tool: planApprovalTool,
-			want: []approvalChoice{{allow: true}, {}, {exitPlan: true}},
+			want: []approvalChoice{{allow: true}, {promptsForText: true}, {exitPlan: true}},
 		},
 	}
 	for _, tt := range tests {
@@ -1050,7 +1050,9 @@ func TestApprovalChoicesPreserveDecisionSemantics(t *testing.T) {
 	grantable := approvalChoices(&event.Approval{
 		Kind: "recovery", Recovery: &event.RecoveryApproval{CanGrantTask: true},
 	})
-	wantGrantable := []approvalChoice{{allow: true}, {allow: true, allowForSession: true}, {}}
+	wantGrantable := []approvalChoice{
+		{allow: true}, {allow: true, allowForSession: true}, {promptsForText: true},
+	}
 	if len(grantable) != len(wantGrantable) {
 		t.Fatalf("grantable recovery choices = %d, want %d", len(grantable), len(wantGrantable))
 	}
@@ -1074,7 +1076,7 @@ func TestApprovalChoicesPreserveDecisionSemantics(t *testing.T) {
 	}
 	planApprovalLabels := approvalChoiceLabels(&event.Approval{Tool: planApprovalTool})
 	if len(planApprovalLabels) != 3 || planApprovalLabels[0] != "Start execution" ||
-		planApprovalLabels[1] != "Revise plan (keep planning)" || planApprovalLabels[2] != "Exit without executing" {
+		planApprovalLabels[1] != "Revise plan (keep planning; note optional)" || planApprovalLabels[2] != "Exit without executing" {
 		t.Fatalf("plan approval labels = %v", planApprovalLabels)
 	}
 }
@@ -1084,9 +1086,12 @@ func TestPlanApprovalActionsSynchronizeTUIAndControllerMode(t *testing.T) {
 		name     string
 		key      tea.KeyPressMsg
 		wantPlan bool
+		// wantNote marks the row that collects a revision note before deciding:
+		// it holds the card open instead of resolving on the keystroke.
+		wantNote bool
 	}{
 		{name: "start execution", key: tea.KeyPressMsg{Code: '1'}},
-		{name: "revise plan", key: tea.KeyPressMsg{Code: '2'}, wantPlan: true},
+		{name: "revise plan", key: tea.KeyPressMsg{Code: '2'}, wantPlan: true, wantNote: true},
 		{name: "exit without executing", key: tea.KeyPressMsg{Code: '3'}},
 		{name: "legacy n keeps planning", key: tea.KeyPressMsg{Code: 'n'}, wantPlan: true},
 		{name: "escape keeps planning", key: tea.KeyPressMsg{Code: tea.KeyEscape}, wantPlan: true},
@@ -1103,7 +1108,18 @@ func TestPlanApprovalActionsSynchronizeTUIAndControllerMode(t *testing.T) {
 
 			next, _ := m.handleApprovalKey(tt.key)
 			m = next.(chatTUI)
-			if m.pendingApproval != nil {
+			switch {
+			case tt.wantNote:
+				if m.pendingApproval == nil {
+					t.Fatal("revise cleared the card before collecting its note")
+				}
+				if !m.approvalTyping {
+					t.Fatal("revise did not open the note field")
+				}
+				if m.hideComposer() {
+					t.Fatal("composer hidden while the note is being typed")
+				}
+			case m.pendingApproval != nil:
 				t.Fatal("plan approval was not resolved")
 			}
 			if m.planMode != tt.wantPlan || m.ctrl.PlanMode() != tt.wantPlan {
@@ -1118,7 +1134,7 @@ func TestPlanApprovalBannerShowsThreeExplicitActions(t *testing.T) {
 	m.width = 120
 	m.pendingApproval = &event.Approval{ID: "plan", Tool: planApprovalTool}
 	banner := ansi.Strip(m.renderApprovalBanner())
-	for _, want := range []string{"Start execution", "Revise plan (keep planning)", "Exit without executing"} {
+	for _, want := range []string{"Start execution", "Revise plan (keep planning; note optional)", "Exit without executing"} {
 		if !strings.Contains(banner, want) {
 			t.Fatalf("plan approval banner missing %q:\n%s", want, banner)
 		}

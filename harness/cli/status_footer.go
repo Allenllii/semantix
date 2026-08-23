@@ -122,6 +122,10 @@ func (m chatTUI) primaryStatusLine(modeTag string, shellMode, cancelRequested bo
 		status += " · " + i18n.M.SkillPickerStatusLabel
 	case m.chooser != nil:
 		status += " · " + i18n.M.ChatStatusQuestion
+	case m.pendingApproval != nil && m.approvalTyping:
+		// Ahead of the two arms below on purpose: while the composer collects a
+		// revision note the row shortcuts they advertise do nothing.
+		status += " · " + i18n.M.ChatStatusApprovalNote
 	case m.pendingApproval != nil && m.pendingApproval.Tool == planApprovalTool:
 		status += " · " + i18n.M.ChatStatusPlanApproval
 	case m.pendingApproval != nil:
