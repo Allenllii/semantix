@@ -1,0 +1,2 @@
+{"role":"user","content":"查看部署配置"}
+{"role":"assistant","content":"部署配置在 /home/alice/secret 目录，密钥 sk-abcDEF0123456789abcdefghij 和联系邮箱 alice@example.com 都在里面"}
