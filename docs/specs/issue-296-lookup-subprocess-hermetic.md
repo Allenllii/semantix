@@ -114,12 +114,20 @@ func (s semantixLookup) budget() time.Duration {
 |---|---|
 | `TestSemantixLookupBudget` | 零值 → `3s`；注入值 → 原样返回 |
 | `TestSemantixLookupSubprocess` | 假内核 `argv` 模式，输出恰为 `lookup --query 修复 go 测试 --limit 7 --json\n`（**单一 want，跨平台**） |
-| `TestSemantixLookupFailsSoft` | 空 PATH → `("", nil)`；假内核 `fail` 模式 → `("", nil)` |
-| `TestSemantixLookupTimeoutDegrades` | 假内核 `hang` 模式 + 注入 200ms → `("", nil)`，且整体墙钟 < 3s（证明用的是注入预算而非生产预算） |
+| `TestSemantixLookupFailsSoft` | 子测例 `binary absent`（空 PATH）与 `binary exits non-zero`（假内核 `fail`）均 → `("", nil)` |
+| `TestSemantixLookupBudgetIsHonored` | 假内核 `argv` + 注入 **1ns** → `("", nil)` |
+| `TestSemantixLookupUnresponsiveKernel` | 假内核 `hang` + 注入 200ms → `("", nil)`，墙钟 ≤ 30s |
 | `TestSemantixLookupRequiresQuery` | 空 PATH；缺 query 报错、limit 越界被夹取不报错 |
 
 `TestSemantixLookupSubprocess` 注入 1 分钟预算：该测例断言 argv，不断言调度
 时延（§1.2 A）。
+
+**为何用 1ns 而不是「耗时 < 3s」来证明预算被遵守**：后者是墙钟断言，正是本
+issue 要根除的耦合——机器一饱和它自己就会 flaky。1ns 则两边都确定：没有任何
+机器的 fork+exec 能在 1ns 内完成，所以「预算被遵守」必然输出空；而假内核是
+会应答的，硬编码 3s 的实现会让它答出来。`UnresponsiveKernel` 的 30s 上限不
+测量延迟，只用来区分「deadline 触发了」与「根本没有 deadline」（假内核兜底
+睡 2 分钟），因此留了两个数量级的余量。
 
 ## 4. 非目标
 
@@ -146,8 +154,11 @@ func (s semantixLookup) budget() time.Duration {
 **T4 — 密封 PATH + 补 fail-soft 覆盖**
 1. `FailsSoft` 拆为「内核缺失」（空 PATH）与「内核损坏」（`fail` 模式）两个子测例。
 2. `RequiresQuery` 加空 PATH。
-3. 新增 `TestSemantixLookupTimeoutDegrades`（`hang` 模式 + 200ms 注入）。
-4. 跑全包 `-count=3`，预期全绿。commit。
+3. 新增 `TestSemantixLookupBudgetIsHonored`（`argv` + 1ns）与
+   `TestSemantixLookupUnresponsiveKernel`（`hang` + 200ms）。
+4. **变异检验**：临时把 `Execute` 的 `s.budget()` 改回硬编码 3s、把软降级改成
+   `return "", err`，确认对应测例翻红后回滚。守卫不经此步不算数。
+5. 跑全包 `-count=2`，预期全绿。commit。
 
 **T5 — 验收**
 1. `go vet ./...`
@@ -157,11 +168,19 @@ func (s semantixLookup) budget() time.Duration {
 
 ## 6. 验收标准
 
-- 本地 Windows：`go test ./harness/tool/ -run TestSemantixLookup -count=5` 全绿
-  （修复前 5/5 失败）。
+- 本地 Windows：`go test ./harness/tool/ -run TestSemantixLookup -count=5` 全绿。
+  修复前同一命令 `-count=3` 为 **3/3 失败**（代码页乱码，确定性）。
 - 该文件内所有测例不再读取宿主 PATH、不再依赖 `/bin/sh` 或 `cmd.exe`、
-  不再有平台分支的 `want`。
-- `semantixLookup{}.budget()` 仍为 3s，且有测例看守。
-- `go vet ./...` 与 `go build ./...` 干净。
-- 已知残余：`-race` 需要 cgo，本机无 C 编译器，`-race` 全仓验证由 CI
-  （ubuntu-latest）承担。
+  不再有平台分支的 `want`、不再需要 `\r\n` 归一化。
+- `semantixLookup{}.budget()` 仍为 3s，且有测例看守；变异检验通过。
+- `go vet ./...`、`go build ./...`、`go test ./...` 干净。
+
+### 6.1 已知残余
+
+- `-race` 需要 cgo，本机无 C 编译器（`go test -race` 直接报
+  `-race requires cgo`），因此 **issue 原始复现路径（全仓 `-race`）只能由 CI
+  ubuntu-latest 承担**。本 spec 通过变异检验替代该端到端复现：证明预算注入
+  确实被 `Execute` 使用、且超时确实走软降级，这两条正是原始失败链的全部环节。
+- 假内核每个测例复制一次测试二进制（3.2 MB / ~4 ms）。Windows 上首次执行新
+  写入的可执行文件另有 ~790 ms 的 AV 首扫开销（同一文件后续降到 40–75 ms），
+  Linux CI 无此开销。该成本落在注入的 1 分钟预算内，不影响判定。

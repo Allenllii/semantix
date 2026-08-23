@@ -25,9 +25,9 @@ func TestSemantixLookupSchemaAndName(t *testing.T) {
 }
 
 // TestSemantixLookupBudget pins the production subprocess deadline. The 3s
-// default is half of the fail-soft contract — overrun degrades to an empty
-// result — so a test widening the budget for its own assertions must not be
-// able to move it. Zero value means production.
+// default is part of the fail-soft contract — an overrun degrades to an empty
+// result — so a test that widens the budget for its own assertions must not be
+// able to move it. The zero value means production.
 func TestSemantixLookupBudget(t *testing.T) {
 	if got := (semantixLookup{}).budget(); got != 3*time.Second {
 		t.Errorf("production budget: got %s, want 3s", got)
