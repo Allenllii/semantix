@@ -324,6 +324,9 @@ type Messages struct {
 	GoalCleared                  string
 	GoalNotRunning               string
 	GoalNotPaused                string
+	// SetEffort rejections. Session-scoped runtime depth, not the config write.
+	SessionEffortUnsupportedFmt  string // %s = model name
+	SessionEffortNotADepthFmt    string // %s = level, %s = model name
 	GoalPaused                   string
 	GoalPausedReason             string
 	GoalPausedFmt                string // %s = stop cause

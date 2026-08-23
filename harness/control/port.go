@@ -243,6 +243,15 @@ type Settings interface {
 	SetResponseLanguage(lang string)
 	SetReasoningLanguage(lang string)
 	SetDisplayRecorder(fn func(content, display string))
+	// SessionEffort is the session-scoped reasoning depth: "" when the dial has
+	// never been touched, "auto" when it was deliberately set back to the
+	// provider default, or the depth itself.
+	SessionEffort() string
+	// SetEffort updates that depth for subsequent model rounds without
+	// rebuilding the controller, provider, or tool schemas — the counterpart to
+	// SetAgentPreset. "" clears the override, "auto" is an explicit choice of
+	// the provider default. A rejected level changes nothing.
+	SetEffort(level string) error
 }
 
 // SessionAPI is the full driving port — the composition of every sub-port. A

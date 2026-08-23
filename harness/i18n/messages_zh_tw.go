@@ -567,6 +567,8 @@ var ChineseTraditional = Messages{
 	GoalCleared:                "目標已清除",
 	GoalNotRunning:             "沒有執行中的目標可暫停",
 	GoalNotPaused:              "沒有已暫停或被阻擋的目標可恢復",
+	SessionEffortUnsupportedFmt: "%s 不支援設定推理深度",
+	SessionEffortNotADepthFmt:   "%s 對 %s 是思考開關而不是深度檔；執行時覆蓋只能改深度",
 	GoalPaused:                 "目標已暫停 — /goal resume 可繼續",
 	GoalPausedReason:           "使用者手動暫停",
 	GoalPausedFmt:              "目標已暫停（%s）— 使用 /goal resume 繼續",
