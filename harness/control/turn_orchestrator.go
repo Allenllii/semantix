@@ -361,7 +361,7 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	if !reply.allow {
 		// A revision is a complete orchestrated frame, not a direct runner call:
 		// it owns fresh message/hook boundaries and gates the revised plan again.
-		if revision := planRevisionMessage(reply.feedback); revision != "" && c.PlanMode() {
+		if revision := planRevisionMessage(reply.feedback); reply.planAction == PlanDecisionRevisePlan && revision != "" && c.PlanMode() {
 			return o.runOrchestratedTurn(ctx, orchestratedTurn{
 				input: revision, raw: revision, synthetic: true,
 			})

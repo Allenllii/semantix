@@ -17,7 +17,8 @@ by the frontend work in #329. It does not change any frontend call site.
 
 ## Requirements
 
-1. `approvalReply` gains bounded revision feedback.
+1. `approvalReply` gains bounded revision feedback and retains the exact
+   three-way plan action instead of reducing the reply to a boolean.
 2. `Controller.ResolvePlanDecision` and the `Approvals` port take a trailing
    `feedback string`; all existing boolean-only `Approve` APIs remain unchanged.
 3. Feedback is trimmed and clipped to 4096 bytes on a valid UTF-8 boundary by
@@ -49,11 +50,12 @@ by the frontend work in #329. It does not change any frontend call site.
 
 ### Reply transport
 
-`approvalReply.feedback` is private in-process state. `ResolvePlanDecision`
-validates the action, clips the note, records the existing receipt, and sends
-the reply. The boolean `allow` remains true only for `start_execution`, so old
-control flow is preserved. The existing receipt continues to carry the exact
-three-way action; feedback is not added to the receipt.
+`approvalReply.feedback` and `approvalReply.planAction` are private in-process
+state. `ResolvePlanDecision` validates the action, clips the note, records the
+existing receipt, and sends both values. The boolean `allow` remains true only
+for `start_execution`, so old control flow is preserved. The existing receipt
+continues to carry the exact three-way action; feedback is not added to it.
+The legacy `Approve` path synthesizes start/revise actions for compatibility.
 
 ### Plain plan-mode gate
 

@@ -71,6 +71,9 @@ func TestResolvePlanDecisionRecordsDistinctOutcomes(t *testing.T) {
 				if got.feedback != tt.feedback {
 					t.Fatalf("reply feedback = %q, want %q", got.feedback, tt.feedback)
 				}
+				if got.planAction != tt.action {
+					t.Fatalf("reply plan action = %q, want %q", got.planAction, tt.action)
+				}
 			default:
 				t.Fatal("plan decision did not unblock the approval waiter")
 			}

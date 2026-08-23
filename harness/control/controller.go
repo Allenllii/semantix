@@ -322,10 +322,11 @@ type Controller struct {
 }
 
 type approvalReply struct {
-	allow    bool
-	session  bool
-	persist  bool // true = write "always allow" rule to config
-	feedback string
+	allow      bool
+	session    bool
+	persist    bool // true = write "always allow" rule to config
+	feedback   string
+	planAction PlanDecisionAction
 }
 
 type pendingApproval struct {
@@ -2261,10 +2262,13 @@ func (c *Controller) Approve(id string, allow, session, persist bool) {
 		return
 	}
 	outcome := "deny"
+	var planAction PlanDecisionAction
 	if pending.tool == planApprovalTool {
 		outcome = string(PlanDecisionRevisePlan)
+		planAction = PlanDecisionRevisePlan
 		if allow {
 			outcome = string(PlanDecisionStartExecution)
+			planAction = PlanDecisionStartExecution
 		}
 	} else if allow {
 		switch {
@@ -2277,7 +2281,7 @@ func (c *Controller) Approve(id string, allow, session, persist bool) {
 		}
 	}
 	c.recordDecisionReceipt(pending, outcome)
-	pending.reply <- approvalReply{allow: allow, session: session, persist: persist} // buffered, never blocks
+	pending.reply <- approvalReply{allow: allow, session: session, persist: persist, planAction: planAction} // buffered, never blocks
 }
 
 // ResolvePlanDecision answers the Plan card without collapsing revise and exit
@@ -2302,8 +2306,9 @@ func (c *Controller) ResolvePlanDecision(id string, action PlanDecisionAction, f
 	pending.kind = "plan"
 	c.recordDecisionReceipt(pending, string(action))
 	pending.reply <- approvalReply{
-		allow:    action == PlanDecisionStartExecution,
-		feedback: clipUTF8(feedback, 4*1024),
+		allow:      action == PlanDecisionStartExecution,
+		feedback:   clipUTF8(feedback, 4*1024),
+		planAction: action,
 	}
 	return nil
 }
