@@ -63,7 +63,7 @@ func TestE2EL3HitRecordsStatsAndEvent(t *testing.T) {
 	seed(t, g, &slice.Slice{
 		ID: "l3-stats", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("hello world hello world cached answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	})
 
 	resp, out := postChatWithHeaders(t, srv, "test-key", map[string]string{

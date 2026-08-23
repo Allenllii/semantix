@@ -164,7 +164,8 @@ func runInject(args []string, stdout, stderr io.Writer, deps dependencies) error
 	}
 
 	z := zf.zones()
-	inj, err := (&inject.Injector{Index: idx, Scope: scope, K: *k, Budget: *budget, Zones: &z}).Build(*query)
+	inj, err := (&inject.Injector{Index: idx, Scope: scope, K: *k, Budget: *budget, Zones: &z,
+		MinOrigin: slice.Origin(cfgString(deps.resolved, "slice.min_inject_origin", "session-auto"))}).Build(*query)
 	if err != nil {
 		return err
 	}

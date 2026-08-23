@@ -9,6 +9,7 @@ import (
 
 	"semantix/kernel/evolve"
 	"semantix/kernel/fuse"
+	"semantix/kernel/slice"
 	"semantix/kernel/zone"
 )
 
@@ -699,5 +700,47 @@ func TestZoneConfigByTypeValueValidation(t *testing.T) {
 				t.Fatalf("Load must reject: %s", tc.name)
 			}
 		})
+	}
+}
+
+// TestValidateMinInjectOrigin covers the Issue #279 [slice] floor:
+// valid origins pass, unknown values are rejected, and the unset
+// default is session-auto in DefaultConfig.
+func TestValidateMinInjectOrigin(t *testing.T) {
+	base := func() *Config {
+		c := DefaultConfig()
+		c.Server.GatewayKey = "k"
+		c.Store.DB = "x.jsonl"
+		c.Upstreams = []UpstreamConfig{{Name: "ds", BaseURL: "https://u/v1", APIKey: "k",
+			ModelAlias: []string{"m"}, UpstreamModel: "m", Vendor: "deepseek"}}
+		return c
+	}
+	for _, v := range []string{"", "import", "session-auto", "prefetch", "user-curated"} {
+		c := base()
+		c.Slice.MinInjectOrigin = v
+		if err := c.validate(); err != nil {
+			t.Errorf("min_inject_origin %q rejected: %v", v, err)
+		}
+	}
+	c := base()
+	c.Slice.MinInjectOrigin = "root"
+	if err := c.validate(); err == nil {
+		t.Error("min_inject_origin=root must be rejected")
+	}
+	if got := DefaultConfig().Slice.MinInjectOrigin; got != "session-auto" {
+		t.Fatalf("default min_inject_origin = %q, want session-auto", got)
+	}
+}
+
+// TestMinInjectOriginMapping: minInjectOrigin resolves the config
+// string to a kernel/slice.Origin; unset keeps the kernel default.
+func TestMinInjectOriginMapping(t *testing.T) {
+	c := DefaultConfig()
+	if got := c.minInjectOrigin(); got != slice.OriginSessionAuto {
+		t.Fatalf("default mapping = %q, want session-auto", got)
+	}
+	c.Slice.MinInjectOrigin = "user-curated"
+	if got := c.minInjectOrigin(); got != slice.OriginUserCurated {
+		t.Fatalf("mapping = %q, want user-curated", got)
 	}
 }
