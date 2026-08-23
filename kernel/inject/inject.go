@@ -21,6 +21,7 @@ import (
 	"strings"
 	"unicode"
 
+	"semantix/kernel/sanitize"
 	"semantix/kernel/slice"
 	"semantix/kernel/zone"
 )
@@ -71,8 +72,8 @@ const DefaultBudget = 4096
 
 // Injector retrieves and assembles reuse slices for one user turn.
 type Injector struct {
-	Index  slice.Index
-	Store  slice.Store // optional; used to re-read full slices when the index
+	Index slice.Index
+	Store slice.Store // optional; used to re-read full slices when the index
 	// returns them anyway — kept for symmetry with future lazy indexes.
 	Scope slice.Scope
 	K     int // top-k slices to consider (default 5)
@@ -138,11 +139,24 @@ func (in *Injector) Build(query string) (*Injection, error) {
 				continue
 			}
 		}
-		if buf.Len()+len(h.Slice.Content)+len(blockClose)+64 > budget && len(kept) > 0 {
+		// Inject-side sanitization (Issue #278, Security §3.1): the block
+		// carries the deterministically cleaned content — escape stripping,
+		// injection-feature removal, sensitive redaction — then the block
+		// markers are escaped. Idempotent for write-side-sanitized slices
+		// (zero change → L1 prefix cache unaffected); legacy unsanitized
+		// slices are backstopped here. A payload that sanitizes to empty is
+		// dropped entirely (nothing useful to inject).
+		content := sanitize.Sanitize(string(h.Slice.Content))
+		if content == "" {
 			dropped++
 			continue
 		}
-		fmt.Fprintf(&buf, "--- slice %s (score=%.2f) ---\n%s\n", h.Slice.ID, h.Score, h.Slice.Content)
+		content = escapeMarker(content)
+		if buf.Len()+len(content)+len(blockClose)+64 > budget && len(kept) > 0 {
+			dropped++
+			continue
+		}
+		fmt.Fprintf(&buf, "--- slice %s (score=%.2f) ---\n%s\n", h.Slice.ID, h.Score, content)
 		kept = append(kept, h.Slice)
 	}
 
@@ -150,10 +164,13 @@ func (in *Injector) Build(query string) (*Injection, error) {
 	sort.Slice(kept, func(i, j int) bool { return kept[i].ID < kept[j].ID })
 
 	// Rebuild the text in canonical order (the first pass wrote score order).
+	// Sanitize again here — idempotent, so first-pass-cleaned slices are
+	// unchanged, while the canonical rebuild never reintroduces payload
+	// content (Issue #278).
 	buf.Reset()
 	buf.WriteString(blockOpen)
 	for _, sl := range kept {
-		fmt.Fprintf(&buf, "--- slice %s ---\n%s\n", sl.ID, escapeMarker(string(sl.Content)))
+		fmt.Fprintf(&buf, "--- slice %s ---\n%s\n", sl.ID, escapeMarker(sanitize.Sanitize(string(sl.Content))))
 	}
 	buf.WriteString(blockClose)
 
