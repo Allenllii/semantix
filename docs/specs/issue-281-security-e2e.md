@@ -113,15 +113,15 @@ func TestSanitizeBypassChainLevel(t *testing.T)        // 载荷分片跨行/Uni
 
 ## 6. 验收标准
 
-- [ ] 五条链各 ≥1 组可复现测例（testdata/security/poison/ 语料 +
+- [x] 五条链各 ≥1 组可复现测例（testdata/security/poison/ 语料 +
       security_e2e_test.go）；
-- [ ] 门禁断言：marker 逃逸成功率 = 0%、raw-untrusted 直通率 = 0%
+- [x] 门禁断言：marker 逃逸成功率 = 0%、raw-untrusted 直通率 = 0%
       （链 A/B/D/E）；
-- [ ] 链 C 与 #280 promote 共识联动（stub judge 主过次拒 → 提升写入 0）；
-- [ ] 自适应绕过视角：marker 转义 4 类绕过变体 + sanitize 已知绕过
+- [x] 链 C 与 #280 promote 共识联动（stub judge 主过次拒 → 提升写入 0）；
+- [x] 自适应绕过视角：marker 转义 7 类绕过变体 + sanitize 已知绕过
       显式断言（与 #278 kernel/sanitize 单测互补不重复）；
-- [ ] 普通会话字节回归锚（防御零误伤）；
-- [ ] `go vet ./...`、`go test ./...`（除既有 pre-existing 环境失败）
+- [x] 普通会话字节回归锚（防御零误伤）；
+- [x] `go vet ./...`、`go test ./...`（除既有 pre-existing 环境失败）
       全绿；`git diff --check` 通过。
 
 ## 7. 参考
