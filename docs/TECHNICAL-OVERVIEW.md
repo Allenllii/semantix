@@ -1,0 +1,1092 @@
+# Semantix — Technical Overview
+
+> This is the full technical companion to the [README](../README.md). The front page stays short on purpose; everything below is for readers who want the architecture, the mechanisms, the current status, and the evidence behind the numbers.
+>
+> 中文版本见 [TECHNICAL-OVERVIEW.zh-CN.md](./TECHNICAL-OVERVIEW.zh-CN.md)。
+
+**Contents**: [Why Semantix](#why-semantix) · [Reuse Visualization](#reuse-visualization) · [Semantic Slice Library](#semantic-slice-library) · [Three-Layer Semantic Cache](#three-layer-semantic-cache) · [Adaptive Kernel Scheduler](#adaptive-kernel-scheduler) · [Speculative Prefetch](#speculative-prefetch) · [Self-Evolving Optimization](#self-evolving-optimization) · [Architecture](#architecture) · [Repository Module Guide](#repository-module-guide) · [How a Request Flows](#how-a-request-flows) · [Harness + Kernel](#harness--kernel) · [Design Principles](#design-principles) · [Project Status](#project-status) · [Roadmap](#roadmap) · [Target Metrics](#target-metrics) · [Evaluation Philosophy](#evaluation-philosophy) · [What Semantix Is Not](#what-semantix-is-not) · [Acknowledgements](#acknowledgements)
+
+---
+
+## Why Semantix?
+
+Modern agent harnesses have become increasingly good at managing long-running sessions.
+
+They can maintain context, call tools, compact history, recover from failures, and take advantage of provider-side prefix caching.
+
+But most optimization still stops at the **session boundary**.
+
+A new session often means:
+
+* rebuilding project context
+* repeating similar tool calls
+* re-processing familiar instructions
+* rediscovering the same files
+* paying again for work the agent has effectively already done
+* ignoring the user's historical workflow patterns
+
+A traditional agent often behaves like this:
+
+```text
+Session A ────────────X
+                      context ends
+
+Session B ────────────X
+                      context rebuilt
+
+Session C ────────────X
+                      similar work repeated
+```
+
+Semantix introduces a persistent optimization layer:
+
+```text
+Session A ───────┐
+                 │
+Session B ───────┼────► Semantix
+                 │          │
+Session C ───────┘          │
+                            ▼
+                    Semantic knowledge
+                    Behavioral patterns
+                    Reusable results
+                    Cacheable context
+                            │
+                            ▼
+                    Better next session
+```
+
+Instead of only asking:
+
+> **How do we keep this session efficient?**
+
+Semantix asks:
+
+> **What has this user done before, what are they likely to do next, and what work can safely be reused?**
+
+---
+
+## Reuse Visualization
+
+> **Cross-session reuse you can see.** Semantix renders the three reuse signals — hit rate, cost saved, source session — as one-glance CLI output (the Agile 1 DoD "reuse visualization", shipped as U28–U31). Every block below is **real output** captured from a small demo library (4 extracted sessions); the real-data measurement lives in [`reports/m0-cost-comparison.md`](./reports/m0-cost-comparison.md) (**79.8%** cost saved on synthetic replay).
+
+One-screen snapshot — `semantix dashboard`:
+
+```text
+$ semantix dashboard
+
+  semantix dashboard — reuse snapshot
+  ------------------------------------------------
+
+  💰 Cost savings
+     paid        $ 0.0060
+     baseline    $ 0.0141
+     saved       $ 0.0080  (56.99%)
+     ██████████████░░░░░░░░░░
+
+  🎯 Cache hit rate (L3/L2)
+     4 / 5 turns  (80.00%)
+     L3 1 · L2 3
+     ███████████████████░░░░░
+
+  🗂 Zone distribution (library replay)
+     hit  ████ 4   grey ██████ 6   miss  0
+
+  📦 Slice library
+     10 slices · 3 cross-session sessions
+```
+
+Every hit carries its zone icon and source session — `semantix search` / `semantix lookup`:
+
+```text
+$ semantix search --query "fix failing go test"
+1. 🟢 score=4.331011 zone=hit id=619551c54af5437a scope=project from:2026-08-14-c9d4
+   fix failing go test after refactor
+2. 🟢 score=3.852740 zone=hit id=73b12bb117664106 scope=project from:2026-08-13-b7c2
+   fix failing go test in kernel slice extractor
+3. 🟢 score=3.852740 zone=hit id=adfecdd9bff0db2d scope=project from:2026-08-12-a1f3
+   fix failing go test in kernel slice store
+🎯 3/3 hits in 3 sessions
+```
+
+Replay gate with zone bars and a one-line verdict — `semantix verify`:
+
+```text
+$ semantix verify --session ./sessions
+session	turn	score	zone	top1_content	query
+session-2026-08-14-d2e5.jsonl	3	7.1261	✅hit	add shell completion for bash and zsh	add shell completion for zsh
+session-2026-08-14-d2e5.jsonl	4	0.0000	❌miss		design a brand new logo
+# done: 4 replayed turns; zones hit=3 grey=0 miss=1 grey_ratio=0.0% (target 30.0%)
+# zones: hit ██████░░ grey ░░░░░░░░ miss ██░░░░░░
+# ✅ PASS relevance=75.0% (≥70%)
+```
+
+Per-session cost meter — `semantix usage`:
+
+```text
+$ semantix usage
+💰 节省成本  ██████░░░░  $0.008017
+📈 节省率    57.0%
+🧠 L3 复用   1
+📦 命中切片  10
+…
+```
+
+Icon legend (two icon families — retrieval zones vs. the verify gate):
+
+| Where                                | Icons                     | Meaning                                                          |
+| ------------------------------------ | ------------------------- | ---------------------------------------------------------------- |
+| Retrieval zone (`search` / `lookup`) | 🟢 hit · 🟡 grey · ⚪ miss | 🟢 clearly reusable · 🟡 verify before reuse · ⚪ do not reuse    |
+| Replay table (`verify` TSV)          | ✅hit · 🟡grey · ❌miss    | top-1 zone verdict for each replayed turn                        |
+| Gate verdict (`verify` tail)         | ✅ PASS · ⚠ WARN · ❌ FAIL | ✅ relevance ≥ 70% · ⚠ grey ratio over target · ❌ under the bar |
+
+---
+
+## Semantic Slice Library
+
+> **Status: shipped (v0.3.1)** — the extractor (P/T/R slices), BM25 + hybrid retrieval, and a file-backed store are implemented in `kernel/` with tests; local embeddings (Ollama/bge-m3) and an ANN index are the next step.
+
+At the center of Semantix is the **Semantic Slice Library (SSL)**.
+
+Semantix extracts reusable semantic units from historical agent sessions and stores them in a persistent vector-indexed library.
+
+Rather than treating an entire conversation as one large memory object, Semantix separates reusable information into different kinds of slices.
+
+| Slice       | Meaning               | Used for              | Example                           |
+| ----------- | --------------------- | --------------------- | --------------------------------- |
+| **P-Slice** | Prompt / task pattern | L2 context injection  | `run tests before committing`     |
+| **C-Slice** | Context knowledge     | L2 context injection  | project structure, build commands |
+| **T-Slice** | Tool behavior pattern | scheduling / prefetch | `grep → readFile → editFile`      |
+| **R-Slice** | Reusable result       | L3 result reuse       | repeated lookup or explanation    |
+| **M-Slice** | Memory unit           | retrieval / evolution | user or project preferences       |
+
+A slice is not automatically permanent.
+
+Slices can be scored using signals such as:
+
+* historical hit rate
+* recency
+* intent relevance
+* successful injection
+* user corrections
+* explicit feedback
+* reuse frequency
+
+Low-value slices decay.
+
+Useful slices become easier to retrieve.
+
+The objective is for the library to become:
+
+> **more precise — not simply larger.**
+
+---
+
+## Three-Layer Semantic Cache
+
+> **Status: partially shipped** — L2 deterministic injection (`semantix inject`) and L3 verified reuse (`kernel/fingerprint` + `kernel/judge` + `kernel/promote`, accepted per [`reports/issue-08-acceptance.md`](./reports/issue-08-acceptance.md)) are implemented; real-harness end-to-end validation is pending.
+
+Semantix adds semantic reuse on top of existing provider-side prefix caching.
+
+```text
+┌────────────────────────────────────────┐
+│ L3 · Verified Result Reuse             │
+│ Reuse work without a model call        │
+├────────────────────────────────────────┤
+│ L2 · Semantic Slice Injection          │
+│ Meaning → stable canonical context     │
+├────────────────────────────────────────┤
+│ L1 · Provider Prefix / Byte Cache      │
+│ Reuse identical prompt prefixes        │
+└────────────────────────────────────────┘
+```
+
+Each layer has a different cost and risk profile.
+
+### L1 — Provider Prefix Cache
+
+Most provider-side prefix caches operate on identical or sufficiently stable prompt prefixes.
+
+If the beginning of a request remains byte-stable, the provider may be able to reuse previously computed work.
+
+This is fast and low risk.
+
+But it has an important limitation:
+
+```text
+similar meaning ≠ identical bytes
+```
+
+Two prompts can mean almost the same thing while producing completely different cache keys.
+
+Semantix keeps L1 as the foundation and tries to make the higher layers **feed it**.
+
+### L2 — Semantic Slice Injection
+
+This is one of the central ideas behind Semantix.
+
+Suppose two different sessions have semantically similar tasks:
+
+```text
+Session A:
+"Before finishing, run the Go test suite."
+
+Session B:
+"Make sure all Go tests pass before you're done."
+```
+
+The meaning is similar.
+
+The bytes are not.
+
+A normal prefix cache may treat them as unrelated.
+
+Semantix instead retrieves a previously stored canonical slice:
+
+```text
+[workflow:test-before-finish]
+Run `go test ./...` before marking the task complete.
+```
+
+That stable slice can then be inserted deterministically into the model context.
+
+The flow becomes:
+
+```text
+semantic similarity
+        │
+        ▼
+retrieve canonical slice
+        │
+        ▼
+stable deterministic content
+        │
+        ▼
+identical prompt bytes
+        │
+        ▼
+provider prefix-cache hit
+```
+
+In other words:
+
+> **Semantic caching does not replace the provider cache. It feeds it.**
+
+To preserve cache stability, L2 injection should be deterministic:
+
+* stable serialization
+* stable ordering
+* whole-slice injection
+* deterministic retrieval
+* injection-set freezing
+* controlled updates
+
+Changing the order or representation of otherwise identical slices can destroy the cache benefit.
+
+### L3 — Verified Result Reuse
+
+The highest cache layer can potentially skip a model request entirely.
+
+For example:
+
+```text
+User asks:
+"Where is the authentication middleware defined?"
+```
+
+If Semantix has already answered the same read-only question and the relevant files have not changed, it may be possible to reuse the existing result.
+
+But:
+
+> **semantic similarity is not semantic equivalence.**
+
+For this reason, L3 is intentionally conservative.
+
+Reuse can require checks such as:
+
+* matching intent
+* matching input fingerprint
+* matching project
+* unchanged dependent files
+* file SHA / modification validation
+* freshness window
+* read-only task classification
+* no unknown session state
+
+L3 should be **fail-closed**.
+
+If Semantix cannot prove that reuse is safe, it should send the task through the normal agent loop.
+
+Write operations are never blindly replayed.
+
+---
+
+## Adaptive Kernel Scheduler
+
+> **Status: shipped (MVP)** — `kernel/sched.RuleDecider` implements parallel groups, a behavior-learning gate, model tiering, and prefetch hints (see [`Agile路线图.md`](./Agile路线图.md) H3); provider-level model switching is planned.
+
+Semantix is not only a cache.
+
+It also acts as a resource scheduler around the agent loop.
+
+For every task, the kernel can consider:
+
+```text
+What is the user's intent?
+
+Which context is useful?
+
+Which model should handle the task?
+
+Which tools are likely to be needed?
+
+Which operations can run concurrently?
+
+What can safely be reused?
+
+What should be prefetched?
+
+How much latency / token budget should be spent?
+```
+
+Inputs can include:
+
+* task intent
+* semantic slice matches
+* historical tool patterns
+* task complexity
+* historical success rate
+* model performance
+* available resources
+* latency budget
+* token budget
+* project state
+
+The scheduler can then produce decisions such as:
+
+```text
+Model tier
+    +
+Context injection
+    +
+Tool concurrency
+    +
+Cache reuse
+    +
+Prefetch plan
+```
+
+The priority order is:
+
+> **Correctness → Cache Reuse → Concurrency → Prefetch**
+
+Optimization should never come before task correctness.
+
+---
+
+## Speculative Prefetch
+
+> **Status: shipped (MVP)** — `kernel/prefetch` ships `Planner` (offline, Issue 62) + `MatrixPrefetcher` (online, hit/waste feedback) plus a `Runner`; wired into the scheduler via `prefetch.AsPlanFunc` (see [`Agile路线图.md`](./Agile路线图.md) H5).
+
+Agent execution contains a surprising amount of waiting.
+
+The system may be waiting for:
+
+* LLM streaming
+* network requests
+* tool output
+* file indexing
+* embeddings
+* external APIs
+
+During that time, local resources are often idle.
+
+Semantix attempts to use this waiting time to prepare likely next-step information.
+
+### Learning Tool Patterns
+
+T-Slices represent observed tool sequences.
+
+For example, historical behavior might look like:
+
+```text
+grep
+  │
+  │ 87%
+  ▼
+readFile
+  │
+  │ 72%
+  ▼
+editFile
+  │
+  │ 81%
+  ▼
+test
+```
+
+The percentages represent learned transition tendencies, not hardcoded workflow rules.
+
+Semantix can use several signals:
+
+#### Tool transition patterns
+
+```text
+P(tool B | tool A)
+```
+
+Example:
+
+```text
+grep → readFile
+```
+
+#### File-path patterns
+
+A project may repeatedly follow workflows such as:
+
+```text
+package.json
+      ↓
+src/
+      ↓
+tests/
+```
+
+#### Semantic similarity
+
+A current tool call may resemble a historical call whose next step is known.
+
+### Conservative Prefetch
+
+Prefetch is fundamentally speculative.
+
+Therefore Semantix should primarily prefetch **read-only** resources.
+
+Good candidates include:
+
+* next-turn semantic slice assembly
+* embedding queries
+* index lookups
+* safe metadata retrieval
+* read-only context preparation
+
+Operations with side effects must not be speculated.
+
+Semantix should never decide:
+
+```text
+"You usually edit this file next,
+so I edited it for you."
+```
+
+Instead:
+
+```text
+"You usually inspect this file next,
+so I prepared the relevant context."
+```
+
+### Learning From Waste
+
+Each speculative operation can be classified as:
+
+```text
+prefetch hit
+```
+
+or:
+
+```text
+prefetch waste
+```
+
+Repeatedly inaccurate predictions reduce that predictor's weight.
+
+Therefore the prefetcher should learn two things:
+
+> **when to predict**
+
+and
+
+> **when not to predict.**
+
+---
+
+## Self-Evolving Optimization
+
+> **Status: shipped (MVP)** — slice value scoring + capacity eviction are live: hit/injection accounting feeds `weight = recency · frequency · injection-success · feedback` (`kernel/slice` scorer), and `gc` / gateway startup enforce a capped, archived library. Eviction is **type-aware and deterministic** (Issue #277): result/tool_pattern slices go stale first, prompt/context project knowledge is kept, and the order is byte-reproducible for the same library + clock — no LLM in the loop. `kernel/evolve` remains an EWMA-tuning MVP (retrieval threshold only; signal wiring pending).
+
+Semantix is designed around a feedback loop.
+
+Every interaction generates signals.
+
+Those signals influence future decisions.
+
+```text
+User behavior
+      │
+      ▼
+Semantic slices
+      │
+      ▼
+Retrieval + scheduling
+      │
+      ▼
+Agent execution
+      │
+      ▼
+Cost / latency / success / corrections
+      │
+      ▼
+Feedback
+      │
+      ▼
+Parameter updates
+      │
+      └──────────────────────► next interaction
+```
+
+Possible feedback signals include:
+
+* L1 cache hit / miss
+* L2 slice hit / miss
+* L3 result reuse
+* token cost
+* latency
+* task success
+* user edits
+* context pollution
+* prefetch hit
+* prefetch waste
+* explicit approve / reject
+* retries
+* rollback events
+
+### Online Adaptation
+
+Lightweight statistics can adapt continuously.
+
+For example:
+
+* semantic similarity thresholds
+* injection budgets
+* prefetch thresholds
+* model-tier selection
+* concurrency limits
+
+EWMA-style updates can allow the system to react to changing usage patterns without retraining a large model.
+
+### Offline Optimization
+
+More expensive optimization can happen periodically.
+
+Examples:
+
+* refresh embeddings
+* retrain T-Slice transition matrices
+* search better thresholds
+* archive stale slices
+* evaluate slice quality
+* run ablation tests
+
+The long-term goal is:
+
+> **The system should improve because you use it.**
+
+---
+
+## Architecture
+
+Semantix is designed as a kernel independent of any specific agent harness.
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│                     Agent Harness                        │
+│                                                         │
+│  semantix-agent · Claude Code-style agents · custom     │
+└──────────────────────────┬──────────────────────────────┘
+                           │
+                    events │ decisions
+                           │
+┌──────────────────────────▼──────────────────────────────┐
+│                    SEMANTIX KERNEL                       │
+│                                                         │
+│  ┌─────────────────┐      ┌──────────────────────────┐ │
+│  │ Intent          │      │ Semantic Slice Library   │ │
+│  │ Perception      │      │ P / C / T / R / M       │ │
+│  └────────┬────────┘      └────────────┬─────────────┘ │
+│           │                            │               │
+│  ┌────────▼────────┐      ┌────────────▼─────────────┐ │
+│  │ Adaptive        │◄────►│ Semantic Cache          │ │
+│  │ Scheduler       │      │ L1 / L2 / L3           │ │
+│  └────────┬────────┘      └────────────┬─────────────┘ │
+│           │                            │               │
+│  ┌────────▼────────┐      ┌────────────▼─────────────┐ │
+│  │ Evolution       │◄────►│ Speculative Prefetch    │ │
+│  │ Engine          │      │ T-Slice prediction      │ │
+│  └─────────────────┘      └──────────────────────────┘ │
+│                                                         │
+└──────────────────────────┬──────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────┐
+│                    Resource Layer                        │
+│                                                         │
+│ LLM APIs · Tools · Files · Embeddings · Local Indexes   │
+└─────────────────────────────────────────────────────────┘
+```
+
+The kernel observes the harness through an adapter/event layer.
+
+It can then return optimization decisions without owning the agent's primary reasoning loop.
+
+This allows Semantix to remain portable across different agent runtimes.
+
+<!-- repository-module-guide:start -->
+## Repository Module Guide
+
+This map follows the current repository layout. It describes observable responsibilities and focused checks; it does not turn design targets into production-performance claims.
+
+| Module | Path | Responsibility | Focused verification |
+|---|---|---|---|
+| CLI | [`cmd/semantix`](../cmd/semantix) | Command registry, stable JSON envelope, exit-code contract, maintenance and evaluation commands. | `go test ./cmd/semantix -race` |
+| Agent executable | [`cmd/semantix-agent`](../cmd/semantix-agent) | Packaged Semantix-derived agent entry point with crash capture and build-version wiring. | `go test ./cmd/semantix-agent` |
+| Gateway | [`gateway`](../gateway), [`cmd/semantix-gateway`](../cmd/semantix-gateway) | OpenAI-compatible proxy, Anthropic conversion, SSE relay, retrieval/injection and fail-open upstream routing. | `go test ./gateway ./cmd/semantix-gateway -race` |
+| Configuration | [`kernel/config`](../kernel/config) | Resolves built-ins, TOML, environment variables and CLI overrides with source tracking and typed errors. | `go test ./kernel/config -race` |
+| Event ingestion | [`kernel/ingest`](../kernel/ingest) | Reads harness JSONL event streams and feeds normalized sessions into extraction without requiring a live harness. | `go test ./kernel/ingest -race` |
+| Semantic slices | [`kernel/slice`](../kernel/slice) | Slice types, scopes, metadata, extraction, file-backed storage, append journal, compaction and maintenance. | `go test ./kernel/slice -race` |
+| BM25 retrieval | [`kernel/bm25`](../kernel/bm25) | Lexical index and CJK-aware tokenizer used by local search and hybrid retrieval. | `go test ./kernel/bm25 -race` |
+| Embeddings | [`kernel/embed`](../kernel/embed) | Embedder contract, deterministic hash embedder, model-backed embedding and in-memory cosine vector index. | `go test ./kernel/embed -race` |
+| Lookup tool | [`kernel/lookup`](../kernel/lookup) | Read-only `semantix_lookup` schema and executor that exposes ranked slice hits to agent harnesses. | `go test ./kernel/lookup` |
+| L2 injection | [`kernel/inject`](../kernel/inject) | Selects whole slices under a budget and emits a deterministic, marker-escaped reuse block. | `go test ./kernel/inject -race` |
+| Retrieval zones | [`kernel/zone`](../kernel/zone) | Three-region hit, grey and miss classifier shared by retrieval, verification and evolution. | `go test ./kernel/zone -race` |
+| L3 cache | [`kernel/cache`](../kernel/cache) | Conservative result-reuse decision interface and L3 decider; uncertain candidates fall back to normal execution. | `go test ./kernel/cache -race` |
+| Dependency fingerprints | [`kernel/fingerprint`](../kernel/fingerprint) | Captures and verifies file dependencies so stale project state invalidates otherwise reusable results. | `go test ./kernel/fingerprint -race` |
+| Reuse judge | [`kernel/judge`](../kernel/judge) | Rule gate plus optional LLM judge, prompt sanitization and verdict statistics for risky L3 candidates. | `go test ./kernel/judge -race` |
+| Result promotion | [`kernel/promote`](../kernel/promote) | Stores judge-approved reusable results with content versions and cascade invalidation by source slice. | `go test ./kernel/promote -race` |
+| Scheduler | [`kernel/sched`](../kernel/sched) | Produces per-round parallel groups, budget actions, model-tier hints, injection IDs and prefetch hints. | `go test ./kernel/sched -race` |
+| Prefetch | [`kernel/prefetch`](../kernel/prefetch) | Offline planner, transition-matrix learner, waste-aware online predictor and read-only execution runner. | `go test ./kernel/prefetch -race` |
+| Evolution | [`kernel/evolve`](../kernel/evolve) | EWMA-driven tuning for retrieval thresholds and injection budget with bounded, inspectable parameters. | `go test ./kernel/evolve -race` |
+| Event contract | [`kernel/event`](../kernel/event) | Typed kernel event kinds, payloads, wire format and synchronous in-process bus. | `go test ./kernel/event -race` |
+| Usage accounting | [`kernel/usage`](../kernel/usage) | Records per-turn token/cache events and summarizes baseline cost, paid cost and estimated savings. | `go test ./kernel/usage -race` |
+| Semantix harness | [`harness`](../harness) | Bundled agent runtime: providers, tools, permissions, extensions, sessions, recovery, remote execution and UI-facing contracts. | `go test ./harness/... -race` |
+| Harness bridge | [`harness/semantix`](../harness/semantix) | Mirrors harness events into session JSONL and surfaces reuse summaries while keeping Semantix fail-open. | `go test ./harness/semantix -race` |
+| Agent Skill | [`agent-skill`](../agent-skill) | Self-serve install, tool schema, session-bypass hook and self-test for external harness integration. | `bash agent-skill/scripts/selftest.sh` |
+| Deployment | [`deploy`](../deploy) | Gateway Docker image, Compose topology and environment-expandable example configuration. | `docker compose -f deploy/docker-compose.yml config` |
+| Automation scripts | [`scripts`](../scripts) | Cross-session demo, release builders and Go bootstrap helper used by local and release workflows. | Run the relevant demo or release script in a clean workspace. |
+| Specs and evidence | [`docs`](.) | Architecture, security, roadmap, specifications and acceptance reports that separate design targets from measured results. | Review the linked acceptance report for each shipped unit. |
+| Integration patches | [`patches`](../patches) | Versioned delivery patches for external Semantix forks, with drift notes and explicit preflight instructions. | `git apply --check patches/semantix-sched-prefetch.patch` |
+| Blog sources | [`blog`](../blog) | Versioned Markdown sources for technical articles; site content tests validate metadata, links and encoding. | `cd site && npm run test:content` |
+| Website | [`site`](../site) | Next.js product site, documentation, blog renderer, structured data, generated `llms-full.txt` and content-quality tests. | `cd site && npm run check` |
+| CI and workflows | [`.github/workflows`](../.github/workflows) | Runs Go vet/race tests, full website checks and the site deployment workflow with concurrency control. | Required GitHub checks: `Go checks` and `Website checks`. |
+<!-- repository-module-guide:end -->
+
+---
+
+## How a Request Flows
+
+A typical request can follow this path:
+
+```text
+User Request
+      │
+      ▼
+┌────────────────────┐
+│ Intent Perception  │
+└─────────┬──────────┘
+          │
+          ▼
+┌────────────────────┐
+│ Semantic Retrieval │
+└─────────┬──────────┘
+          │
+     ┌────┴──────────────────────┐
+     │                           │
+     ▼                           ▼
+  L3 hit                      L2 hit
+     │                           │
+     ▼                           ▼
+ Validate                   Stable slices
+     │                           │
+     ▼                           │
+Reuse result                     │
+                                 ▼
+                       ┌────────────────────┐
+                       │ Kernel Scheduler   │
+                       └─────────┬──────────┘
+                                 │
+                    ┌────────────┼────────────┐
+                    │            │            │
+                    ▼            ▼            ▼
+                  model      concurrency   prefetch
+                    │            │            │
+                    └────────────┼────────────┘
+                                 │
+                                 ▼
+                         ┌──────────────┐
+                         │ Agent Loop   │
+                         └──────┬───────┘
+                                │
+                                ▼
+                         Task Completed
+                                │
+                                ▼
+                    Observe execution signals
+                                │
+                                ▼
+                       ┌────────────────┐
+                       │ Evolution      │
+                       │ Engine         │
+                       └───────┬────────┘
+                               │
+                               ▼
+                         Update slices /
+                          parameters
+```
+
+---
+
+## Harness + Kernel
+
+Semantix ships in two halves that solve different layers of the agent-infrastructure problem: **`semantix-agent`**, the bundled agent harness (derived from the DeepSeek-Reasonix architecture baseline), and **`semantix`**, the cross-session optimization kernel. Since v0.3.0 the release bundle ships both binaries together with a shared install script and example config.
+
+| Capability                      | semantix-agent (harness)  | semantix (kernel)          |
+| ------------------------------- | ------------------------- | -------------------------- |
+| Primary scope                   | Individual agent session  | Cross-session optimization |
+| Agent execution loop            | ✅                         | Uses existing harness      |
+| Stable prompt structure         | ✅                         | Builds on it               |
+| Prefix-cache awareness          | ✅                         | ✅ feeds it                 |
+| Context compaction              | ✅                         | Uses harness capability    |
+| Cross-session semantic slices   | —                         | ✅                          |
+| Semantic cache                  | Limited / session-focused | ✅ L1/L2/L3                 |
+| User behavior learning          | —                         | ✅                          |
+| Tool-pattern learning           | —                         | ✅                          |
+| Adaptive scheduling             | Mostly static rules       | ✅ learned decisions        |
+| Speculative prefetch            | —                         | ✅                          |
+| Result reuse                    | Limited                   | ✅ verified L3              |
+| Long-term optimization feedback | —                         | ✅                          |
+| Self-evolving behavior          | —                         | ✅                          |
+
+The harness asks:
+
+> **How can this agent session run efficiently?**
+
+The kernel asks:
+
+> **How can every previous session make the next session better?**
+
+Together:
+
+```text
+semantix (kernel)
+   │
+   ├─ Cross-session learning
+   ├─ Semantic reuse
+   ├─ Adaptive scheduling
+   ├─ Prefetch
+   └─ Evolution
+   │
+   ▼
+semantix-agent (harness)
+   │
+   ├─ Agent loop
+   ├─ Context management
+   ├─ Tool execution
+   ├─ Prefix-cache stability
+   └─ Provider interaction
+   │
+   ▼
+LLM Provider
+```
+
+The kernel is not designed to replace the harness.
+
+It is designed to make harnesses like `semantix-agent` — and any other agent runtime it attaches to — more efficient over time.
+
+---
+
+## Design Principles
+
+### Correctness Comes First
+
+Semantix follows one priority order:
+
+> **Correctness → Cache Reuse → Concurrency → Prefetch**
+
+A cheaper wrong answer is not an optimization.
+
+### Stable Prefixes Matter
+
+Provider prefix caches depend heavily on stable request prefixes.
+
+Semantix therefore treats:
+
+* canonical serialization
+* stable ordering
+* deterministic retrieval
+* injection freezing
+
+as first-class infrastructure.
+
+A semantic cache should not constantly mutate the exact bytes it is trying to make cacheable.
+
+### Semantic Similarity Is Not Equivalence
+
+Two pieces of content can have high embedding similarity while still differing in important details.
+
+Therefore:
+
+```text
+L1 → low risk
+
+L2 → controlled contextual reuse
+
+L3 → strict verification
+```
+
+The higher the potential optimization benefit, the stronger the validation should be.
+
+### Read Before Write
+
+Speculative operations must remain safe.
+
+Read-only prediction can be useful.
+
+Speculative mutation is dangerous.
+
+Semantix may preload a likely file.
+
+It should never silently modify that file because history suggests the user usually does so next.
+
+### Fail Open
+
+Semantix is an optimization layer.
+
+It should never become a dependency that prevents the underlying agent from functioning.
+
+If:
+
+* embeddings fail
+* the ANN index is unavailable
+* semantic retrieval times out
+* optimization confidence is low
+* internal state becomes inconsistent
+
+Semantix should simply fall back to the original harness.
+
+```text
+Semantix failure
+       │
+       ▼
+Skip optimization
+       │
+       ▼
+Normal agent execution
+```
+
+Optimization failure must not become agent failure.
+
+### Every Optimization Must Be Reversible
+
+Semantic injection, reuse, scheduling, and prefetch are probabilistic decisions.
+
+Every major mechanism should therefore be:
+
+* observable
+* explainable
+* measurable
+* traceable
+* independently disableable
+
+A self-evolving system must also be able to recognize when it is evolving in the wrong direction.
+
+### Privacy by Design
+
+The Semantic Slice Library may contain:
+
+* source code
+* project context
+* user workflow patterns
+* historical instructions
+* internal file paths
+
+The intended architecture therefore favors:
+
+* local storage
+* local indexing
+* configurable retention
+* sanitization
+* project/user isolation
+* clear deletion controls
+
+Cross-project reuse must avoid leaking project-specific secrets or paths.
+
+---
+
+## Project Status
+
+> **Semantix v0.7.1 is released** (2026-08-22, brand unification — the repo, binaries and on-disk contracts now ship under the Semantix name; see [`releases/v0.7.1.md`](./releases/v0.7.1.md)), bundling `semantix-agent` + `semantix` + `semantix-gateway`. **Agile 2 (self-evolving loop) closed with v0.6.0** (2026-08-21): kernel-orchestrated scheduling, speculative prefetch, and the closed evolution loop (U37–U43) shipped, plus the first batch of GLM-5.x cache adaptation (prefix hygiene + per-provider hit metering, GLM P0). The remaining gate before scaling up is **real-data validation of the cross-session hit rate** ([#58](https://github.com/Gnosil/semantix/issues/58), Agile 1's v1.0 gate).
+
+Architecture specification v2 is complete.
+
+The project is implemented incrementally so each major optimization mechanism is evaluated independently.
+
+Current status:
+
+```text
+Architecture v2                    ✅
+
+Agile 1 · First downloadable agent   🚧 M0 ✅ · M1 near-complete (gate #58) · CLI v2 (U19–U27) ✅
+  · Observability (P0)               ✅  kernel/event + kernel/usage
+  · Semantic Slice Library (P1)      🚧  extract + BM25/hybrid shipped ✅ · local embeddings + ANN pending
+  · Semantic Cache (P2)              🚧  L2 + L3 shipped ✅ · real-harness e2e pending
+  · bundle + reuse visualization     🚧  v0.6.0 shipped; CLI reuse viz (U28–U31) ✅ · H4 UI pending
+
+Agile 2 · Self-evolving loop          ✅ shipped & released (v0.6.0, 2026-08-21) — U37–U43
+  · Adaptive Scheduler (P3)           ✅  kernel/sched.RuleDecider (MVP)
+  · Speculative Prefetch (P4)         ✅  Planner + MatrixPrefetcher + Runner (MVP)
+  · Value scoring & eviction          ✅  kernel/slice scorer + capped/archived gc (type-aware, Issue #277)
+  · Evolution Loop (P5)               ✅  kernel/evolve; closed-loop wired (U43, causal curve)
+  · H2 ResourceLayer / H3 orchestration ✅ shipped (U37–U43)
+
+GLM adaptation · GLM-5.x provider     🚧 first-class provider, switchable w/ DeepSeek via `setup` · cache P0 shipped (v0.6.0) · P1/P2 planned
+
+Agile 3 · Multi-harness ecosystem     ⏳  paths documented (agent-skill/); no adapter shipped
+```
+
+**First integration target shipped**: since v0.3.0 the release bundle packages **semantix-agent + semantix** together (per-platform archives, install script, example config).
+
+**Gate**: M0-Gate passed conditionally (2026-08-09) — technical feasibility and cost savings (79.8% on synthetic replay, [`reports/m0-cost-comparison.md`](./reports/m0-cost-comparison.md)) are verified; **real-data cross-session hit rate ≥ 70%** (`semantix verify`) is the remaining gate, per [`reports/m0-gate.md`](./reports/m0-gate.md).
+
+**Agile roadmap**: Agile 1 (first downloadable, brandable agent) is in progress — M0 shipped, M1 nearly complete, with #58 (real-data hit rate) as the remaining gate. Agile 2 (self-evolving loop) shipped and released as **v0.6.0** (2026-08-21); Agile 3 (multi-harness ecosystem) is defined in [`Agile路线图.md`](./Agile路线图.md).
+
+---
+
+## Roadmap
+
+Execution is organized in **Agile cycles** — one downloadable milestone per Agile (see [`Agile路线图.md`](./Agile路线图.md)). The technical phases P0–P5 map onto them as follows:
+
+| Agile | Milestone                                               | Technical scope                              | Status                                                                 |
+| ----- | ------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------- |
+| **1** | First downloadable, brandable agent (v1.0)              | P0–P2 + bundle + reuse visualization (H4)     | 🚧 M0 ✅ · M1 near-complete · gate #58 · CLI v2 (U19–U27) ✅             |
+| **2** | Self-evolving loop — kernel orchestrates the harness    | P3–P5 + H2 ResourceLayer + H3 orchestration  | ✅ shipped & released (v0.6.0, 2026-08-21) — U37–U43                     |
+| **3** | Multi-harness ecosystem                                 | CLI install / serve / adapter contribution    | ⏳ paths documented; not started                                        |
+
+### Technical phases (P0–P5) detail
+
+| Phase  | Deliverable                                                                     | Status                                                              | In Agile |
+| ------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------- | -------- |
+| **P0** | Observability layer — harness adapter, event stream, baseline metrics           | ✅ shipped — `kernel/event`, `kernel/usage`                          | 1        |
+| **P1** | Semantic Slice Library — extraction, embeddings, ANN index, project/user stores | 🚧 extraction + BM25/hybrid shipped ✅; local embeddings + ANN pending | 1        |
+| **P2** | Semantic cache — stable L2 injection, verified L3 reuse, pollution detection    | 🚧 L2 + L3 shipped ✅; real-harness e2e pending                      | 1        |
+| **P3** | Adaptive scheduler — intent classification, concurrency learning, model tier    | ✅ `kernel/sched.RuleDecider` MVP (M1-U18b); learning overlay pending | 2        |
+| **P4** | Speculative prefetch — T-Slice prediction, path patterns, budget control        | ✅ Planner + MatrixPrefetcher + Runner MVP (M1-U18b)                 | 2        |
+| **P5** | Evolution loop — online adaptation, offline optimization, ablation              | ✅ slice scoring/eviction shipped (`kernel/slice`, type-aware #277); `kernel/evolve` closed-loop wired (U43, causal curve); ablation pending | 2        |
+
+Each stage should remain independently measurable.
+
+The first major implementation hypothesis is:
+
+> **Can deterministic semantic slice injection convert cross-session semantic similarity into provider-side prefix-cache hits without reducing task quality?**
+
+---
+
+## Target Metrics
+
+The following numbers are **design targets**. Where a number has already been measured (see the Verification column), it comes from a specific report — none are claimed as reproducible benchmark results yet.
+
+| Metric                               |                         Target | Verification                                                        |
+| ------------------------------------ | -----------------------------: | ------------------------------------------------------------------- |
+| Cross-session L2 cache hit rate      |                          ≥ 40% | pending real data (`semantix verify`)                               |
+| Combined L1 + L2 cached input tokens |                          ≥ 90% | pending                                                             |
+| Cost per task                        |   ≥ 50% reduction vs. baseline | 79.8% on synthetic replay ([`reports/m0-cost-comparison.md`](./reports/m0-cost-comparison.md)) |
+| Prefetch utilization                 | ≥ 30% of eligible wait windows | pending — P4 shipped as MVP, utilization not yet measured           |
+| Context pollution rate               |                           ≤ 5% | pending                                                             |
+| End-to-end latency                   |                     ≤ baseline | pending real-harness e2e                                            |
+
+These targets are intended to guide implementation and evaluation.
+
+They should not be interpreted as achieved performance until reproducible benchmarks are published.
+
+---
+
+## Evaluation Philosophy
+
+Semantix should not be evaluated only by token reduction.
+
+A useful optimization layer has to measure at least four things simultaneously:
+
+```text
+Cost
+  +
+Latency
+  +
+Task Quality
+  +
+Reliability
+```
+
+An optimization that reduces token cost but causes:
+
+* more retries
+* worse answers
+* stale context
+* incorrect tool actions
+* higher user correction rates
+
+is not a successful optimization.
+
+The target is:
+
+> **lower effective computation per successful task.**
+
+---
+
+## What Semantix Is Not
+
+Semantix is **not**:
+
+* a foundation model
+* another coding model
+* a prompt compressor
+* a vector database wrapper
+* a replacement for an agent harness
+* blind replay of previous tool actions
+* a generic memory database
+
+It is:
+
+> **an optimization and learning kernel around agent execution.**
+
+---
+
+## Acknowledgements
+
+Semantix uses **DeepSeek-Reasonix** as its initial architecture baseline; the bundled `semantix-agent` harness derives from that lineage.
+
+DeepSeek-Reasonix's work on:
+
+* cache-stable agent execution
+* context maintenance
+* event-driven architecture
+* tool orchestration
+* session memory
+* loop engineering
+
+directly informed several Semantix design decisions.
+
+Semantix extends those ideas toward persistent, cross-session optimization.
+
+---
+
+## Further Reading
+
+* [`QUICKSTART.md`](./QUICKSTART.md) — install, 30-second demo, command reference, security conventions.
+* [`Agent-Infra-架构设计.md`](./Agent-Infra-架构设计.md) — full architecture design (problem definition, SSL, L1/L2/L3, scheduling, prefetch, evolution, risks, roadmap, metrics).
+* [`总体架构-流程树.md`](./总体架构-流程树.md) — structured end-to-end request lifecycle.
+* [`Agile路线图.md`](./Agile路线图.md) — Agile 1–3 roadmap and DoD.
+* [`Security-安全设计.md`](./Security-安全设计.md) and [`../SECURITY.md`](../SECURITY.md) — threat model and security mechanisms.
+* [`reports/glm-spike-week.md`](./reports/glm-spike-week.md) — controlled GLM cache observations, including an AtomClub→GLM-5.2 gateway pilot (96–98% cached input at 0–120 s, 28% at ~5 min, Anthropic Messages usage-field mapping, strict-prefix invalidation). Gateway-specific; no direct Z.AI claims.
+* [`../agent-skill/SKILL.md`](../agent-skill/SKILL.md) — self-serve integration for any harness.
+* [`../site`](../site) — marketing site and product docs, including the blog on semantic caching and cross-session reuse.
