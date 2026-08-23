@@ -6,38 +6,42 @@
 
 ## 安装
 
-### 方式一：GitHub Release（推荐）
-
-**完整产品（v0.3.0+）**：`semantix-agent-v0.3.0-<platform>.tar.gz`——semantix-agent（coding-agent harness）+ semantix（记忆内核）+ 示例配置 + 安装脚本：
+### 一行安装（推荐）
 
 ```bash
-tar -xzf semantix-agent-v0.3.0-darwin-arm64.tar.gz
-cd semantix-agent-v0.3.0-darwin-arm64
-./semantix-install.sh v0.3.0   # 安装两个二进制 + 配置
-semantix-agent --config semantix-agent.toml   # 启动完整 agent
+curl -fsSL https://raw.githubusercontent.com/Gnosil/semantix/main/agent-skill/scripts/install.sh | sh
 ```
 
-**仅内核**：从 [Releases](https://github.com/Gnosil/semantix/releases) 下载对应平台二进制：
+自动检测平台、拉取最新 release、把两个二进制装到 `~/.local/bin`、开启跨会话记忆，并提示把该目录加进 `PATH`。装的是：
 
-| 平台 | 文件 |
-|---|---|
-| macOS Intel | `semantix-v0.3.0-darwin-amd64` |
-| macOS Apple Silicon | `semantix-v0.3.0-darwin-arm64` |
-| Linux amd64/arm64 | `semantix-v0.3.0-linux-{amd64,arm64}` |
-| Windows amd64/arm64 | `semantix-v0.3.0-windows-{amd64,arm64}.exe` |
+- **`semantix`** —— 记忆内核 **兼** umbrella 启动器；
+- **`semantix-agent`** —— 交互式 coding agent（umbrella 会 exec 它）。
+
+固定版本 / 架构：`... install.sh | sh -s -- v0.4.0 arm64`。校验用 `SHA256SUMS.txt`。
+
+### 全局 `semantix` 怎么用
+
+装好后，`semantix` 是**一个全局命令、两种入口**：
 
 ```bash
-chmod +x semantix-v0.3.0-darwin-arm64
-sudo mv semantix-v0.3.0-darwin-arm64 /usr/local/bin/semantix
+cd ~/你的项目
+semantix                 # 裸命令 → 在【当前文件夹】启动 coding agent（cwd = 工作区）
+                         #   首次运行 agent 会引导你配置模型/API key（像 claude 那样）
+semantix search "..."    # 带子命令 → 走记忆内核（检索/extract/inject/verify/usage）
+semantix help            # 全部内核命令
 ```
 
-校验：`shasum -a 256 -c SHA256SUMS.txt`
+裸 `semantix` 会 exec 同目录（或 PATH 上）的 `semantix-agent`，以当前目录为工作区；agent 运行时又会回调 `semantix <子命令>` 做 L2/L3 记忆——一个二进制闭环，无需你手动串联。安装脚本已在 `~/.semantix/config.toml` 开启 `[semantix]` 记忆，开箱即用。
 
-### 方式二：源码构建
+> 若只装了内核（没有 `semantix-agent`），裸 `semantix` 回退为打印命令帮助，行为不变。
+
+### 源码构建（开发者）
 
 ```bash
 git clone https://github.com/Gnosil/semantix.git && cd semantix
-go build -o semantix ./cmd/semantix   # 需要 Go 1.26+
+go build -o semantix       ./cmd/semantix         # 内核 + umbrella，需要 Go 1.26+
+go build -o semantix-agent ./cmd/semantix-agent   # coding agent
+# 把两者放进同一个 PATH 目录，裸 semantix 即可启动 agent
 ```
 
 ## 30 秒体验

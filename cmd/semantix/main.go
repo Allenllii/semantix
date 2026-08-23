@@ -188,6 +188,13 @@ func buildCommands() []commandSpec {
 
 func run(args []string, stdout, stderr io.Writer, deps dependencies) int {
 	if len(args) == 0 {
+		// Bare `semantix` (no subcommand): launch the co-located coding agent
+		// with the current directory as its workspace. When no agent binary is
+		// installed (kernel-only install), fall back to the command help so the
+		// old behavior is preserved.
+		if agent := findAgentBinary(); agent != "" {
+			return launchAgent(agent)
+		}
 		printHelp(stderr)
 		return 2
 	}
