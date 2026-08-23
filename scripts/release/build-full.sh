@@ -116,8 +116,9 @@ for plat in ${PLATFORMS//,/ }; do
   把 base_url 指过来即可）
 - \`semantix-agent.example.toml\` — agent 配置模板（provider + [semantix] 段）
 - \`semantix.example.toml\` — kernel 配置模板
-- \`semantix-install.sh\` — 独立 curl 安装器，只把 semantix memory kernel
-  装进别的 agent 环境
+- \`semantix-install.sh\` — 独立 curl 安装器，装 semantix + semantix-agent
+  两个二进制到 ~/.local/bin（裸 \`semantix\` 即 umbrella 启动 agent）；只想把
+  memory kernel 注入别的 agent 用 \`semantix install --target\`
 
 ## 快速开始
 1. cp semantix-agent.example.toml ~/.semantix/semantix-agent.toml，填 provider key，

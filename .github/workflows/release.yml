@@ -1,8 +1,13 @@
 name: Release
 
-# Tag a version (vX.Y.Z) to cut a release: cross-build every platform bundle,
-# checksum them, and publish to GitHub Releases so the one-line installer
-# (agent-skill/scripts/install.sh) has artifacts to download.
+# Tag a version (vX.Y.Z) to cut a release: run the proven full-bundle builder
+# (scripts/release/build-full.sh — cross-builds every platform, stamps
+# version/commit/build-time, and self-verifies the asset set before it can
+# publish), then upload every asset to GitHub Releases. Both downstream
+# consumers get exactly the names they hardcode: `semantix-agent upgrade`
+# reads semantix-agent-<plat>.tar.gz + SHA256SUMS, and the one-line installer
+# (agent-skill/scripts/install.sh) reads semantix-agent-<ver>-<plat>.tar.gz +
+# SHA256SUMS.txt.
 on:
   push:
     tags:
@@ -19,7 +24,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # full history for release notes
+          fetch-depth: 0 # full history for release notes + commit stamping
 
       - name: Set up Go
         uses: actions/setup-go@v7
@@ -32,29 +37,12 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          case "$VERSION" in
-            v[0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "tag $VERSION is not vX.Y.Z" >&2; exit 1 ;;
-          esac
-          OUT="$PWD/dist"; rm -rf "$OUT"; mkdir -p "$OUT"
-          # One Linux runner cross-compiles every target (CGO disabled). Each
-          # bundle carries the kernel/umbrella (semantix), the coding agent
-          # (semantix-agent), the gateway, and example configs.
-          for plat in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64; do
-            os="${plat%-*}"; arch="${plat#*-}"
-            pkg="semantix-$VERSION-$plat"
-            d="$OUT/$pkg"; mkdir -p "$d"
-            for bin in semantix semantix-agent semantix-gateway; do
-              echo "-- $bin ($os/$arch)"
-              CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath \
-                -ldflags "-s -w -X main.version=$VERSION" -o "$d/$bin" "./cmd/$bin"
-            done
-            cp semantix.example.toml "$d/" 2>/dev/null || true
-            cp deploy/semantix-gateway.toml.example "$d/" 2>/dev/null || true
-            (cd "$OUT" && tar -czf "$pkg.tar.gz" "$pkg")
-            rm -rf "$d"
-          done
-          (cd "$OUT" && sha256sum semantix-*.tar.gz > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          # build-full.sh validates the version, cross-builds darwin/linux ×
+          # amd64/arm64, and exits non-zero if any expected asset or checksum
+          # entry is missing — so a broken release fails here, not on a user's
+          # `upgrade`.
+          bash scripts/release/build-full.sh --version "$VERSION"
+          echo "-- dist assets:"; ls -1 dist
 
       - name: Publish GitHub Release
         env:
@@ -62,8 +50,11 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          # dist/ holds only publishable files (build-full.sh removes the
+          # per-platform staging dirs): full bundles, flat updater bundles, raw
+          # kernel binaries, and both checksum files.
           gh release create "$VERSION" \
             --repo "${{ github.repository }}" \
             --title "$VERSION" \
             --generate-notes \
-            dist/semantix-*.tar.gz dist/SHA256SUMS.txt
+            dist/*
