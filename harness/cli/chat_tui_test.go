@@ -1086,9 +1086,12 @@ func TestPlanApprovalActionsSynchronizeTUIAndControllerMode(t *testing.T) {
 		name     string
 		key      tea.KeyPressMsg
 		wantPlan bool
+		// wantNote marks the row that collects a revision note before deciding:
+		// it holds the card open instead of resolving on the keystroke.
+		wantNote bool
 	}{
 		{name: "start execution", key: tea.KeyPressMsg{Code: '1'}},
-		{name: "revise plan", key: tea.KeyPressMsg{Code: '2'}, wantPlan: true},
+		{name: "revise plan", key: tea.KeyPressMsg{Code: '2'}, wantPlan: true, wantNote: true},
 		{name: "exit without executing", key: tea.KeyPressMsg{Code: '3'}},
 		{name: "legacy n keeps planning", key: tea.KeyPressMsg{Code: 'n'}, wantPlan: true},
 		{name: "escape keeps planning", key: tea.KeyPressMsg{Code: tea.KeyEscape}, wantPlan: true},
@@ -1105,7 +1108,18 @@ func TestPlanApprovalActionsSynchronizeTUIAndControllerMode(t *testing.T) {
 
 			next, _ := m.handleApprovalKey(tt.key)
 			m = next.(chatTUI)
-			if m.pendingApproval != nil {
+			switch {
+			case tt.wantNote:
+				if m.pendingApproval == nil {
+					t.Fatal("revise cleared the card before collecting its note")
+				}
+				if !m.approvalTyping {
+					t.Fatal("revise did not open the note field")
+				}
+				if m.hideComposer() {
+					t.Fatal("composer hidden while the note is being typed")
+				}
+			case m.pendingApproval != nil:
 				t.Fatal("plan approval was not resolved")
 			}
 			if m.planMode != tt.wantPlan || m.ctrl.PlanMode() != tt.wantPlan {

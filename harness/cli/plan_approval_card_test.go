@@ -22,16 +22,23 @@ type recoveryResolveCall struct {
 	feedback string
 }
 
-// planCardCtrl records the resolution calls the approval card makes. Every
-// other SessionAPI method panics through the embedded nil interface, which is
-// what keeps these tests pinned to the resolution path rather than drifting
-// into whatever else a real controller would do.
+// planCardCtrl records which resolution API the approval card reaches for.
+// A real controller is embedded rather than a nil interface: these tests drive
+// the whole Update path, and rendering the status line alone reads a dozen
+// controller fields. Only the three resolve methods are shadowed — that is the
+// distinction under test, and a boolean Approve cannot express it.
 type planCardCtrl struct {
 	control.SessionAPI
 	planCalls     []planDecisionCall
 	approveCalls  int
 	recoveryCalls []recoveryResolveCall
-	planMode      bool
+}
+
+func newPlanCardCtrl(t *testing.T) *planCardCtrl {
+	t.Helper()
+	real := control.New(control.Options{})
+	t.Cleanup(real.Close)
+	return &planCardCtrl{SessionAPI: real}
 }
 
 func (c *planCardCtrl) ResolvePlanDecision(id string, action control.PlanDecisionAction, feedback string) error {
@@ -46,15 +53,12 @@ func (c *planCardCtrl) ResolveRecovery(id string, action agent.RecoveryAction, f
 	return nil
 }
 
-func (c *planCardCtrl) SetPlanMode(on bool) { c.planMode = on }
-func (c *planCardCtrl) PlanMode() bool      { return c.planMode }
-func (c *planCardCtrl) Cancel()             {}
-
-func newPlanCardTUI(ctrl *planCardCtrl) chatTUI {
+func newPlanCardTUI(t *testing.T, ctrl *planCardCtrl) chatTUI {
+	t.Helper()
 	m := newTestChatTUI()
 	m.ctrl = ctrl
 	m.planMode = true
-	ctrl.planMode = true
+	m.ctrl.SetPlanMode(true)
 	m.pendingApproval = &event.Approval{ID: "plan", Tool: planApprovalTool}
 	return m
 }
@@ -107,6 +111,123 @@ func TestReviseRowsPromptForText(t *testing.T) {
 	}
 }
 
+func pressKeys(t *testing.T, m chatTUI, keys ...tea.KeyPressMsg) chatTUI {
+	t.Helper()
+	for _, k := range keys {
+		next, _ := m.Update(k)
+		m = next.(chatTUI)
+	}
+	return m
+}
+
+func typeRune(r rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: r, Text: string(r)} }
+
+// TestPlanReviseRowOpensNoteFieldInsteadOfResolving: picking "revise" must hold
+// the card open and hand input to the composer. Resolving on the keystroke is
+// what left the revision note arriving as a fresh, unattached user turn.
+func TestPlanReviseRowOpensNoteFieldInsteadOfResolving(t *testing.T) {
+	ctrl := newPlanCardCtrl(t)
+	m := pressKeys(t, newPlanCardTUI(t, ctrl), typeRune('2'))
+
+	if len(ctrl.planCalls) != 0 || ctrl.approveCalls != 0 {
+		t.Fatalf("revise resolved immediately: plan=%v approve=%d", ctrl.planCalls, ctrl.approveCalls)
+	}
+	if m.pendingApproval == nil {
+		t.Error("approval was cleared; the card must stay up while the note is typed")
+	}
+	if !m.approvalTyping {
+		t.Error("approvalTyping = false, want true")
+	}
+	if m.hideComposer() {
+		t.Error("hideComposer() = true; the composer owns input while the note is typed")
+	}
+	if !m.planMode {
+		t.Error("plan mode must stay on while revising")
+	}
+}
+
+// TestApprovalNoteTypingSendsRowKeysToComposer guards the whole resolving
+// keymap, not just the letters: 1 and y and a and n each answer a row when the
+// card has focus, so every one of them must become text instead.
+func TestApprovalNoteTypingSendsRowKeysToComposer(t *testing.T) {
+	ctrl := newPlanCardCtrl(t)
+	m := pressKeys(t, newPlanCardTUI(t, ctrl), typeRune('2'))
+	m = pressKeys(t, m, typeRune('1'), typeRune('y'), typeRune('a'), typeRune('n'))
+
+	if len(ctrl.planCalls) != 0 || ctrl.approveCalls != 0 {
+		t.Fatalf("a row key resolved while typing: plan=%v approve=%d", ctrl.planCalls, ctrl.approveCalls)
+	}
+	if got := m.input.Value(); got != "1yan" {
+		t.Errorf("composer value = %q, want %q", got, "1yan")
+	}
+	if !m.approvalTyping {
+		t.Error("typing mode ended unexpectedly")
+	}
+}
+
+// TestApprovalNoteEnterSubmitsTrimmedText: the note rides the decision itself.
+func TestApprovalNoteEnterSubmitsTrimmedText(t *testing.T) {
+	ctrl := newPlanCardCtrl(t)
+	m := pressKeys(t, newPlanCardTUI(t, ctrl), typeRune('2'))
+	m.input.SetValue("  widen the retry window  ")
+	m = pressKeys(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if len(ctrl.planCalls) != 1 {
+		t.Fatalf("ResolvePlanDecision calls = %d, want 1", len(ctrl.planCalls))
+	}
+	got := ctrl.planCalls[0]
+	if got.action != control.PlanDecisionRevisePlan || got.feedback != "widen the retry window" {
+		t.Errorf("resolved %+v, want revise_plan with the trimmed note", got)
+	}
+	if m.approvalTyping || m.pendingApproval != nil {
+		t.Error("card still open after the note was submitted")
+	}
+	if !m.planMode {
+		t.Error("revising must keep plan mode on")
+	}
+}
+
+// TestApprovalNoteEmptySubmitKeepsPlanning matches what n and Esc already do:
+// no note is a valid revise, not a different decision.
+func TestApprovalNoteEmptySubmitKeepsPlanning(t *testing.T) {
+	ctrl := newPlanCardCtrl(t)
+	m := pressKeys(t, newPlanCardTUI(t, ctrl), typeRune('2'), tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if len(ctrl.planCalls) != 1 {
+		t.Fatalf("ResolvePlanDecision calls = %d, want 1", len(ctrl.planCalls))
+	}
+	if got := ctrl.planCalls[0]; got.action != control.PlanDecisionRevisePlan || got.feedback != "" {
+		t.Errorf("resolved %+v, want revise_plan with an empty note", got)
+	}
+	if !m.planMode {
+		t.Error("plan mode must stay on")
+	}
+}
+
+// TestApprovalNoteEscReturnsToRows: backing out of the field is not a decision.
+func TestApprovalNoteEscReturnsToRows(t *testing.T) {
+	ctrl := newPlanCardCtrl(t)
+	m := pressKeys(t, newPlanCardTUI(t, ctrl), typeRune('2'))
+	m.input.SetValue("half-written note")
+	m = pressKeys(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	if len(ctrl.planCalls) != 0 || ctrl.approveCalls != 0 {
+		t.Fatalf("Esc resolved the approval: plan=%v approve=%d", ctrl.planCalls, ctrl.approveCalls)
+	}
+	if m.approvalTyping {
+		t.Error("approvalTyping = true, want false after Esc")
+	}
+	if m.pendingApproval == nil {
+		t.Error("Esc must return to the rows, not dismiss the card")
+	}
+	if !m.hideComposer() {
+		t.Error("hideComposer() = false; the rows own input again after Esc")
+	}
+	if got := m.input.Value(); got != "" {
+		t.Errorf("abandoned note left in the composer: %q", got)
+	}
+}
+
 // TestPlanApprovalRowsResolveThroughPlanDecisionAPI pins the receipt fix: every
 // plan row must name its own outcome through ResolvePlanDecision. The generic
 // boolean Approve cannot express "exit without executing" — it classifies any
@@ -125,8 +246,8 @@ func TestPlanApprovalRowsResolveThroughPlanDecisionAPI(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctrl := &planCardCtrl{}
-			m := newPlanCardTUI(ctrl)
+			ctrl := newPlanCardCtrl(t)
+			m := newPlanCardTUI(t, ctrl)
 
 			next, _ := m.handleApprovalKey(tt.key)
 			m = next.(chatTUI)

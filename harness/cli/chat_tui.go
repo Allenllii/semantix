@@ -301,6 +301,17 @@ type chatTUI struct {
 	// awaiting ctrl.Approve and key input is captured to answer it.
 	pendingApproval   *event.Approval
 	approvalSelection int
+	// approvalTyping is set while a revise row is collecting its note. The card
+	// stays up but stops owning the keyboard: the composer does, exactly as it
+	// does for the chooser's free-text mode. approvalTypingChoice remembers
+	// which row is being annotated, because the note is committed from Update
+	// rather than from the keymap that picked the row.
+	approvalTyping       bool
+	approvalTypingChoice approvalChoice
+	// approvalNoteDraft parks whatever the user had half-written in the
+	// composer when the card took it over. Approval cards arrive
+	// asynchronously, so answering one must not eat an unrelated draft.
+	approvalNoteDraft string
 
 	// chooser holds the `ask` tool's question card (nil when none). While set, the
 	// run goroutine is blocked awaiting ctrl.AnswerQuestion and keys drive the card.
@@ -743,11 +754,14 @@ func configureChatTextarea(ti *textarea.Model) {
 }
 
 func (m *chatTUI) refreshInputPlaceholder() {
-	if m.chooserTyping() {
+	switch {
+	case m.chooserTyping():
 		m.input.Placeholder = i18n.M.AskTypeSomething
-		return
+	case m.approvalTyping:
+		m.input.Placeholder = i18n.M.ApprovalNoteHint
+	default:
+		m.input.Placeholder = ""
 	}
-	m.input.Placeholder = ""
 }
 
 func isTermuxTerminal() bool {
@@ -1430,6 +1444,35 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The skill picker is modal while open: keys navigate it.
 		if m.skillPick != nil {
 			return m.handleSkillPickerKey(msg)
+		}
+		// A revise row collecting its note is input-owned, like the chooser's
+		// free-text mode above: Enter commits the note with the decision, Esc
+		// returns to the rows, everything else is text. This sits ahead of the
+		// approval arm on purpose — it is what makes every resolving shortcut
+		// in handleApprovalKey unreachable while the user is typing, rather
+		// than each of them having to remember to check.
+		if m.approvalTyping && m.pendingApproval != nil {
+			switch msg.String() {
+			case "enter":
+				next, cmd := m.resolveApproval(m.approvalTypingChoice, strings.TrimSpace(m.input.Value()))
+				m = next.(chatTUI)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+				return m, finalize(m, cmds)
+			case "esc":
+				m.endApprovalNote()
+				return m, finalize(m, cmds)
+			}
+			beforeInput := m.input.Value()
+			var ic tea.Cmd
+			m.input, ic = m.input.Update(msg)
+			cmds = append(cmds, ic)
+			m.growInputToFit()
+			if shouldClearWideInputChange(beforeInput, m.input.Value()) {
+				cmds = append(cmds, tea.ClearScreen)
+			}
+			return m, finalize(m, cmds)
 		}
 		// A pending tool approval is modal: keystrokes answer it (y/a/n, Enter,
 		// Esc) rather than reaching the input.
@@ -2326,8 +2369,14 @@ func (m chatTUI) bottomRows() int {
 // reserve rows for a composer that cannot receive input, leaving a confusing
 // blank/bordered area at the bottom of the TUI.
 func (m chatTUI) hideComposer() bool {
-	if m.mcp != nil || m.clearConfirm != nil || m.mcpImport != nil || m.skillPick != nil || m.resumePick != nil || m.quickPick != nil || m.copyPick != nil || m.rewind != nil || m.pendingApproval != nil {
+	if m.mcp != nil || m.clearConfirm != nil || m.mcpImport != nil || m.skillPick != nil || m.resumePick != nil || m.quickPick != nil || m.copyPick != nil || m.rewind != nil {
 		return true
+	}
+	// A revise row collecting its note is input-owned, the same exception the
+	// chooser's free-text mode gets below: the textarea is the active control,
+	// so hiding it would leave the user typing into nothing.
+	if m.pendingApproval != nil {
+		return !m.approvalTyping
 	}
 	return m.chooser != nil && !m.chooser.typing
 }
@@ -3292,6 +3341,81 @@ func approvalChoiceLabels(a *event.Approval) []string {
 	return labels
 }
 
+// beginApprovalNote hands the keyboard to the composer so a revise row can say
+// what to revise. The card stays up; only its keymap steps aside.
+func (m *chatTUI) beginApprovalNote(choice approvalChoice) {
+	m.approvalTyping = true
+	m.approvalTypingChoice = choice
+	m.approvalNoteDraft = m.input.Value()
+	m.input.Reset()
+	m.input.SetHeight(1)
+	m.refreshInputPlaceholder()
+}
+
+// endApprovalNote gives the keyboard back to the rows and restores whatever the
+// user was writing before the card claimed the composer. It is a no-op when no
+// note was being collected, so the ordinary "answer on the keystroke" path
+// never touches the composer at all.
+func (m *chatTUI) endApprovalNote() {
+	if !m.approvalTyping {
+		return
+	}
+	m.approvalTyping = false
+	m.approvalTypingChoice = approvalChoice{}
+	m.input.SetValue(m.approvalNoteDraft)
+	m.approvalNoteDraft = ""
+	m.refreshInputPlaceholder()
+}
+
+// resolveApproval answers the pending approval with choice, attaching note to
+// the transports that carry one. Both entry points converge here: the row
+// keymap, which never has a note, and the composer's Enter once a revise row
+// has collected one.
+func (m chatTUI) resolveApproval(choice approvalChoice, note string) (tea.Model, tea.Cmd) {
+	if m.pendingApproval == nil {
+		return m, nil
+	}
+	allow, session, persist := choice.allow, choice.allowForSession, choice.persistToConfig
+	// Give the composer back before resolving: note is already in hand, and a
+	// deferred cleanup could not reach the returned model — this receiver is a
+	// value and the results are unnamed.
+	m.endApprovalNote()
+	if isRecoveryApprovalEvent(m.pendingApproval) {
+		action := agent.RecoveryActionRevise
+		if allow {
+			action = agent.RecoveryActionContinue
+			if session {
+				action = agent.RecoveryActionContinueTask
+			}
+		}
+		_ = m.ctrl.ResolveRecovery(m.pendingApproval.ID, action, "")
+		m.pendingApproval = nil
+		return m, nil
+	}
+	if m.pendingApproval.Tool == planApprovalTool {
+		// Approve infers the plan outcome from the boolean alone, which
+		// collapses "exit without executing" into revise_plan in the durable
+		// receipt. Name the action instead — the row already knows it.
+		action := control.PlanDecisionRevisePlan
+		switch {
+		case allow:
+			action = control.PlanDecisionStartExecution
+		case choice.exitPlan:
+			action = control.PlanDecisionExitPlan
+		}
+		if action != control.PlanDecisionRevisePlan {
+			m.planMode = false
+			m.ctrl.SetPlanMode(false)
+		}
+		_ = m.ctrl.ResolvePlanDecision(m.pendingApproval.ID, action, note)
+		m.pendingApproval = nil
+		return m, nil
+	}
+	m.ctrl.Approve(m.pendingApproval.ID, allow, session, persist)
+	m.pendingApproval = nil
+	return m, nil
+}
+
 // handleApprovalKey resolves a pending approval from a keystroke and re-arms the
 // listener. 1/y/Enter allows once, 2/a allows for the rest of the session,
 // 3/p writes an "always allow" rule to the config file for ordinary tool
@@ -3302,43 +3426,20 @@ func approvalChoiceLabels(a *event.Approval) []string {
 // (planApprovalTool), starting execution or explicitly exiting without execution
 // drops the local [plan] tag and turns plan mode off on the controller.
 func (m chatTUI) handleApprovalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Update hands keys to the composer while a note is being typed, so this
+	// function is unreachable then. The guard is the invariant that protects
+	// that arrangement: without it, reordering the routing would silently turn
+	// a "1" typed inside a half-written note back into "start execution".
+	if m.approvalTyping {
+		return m, nil
+	}
 	choices := approvalChoices(m.pendingApproval)
 	answer := func(choice approvalChoice) (tea.Model, tea.Cmd) {
-		allow, session, persist := choice.allow, choice.allowForSession, choice.persistToConfig
-		if isRecoveryApprovalEvent(m.pendingApproval) {
-			action := agent.RecoveryActionRevise
-			if allow {
-				action = agent.RecoveryActionContinue
-				if session {
-					action = agent.RecoveryActionContinueTask
-				}
-			}
-			_ = m.ctrl.ResolveRecovery(m.pendingApproval.ID, action, "")
-			m.pendingApproval = nil
+		if choice.promptsForText {
+			m.beginApprovalNote(choice)
 			return m, nil
 		}
-		if m.pendingApproval.Tool == planApprovalTool {
-			// Approve infers the plan outcome from the boolean alone, which
-			// collapses "exit without executing" into revise_plan in the durable
-			// receipt. Name the action instead — the row already knows it.
-			action := control.PlanDecisionRevisePlan
-			switch {
-			case allow:
-				action = control.PlanDecisionStartExecution
-			case choice.exitPlan:
-				action = control.PlanDecisionExitPlan
-			}
-			if action != control.PlanDecisionRevisePlan {
-				m.planMode = false
-				m.ctrl.SetPlanMode(false)
-			}
-			_ = m.ctrl.ResolvePlanDecision(m.pendingApproval.ID, action, "")
-			m.pendingApproval = nil
-			return m, nil
-		}
-		m.ctrl.Approve(m.pendingApproval.ID, allow, session, persist)
-		m.pendingApproval = nil
-		return m, nil
+		return m.resolveApproval(choice, "")
 	}
 	switch msg.String() {
 	case "ctrl+c":
