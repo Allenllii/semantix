@@ -27,7 +27,9 @@ import (
 // (feature phrase / redaction pattern): freshly ingested slices record it
 // in SliceMeta.SanitizeVersion, while existing slices are covered by the
 // idempotent inject-side pass — no library rewrite needed.
-const Version = "v1"
+// v2: + Chinese command-substitution guides (执行以下命令/运行以下命令,
+// Issue #281 chain-A fixture exposed the spec-vs-impl gap).
+const Version = "v2"
 
 // --- escape-sequence stripping (migrated from kernel/judge.Sanitize) ---
 
@@ -201,6 +203,10 @@ var featurePhrases = []string{
 	// Role-play takeover (high-confidence full forms only).
 	"from now on you are",
 	"pretend you are",
+	// Command-substitution guides (spec §2.2; the concrete command after
+	// the guide is not in the v1 table — redaction/guardrails handle it).
+	"执行以下命令",
+	"运行以下命令",
 	// Chinese payload forms.
 	"忽略之前的指令",
 	"忽略以上所有内容",
