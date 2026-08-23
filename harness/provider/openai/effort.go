@@ -58,11 +58,19 @@ func requestEffortVocabulary(e effortEndpoint) []string {
 	case e.effort != "":
 		levels = []string{"low", "medium", "high"}
 	}
-	return depthOnly(levels)
+	return DepthEffortLevels(levels)
 }
 
-// depthOnly strips thinking on/off toggles from an effort vocabulary.
-func depthOnly(levels []string) []string {
+// DepthEffortLevels strips thinking on/off toggles from an effort vocabulary,
+// leaving only the depths a per-request Request.EffortOverride can carry.
+//
+// Exported because the config layer validates user-chosen levels against it:
+// EffortCapabilityForEntry legitimately advertises tokens like adaptive and
+// enabled, and a level that survives that check but not this one would be
+// accepted by the setter and then silently discarded on the wire. Same reason
+// IsDeepSeek and friends are exported — the vocabulary rule lives here, and
+// config stays in lockstep by calling it rather than restating it.
+func DepthEffortLevels(levels []string) []string {
 	var out []string
 	for _, level := range levels {
 		switch strings.ToLower(strings.TrimSpace(level)) {
