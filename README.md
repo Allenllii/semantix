@@ -39,7 +39,7 @@ Fail-open throughout: on kernel error the agent falls back to its normal executi
 
 ## Cross-session memory
 
-A project's build conventions, test layout and service flags have to be re-established in every new session. Semantix extracts reusable **slices** from finished sessions — task patterns, project knowledge, tool sequences, verified results — into a local scored library, and reinjects the relevant ones when a similar task appears. Each hit is labelled with its source session:
+A project's build conventions, test layout and service flags have to be re-established in every new session. Semantix extracts reusable **slices** from finished sessions — task patterns, project knowledge, tool sequences, verified results — into a local scored library, and reinjects the relevant ones when a similar task appears. Each hit carries its retrieval zone (🟢 hit · 🟡 grey · ⚪ miss) and its source session:
 
 ```text
 $ semantix search --query "fix failing go test"
@@ -208,7 +208,7 @@ Architectural assumptions are open to challenge; testing them is part of the wor
 
 ## 跨会话记忆
 
-同一项目的构建约定、测试布局、服务启动参数，在每个新会话中都需重新建立。Semantix 从已结束的会话中提取可复用**切片**——任务模式、项目知识、工具序列、已验证结果——存入本地评分库，并在遇到相似任务时重新注入。每条命中均标注其来源会话：
+同一项目的构建约定、测试布局、服务启动参数，在每个新会话中都需重新建立。Semantix 从已结束的会话中提取可复用**切片**——任务模式、项目知识、工具序列、已验证结果——存入本地评分库，并在遇到相似任务时重新注入。每条命中均标注其检索 zone（🟢 hit · 🟡 grey · ⚪ miss）与来源会话：
 
 ```text
 $ semantix search --query "修复 go 测试失败"
