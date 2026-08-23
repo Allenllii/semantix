@@ -3388,7 +3388,7 @@ func (m chatTUI) resolveApproval(choice approvalChoice, note string) (tea.Model,
 				action = agent.RecoveryActionContinueTask
 			}
 		}
-		_ = m.ctrl.ResolveRecovery(m.pendingApproval.ID, action, "")
+		_ = m.ctrl.ResolveRecovery(m.pendingApproval.ID, action, note)
 		m.pendingApproval = nil
 		return m, nil
 	}
@@ -4030,6 +4030,13 @@ func (m chatTUI) renderApprovalBanner() string {
 	b.WriteString("⏸ " + text + "\n")
 	for i, choice := range approvalChoices(m.pendingApproval) {
 		b.WriteString(rowLine(i == m.approvalSelection, i+1, "", choice.label, false) + "\n")
+	}
+	if m.approvalTyping {
+		// The rows are inert while the composer holds the keyboard, so stop
+		// advertising their shortcuts. The typed text is not echoed here: the
+		// composer is visible in this mode and already shows it.
+		b.WriteString(dim(i18n.M.ApprovalNoteHint))
+		return choicePanelStyle.Width(w).Render(b.String())
 	}
 	b.WriteString(dim("↑/↓ navigate · Enter select · y/a/p/n shortcuts"))
 	return choicePanelStyle.Width(w).Render(b.String())

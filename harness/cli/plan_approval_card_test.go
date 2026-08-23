@@ -1,13 +1,16 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"semantix/harness/agent"
 	"semantix/harness/control"
 	"semantix/harness/event"
+	"semantix/harness/i18n"
 )
 
 type planDecisionCall struct {
@@ -225,6 +228,61 @@ func TestApprovalNoteEscReturnsToRows(t *testing.T) {
 	}
 	if got := m.input.Value(); got != "" {
 		t.Errorf("abandoned note left in the composer: %q", got)
+	}
+}
+
+// TestRecoveryReviseRowForwardsNoteToResolveRecovery: the Auto Guard card's
+// transport has taken feedback since it shipped; the TUI was passing "".
+func TestRecoveryReviseRowForwardsNoteToResolveRecovery(t *testing.T) {
+	ctrl := newPlanCardCtrl(t)
+	m := newTestChatTUI()
+	m.ctrl = ctrl
+	m.pendingApproval = &event.Approval{
+		ID: "rec", Kind: "recovery", Recovery: &event.RecoveryApproval{},
+	}
+	m = pressKeys(t, m, typeRune('2'))
+	if !m.approvalTyping {
+		t.Fatal("recovery revise did not open the note field")
+	}
+	m.input.SetValue("  keep the original file  ")
+	m = pressKeys(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	if len(ctrl.recoveryCalls) != 1 {
+		t.Fatalf("ResolveRecovery calls = %d, want 1", len(ctrl.recoveryCalls))
+	}
+	got := ctrl.recoveryCalls[0]
+	if got.action != agent.RecoveryActionRevise || got.feedback != "keep the original file" {
+		t.Errorf("resolved %+v, want revise with the trimmed note", got)
+	}
+}
+
+// TestApprovalNoteSurfacesItsHintWhileTyping: the row shortcuts stop working the
+// moment the composer takes over, so the chrome must stop advertising them.
+func TestApprovalNoteSurfacesItsHintWhileTyping(t *testing.T) {
+	ctrl := newPlanCardCtrl(t)
+	m := newPlanCardTUI(t, ctrl)
+	m.width = 120
+
+	rows := ansi.Strip(m.renderApprovalBanner())
+	if !strings.Contains(rows, "y/a/p/n") {
+		t.Fatalf("row-selection banner lost its shortcut hint:\n%s", rows)
+	}
+
+	m = pressKeys(t, m, typeRune('2'))
+	typing := ansi.Strip(m.renderApprovalBanner())
+	if !strings.Contains(typing, i18n.M.ApprovalNoteHint) {
+		t.Errorf("typing banner missing %q:\n%s", i18n.M.ApprovalNoteHint, typing)
+	}
+	if strings.Contains(typing, "y/a/p/n") {
+		t.Errorf("typing banner still advertises inert row shortcuts:\n%s", typing)
+	}
+	if got := m.input.Placeholder; got != i18n.M.ApprovalNoteHint {
+		t.Errorf("composer placeholder = %q, want %q", got, i18n.M.ApprovalNoteHint)
+	}
+
+	footer := ansi.Strip(m.primaryStatusLine(" Plan ", false, false))
+	if !strings.Contains(footer, i18n.M.ChatStatusApprovalNote) {
+		t.Errorf("footer missing %q:\n%s", i18n.M.ChatStatusApprovalNote, footer)
 	}
 }
 

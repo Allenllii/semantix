@@ -103,6 +103,7 @@ type Messages struct {
 	PlanApprovalPrompt                     string // one-line "plan above is ready" banner shown above the input
 	PlanApprovalChoices                    string // start / revise / exit-without-executing choice list
 	ApprovalNoteHint                       string // composer placeholder and banner hint while a revise row collects its note
+	ChatStatusApprovalNote                 string // shortcuts hint while a revise row collects its note
 	ChatStatusToolApproval                 string // shortcuts hint while a tool call awaits approval
 	ToolApprovalPromptFmt                  string // approval banner — tool, subject suffix, source/intent detail, choices
 	ToolApprovalChoices                    string // standard approval choice list
