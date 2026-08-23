@@ -1244,6 +1244,24 @@ Semantix extends those ideas toward persistent, cross-session optimization.
 
 ---
 
+# Star History
+
+<div align="center">
+
+<a href="https://star-history.com/#Gnosil/semantix&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Gnosil/semantix&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Gnosil/semantix&type=Date" />
+    <img alt="Star History Chart for Gnosil/semantix" src="https://api.star-history.com/svg?repos=Gnosil/semantix&type=Date" width="640" />
+  </picture>
+</a>
+
+<sub>If Semantix saves you tokens, a <a href="https://github.com/Gnosil/semantix/stargazers">star</a> helps other agent builders find it.</sub>
+
+</div>
+
+---
+
 # License
 
 Semantix is licensed under the **MIT License**.
