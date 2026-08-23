@@ -104,6 +104,12 @@ func seed(t *testing.T, g *Gateway, s *slice.Slice) {
 	if s.CreatedAt == 0 {
 		s.CreatedAt = time.Now().Unix()
 	}
+	if s.Meta.Origin == "" {
+		// Test fixtures model gateway-ingested slices; the default
+		// [slice] min_inject_origin=session-auto floor requires the tag
+		// (Issue #279).
+		s.Meta.Origin = slice.OriginSessionAuto
+	}
 	if err := g.store.Put(s); err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +206,7 @@ func TestE2EL3HitZeroUpstreamCalls(t *testing.T) {
 	seed(t, g, &slice.Slice{
 		ID: "l3-a", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("hello world hello world cached answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	})
 
 	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "hello world", false))
@@ -230,7 +236,7 @@ func TestE2EL3UnknownCreatedAtFailsClosed(t *testing.T) {
 	s := &slice.Slice{
 		ID: "l3-legacy", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("hello world legacy cached answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	}
 	// Bypass seed: it intentionally backfills CreatedAt for ordinary tests.
 	if err := g.store.Put(s); err != nil {
@@ -394,7 +400,7 @@ func TestE2EL3StreamingReplay(t *testing.T) {
 	seed(t, g, &slice.Slice{
 		ID: "l3-s", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("widgets cached widgets cached stream answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	})
 
 	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "widgets cached", true))
@@ -1130,7 +1136,7 @@ func TestE2EL3StreamingReplayHasUsage(t *testing.T) {
 	seed(t, g, &slice.Slice{
 		ID: "l3-gw7", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("widgets cached widgets cached stream answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	})
 
 	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "widgets cached", true))
@@ -1158,7 +1164,7 @@ func TestE2EL3HitSyntheticUsageEstimator(t *testing.T) {
 	seed(t, g, &slice.Slice{
 		ID: "l3-gw7b", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("hello world hello world cached answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	})
 
 	_, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "hello world", false))
@@ -1354,7 +1360,7 @@ func TestE2EFalseHitRetryBypassesL3(t *testing.T) {
 	seed(t, g, &slice.Slice{
 		ID: "l3-a", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("hello world hello world cached answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	})
 
 	hdr := map[string]string{"x-semantix-session": "fh-sess-1"}

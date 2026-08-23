@@ -32,6 +32,7 @@ type Config struct {
 	Retrieval RetrievalConfig  `toml:"retrieval"`
 	Cache     CacheConfig      `toml:"cache"`
 	Ingest    IngestConfig     `toml:"ingest"`
+	Slice     SliceConfig      `toml:"slice"`
 	Sanitize  SanitizeConfig   `toml:"sanitize"`
 	Billing   BillingConfig    `toml:"billing"`
 	Upstreams []UpstreamConfig `toml:"upstreams"`
@@ -253,6 +254,31 @@ type BillingConfig struct {
 const defaultFreeTokens int64 = 10_000_000
 
 // IngestConfig controls the session-sidecar write path.
+// SliceConfig holds slice provenance/trust policy (Issue #279).
+type SliceConfig struct {
+	// MinInjectOrigin is the lowest provenance level admitted to L2
+	// injection and L3 Hit pass-through: ""/import admit everything except
+	// nothing (level 1 floor), "session-auto" (default) excludes
+	// import/legacy, "user-curated" admits only curated slices. See
+	// kernel/slice Origin.Level.
+	MinInjectOrigin string `toml:"min_inject_origin"`
+}
+
+// minInjectOrigin resolves the provenance floor to a kernel/slice.Origin.
+// The zero value (unset) keeps the kernel default — no filtering — so an
+// unconfigured gateway behaves exactly like before; the explicit default
+// for production configs is session-auto (fail-closed for import/legacy).
+func (c *Config) minInjectOrigin() slice.Origin {
+	switch c.Slice.MinInjectOrigin {
+	case "import", "session-auto", "prefetch", "user-curated":
+		return slice.Origin(c.Slice.MinInjectOrigin)
+	case "":
+		return slice.Origin("") // kernel default: level-1 floor, no filtering
+	default:
+		return slice.Origin("") // validate() rejects unknown values
+	}
+}
+
 type IngestConfig struct {
 	SessionsDir string `toml:"sessions_dir"`
 	// UsageLog is the kernel/usage event log (design §4.3: gateway usage
@@ -453,6 +479,11 @@ func (c *Config) validate() error {
 	}
 	if c.Retrieval.Retriever != "" && !validRetriever(c.Retrieval.Retriever) {
 		return fmt.Errorf("gateway config: [retrieval] retriever %q is not supported (supported: bm25, vector, hybrid)", c.Retrieval.Retriever)
+	}
+	if c.Slice.MinInjectOrigin != "" && c.Slice.MinInjectOrigin != "import" &&
+		c.Slice.MinInjectOrigin != "session-auto" && c.Slice.MinInjectOrigin != "prefetch" &&
+		c.Slice.MinInjectOrigin != "user-curated" {
+		return fmt.Errorf("gateway config: [slice] min_inject_origin %q must be import, session-auto, prefetch, or user-curated", c.Slice.MinInjectOrigin)
 	}
 	if c.Retrieval.Fusion != "" && c.Retrieval.Fusion != "weighted" && c.Retrieval.Fusion != "rrf" {
 		return fmt.Errorf("gateway config: [retrieval] fusion %q must be weighted or rrf", c.Retrieval.Fusion)
@@ -746,6 +777,7 @@ func DefaultConfig() *Config {
 		Store:     StoreConfig{DB: ".semantix/gateway.jsonl", Scope: "project", DepsRoot: "."},
 		Retrieval: RetrievalConfig{Retriever: "bm25", TopK: 5, Budget: 4096},
 		Cache:     CacheConfig{TTLSeconds: 86400, FalseHitSim: DefaultFalseHitSim},
+		Slice:     SliceConfig{MinInjectOrigin: "session-auto"},
 		Ingest:    IngestConfig{SessionsDir: ".semantix/sessions", UsageLog: ".semantix/gateway-usage.jsonl"},
 	}
 }

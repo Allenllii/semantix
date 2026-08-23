@@ -531,7 +531,8 @@ func runVerify(args []string, stdout io.Writer, deps dependencies) int {
 				Type:    slice.Prompt,
 				Scope:   opt.scope,
 				Content: []byte(t.Query),
-				Meta:    slice.SliceMeta{ProjectSlug: opt.project, SourceSession: t.Session},
+				Meta: slice.SliceMeta{ProjectSlug: opt.project, SourceSession: t.Session,
+					Origin: slice.OriginSessionAuto}, // Issue #279
 			}
 			if err := store.Put(sl); err != nil {
 				fmt.Fprintf(stdout, "verify: put: %v\n", err)

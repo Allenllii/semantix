@@ -35,6 +35,7 @@ type File struct {
 	Project   fileProject   `toml:"project"`
 	Store     fileStore     `toml:"store"`
 	Retrieval fileRetrieval `toml:"retrieval"`
+	Slice    fileSlice      `toml:"slice"`
 	Inject    fileInject    `toml:"inject"`
 	Score     fileScore     `toml:"score"`
 	Verify    fileVerify    `toml:"verify"`
@@ -50,6 +51,10 @@ type fileStore struct {
 	DB        *string `toml:"db"`
 	Scope     *string `toml:"scope"`
 	MaxSlices *int    `toml:"max_slices"`
+}
+
+type fileSlice struct {
+	MinInjectOrigin *string `toml:"min_inject_origin"`
 }
 
 type fileRetrieval struct {
@@ -227,6 +232,9 @@ func Load(opts Options) (*Resolved, error) {
 		return nil, err
 	}
 	if err := add(mergePtr("retrieval.bm25_weight", 0.5, "", file.Retrieval.BM25Weight, (*float64)(nil))); err != nil {
+		return nil, err
+	}
+	if err := add(mergePtr("slice.min_inject_origin", "session-auto", "", file.Slice.MinInjectOrigin, (*string)(nil))); err != nil {
 		return nil, err
 	}
 	// Grey-zone 四阈值 (Issue #259 阶段 1): 默认值与 zone.Default() 单真源
@@ -464,6 +472,14 @@ func (r *Resolved) validate() error {
 		case "retrieval.bm25_weight":
 			if v, ok := f.Value.(float64); ok && (v < 0 || v > 1) {
 				errs = append(errs, "retrieval.bm25_weight: must be in [0,1]")
+			}
+		case "slice.min_inject_origin":
+			if s, ok := f.Value.(string); ok {
+				switch s {
+				case "import", "session-auto", "prefetch", "user-curated":
+				default:
+					errs = append(errs, fmt.Sprintf("slice.min_inject_origin: invalid value %q (want import|session-auto|prefetch|user-curated)", s))
+				}
 			}
 		case "retrieval.tau_high", "retrieval.tau_low":
 			if v, ok := f.Value.(float64); ok && (math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 1) {

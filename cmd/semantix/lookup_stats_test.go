@@ -30,7 +30,8 @@ func seedLookupCorpus(t *testing.T, db string) {
 	put := func(id, content string) {
 		t.Helper()
 		if err := st.Put(&slice.Slice{ID: id, Type: slice.Result, Scope: slice.Project,
-			Content: []byte(content), Weight: 1.0}); err != nil {
+			Content: []byte(content), Weight: 1.0,
+			Meta: slice.SliceMeta{Origin: slice.OriginSessionAuto}}); err != nil {
 			t.Fatal(err)
 		}
 	}

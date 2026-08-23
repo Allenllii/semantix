@@ -105,7 +105,7 @@ func TestGatewayRetrieverKindsL3Hit(t *testing.T) {
 			seed(t, g, &slice.Slice{
 				ID: "l3-" + kind, Type: slice.Result, Scope: slice.Project,
 				Content: []byte("hello world hello world cached answer"),
-				Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+				Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 			})
 
 			resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "hello world", false))

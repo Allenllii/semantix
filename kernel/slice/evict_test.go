@@ -175,7 +175,7 @@ func TestGCArchiveRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	imported, skipped, err := Import(dst, f)
+	imported, skipped, err := Import(dst, f, OriginImport)
 	if err != nil || imported != 1 || skipped != 0 {
 		t.Fatalf("import from archive = %d/%d/%v", imported, skipped, err)
 	}

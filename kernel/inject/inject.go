@@ -85,6 +85,11 @@ type Injector struct {
 	// reusable slices (zone.Hit) enter the block; grey/miss candidates are
 	// skipped (Krites §3.1 — the grey zone must be verified, not injected).
 	Zones *zone.Zones
+	// MinOrigin is the lowest provenance level admitted to the injection
+	// block (Issue #279). The zero value (empty origin, level 1) admits
+	// everything — embedding callers opt in explicitly; production paths
+	// configure session-auto so import/legacy slices never inject.
+	MinOrigin slice.Origin
 }
 
 // Injection is the assembled, deterministic reuse block.
@@ -148,6 +153,18 @@ func (in *Injector) Build(query string) (*Injection, error) {
 		// dropped entirely (nothing useful to inject).
 		content := sanitize.Sanitize(string(h.Slice.Content))
 		if content == "" {
+			dropped++
+			continue
+		}
+		// Issue #279: low-integrity origins never enter the injection
+		// block — a trusted floor above the candidate's level excludes it
+		// (import and legacy are level 1; session-auto/prefetch 2;
+		// user-curated 3).
+		if h.Slice != nil && in.MinOrigin.Level() > h.Slice.Meta.Origin.Level() {
+			dropped++
+			continue
+		}
+		if buf.Len()+len(content)+len(blockClose)+64 > budget && len(kept) > 0 {
 			dropped++
 			continue
 		}

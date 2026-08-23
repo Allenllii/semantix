@@ -51,6 +51,13 @@ type L3Decider struct {
 	// OnJudge; nil disables observation.
 	OnLexicalGate func(ctx context.Context, obs LexicalGateObservation)
 
+	// MinOrigin is the lowest provenance level allowed to pass the L3 Hit
+	// gate straight through (Issue #279): a candidate below the floor is
+	// downgraded to Grey — judge-gated reuse, fail-closed without a judge
+	// (same path as the #260 lexical gate). The zero value (empty origin,
+	// level 1) downgrades nothing — embedding callers opt in explicitly.
+	MinOrigin slice.Origin
+
 	// Negative observability (Issue #262): both are nil-safe and never
 	// change DecideL3's behavior. Obs accumulates decision-path counters
 	// across calls (thread-safe, Snapshot for reads); OnDecide receives
@@ -276,6 +283,17 @@ func (d *L3Decider) DecideL3(ctx context.Context, q Query) (*L3Result, error) {
 		}
 		switch verdict {
 		case zone.Hit:
+			// Issue #279 integrity gate: a Hit whose provenance is below the
+			// configured floor (import/legacy under a session-auto floor)
+			// must not pass straight through — downgrade to Grey, judge-
+			// gated reuse, fail-closed without a judge (same path as the
+			// lexical gate below).
+			if d.MinOrigin.Level() > s.Meta.Origin.Level() {
+				if !d.judgeGrey(ctx, q, s, relConfidence(h.Score, resultTop1), &o) {
+					continue
+				}
+				break
+			}
 			// Issue #260 lexical support gate: a Hit with no term overlap
 			// (pure-vector hit) is downgraded to Grey — judge-gated reuse,
 			// fail-closed without a judge. First mitigation against embedding

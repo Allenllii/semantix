@@ -118,7 +118,7 @@ func TestExportImportRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { closeTestStore(dst) })
-	imported, skipped, err := Import(dst, &buf)
+	imported, skipped, err := Import(dst, &buf, OriginImport)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestImportIdempotent(t *testing.T) {
 	}
 	t.Cleanup(func() { closeTestStore(dst) })
 	for i := 0; i < 2; i++ {
-		if _, _, err := Import(dst, bytes.NewReader(buf.Bytes())); err != nil {
+		if _, _, err := Import(dst, bytes.NewReader(buf.Bytes()), OriginImport); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -189,7 +189,7 @@ func TestImportTolerantSkip(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { closeTestStore(dst) })
-	imported, skipped, err := Import(dst, strings.NewReader(data))
+	imported, skipped, err := Import(dst, strings.NewReader(data), OriginImport)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +407,7 @@ func TestImportOversizedLineSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { closeTestStore(dst) })
-	imported, skipped, err := Import(dst, strings.NewReader(data))
+	imported, skipped, err := Import(dst, strings.NewReader(data), OriginImport)
 	if err != nil {
 		t.Fatalf("import aborted on oversized line: %v", err)
 	}

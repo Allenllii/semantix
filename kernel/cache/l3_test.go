@@ -793,7 +793,6 @@ func TestDecideL3AdaptiveTauLow(t *testing.T) {
 	}
 }
 
-
 // With a threshold band narrower than minGreyWidth, the adaptive clamp
 // must never turn a tighten into a loosening: the value in effect is the
 // floor (review finding, Issue #259 阶段 3).
@@ -827,4 +826,55 @@ func TestDecideL3AdaptiveClampNeverLoosens(t *testing.T) {
 		t.Fatalf("loosened clamp would grey-route relConf 0.53; got grey=%d res=%+v (want Miss + strong reuse)", acc2.Snapshot().Grey, res2)
 	}
 	_ = res
+}
+
+// --- Issue #279: provenance integrity gate ---
+
+// TestDecideL3MinOriginDowngradesLowIntegrity: with a session-auto
+// floor, an import/legacy Result slice that would otherwise pass the
+// Hit gate is downgraded to Grey — judge-gated, and with no judge
+// wired it is conservatively rejected (never served straight).
+func TestDecideL3MinOriginDowngradesLowIntegrity(t *testing.T) {
+	root, idx, _, sl := buildTestLib(t)
+	sl.Meta.Origin = slice.OriginImport
+	if err := idx.Insert(sl); err != nil { // bm25 stores a clone: re-index with the tag
+		t.Fatal(err)
+	}
+	// Both floors: zero (kernel default) reuses, session-auto rejects.
+	open := &L3Decider{Index: idx, Root: root}
+	res, err := open.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("zero floor must reuse an import slice (embedding-caller default)")
+	}
+
+	gated := &L3Decider{Index: idx, Root: root, MinOrigin: slice.OriginSessionAuto}
+	res, err = gated.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != nil {
+		t.Fatalf("import slice under a session-auto floor must not pass straight through, got %+v", res)
+	}
+}
+
+// TestDecideL3MinOriginAdmitsSessionAuto: a session-auto slice reuses
+// normally under the session-auto floor (no behavior change for the
+// trusted channels).
+func TestDecideL3MinOriginAdmitsSessionAuto(t *testing.T) {
+	root, idx, _, sl := buildTestLib(t)
+	sl.Meta.Origin = slice.OriginSessionAuto
+	if err := idx.Insert(sl); err != nil { // bm25 stores a clone: re-index with the tag
+		t.Fatal(err)
+	}
+	d := &L3Decider{Index: idx, Root: root, MinOrigin: slice.OriginSessionAuto}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("session-auto slice must reuse under the session-auto floor")
+	}
 }

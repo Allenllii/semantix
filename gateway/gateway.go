@@ -187,7 +187,7 @@ func New(cfg *Config) (*Gateway, error) {
 		}
 	}
 
-	decider := &cache.L3Decider{Index: idx, Store: store, Root: root, K: topK, Judge: llmJudge}
+	decider := &cache.L3Decider{Index: idx, Store: store, Root: root, K: topK, Judge: llmJudge, MinOrigin: cfg.minInjectOrigin()}
 	// Issue #260: lexical support floor for the L3 Hit path (0 disables the
 	// gate; nil keeps the kernel default).
 	if cfg.Cache.LexicalFloor != nil {
@@ -198,7 +198,8 @@ func New(cfg *Config) (*Gateway, error) {
 		store:    store,
 		index:    idx,
 		decider:  decider,
-		injector: &inject.Injector{Index: idx, Store: store, Scope: scope, K: topK, Budget: budget, Zones: &z},
+		injector: &inject.Injector{Index: idx, Store: store, Scope: scope, K: topK, Budget: budget, Zones: &z,
+			MinOrigin: cfg.minInjectOrigin()},
 		usageLog: rec,
 		client:   &http.Client{Timeout: 120 * time.Second},
 		disabled: disableEnv(),
@@ -522,6 +523,12 @@ func (m metaStore) Put(s *slice.Slice) error {
 	if s.Type == slice.Result {
 		s.Meta.ContextHash = m.ctxHash
 		s.Meta.Model = m.model
+		if s.Meta.Origin == "" {
+			// Issue #279: gateway ingestion is automatic extraction; a
+			// missing tag (legacy extractor) must not silently read as a
+			// higher trust level downstream.
+			s.Meta.Origin = slice.OriginSessionAuto
+		}
 	}
 	return m.inner.Put(s)
 }
