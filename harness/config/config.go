@@ -1909,7 +1909,7 @@ func Default() *Config {
 			QueueCap:           20,
 			QueueDrop:          "summarize",
 			IgnoreSelfMessages: true,
-			Control:            BotControlConfig{Addr: "127.0.0.1:37913", TokenEnv: "REASONIX_BOT_CONTROL_TOKEN"},
+			Control:            BotControlConfig{Addr: "127.0.0.1:37913", TokenEnv: "SEMANTIX_BOT_CONTROL_TOKEN"},
 			Pairing:            BotPairingConfig{Enabled: true, RequestTTLMinutes: 60, MaxPendingPerPlatform: 3},
 			Allowlist:          BotAllowlist{Enabled: true},
 			QQ:                 QQBotConfig{AppSecretEnv: "QQ_BOT_APP_SECRET"},
