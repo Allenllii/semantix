@@ -97,4 +97,3 @@ gh pr create --repo Gnosil/semantix --base main --head Allenllii:codex/issue-296
 
 The PR body must include `Closes #296`, the root cause, the preserved
 production behavior, and exact verification commands.
-

@@ -60,4 +60,3 @@ would introduce during parallel or race-enabled tests.
 - `go test ./...` passes.
 - Production code still defaults to a three-second subprocess timeout and
   returns `"", nil` for process failures and deadline expiry.
-
