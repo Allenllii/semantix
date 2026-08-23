@@ -1,17 +1,25 @@
 #!/bin/sh
 # install.sh — one-line installer for the Semantix coding agent + memory kernel.
 #
-# Installs two binaries under ~/.local/bin:
+# Installs two binaries under ~/.local/bin (both come out of the release's
+# full bundle, `semantix-agent-<version>-<os>-<arch>.tar.gz`):
 #   semantix        the memory kernel AND the umbrella launcher — bare
 #                   `semantix` starts the coding agent in the current folder;
 #                   `semantix <subcommand>` runs a kernel command.
 #   semantix-agent  the interactive coding agent (the umbrella execs it).
 # Enables cross-session memory by default and prints the PATH step.
 #
+# Want ONLY the kernel dropped into another agent's environment (Claude Code,
+# etc.)? Don't use this — install the agent, then run
+# `semantix install --target claude-code` (or `--target custom --dir ...`).
+#
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/Gnosil/semantix/main/agent-skill/scripts/install.sh | sh
 #   # pin a version / arch:
-#   curl -fsSL .../install.sh | sh -s -- v0.4.0 arm64
+#   curl -fsSL .../install.sh | sh -s -- v0.7.2 arm64
+#
+# Env overrides: SEMANTIX_BIN_DIR, SEMANTIX_HOME, SEMANTIX_RELEASE_BASE
+# (point the last at a mirror or a local server to test without GitHub).
 #
 # POSIX sh (no bashisms) so `curl | sh` works everywhere.
 set -eu
@@ -52,8 +60,12 @@ esac
 
 BIN_DIR="${SEMANTIX_BIN_DIR:-$HOME/.local/bin}"
 HOME_DIR="${SEMANTIX_HOME:-$HOME/.semantix}"
-BASE="https://github.com/$REPO/releases/download/$VERSION"
-PKG="semantix-$VERSION-$OS-$ARCH.tar.gz"
+BASE="${SEMANTIX_RELEASE_BASE:-https://github.com/$REPO/releases/download/$VERSION}"
+# The release's full bundle carries semantix-agent + semantix + gateway + config
+# templates. We install the two binaries the umbrella needs; the rest stays in
+# the tarball. Asset + inner directory share this name (build-full.sh).
+PKG="semantix-agent-$VERSION-$OS-$ARCH.tar.gz"
+DIR="semantix-agent-$VERSION-$OS-$ARCH"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -64,19 +76,25 @@ mkdir -p "$BIN_DIR" "$HOME_DIR"
 $CURL -o "$TMP/$PKG" "$BASE/$PKG"
 $CURL -o "$TMP/SHA256SUMS.txt" "$BASE/SHA256SUMS.txt"
 
-# 2. verify the checksum (shasum on macOS, sha256sum on most Linux).
+# 2. verify the checksum. SHA256SUMS.txt lists every platform's assets, so pull
+#    the one line whose filename is exactly ours (tolerating the "*" binary-mode
+#    marker some shasum builds emit) and feed only that to the checker — passing
+#    the whole file would fail on the other platforms' absent files.
+SUM_LINE="$(awk -v f="$PKG" '{n=$2; sub(/^\*/,"",n); if (n==f) print}' "$TMP/SHA256SUMS.txt")"
+[ -n "$SUM_LINE" ] || { echo "install: no checksum entry for $PKG" >&2; exit 1; }
 if command -v shasum >/dev/null 2>&1; then
-  (cd "$TMP" && grep " $PKG\$" SHA256SUMS.txt | shasum -a 256 -c -)
+  printf '%s\n' "$SUM_LINE" | (cd "$TMP" && shasum -a 256 -c -)
 else
-  (cd "$TMP" && grep " $PKG\$" SHA256SUMS.txt | sha256sum -c -)
+  printf '%s\n' "$SUM_LINE" | (cd "$TMP" && sha256sum -c -)
 fi
 
-# 3. extract + install both binaries. Bundle layout:
-#    semantix-<version>-<os>-<arch>/{semantix, semantix-agent, ...}
+# 3. extract + install both binaries out of the bundle directory.
 tar -xzf "$TMP/$PKG" -C "$TMP"
-SRC="$TMP/semantix-$VERSION-$OS-$ARCH"
-install -m 0755 "$SRC/semantix" "$BIN_DIR/semantix"
-install -m 0755 "$SRC/semantix-agent" "$BIN_DIR/semantix-agent"
+SRC="$TMP/$DIR"
+for b in semantix semantix-agent; do
+  [ -f "$SRC/$b" ] || { echo "install: $b missing from $PKG" >&2; exit 1; }
+  install -m 0755 "$SRC/$b" "$BIN_DIR/$b"
+done
 
 # 4. enable cross-session memory by default — only on a fresh install; never
 #    clobber an existing user config.
