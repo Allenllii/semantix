@@ -69,8 +69,9 @@ type PrefetchPlanFunc func(lastToolNames []string) []string
 // PrefetchPlanResult is the load-aware callback's candidate list and stable
 // explanation. IDs are still reduced to tool-name keys by the adapter.
 type PrefetchPlanResult struct {
-	IDs    []string
-	Reason string
+	IDs      []string
+	ProbeIDs []string
+	Reason   string
 }
 
 // LoadAwarePrefetchPlanFunc is an additive callback seam; PrefetchPlanFunc is
@@ -212,12 +213,14 @@ func (d *RuleDecider) DecideRound(ctx context.Context, in RoundInput) (RoundPlan
 		hint := normalizedPrefetchLoad(in.PrefetchLoad, groups, d.cfg.MaxParallel)
 		result := d.loadPrefetchFn(toolNames(active), hint)
 		plan.PrefetchIDs = result.IDs
+		plan.PrefetchProbeIDs = result.ProbeIDs
 		plan.PrefetchReason = result.Reason
 	} else if d.prefetchFn != nil {
 		plan.PrefetchIDs = d.prefetchFn(toolNames(active))
 	}
 	if action == BudgetActionHaltPrefetch || action == BudgetActionHardStop {
 		plan.PrefetchIDs = nil
+		plan.PrefetchProbeIDs = nil
 		plan.PrefetchReason = "budget:" + action
 	}
 	if action == BudgetActionDegradeTier {

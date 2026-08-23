@@ -61,18 +61,21 @@ func (l *EvolutionLoop) Params() evolve.Params {
 func (l *EvolutionLoop) observe(e kernelevent.Event) {
 	var signal string
 	var targets []string
+	var probeTargets []string
 	switch e.Kind {
 	case kernelevent.PrefetchHit:
 		signal = "prefetch_hit"
 		var p kernelevent.PrefetchHitPayload
 		if json.Unmarshal(e.Data, &p) == nil {
 			targets = p.Targets
+			probeTargets = p.ProbeTargets
 		}
 	case kernelevent.PrefetchWaste:
 		signal = "prefetch_waste"
 		var p kernelevent.PrefetchWastePayload
 		if json.Unmarshal(e.Data, &p) == nil {
 			targets = p.Targets
+			probeTargets = p.ProbeTargets
 		}
 	case kernelevent.SliceReject:
 		// Issue #267 step 3: injection pollution is the last unproduced
@@ -88,13 +91,23 @@ func (l *EvolutionLoop) observe(e kernelevent.Event) {
 		ObserveHit(string)
 		ObserveWaste(string)
 	}); ok {
-		for _, target := range targets {
+		feedbackTargets := targets
+		if len(probeTargets) > 0 {
+			feedbackTargets = probeTargets
+		}
+		for _, target := range feedbackTargets {
 			if signal == "prefetch_hit" {
 				feedback.ObserveHit(target)
 			} else {
 				feedback.ObserveWaste(target)
 			}
 		}
+	}
+	// Probe outcomes are exploration cost: retain local per-target learning
+	// and event/usage observability, but do not treat them as evidence for
+	// tightening or relaxing the global exploitation threshold (Issue #302).
+	if len(probeTargets) > 0 {
+		return
 	}
 	before := l.engine.Params()
 	epoch := l.epoch.Add(1)

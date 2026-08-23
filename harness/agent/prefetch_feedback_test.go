@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 	"time"
@@ -75,18 +76,18 @@ func TestPrefetchGateControlsWarmWithoutCreatingFeedback(t *testing.T) {
 	if !a.prefetchAllowed() {
 		t.Fatal("cold start must preserve legacy allow behavior")
 	}
-	a.armPrefetch("load_saturated")
+	a.armPrefetch("load_saturated", nil)
 	if a.prefetchAllowed() {
 		t.Fatal("load skip must block the warm")
 	}
 	if hits != 0 || wastes != 0 {
 		t.Fatalf("a skipped warm is not feedback: hits=%d wastes=%d", hits, wastes)
 	}
-	a.armPrefetch("candidate")
+	a.armPrefetch("candidate", nil)
 	if !a.prefetchAllowed() {
 		t.Fatal("candidate plan must allow the warm")
 	}
-	a.armPrefetch("no_candidate")
+	a.armPrefetch("no_candidate", nil)
 	if !a.prefetchAllowed() {
 		t.Fatal("no-candidate plan must preserve legacy fail-open warm")
 	}
@@ -121,5 +122,48 @@ func TestRecordPrefetchLeadTime(t *testing.T) {
 	}
 	if leadMs < 900 || leadMs > 3000 {
 		t.Fatalf("lead_ms=%d, want ≈1000 (positive, consumed after warm-up)", leadMs)
+	}
+}
+
+func TestRecordPrefetchCarriesCanonicalProbeTargets(t *testing.T) {
+	b := semantix.NewBridge(semantix.Config{Enabled: true})
+	defer b.Close()
+	var got kernelevent.PrefetchHitPayload
+	b.Events().Subscribe(func(e kernelevent.Event) {
+		if e.Kind == kernelevent.PrefetchHit {
+			if err := json.Unmarshal(e.Data, &got); err != nil {
+				t.Errorf("decode hit: %v", err)
+			}
+		}
+	})
+	a := &Agent{semantix: b}
+	a.armPrefetch("candidate", []string{"probe-b", "probe-a", "probe-a"})
+	a.storePrefetch(&prefetchedInjectResult{
+		Text: "block", Targets: []string{"s1"}, Turn: 1,
+		ProbeTargets: a.prefetchProbeTargets(),
+	})
+	if result := a.takePrefetch(1); result == nil {
+		t.Fatal("take must consume the warmed block")
+	}
+	want := []string{"probe-a", "probe-b"}
+	if len(got.ProbeTargets) != len(want) || got.ProbeTargets[0] != want[0] || got.ProbeTargets[1] != want[1] {
+		t.Fatalf("probe_targets=%v, want %v", got.ProbeTargets, want)
+	}
+}
+
+func TestRecordPrefetchOrdinaryPayloadOmitsProbeTargets(t *testing.T) {
+	b := semantix.NewBridge(semantix.Config{Enabled: true})
+	defer b.Close()
+	var data json.RawMessage
+	b.Events().Subscribe(func(e kernelevent.Event) {
+		if e.Kind == kernelevent.PrefetchWaste {
+			data = append(data[:0], e.Data...)
+		}
+	})
+	a := &Agent{semantix: b}
+	a.storePrefetch(&prefetchedInjectResult{Text: "block", Targets: []string{"s1"}, Turn: 1})
+	a.wastePrefetch()
+	if bytes.Contains(data, []byte("probe_targets")) {
+		t.Fatalf("ordinary payload must omit probe_targets: %s", data)
 	}
 }

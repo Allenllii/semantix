@@ -31,6 +31,9 @@ func TestPlanEpsilonProbeEscapesAbsorbingState(t *testing.T) {
 	if tasks[0].Cost != Defaults().BaseCost {
 		t.Fatalf("probe cost = %d, want default BaseCost %d", tasks[0].Cost, Defaults().BaseCost)
 	}
+	if !tasks[0].Probe {
+		t.Fatal("epsilon escape task must be marked as a probe")
+	}
 }
 
 // TestPlanEpsilonZeroKeepsEmptyPlan verifies backward compatibility: the
