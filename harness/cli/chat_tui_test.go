@@ -1076,7 +1076,7 @@ func TestApprovalChoicesPreserveDecisionSemantics(t *testing.T) {
 	}
 	planApprovalLabels := approvalChoiceLabels(&event.Approval{Tool: planApprovalTool})
 	if len(planApprovalLabels) != 3 || planApprovalLabels[0] != "Start execution" ||
-		planApprovalLabels[1] != "Revise plan (keep planning)" || planApprovalLabels[2] != "Exit without executing" {
+		planApprovalLabels[1] != "Revise plan (keep planning; note optional)" || planApprovalLabels[2] != "Exit without executing" {
 		t.Fatalf("plan approval labels = %v", planApprovalLabels)
 	}
 }
@@ -1134,7 +1134,7 @@ func TestPlanApprovalBannerShowsThreeExplicitActions(t *testing.T) {
 	m.width = 120
 	m.pendingApproval = &event.Approval{ID: "plan", Tool: planApprovalTool}
 	banner := ansi.Strip(m.renderApprovalBanner())
-	for _, want := range []string{"Start execution", "Revise plan (keep planning)", "Exit without executing"} {
+	for _, want := range []string{"Start execution", "Revise plan (keep planning; note optional)", "Exit without executing"} {
 		if !strings.Contains(banner, want) {
 			t.Fatalf("plan approval banner missing %q:\n%s", want, banner)
 		}

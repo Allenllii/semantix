@@ -231,6 +231,32 @@ func TestApprovalNoteEscReturnsToRows(t *testing.T) {
 	}
 }
 
+// TestHandleApprovalKeyIsInertWhileTyping covers the guard that Update's
+// routing makes unreachable in practice. It is not dead code: it is what keeps
+// the arrangement safe if the routing is ever reordered, and calling the
+// function directly is the only way to say so as a test.
+func TestHandleApprovalKeyIsInertWhileTyping(t *testing.T) {
+	ctrl := newPlanCardCtrl(t)
+	m := newPlanCardTUI(t, ctrl)
+	m.approvalTyping = true
+	m.approvalTypingChoice = approvalChoice{promptsForText: true}
+
+	for _, key := range []tea.KeyPressMsg{
+		typeRune('1'), typeRune('3'), typeRune('y'), typeRune('n'),
+		{Code: tea.KeyEnter}, {Code: tea.KeyEscape},
+	} {
+		next, _ := m.handleApprovalKey(key)
+		m = next.(chatTUI)
+	}
+	if len(ctrl.planCalls) != 0 || ctrl.approveCalls != 0 {
+		t.Fatalf("handleApprovalKey resolved while typing: plan=%v approve=%d",
+			ctrl.planCalls, ctrl.approveCalls)
+	}
+	if m.pendingApproval == nil || !m.approvalTyping {
+		t.Error("handleApprovalKey changed the card state while typing")
+	}
+}
+
 // TestRecoveryReviseRowForwardsNoteToResolveRecovery: the Auto Guard card's
 // transport has taken feedback since it shipped; the TUI was passing "".
 func TestRecoveryReviseRowForwardsNoteToResolveRecovery(t *testing.T) {
