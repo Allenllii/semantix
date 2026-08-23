@@ -41,27 +41,88 @@ func TestSemantixLookupBudget(t *testing.T) {
 }
 
 func TestSemantixLookupRequiresQuery(t *testing.T) {
+	noKernelPATH(t)
 	_, err := semantixLookup{}.Execute(context.Background(), json.RawMessage(`{}`))
 	if err == nil {
 		t.Fatal("want error for missing query")
 	}
+	// The clamp path runs on to the subprocess; with no kernel reachable it
+	// degrades soft, which is the assertion — argument handling must not
+	// surface an error of its own.
 	_, err = semantixLookup{}.Execute(context.Background(), json.RawMessage(`{"query":"x","limit":999}`))
 	if err != nil {
 		t.Fatalf("limit clamped, no error expected: %v", err)
 	}
 }
 
-// TestSemantixLookupFailsSoft: a missing/breaking `semantix` binary must
-// degrade to an empty result, never an error.
+// TestSemantixLookupFailsSoft: neither an absent kernel binary nor a broken
+// one may surface an error — a kernel outage must never break the agent's
+// turn. Both branches are constructed rather than assumed: the machine
+// running these tests is a semantix checkout and may well have a working
+// kernel on PATH.
 func TestSemantixLookupFailsSoft(t *testing.T) {
-	// No semantix binary in this environment → subprocess fails → soft empty.
-	out, err := semantixLookup{}.Execute(context.Background(),
+	t.Run("binary absent", func(t *testing.T) {
+		noKernelPATH(t)
+		out, err := semantixLookup{}.Execute(context.Background(),
+			json.RawMessage(`{"query":"anything"}`))
+		if err != nil {
+			t.Fatalf("soft degrade violated: %v", err)
+		}
+		if out != "" {
+			t.Errorf("want empty output, got %q", out)
+		}
+	})
+
+	t.Run("binary exits non-zero", func(t *testing.T) {
+		fakeKernelPATH(t, fakeKernelFail)
+		out, err := semantixLookup{}.Execute(context.Background(),
+			json.RawMessage(`{"query":"anything"}`))
+		if err != nil {
+			t.Fatalf("soft degrade violated: %v", err)
+		}
+		if out != "" {
+			t.Errorf("want empty output, got %q", out)
+		}
+	})
+}
+
+// TestSemantixLookupBudgetIsHonored proves Execute deadlines the subprocess on
+// the value budget() resolved, not on a constant of its own. The kernel here
+// answers happily, so an empty result can only mean the 1ns budget expired —
+// and no fork+exec on any machine meets 1ns, which makes the assertion
+// immune to the scheduling latency that made this test file flaky to begin
+// with. Under a hardcoded 3s the fake would answer and this would fail.
+func TestSemantixLookupBudgetIsHonored(t *testing.T) {
+	fakeKernelPATH(t, fakeKernelArgv)
+	out, err := (semantixLookup{timeout: time.Nanosecond}).Execute(context.Background(),
 		json.RawMessage(`{"query":"anything"}`))
 	if err != nil {
 		t.Fatalf("soft degrade violated: %v", err)
 	}
 	if out != "" {
+		t.Errorf("budget ignored: kernel answered %q", out)
+	}
+}
+
+// TestSemantixLookupUnresponsiveKernel covers the other end of the deadline:
+// a kernel that accepts the call and never replies must be killed and
+// degraded, not waited on. The ceiling is deliberately far above any
+// plausible exec latency — it separates "a deadline fired" from "no deadline
+// at all" (the fake sleeps for two minutes) without asserting on wall clock.
+func TestSemantixLookupUnresponsiveKernel(t *testing.T) {
+	fakeKernelPATH(t, fakeKernelHang)
+	start := time.Now()
+	out, err := (semantixLookup{timeout: 200 * time.Millisecond}).Execute(context.Background(),
+		json.RawMessage(`{"query":"anything"}`))
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("soft degrade violated: %v", err)
+	}
+	if out != "" {
 		t.Errorf("want empty output, got %q", out)
+	}
+	if elapsed > 30*time.Second {
+		t.Errorf("waited %s: the subprocess deadline never fired", elapsed)
 	}
 }
 
