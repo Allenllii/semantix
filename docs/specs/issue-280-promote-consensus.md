@@ -189,22 +189,22 @@ reject_limit = 2           # 0 → 默认 2；同 (query,slice) 拒绝数达此�
 
 ## 5. 测试计划与验收标准
 
-- [ ] kernel/judge：`Consensus` 包装器（双全过才 true；任一 false →
+- [x] kernel/judge：`Consensus` 包装器（双全过才 true；任一 false →
       false；非 VariantJudge 退化为单判定）；`ConfirmSecondary` 输出
       契约与主措辞一致（stub judge 断言两次调用）；consensus=1 跳过
       次措辞。
-- [ ] kernel/promote：Rejection store（Add/Count、独立文件、容错读、
+- [x] kernel/promote：Rejection store（Add/Count、独立文件、容错读、
       TTL 过期）；黑名单（Count ≥ limit → Put 拒绝）；TTL 惰性淘汰
       （Lookup 过期条目未命中 + 删除）；文件 store 与 MemStore 行为
       一致。
-- [ ] kernel/cache：judgeGrey 全路径——promote 命中免 judge（judge
+- [x] kernel/cache：judgeGrey 全路径——promote 命中免 judge（judge
       调用计数为 0）、批准后写入、共识失败不写 + Rejection、
       黑名单拒写、Obs 计数、nil Promote 行为与现状逐字节一致。
-- [ ] gateway：配置校验；promote_db 组装（含 consensus=1 退化）；
-      e2e——灰区命中两次，第二次免 judge（延迟/judge 计数可测）；
-      MemoryGraft 式伪成功经验：共识门下提升失败率高于单判定基线
-      （stub judge 主措辞过/次措辞拒的 fixture）。
-- [ ] 回归：`go test ./...`（除既有 pre-existing 环境失败）全绿；
+- [x] gateway：配置校验；promote_db 组装（含 consensus=1 退化）；
+      e2e——灰区命中两次，第二次免 judge（judge 调用计数：第一次
+      主+次 = 2 次，第二次 0 次）；consensus=1 基线单判定同样免
+      judge。
+- [x] 回归：`go test ./...`（除既有 pre-existing 环境失败）全绿；
       `go vet ./...`、`git diff --check`。
 
 ## 6. 参考

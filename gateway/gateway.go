@@ -253,7 +253,11 @@ func New(cfg *Config) (*Gateway, error) {
 			return nil, fmt.Errorf("gateway: rejection store: %w", err)
 		}
 		decider.Promote = promote.NewDecision(entries, rejections, ttl, limit)
-		if cfg.Cache.PromoteConsensus == 2 {
+		consensus := cfg.Cache.PromoteConsensus
+		if consensus == 0 {
+			consensus = DefaultPromoteConsensus
+		}
+		if consensus == 2 {
 			// The consensus second perspective comes from the judge
 			// itself (LLMJudge is a VariantJudge): the primary judge
 			// approves first, then the rephrased rubric confirms —

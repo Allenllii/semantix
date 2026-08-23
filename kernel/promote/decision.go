@@ -21,54 +21,46 @@ func NewDecision(entries Store, rejections RejectionStore, ttl, rejectLimit int6
 // whose content version matches the current slice content and whose
 // PromotedAt is inside the TTL window. Expired entries are lazily deleted
 // (bounded growth, Security §4.2.4: "verified" never exempts from TTL).
+// Deletion works on the snapshot this call already holds — a concurrent
+// Promote that lands between the snapshot and the cleanup cannot be
+// mistaken for an expired entry (TOCTOU-safe).
 func (d *Decision) Lookup(sourceSliceID, query string, currentVersion string, now int64) bool {
 	entries, err := d.entries.List(sourceSliceID)
 	if err != nil {
 		return false // store failure → conservative miss
 	}
-	kept := entries[:0]
 	hit := false
+	expired := false
 	for _, e := range entries {
-		expired := d.ttl > 0 && now-e.PromotedAt > d.ttl
-		if !expired && e.Query == query && e.ContentVersion == currentVersion {
+		if e.expiredBy(now, d.ttl) {
+			expired = true
+			continue
+		}
+		if e.Query == query && e.ContentVersion == currentVersion {
 			hit = true
 		}
-		if !expired {
-			kept = append(kept, e)
-		}
 	}
-	if len(kept) != len(entries) {
-		// Lazy expiry: rewrite only when something actually expired. A
-		// write failure must not turn a real hit into a miss — hit was
-		// already decided above.
-		_ = d.rewrite(sourceSliceID, kept)
+	if expired {
+		// Lazy expiry: delete only the entries present in THIS snapshot
+		// that are outside the window. Entries written concurrently after
+		// the snapshot are out of scope by construction (TOCTOU-safe).
+		for _, e := range entries {
+			if !e.expiredBy(now, d.ttl) {
+				continue
+			}
+			if err := d.entries.Delete(sourceSliceID, e.ContentVersion, e.Query); err != nil {
+				// Best-effort: a failed delete must not turn a real hit
+				// into a miss — hit was already decided above.
+				break
+			}
+		}
 	}
 	return hit
 }
 
-// rewrite replaces the entry list for one source slice (lazy expiry
-// helper). Best-effort: the store's own Delete is the primitive.
-func (d *Decision) rewrite(sourceSliceID string, kept []Entry) error {
-	entries, err := d.entries.List(sourceSliceID)
-	if err != nil {
-		return err
-	}
-	// Delete entries that are no longer kept (expired ones).
-	for _, e := range entries {
-		still := false
-		for _, k := range kept {
-			if k == e {
-				still = true
-				break
-			}
-		}
-		if !still {
-			if err := d.entries.Delete(sourceSliceID, e.ContentVersion, e.Query); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+// expiredBy reports whether an entry is outside the TTL window.
+func (e Entry) expiredBy(now, ttl int64) bool {
+	return ttl > 0 && now-e.PromotedAt > ttl
 }
 
 // Blacklisted reports whether (sourceSliceID, query) has accumulated

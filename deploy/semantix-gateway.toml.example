@@ -30,6 +30,14 @@ judge_api_key = ""                        # 可选：grey 区 LLM judge（GW6 #1
 judge_base_url = ""                       # 例：https://api.deepseek.com/v1
 judge_model = ""                          # 例：deepseek-chat
 # lexical_floor = 0.05                      # Issue #260：L3 Hit 词面支持下限（0 = 关闭词面门）
+# promote_db = "/data/promote.jsonl"       # Issue #280：提升条目库（空 = 不接线 promote）。
+#                                          # 灰区 judge 批准经「双措辞共识」后写入；同
+#                                          # (query,slice,version) 后续命中免 judge。
+#                                          # 失败教训存同目录 rejections.jsonl（独立命名
+#                                          # 空间，不进注入/检索；反复被拒进黑名单）。
+# promote_ttl_seconds = 604800             # 提升条目有效期（0 = 默认 7 天；已验证不免除 TTL）
+# promote_consensus = 2                    # 提升门：2 = 双措辞共识（默认）；1 = 单判定基线
+# reject_limit = 2                         # 同 (query,slice) 拒绝达此数进黑名单（-1 禁用）
 
 [ingest]
 sessions_dir = "/data/sessions"           # 会话旁路落盘目录（0600）

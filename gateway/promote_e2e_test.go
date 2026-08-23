@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -69,9 +70,13 @@ func TestPromoteSecondHitSkipsJudge(t *testing.T) {
 	if calls.Load() != 2 {
 		t.Fatalf("judge calls after first hit = %d, want 2 (primary + consensus secondary)", calls.Load())
 	}
-	// The promotion entry must be persisted.
-	if _, err := os.Stat(promoteDB); err != nil {
-		t.Fatalf("promote db: %v", err)
+	// The promotion entry must be persisted with the exact query.
+	entryBytes, err := os.ReadFile(promoteDB)
+	if err != nil {
+		t.Fatalf("read promote db: %v", err)
+	}
+	if !strings.Contains(string(entryBytes), "hello world") {
+		t.Fatalf("promotion entry missing from db:\n%s", entryBytes)
 	}
 
 	// Second hit on the same query: promotion hit, judge skipped entirely.
