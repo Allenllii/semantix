@@ -27,7 +27,9 @@ import (
 // (feature phrase / redaction pattern): freshly ingested slices record it
 // in SliceMeta.SanitizeVersion, while existing slices are covered by the
 // idempotent inject-side pass — no library rewrite needed.
-const Version = "v1"
+// v2: + Chinese command-substitution guides (执行以下命令/运行以下命令,
+// Issue #281 chain-A fixture exposed the spec-vs-impl gap).
+const Version = "v2"
 
 // --- escape-sequence stripping (migrated from kernel/judge.Sanitize) ---
 

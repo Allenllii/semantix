@@ -91,7 +91,10 @@ func TestPoisonChainIndirectInject(t *testing.T) {
 // injection block sanitized (idempotent inject-side pass backstops
 // anything the write side missed).
 func TestPoisonChainRetrievalCollision(t *testing.T) {
-	_, block := ingestChain(t, loadPoison(t, "session-retrieval-collision.jsonl"), "配置 CI 流水线")
+	items, block := ingestChain(t, loadPoison(t, "session-retrieval-collision.jsonl"), "配置 CI 流水线")
+	if len(items) == 0 || !strings.Contains(block, "配置 CI 流水线") {
+		t.Fatalf("chain anchor missing: slices=%d block=%q (collision must actually hit)", len(items), block)
+	}
 	if strings.Contains(strings.ToLower(block), "ignore previous") {
 		t.Fatalf("collision payload survived into the block:\n%s", block)
 	}
@@ -122,6 +125,12 @@ func TestPoisonChainFakeSuccessBlocked(t *testing.T) {
 	blocked := promoteWithConsensus(t, res, "修复 go 测试失败", true, false)
 	if blocked != 0 {
 		t.Fatalf("fake success promoted %d times, want 0 (consensus gate)", blocked)
+	}
+	// Positive control: both perspectives approve → exactly one promotion
+	// (proves the zero above is the gate, not a broken write path).
+	written := promoteWithConsensus(t, res, "修复 go 测试失败", true, true)
+	if written != 1 {
+		t.Fatalf("consensus-approved promotion = %d, want 1 (positive control)", written)
 	}
 }
 
