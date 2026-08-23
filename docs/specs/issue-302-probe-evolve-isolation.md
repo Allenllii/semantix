@@ -77,11 +77,12 @@ canonical injected slice identities.
 
 ### Evolution accounting
 
-`EvolutionLoop.observe` always performs existing local `ObserveHit` or
-`ObserveWaste` feedback for event `targets`. When `probe_targets` is non-empty,
-it returns immediately after local feedback. Thus exploration remains capable
-of recovering/demoting local keys and remains visible as cost, but cannot
-change the global engine snapshot.
+`EvolutionLoop.observe` performs local `ObserveHit` or `ObserveWaste` feedback
+for ordinary event `targets`. When `probe_targets` is non-empty, that explicit
+candidate subset becomes the local feedback input and the loop returns
+immediately afterward. Thus exploration remains capable of recovering or
+retaining demotion for the keys actually probed and remains visible as cost,
+but cannot change the global engine snapshot.
 
 An event without `probe_targets` follows the existing exploitation path,
 including `RecordSignal`, tuner application, and `EvolutionTick` emission.
@@ -110,4 +111,3 @@ including `RecordSignal`, tuner application, and `EvolutionTick` emission.
   passes.
 - `go test ./...` and race-enabled affected-package tests pass where the host
   toolchain supports the race detector.
-

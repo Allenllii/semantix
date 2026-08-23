@@ -188,4 +188,3 @@ Run `git diff upstream/main...HEAD --check`, push
 `codex/issue-302-probe-evolve-isolation` to `origin`, and create a PR against
 `Gnosil/semantix:main` whose body contains `Closes #302` and exact validation
 results.
-

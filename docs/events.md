@@ -50,9 +50,10 @@
 - `Compact` 的 `evict` trigger 由 gateway 启动淘汰发射（库级，sessionID 固定为
   `maintenance`，非会话事件）：`before_tokens`/`after_tokens` 此时携带**切片
   条目数**（字段名保持 wire 稳定），`evicted_by_type` 按类型 wire 名统计
-- `PrefetchHit` / `PrefetchWaste` 的 `probe_targets` 非空时，结果仍计入事件、
-  成本与局部命中/浪费反馈，但不驱动全局 evolve `PrefetchConf`（#302）。
   （result/tool_pattern/memory/prompt/context；Issue #277）。当前零消费者。
+- `PrefetchHit` / `PrefetchWaste` 的 `probe_targets` 非空时，结果仍计入事件、
+  成本与这些 probe key 的局部命中/浪费反馈，但不驱动全局 evolve
+  `PrefetchConf`（#302）。
 - `ToolResult.latency_ns` 为纳秒（Go `time.Duration` 的 wire 编码）。
 - `SliceInject.SliceIDs` 必须保持规范序（确定性注入，见架构设计 §4.2）。
 
