@@ -128,8 +128,18 @@ func (in *Injector) Build(query string) (*Injection, error) {
 
 	var kept []*slice.Slice
 	var dropped int
-	var buf bytes.Buffer
-	buf.WriteString(blockOpen)
+	// Single-pass assembly (Issue #283): candidates are filtered and
+	// sized with the EXACT on-disk format before any bytes are written,
+	// so the budget judgment and the final block share one口径 — the
+	// block can never exceed Budget. (The old two-pass shape carried a
+	// redundant pre-escape budget check from the #279 merge plus a dead
+	// "(score=%.2f)" header that never reached the output.)
+	type candidate struct {
+		sl      *slice.Slice
+		content string // sanitized + marker-escaped, == the bytes written
+	}
+	var cands []candidate
+	size := len(blockOpen)
 	for _, h := range hits {
 		if in.MinScore > 0 && h.Score < in.MinScore {
 			continue
@@ -164,30 +174,27 @@ func (in *Injector) Build(query string) (*Injection, error) {
 			dropped++
 			continue
 		}
-		if buf.Len()+len(content)+len(blockClose)+64 > budget && len(kept) > 0 {
-			dropped++
-			continue
-		}
 		content = escapeMarker(content)
-		if buf.Len()+len(content)+len(blockClose)+64 > budget && len(kept) > 0 {
+		// Budget judged on the EXACT bytes that will be written (escaped
+		// content, canonical header) — never on a pre-escape length.
+		item := len(fmt.Sprintf("--- slice %s ---\n%s\n", h.Slice.ID, content))
+		if size+item+len(blockClose)+64 > budget && len(cands) > 0 {
 			dropped++
 			continue
 		}
-		fmt.Fprintf(&buf, "--- slice %s (score=%.2f) ---\n%s\n", h.Slice.ID, h.Score, content)
-		kept = append(kept, h.Slice)
+		size += item
+		cands = append(cands, candidate{sl: h.Slice, content: content})
 	}
 
 	// Canonical order: ID-sorted for byte-stable output (never score order).
-	sort.Slice(kept, func(i, j int) bool { return kept[i].ID < kept[j].ID })
+	sort.Slice(cands, func(i, j int) bool { return cands[i].sl.ID < cands[j].sl.ID })
 
-	// Rebuild the text in canonical order (the first pass wrote score order).
-	// Sanitize again here — idempotent, so first-pass-cleaned slices are
-	// unchanged, while the canonical rebuild never reintroduces payload
-	// content (Issue #278).
-	buf.Reset()
+	var buf bytes.Buffer
+	buf.Grow(size + len(blockClose))
 	buf.WriteString(blockOpen)
-	for _, sl := range kept {
-		fmt.Fprintf(&buf, "--- slice %s ---\n%s\n", sl.ID, escapeMarker(sanitize.Sanitize(string(sl.Content))))
+	for _, c := range cands {
+		fmt.Fprintf(&buf, "--- slice %s ---\n%s\n", c.sl.ID, c.content)
+		kept = append(kept, c.sl)
 	}
 	buf.WriteString(blockClose)
 
