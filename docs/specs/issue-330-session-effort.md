@@ -99,25 +99,36 @@ in-flight 请求已冻结并在重试时逐字重放（`sampling_request.go:152-
 - 同样的磁盘读**今天已经在更热的路径上跑**——`effortArgItems` 的补全下拉每次
   按键都会调 `currentEffortEntry`。`SetEffort` 是斜杠命令，频率低若干量级。
 
-若将来 profiling 证明它要紧，再升级到缓存，届时是纯内部改动。
+若将来 profiling 证明它要紧，再升级到缓存，届时是纯内部改动。取的形状对齐
+`imageInputEnabled`：`config.LoadForRoot(c.workspaceRoot)`，`modelRef` 为空时
+回落 `cfg.DefaultModel`。
+
+**校验逻辑抽成纯函数**：`resolveSessionEffort(entry, level)` 只做校验、不碰磁盘，
+`SetEffort` 只剩「取 entry + 校验 + 转发」。这样 12 格的校验表可以全程离线跑，
+而不必为了测一个词表规则去铺一份临时 config。issue 未提这一层，属实现细节。
+
+**`SessionEffort()` 的读取顺序**对齐 `AgentPreset()`：executor → runner → 本地
+副本（`c.sessionEffort`，受 `c.mu` 保护）。executor 挂上后它是权威；没挂时端口
+仍要能诚实作答。
 
 ### 3.5 校验：按传输真能承载的深度词表
 
 只校验 `EffortCapabilityForEntry(entry).Levels` 会放进传输层随后静默丢弃的档位
 （例如 MiniMax 的 `adaptive`、Zhipu/LongCat 的任意值）。
 
-规则是「override 只调深度，从不调思考开关」，实现为 `harness/config` 的导出
-助手，剥掉 `auto|enabled|adaptive|disabled|none|off`。
+规则是「override 只调深度，从不调思考开关」，剥掉
+`auto|enabled|adaptive|disabled|none|off`。
 
-**为什么不直接从 adapter 导出**：`grep -rln "semantix/harness/config" harness/provider/`
-零命中——provider adapter 刻意不依赖用户配置。让 `harness/control` 反过来 import
-`harness/provider/openai` 也一样是破坏分层，且 `requestEffortVocabulary` 吃的是
-内部类型 `effortEndpoint`（由 `provider.Config` 而非 `config.ProviderEntry` 构造），
-导出它要连带导出那个类型。
+**规则留在 adapter，config 侧只包一层。** 起草本节时我以为
+`harness/provider/openai` 与 `harness/config` 互不依赖，打算把规则镜像进 config
+再用仅测试的跨包对拍守漂移。查依赖方向后作废：**`harness/config` 本来就 import
+`harness/provider/openai`**（`effort.go:8`、`fetch.go:10`），而且 `effort.go:371`
+的 `isDeepSeekEntry` 就带着现成的注释说明为什么——「实际匹配放在 provider/openai，
+让两层在新增网关时保持同步」。
 
-**漂移守卫用仅测试的跨包对拍**：在 `harness/provider/openai` 的测试里 import
-`harness/config`，对一张词表断言两侧结果逐一相等。测试文件的 import 不构成生产
-依赖，分层不变，而任一侧改了规则都会翻红。
+所以：`depthOnly` 导出为 `openai.DepthEffortLevels`，`config.DepthEffortLevels(e)`
+包一层。单一真源，无漂移可守——而原计划的那个对拍测试方向反了，会构成 import 环，
+根本编译不过。
 
 ### 3.6 端口放 `Settings`
 
@@ -196,4 +207,12 @@ spec commit，开 PR。
   且**在 #331 落地前不得改接 CLI**——否则会把一个当前可用的 `/effort` 变成对那
   两族的静默 no-op。
 - 本机无 C 编译器（`go test -race` 报 `-race requires cgo`），`-race` 由 CI
-  ubuntu-latest 承担。
+  ubuntu-latest 承担。并发那条测例在无 `-race` 时仍然跑通该路径，并检查最终值
+  与每个 round 携带的值都必须是写过的值之一。
+- `harness/agent` 的**包级 goleak 在本改动之前就失败**（残留 `net/http`
+  keep-alive goroutine）。已在 base 复验：把本 issue 的 agent 改动还原后，同一
+  命令同样退出 1、同样只有那一条 goleak 报错，且所有测例都 PASS。属既有问题，
+  不在本 issue 范围内。
+- 变异检验（各自确认翻红后回滚）：
+  - 优先级翻成 Option B → 6 格表里恰好翻红区分两者的那 2 格；
+  - `sampling_request.go:131` 改回只读 governor → 三条时序契约测例全红。
