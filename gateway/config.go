@@ -196,11 +196,33 @@ type CacheConfig struct {
 	// (normalized edit ratio in [0,1], Issue #262 §3.3). 0/unspecified →
 	// DefaultFalseHitSim (0.6); -1 disables the retry detection.
 	FalseHitSim float64 `toml:"false_hit_sim"`
+	// Promote wiring (Issue #280): a consensus-approved (query, slice,
+	// version) skips the judge on later grey hits. PromoteDB is the
+	// promotion entry file (empty → promote disabled); PromoteTTLSeconds
+	// bounds promotion validity (0 → DefaultPromoteTTL 7d); PromoteConsensus
+	// selects the promotion gate (2 = dual-rubric consensus, 1 = single-
+	// judgement baseline); RejectLimit blacklists a (query, slice) after
+	// that many in-window rejections (0 → DefaultRejectLimit 2; -1 disables
+	// the blacklist).
+	PromoteDB         string `toml:"promote_db"`
+	PromoteTTLSeconds int64  `toml:"promote_ttl_seconds"`
+	PromoteConsensus  int    `toml:"promote_consensus"`
+	RejectLimit       int    `toml:"reject_limit"`
 }
 
 // DefaultFalseHitSim is the built-in retry-similarity threshold when
 // [cache] false_hit_sim is unspecified.
 const DefaultFalseHitSim = 0.6
+
+// Default promote tuning (Issue #280): promotion entries stay valid for 7
+// days (Security §4.2.4: "verified" never exempts from TTL), the promotion
+// gate is the dual-rubric consensus, and a (query, slice) is blacklisted
+// after 2 in-window rejections.
+const (
+	DefaultPromoteTTLSeconds = 7 * 24 * 60 * 60
+	DefaultPromoteConsensus  = 2
+	DefaultRejectLimit       = 2
+)
 
 // BillingConfig is the customer free-tier gate (see gateway/quota.go):
 // the first FreeTokens upstream tokens are served for free; after that the
@@ -533,6 +555,17 @@ func (c *Config) validate() error {
 			c.Cache.FalseHitSim < 0 || c.Cache.FalseHitSim > 1) {
 			return fmt.Errorf("gateway config: [cache] false_hit_sim must be -1 (disabled) or in [0,1], got %v", c.Cache.FalseHitSim)
 		}
+	}
+	// Promotion wiring (Issue #280): consensus ∈ {1,2}; TTL >= 0; reject
+	// limit >= -1 (-1 disables the blacklist).
+	if c.Cache.PromoteConsensus != 0 && c.Cache.PromoteConsensus != 1 && c.Cache.PromoteConsensus != 2 {
+		return fmt.Errorf("gateway config: [cache] promote_consensus must be 1 (single judgement) or 2 (dual-rubric consensus), got %d", c.Cache.PromoteConsensus)
+	}
+	if c.Cache.PromoteTTLSeconds < 0 {
+		return fmt.Errorf("gateway config: [cache] promote_ttl_seconds must be >= 0 (0 uses the default %d)", DefaultPromoteTTLSeconds)
+	}
+	if c.Cache.RejectLimit < -1 {
+		return fmt.Errorf("gateway config: [cache] reject_limit must be >= -1 (-1 disables the blacklist), got %d", c.Cache.RejectLimit)
 	}
 	if c.Server.HealthTimeoutSeconds < 0 {
 		return fmt.Errorf("gateway config: [server] health_timeout_seconds must be >= 0 (0 disables the upstream probe)")

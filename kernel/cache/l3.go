@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"semantix/kernel/fingerprint"
 	"semantix/kernel/judge"
+	"semantix/kernel/promote"
 	"semantix/kernel/slice"
 	"semantix/kernel/zone"
 )
@@ -66,6 +68,40 @@ type L3Decider struct {
 	Adapt interface {
 		TauLow(sliceID string, global float64) float64
 	}
+
+	// Promote is the judge-approved promotion decision surface (Issue
+	// #280): a consensus-approved (query, slice, version) inside the TTL
+	// window skips the judge on later hits; a blacklisted candidate's
+	// promotion write is blocked; judge declines and consensus failures
+	// are recorded as failure lessons in the independent rejection
+	// namespace. nil-safe — without it the L3 path behaves exactly as
+	// before (single judge per grey candidate, no promotion).
+	Promote Promote
+
+	// Consensus is the second-perspective provider of the promotion gate
+	// (Issue #280): after the primary judge (d.Judge) approves, a
+	// non-nil Consensus that implements judge.VariantJudge contributes
+	// its rephrased-rubric ConfirmSecondary — both perspectives must
+	// approve before a promotion entry is written. nil → single-
+	// perspective baseline (consensus=1). The L3 reuse path itself
+	// always uses d.Judge (main-path cost unchanged: primary 1 call +
+	// secondary 1 call when consensus is on).
+	Consensus judge.Judge
+}
+
+// Promote is the promotion decision surface the L3 grey path consults
+// (Issue #280). Implementations aggregate a promotion store and the
+// independent failure-lesson (rejection) namespace; see kernel/promote.
+type Promote interface {
+	// Lookup reports whether (slice, query) has a promotion entry whose
+	// content version matches and whose TTL window is open.
+	Lookup(sourceSliceID, query, currentVersion string, now int64) bool
+	// Promote writes a promotion entry unless the candidate is
+	// blacklisted (ErrBlacklisted from kernel/promote).
+	Promote(e promote.Entry) error
+	// Rejected records one failure lesson (judge decline / consensus
+	// failure) in the independent rejection namespace.
+	Rejected(sourceSliceID, query, reason string, now int64)
 }
 
 // minGreyWidth keeps a non-empty grey zone when an adaptive TauLow would
@@ -88,6 +124,12 @@ type Obs struct {
 	JudgeError        int // judge call failed/timed out — unavailable, not a verdict (Issue #245)
 	JudgeApproved     int // judge approved (later gates may still reject)
 	Reused            int // finally reused (all gates passed)
+	// Promotion decision counters (Issue #280; zero when promote is not
+	// wired or nothing happened).
+	PromoteHit         int // promotion hit: judge skipped for this candidate
+	PromoteWritten     int // consensus passed, promotion entry written
+	PromoteRejected    int // consensus failed (secondary rubric declined)
+	PromoteBlacklisted int // promotion write blocked by repeated rejections
 }
 
 // ObsAccum is a thread-safe accumulator for Obs. Consumers read snapshots
@@ -117,6 +159,10 @@ func (a *ObsAccum) add(o Obs) {
 	a.n.JudgeError += o.JudgeError
 	a.n.JudgeApproved += o.JudgeApproved
 	a.n.Reused += o.Reused
+	a.n.PromoteHit += o.PromoteHit
+	a.n.PromoteWritten += o.PromoteWritten
+	a.n.PromoteRejected += o.PromoteRejected
+	a.n.PromoteBlacklisted += o.PromoteBlacklisted
 	a.mu.Unlock()
 }
 
@@ -388,10 +434,18 @@ func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice, rel 
 		o.RulesReject++ // grey without a judge: conservative reject
 		return false
 	}
+	now := time.Now().Unix()
+	// Issue #280: a (query, slice, version) that was consensus-approved
+	// inside the TTL window skips the judge entirely — the promotion
+	// entry IS the approval (still subject to the fingerprint/isolation
+	// gates later in DecideL3; promotion only replaces the judge step).
+	if d.Promote != nil && d.Promote.Lookup(s.ID, q.UserInput, promote.ContentVersion(s.Content), now) {
+		o.PromoteHit++
+		return true
+	}
 	timed := &timedJudge{inner: d.Judge}
 	var gs judge.Stats
-	gate := judge.RuleGate{Judge: timed, Stats: &gs}
-	v, reason, err := gate.Chain(ctx, judge.Candidate{
+	cand := judge.Candidate{
 		Query:   q.UserInput,
 		SliceID: s.ID,
 		Content: string(s.Content),
@@ -400,13 +454,64 @@ func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice, rel 
 		Zone:    zone.Grey,
 		Deps:    s.Meta.Deps,
 		RootDir: d.Root,
-	})
+	}
+	gate := judge.RuleGate{Judge: timed, Stats: &gs}
+	v, reason, err := gate.Chain(ctx, cand)
 	o.RulesReject += gs.RulesReject
 	o.FingerprintReject += gs.Fingerprint
 	o.JudgeReject += gs.JudgeReject
 	o.JudgeError += gs.JudgeError
 	o.JudgeApproved += gs.JudgeApproved
 	ok := err == nil && v == judge.Confirm
+	if d.Promote != nil {
+		if ok {
+			// Consensus gate (Issue #280, A-MemGuard): the primary judge
+			// already approved (that IS the first perspective); a second
+			// perspective — the rephrased rubric — must approve too before
+			// promotion eligibility is granted. L3 reuse already succeeded;
+			// consensus only decides whether future hits skip the judge. A
+			// consensus error is judge unavailability (Issue #245) — no
+			// promotion written, counted as a judge error.
+			approve := true
+			var cerr error
+			if d.Consensus != nil {
+				if vj, ok := d.Consensus.(judge.VariantJudge); ok {
+					approve, cerr = vj.ConfirmSecondary(ctx, cand)
+				} else {
+					approve = false // a non-variant consensus provider cannot contribute a second perspective
+				}
+			}
+			switch {
+			case cerr != nil:
+				o.JudgeError++
+			case !approve:
+				o.PromoteRejected++
+				d.Promote.Rejected(s.ID, q.UserInput, "consensus_failed", now)
+			default:
+				if err := d.Promote.Promote(promote.Entry{
+					SourceSliceID:  s.ID,
+					ContentVersion: promote.ContentVersion(s.Content),
+					Query:          q.UserInput,
+					PromotedAt:     now,
+				}); err != nil {
+					if err == promote.ErrBlacklisted {
+						o.PromoteBlacklisted++
+					}
+					// Other store errors are best-effort: promotion is an
+					// optimization, never a decision-path dependency.
+				} else {
+					o.PromoteWritten++
+				}
+			}
+		} else if gs.JudgeReject > 0 {
+			// Failure lesson (Issue #280 double-memory): a judge decline
+			// is blacklist evidence for this (query, slice). Rule and
+			// fingerprint rejections are NOT recorded — they mean the
+			// candidate is stale or structurally ineligible, not that the
+			// pair is a poisoned false success.
+			d.Promote.Rejected(s.ID, q.UserInput, "judge_declined", now)
+		}
+	}
 	if d.OnJudge != nil {
 		obs := JudgeObservation{
 			SliceID:       s.ID,

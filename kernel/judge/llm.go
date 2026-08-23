@@ -76,6 +76,33 @@ Reply with exactly one word: yes (reuse acceptable) or no (do not reuse).`,
 		c.Query, c.SliceID, c.Content)
 }
 
+// secondaryRubricPrompt is the rephrased second perspective of the same
+// six-dimension checklist (Issue #280 consensus gate): same output
+// contract (one token: yes/no), deliberately different wording and
+// example order so a wording-sensitive single judgement is caught by the
+// second pass.
+func secondaryRubricPrompt(c Candidate) string {
+	return fmt.Sprintf(`You verify cached answers before reuse in a coding assistant.
+Is this cached response still correct for the current request?
+
+Reject it when ANY of these holds:
+- the answer mentions code whose interface (function/method signature) is outdated
+- files or paths it relies on are gone from the working tree
+- dependency manifests (go.mod, package.json, ...) show drifted versions
+- the answer assumes a language or framework stack the request does not use
+- build outputs or configs it depends on were regenerated
+- it conflicts with the project's settings or the user's stated preferences
+
+REQUEST:
+%s
+
+CACHED RESPONSE (slice %s):
+%s
+
+Answer with a single word only: yes or no.`,
+		c.Query, c.SliceID, c.Content)
+}
+
 // Confirm implements Judge.
 func (j *LLMJudge) Confirm(ctx context.Context, c Candidate) (bool, error) {
 	// Issue #8 acceptance ④ + Issue #278: the judge reads the FULL
@@ -86,6 +113,20 @@ func (j *LLMJudge) Confirm(ctx context.Context, c Candidate) (bool, error) {
 	// prompt keeps the judge trustworthy (Security §3.2.1 reuses §3.1).
 	c.Content = sanitize.Sanitize(c.Content)
 	text, err := j.call(ctx, rubricPrompt(c))
+	if err != nil {
+		return false, err
+	}
+	t := strings.ToLower(strings.TrimSpace(text))
+	return strings.HasPrefix(t, "yes"), nil
+}
+
+// ConfirmSecondary is the rephrased-rubric second perspective (Issue #280
+// consensus gate): the same candidate through secondaryRubricPrompt with
+// the same single-token yes/no contract. Confirm (primary) and
+// ConfirmSecondary (secondary) must both approve for the consensus gate.
+func (j *LLMJudge) ConfirmSecondary(ctx context.Context, c Candidate) (bool, error) {
+	c.Content = sanitize.Sanitize(c.Content) // same read-side pipeline
+	text, err := j.call(ctx, secondaryRubricPrompt(c))
 	if err != nil {
 		return false, err
 	}
