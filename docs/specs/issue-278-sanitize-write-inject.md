@@ -90,12 +90,18 @@ func Sanitize(s string) string
 
 - 匹配实现：rune 级 fold（复用 inject.replaceFold 的模式）+ 两侧空白
   规整（剥离后折叠连续空白，避免 `ignore previous instructions  ，` 残留
-  悬挂标点）。
+  悬挂标点）；剥离循环至**固定点**（折叠可能暴露新短语，如
+  `ignore all  previous instructions` 双空格折叠后成完整载荷——固定点
+  保证 `Sanitize(Sanitize(s)) == Sanitize(s)`，注入侧两遍组装依赖此
+  不变量）。
 - 剥离是**内容变换**：命中即删，不标记、不替换为占位符（标记属
   datamarking，非目标；占位符会让"讨论注入攻击"的正常会话内容失真，
   剥离已满足 Security §3.1「剥离指令前缀」字面要求）。
 - 中文特征在 extract 的 Prompt/Result 切片上实测命中率极低（正常会话
-  不会写「忽略之前的指令」）——误伤面可控。
+  不会写「忽略之前的指令」）——误伤面可控。**已知误伤示例（v1 权衡，
+  非 bug）**：否定/引用句中的短语会被剥离——「不要忽略之前的指令」→
+  「不要」、「Please don't pretend you are a bot」→「Please don't a bot」。
+  安全优先于保真，规则表只收高置信短语以最小化此面。
 
 ### 2.3 敏感模式脱敏规则（v1 内置表）
 
@@ -137,9 +143,16 @@ func newSlice(t SliceType, sc Scope, content []byte, meta SliceMeta) *Slice {
 - 覆盖全部写入路径：CLI `extract`、`kernel/ingest.Pipeline`（gateway 用）、
   未来任何经 Extractor 的写入——单点接线，无遗漏面。
 - `sliceID` 基于**净化后** content（与 CompressionVersion 先例一致：
-  内容变换 → ID 变化），同内容不同规则版本不碰撞。
+  内容变换 → ID 变化），同内容不同规则版本不碰撞。**dedup 语义注记**：
+  净化升级（bump Version）后，同一原始内容的新切片 ID 不同于旧切片，
+  新旧可短暂共存（各自 ID 指纹自己的净化形态）；注入侧幂等回退保证
+  旧切片出块时同样无载荷——不构成安全缺口，仅库内多一份同源内容，
+  由 gc 价值淘汰收敛。
 - `SliceMeta.SanitizeVersion string`（`json:"sanitize_version,omitempty"`），
   仿照 `CompressionVersion`；legacy/未净化切片为空串（注入侧兜底）。
+- **ToolPattern 注记**：净化对工具名序列同样生效（统一安全一致性）；
+  当前工具名无 sk-/email 形态故为 no-op，未来若工具名含敏感形态会
+  改变其 ID——v1 接受（安全一致性优先）。
 
 ## 4. 注入侧接线（inject 净化）
 

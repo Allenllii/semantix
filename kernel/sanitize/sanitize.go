@@ -226,11 +226,25 @@ func wordBoundary(r rune) bool {
 }
 
 // stripFeatures removes every feature phrase (case-insensitive, word
-// boundary guarded). Whitespace is collapsed ONLY when at least one phrase
-// was actually removed (payload phrases often carry trailing
-// punctuation/spacing) — untouched text keeps its exact layout, so normal
-// multi-line content never changes (write-side byte-stability anchor).
+// boundary guarded) to a FIXED POINT: whitespace collapse after one pass
+// can surface a new phrase ("ignore all  previous instructions" — double
+// space — collapses into the single-spaced payload), so the pass repeats
+// until no further change. Fixed-point removal makes the pipeline
+// idempotent: Sanitize(Sanitize(s)) == Sanitize(s) holds by construction,
+// which the inject side's two-pass assembly relies on (first pass decides
+// empty/budget on the same bytes the second pass emits).
 func stripFeatures(s string) string {
+	for {
+		out := stripOnce(s)
+		if out == s {
+			return out
+		}
+		s = out
+	}
+}
+
+// stripOnce is one removal pass over the phrase table.
+func stripOnce(s string) string {
 	folded := foldString(s)
 	var b strings.Builder
 	b.Grow(len(s))
