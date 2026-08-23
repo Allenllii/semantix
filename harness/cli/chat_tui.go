@@ -3197,6 +3197,11 @@ type approvalChoice struct {
 	allowForSession bool
 	persistToConfig bool
 	exitPlan        bool
+	// promptsForText opens the composer for a note instead of resolving on the
+	// keystroke. Only revise rows set it: "revise" is the one decision whose
+	// meaning is incomplete without the user saying what to change, and both
+	// its transports (ResolvePlanDecision, ResolveRecovery) carry the text.
+	promptsForText bool
 }
 
 func approvalChoices(a *event.Approval) []approvalChoice {
@@ -3210,12 +3215,14 @@ func approvalChoices(a *event.Approval) []approvalChoice {
 		if a.Recovery != nil && a.Recovery.CanGrantTask {
 			// allowForSession is reused only as a local UI marker. The recovery
 			// handler maps it to a task-scoped semantic grant, never a session rule.
-			decisions = []approvalChoice{{allow: true}, {allow: true, allowForSession: true}, {}}
+			decisions = []approvalChoice{
+				{allow: true}, {allow: true, allowForSession: true}, {promptsForText: true},
+			}
 		} else {
-			decisions = []approvalChoice{{allow: true}, {}}
+			decisions = []approvalChoice{{allow: true}, {promptsForText: true}}
 		}
 	case a.Tool == planApprovalTool:
-		decisions = []approvalChoice{{allow: true}, {}, {exitPlan: true}}
+		decisions = []approvalChoice{{allow: true}, {promptsForText: true}, {exitPlan: true}}
 	case fresh && freshApprovalAllowsSession(a.Tool):
 		decisions = []approvalChoice{{allow: true}, {allow: true, allowForSession: true}, {}}
 	case fresh:

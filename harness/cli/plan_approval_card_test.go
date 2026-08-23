@@ -59,6 +59,54 @@ func newPlanCardTUI(ctrl *planCardCtrl) chatTUI {
 	return m
 }
 
+// TestReviseRowsPromptForText pins which rows open the note field. Only the
+// revise row does: it is the one decision whose meaning is incomplete without
+// the user saying what to change. Start, exit and the plain deny rows resolve
+// on the keystroke as they always have.
+func TestReviseRowsPromptForText(t *testing.T) {
+	tests := []struct {
+		name     string
+		approval *event.Approval
+		want     []bool
+	}{
+		{
+			name:     "plan card",
+			approval: &event.Approval{Tool: planApprovalTool},
+			want:     []bool{false, true, false},
+		},
+		{
+			name:     "recovery card",
+			approval: &event.Approval{Kind: "recovery", Recovery: &event.RecoveryApproval{}},
+			want:     []bool{false, true},
+		},
+		{
+			name: "recovery card with task grant",
+			approval: &event.Approval{
+				Kind: "recovery", Recovery: &event.RecoveryApproval{CanGrantTask: true},
+			},
+			want: []bool{false, false, true},
+		},
+		{
+			name:     "ordinary tool card prompts for nothing",
+			approval: &event.Approval{Tool: "bash", Subject: "echo hi"},
+			want:     []bool{false, false, false, false},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := approvalChoices(tt.approval)
+			if len(got) != len(tt.want) {
+				t.Fatalf("choices = %d, want %d", len(got), len(tt.want))
+			}
+			for i := range got {
+				if got[i].promptsForText != tt.want[i] {
+					t.Errorf("row %d promptsForText = %v, want %v", i, got[i].promptsForText, tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 // TestPlanApprovalRowsResolveThroughPlanDecisionAPI pins the receipt fix: every
 // plan row must name its own outcome through ResolvePlanDecision. The generic
 // boolean Approve cannot express "exit without executing" — it classifies any

@@ -1029,7 +1029,7 @@ func TestApprovalChoicesPreserveDecisionSemantics(t *testing.T) {
 		{
 			name: "plan decision",
 			tool: planApprovalTool,
-			want: []approvalChoice{{allow: true}, {}, {exitPlan: true}},
+			want: []approvalChoice{{allow: true}, {promptsForText: true}, {exitPlan: true}},
 		},
 	}
 	for _, tt := range tests {
@@ -1050,7 +1050,9 @@ func TestApprovalChoicesPreserveDecisionSemantics(t *testing.T) {
 	grantable := approvalChoices(&event.Approval{
 		Kind: "recovery", Recovery: &event.RecoveryApproval{CanGrantTask: true},
 	})
-	wantGrantable := []approvalChoice{{allow: true}, {allow: true, allowForSession: true}, {}}
+	wantGrantable := []approvalChoice{
+		{allow: true}, {allow: true, allowForSession: true}, {promptsForText: true},
+	}
 	if len(grantable) != len(wantGrantable) {
 		t.Fatalf("grantable recovery choices = %d, want %d", len(grantable), len(wantGrantable))
 	}
