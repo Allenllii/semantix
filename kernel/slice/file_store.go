@@ -322,6 +322,19 @@ func (s *fileStore) ensureJournalLocked() error {
 	return nil
 }
 
+// reopenJournalLocked re-attaches to the existing on-disk journal in append
+// mode without rewriting its header. Used only to recover the live journal
+// after a failed compaction base-rename (Issue #367): the file still holds real
+// records, so it must be reopened — not recreated — before writes resume.
+func (s *fileStore) reopenJournalLocked() error {
+	jf, err := os.OpenFile(s.journalPath(), os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	s.jf, s.jw = jf, bufio.NewWriter(jf)
+	return nil
+}
+
 func (s *fileStore) appendLocked(rec journalRecord) error {
 	b, err := json.Marshal(rec)
 	if err != nil {
@@ -576,6 +589,10 @@ func (s *fileStore) CompactWith(rescore func([]*Slice) []*Slice) error {
 	return s.compactLocked(rescore)
 }
 
+// osRename is the compaction base-swap rename, overridable in tests to inject a
+// failure at exactly that step (Issue #367 recovery path).
+var osRename = os.Rename
+
 func (s *fileStore) compactLocked(rescore func([]*Slice) []*Slice) error {
 	lives := make([]*storedEntry, 0, len(s.entries))
 	for _, e := range s.order {
@@ -644,6 +661,7 @@ func (s *fileStore) compactLocked(rescore func([]*Slice) []*Slice) error {
 	// base rename and the fresh-header rename leaves new base + old journal:
 	// the next open sees the generation mismatch and stashes a journal whose
 	// content is already folded in — zero loss by construction.
+	retiredJournal := false
 	if s.jw != nil {
 		if err := s.jw.Flush(); err != nil {
 			return err
@@ -652,8 +670,20 @@ func (s *fileStore) compactLocked(rescore func([]*Slice) []*Slice) error {
 			return err
 		}
 		s.jf, s.jw = nil, nil
+		retiredJournal = true
 	}
-	if err := os.Rename(tmpName, s.path); err != nil {
+	if err := osRename(tmpName, s.path); err != nil {
+		// The base swap failed but the process keeps running (not a crash). The
+		// old journal is still on disk holding live, un-folded records, and we
+		// already retired its fd above. Reopen that journal so the next write
+		// appends to it — otherwise ensureJournalLocked would replace it with a
+		// fresh empty journal and permanently lose those records (Issue #367).
+		_ = os.Remove(tmpName)
+		if retiredJournal {
+			if rerr := s.reopenJournalLocked(); rerr != nil {
+				return errors.Join(err, rerr)
+			}
+		}
 		return err
 	}
 	st, err := os.Stat(s.path)

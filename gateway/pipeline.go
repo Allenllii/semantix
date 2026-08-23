@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"semantix/kernel/cache"
 	kernelevent "semantix/kernel/event"
@@ -294,10 +295,19 @@ func (g *Gateway) forward(ctx context.Context, up UpstreamConfig, body []byte) (
 // (the client surface is always OpenAI-compatible).
 func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector, l3Obs cache.Obs, l3FalseHit bool) {
 	vendor := up.Vendor
-	out, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
+	// Read one byte past the cap so a truncation is detectable: io.LimitReader
+	// stops silently at the limit and io.ReadAll reports no error, which would
+	// otherwise let a >maxBodyBytes upstream body be recorded into the reuse
+	// library and served with a mismatched Content-Length (Issue #368).
+	out, err := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	if err != nil {
 		writeAPIError(w, http.StatusBadGateway, "upstream_error",
 			fmt.Sprintf("read upstream response: %v", err))
+		return
+	}
+	if len(out) > maxBodyBytes {
+		writeAPIError(w, http.StatusBadGateway, "upstream_error",
+			fmt.Sprintf("upstream response exceeds %d bytes", maxBodyBytes))
 		return
 	}
 	if resp.StatusCode >= 400 {
@@ -325,11 +335,12 @@ func (g *Gateway) passthrough(w http.ResponseWriter, resp *http.Response, sessio
 		if isHopByHopHeader(k) {
 			continue
 		}
-		if vendor == "anthropic" && http.CanonicalHeaderKey(k) == "Content-Length" {
-			// Only the translated hop may differ from the upstream body
-			// length; net/http recomputes Content-Length, so a copied value
-			// would truncate or stall the reply. The OpenAI passthrough path
-			// relays verbatim and keeps the upstream framing byte-identical.
+		if http.CanonicalHeaderKey(k) == "Content-Length" {
+			// Never forward the upstream Content-Length: net/http recomputes it
+			// from the bytes we actually write, so a copied value would stall or
+			// malform the reply whenever our body differs from upstream's — the
+			// Anthropic→OpenAI translation changes length, and any vendor's body
+			// could have been size-capped on read (Issue #368).
 			continue
 		}
 		for _, v := range vs {
@@ -793,8 +804,19 @@ func (g *Gateway) replayStream(w http.ResponseWriter, r *http.Request, req *chat
 	content := res.Response
 	for len(content) > 0 {
 		n := 256
-		if len(content) < n {
+		if n >= len(content) {
 			n = len(content)
+		} else {
+			// Never split a multi-byte UTF-8 rune across chunks: json.Marshal
+			// would replace the torn bytes with U+FFFD, corrupting the replayed
+			// text at 256-byte boundaries (Issue #369). Back off to a rune
+			// start; the max UTF-8 rune is 4 bytes, so n stays >= 253.
+			for n > 0 && !utf8.RuneStart(content[n]) {
+				n--
+			}
+			if n == 0 { // unreachable (no rune > 256B); flush the rest to be safe
+				n = len(content)
+			}
 		}
 		writeChunk(map[string]any{"content": content[:n]}, nil)
 		content = content[n:]

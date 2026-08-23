@@ -728,10 +728,16 @@ func migrateSupportData(legacyDir, newDir string) []string {
 		}
 		dst := filepath.Join(newDir, item)
 		if fi.IsDir() {
-			if err := copyDir(src, dst); err != nil {
+			skipped, err := copyDir(src, dst)
+			if err != nil {
 				warnings = append(warnings, fmt.Sprintf("failed to migrate directory %s: %v", item, err))
 			} else {
 				warnings = append(warnings, fmt.Sprintf("successfully migrated directory %s", item))
+			}
+			// Surface any destination files kept-not-overwritten so the "don't
+			// clobber newer user data" behavior is visible, not silent (#356).
+			for _, sp := range skipped {
+				warnings = append(warnings, fmt.Sprintf("kept existing file %s (not overwritten)", sp))
 			}
 		} else {
 			if _, err := os.Stat(dst); err == nil {
@@ -741,7 +747,11 @@ func migrateSupportData(legacyDir, newDir string) []string {
 				continue
 			}
 			if err := copyFile(src, dst); err != nil {
-				warnings = append(warnings, fmt.Sprintf("failed to migrate file %s: %v", item, err))
+				if errors.Is(err, errDestExists) {
+					warnings = append(warnings, fmt.Sprintf("kept existing file %s", item))
+				} else {
+					warnings = append(warnings, fmt.Sprintf("failed to migrate file %s: %v", item, err))
+				}
 			} else {
 				warnings = append(warnings, fmt.Sprintf("successfully migrated file %s", item))
 			}
@@ -749,6 +759,10 @@ func migrateSupportData(legacyDir, newDir string) []string {
 	}
 	return warnings
 }
+
+// errDestExists signals copyFile refused to overwrite an existing destination.
+// Migration keeps the existing (newer) file rather than clobbering it (#356).
+var errDestExists = errors.New("destination already exists")
 
 func copyFile(src, dst string) error {
 	info, err := os.Stat(src)
@@ -773,8 +787,14 @@ func copyFile(src, dst string) error {
 	if perm == 0 {
 		perm = 0o600
 	}
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	// O_EXCL, never O_TRUNC: migration must never overwrite an existing
+	// destination — newer user data must win over the older legacy copy
+	// (Issue #356). Callers treat errDestExists as "kept existing", not failure.
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm)
 	if err != nil {
+		if os.IsExist(err) {
+			return errDestExists
+		}
 		return err
 	}
 	defer out.Close()
@@ -788,14 +808,18 @@ func copyFile(src, dst string) error {
 	return os.Chmod(dst, perm)
 }
 
-func copyDir(src, dst string) error {
+// copyDir recursively copies src into dst, skipping (never overwriting) any
+// destination file that already exists. It returns the destination paths it
+// kept-not-overwrote so the caller can surface them — silent data loss during
+// migration is exactly the failure mode we must avoid (Issue #356).
+func copyDir(src, dst string) (skipped []string, err error) {
 	info, err := os.Stat(src)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	entries, err := os.ReadDir(src)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	perm := info.Mode().Perm()
@@ -803,10 +827,10 @@ func copyDir(src, dst string) error {
 		perm = 0o700
 	}
 	if err := os.MkdirAll(dst, perm); err != nil {
-		return err
+		return skipped, err
 	}
 	if err := os.Chmod(dst, perm); err != nil {
-		return err
+		return skipped, err
 	}
 
 	for _, entry := range entries {
@@ -814,14 +838,20 @@ func copyDir(src, dst string) error {
 		dstPath := filepath.Join(dst, entry.Name())
 
 		if entry.IsDir() {
-			if err := copyDir(srcPath, dstPath); err != nil {
-				return err
+			sub, err := copyDir(srcPath, dstPath)
+			skipped = append(skipped, sub...)
+			if err != nil {
+				return skipped, err
 			}
 		} else {
 			if err := copyFile(srcPath, dstPath); err != nil {
-				return err
+				if errors.Is(err, errDestExists) {
+					skipped = append(skipped, dstPath)
+					continue
+				}
+				return skipped, err
 			}
 		}
 	}
-	return nil
+	return skipped, nil
 }

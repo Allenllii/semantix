@@ -43,7 +43,29 @@ func Sanitize(s string) string {
 			}
 			s = consumeESCSeq(s)
 		case 0x90, 0x98, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f:
-			s = consumeC1Seq(s)
+			// A multi-byte-encoded C1 escape (e.g. 0xC2 0x9B → U+009B). It must
+			// still be stripped — a terminal may act on it — but dispatch on the
+			// DECODED value and scan the bytes AFTER the encoding (s[size:]). The
+			// old code passed the un-advanced s to consumeC1Seq, whose switch saw
+			// the UTF-8 lead byte 0xC2, always fell to the OSC/DCS (to-ST) branch,
+			// and over-consumed unrelated text up to a distant BEL/ST (Issue #358).
+			rest := s[size:]
+			switch r {
+			case 0x9b: // CSI: consume up to its own final byte
+				if out, ok := consumeToFinal(rest); ok {
+					s = out
+				} else {
+					s = rest
+				}
+			case 0x9c: // lone ST: nothing follows to consume
+				s = rest
+			default: // DCS/OSC/PM/APC/SOS: consume up to ST
+				if out, ok := consumeToST(rest); ok {
+					s = out
+				} else {
+					s = rest
+				}
+			}
 		default:
 			b.WriteString(s[:size])
 			s = s[size:]

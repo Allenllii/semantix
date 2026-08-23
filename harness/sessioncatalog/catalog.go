@@ -42,7 +42,7 @@ type Catalog struct {
 	pathCh           chan sessionPathRequest
 	pathQueued       sync.Map
 	directoryLocksMu sync.Mutex
-	directoryLocks   map[string]*sync.Mutex
+	directoryLocks   map[string]*dirLockEntry
 	workerCtx        context.Context
 	workerCancel     context.CancelFunc
 	stop             chan struct{}
@@ -96,7 +96,7 @@ func Open(ctx context.Context, opts Options) (*Catalog, error) {
 		reconcileCh:    make(chan DirectoryTarget, 64),
 		reconcileDirty: map[string]DirectoryTarget{},
 		pathCh:         make(chan sessionPathRequest, opts.QueueCapacity),
-		directoryLocks: map[string]*sync.Mutex{},
+		directoryLocks: map[string]*dirLockEntry{},
 		stop:           make(chan struct{}),
 		closeDone:      make(chan struct{}),
 		status:         Status{State: StateOpening, Path: opts.Path},

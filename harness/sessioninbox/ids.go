@@ -68,6 +68,11 @@ func PreviewText(text string, maxRunes int) string {
 			prevSpace = true
 			count++
 			if count >= maxRunes {
+				// Mirror the non-space branch: signal truncation if more remains
+				// (Issue #363 — the two break paths were inconsistent).
+				if i < len(text) {
+					b.WriteString("…")
+				}
 				break
 			}
 			continue
