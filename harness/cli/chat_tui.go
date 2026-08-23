@@ -3310,9 +3310,24 @@ func (m chatTUI) handleApprovalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.pendingApproval = nil
 			return m, nil
 		}
-		if m.pendingApproval.Tool == planApprovalTool && (allow || choice.exitPlan) {
-			m.planMode = false
-			m.ctrl.SetPlanMode(false)
+		if m.pendingApproval.Tool == planApprovalTool {
+			// Approve infers the plan outcome from the boolean alone, which
+			// collapses "exit without executing" into revise_plan in the durable
+			// receipt. Name the action instead — the row already knows it.
+			action := control.PlanDecisionRevisePlan
+			switch {
+			case allow:
+				action = control.PlanDecisionStartExecution
+			case choice.exitPlan:
+				action = control.PlanDecisionExitPlan
+			}
+			if action != control.PlanDecisionRevisePlan {
+				m.planMode = false
+				m.ctrl.SetPlanMode(false)
+			}
+			_ = m.ctrl.ResolvePlanDecision(m.pendingApproval.ID, action, "")
+			m.pendingApproval = nil
+			return m, nil
 		}
 		m.ctrl.Approve(m.pendingApproval.ID, allow, session, persist)
 		m.pendingApproval = nil
