@@ -92,6 +92,7 @@ func (c *Catalog) applySessionRemovalLocked(ctx context.Context, path, reason st
 	// this boundary a scan that captured the old path just before an archive
 	// could clear the tombstone and reinsert the stale projection afterwards.
 	directoryLock := c.directoryLock(filepath.Dir(path))
+	defer directoryLock.release()
 	if blocking {
 		directoryLock.Lock()
 	} else if !directoryLock.TryLock() {
