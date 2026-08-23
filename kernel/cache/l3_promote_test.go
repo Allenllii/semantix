@@ -5,17 +5,18 @@ import (
 	"errors"
 	"testing"
 
+	"semantix/kernel/judge"
 	"semantix/kernel/promote"
 	"semantix/kernel/slice"
 )
 
 // stubPromote records promotion decision calls (Issue #280 test double).
 type stubPromote struct {
-	lookup    bool
+	lookup     bool
 	promoteErr error
-	lookups   int
-	writes    []promote.Entry
-	rejected  []string // reasons
+	lookups    int
+	writes     []promote.Entry
+	rejected   []string // reasons
 }
 
 func (s *stubPromote) Lookup(sourceSliceID, query, currentVersion string, now int64) bool {
@@ -33,6 +34,25 @@ func (s *stubPromote) Rejected(sourceSliceID, query, reason string, now int64) {
 }
 
 var _ Promote = (*stubPromote)(nil)
+
+// variantMock is a judge with a controllable second perspective (the
+// consensus gate's rephrased rubric; Issue #280).
+type variantMock struct {
+	primary,
+	secondary bool
+	secondaryCalls int
+}
+
+func (m *variantMock) Confirm(_ context.Context, _ judge.Candidate) (bool, error) {
+	return m.primary, nil
+}
+
+func (m *variantMock) ConfirmSecondary(_ context.Context, _ judge.Candidate) (bool, error) {
+	m.secondaryCalls++
+	return m.secondary, nil
+}
+
+var _ judge.VariantJudge = (*variantMock)(nil)
 
 // A promotion hit skips the judge entirely (same query+version, TTL open).
 func TestDecideL3PromoteHitSkipsJudge(t *testing.T) {
@@ -61,7 +81,7 @@ func TestDecideL3PromoteWrittenAfterConsensus(t *testing.T) {
 	j := &mockJudge{confirm: true}
 	p := &stubPromote{}
 	d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: j,
-		Consensus: &mockJudge{confirm: true}, Promote: p}
+		Consensus: &variantMock{primary: true, secondary: true}, Promote: p}
 	var acc ObsAccum
 	d.Obs = &acc
 	if res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); err != nil || res == nil {
@@ -87,7 +107,7 @@ func TestDecideL3ConsensusRejectBlocksPromote(t *testing.T) {
 	j := &mockJudge{confirm: true}
 	p := &stubPromote{}
 	d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: j,
-		Consensus: &mockJudge{confirm: false}, Promote: p}
+		Consensus: &variantMock{primary: true, secondary: false}, Promote: p}
 	var acc ObsAccum
 	d.Obs = &acc
 	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
@@ -112,7 +132,7 @@ func TestDecideL3BlacklistBlocksPromoteWrite(t *testing.T) {
 	j := &mockJudge{confirm: true}
 	p := &stubPromote{promoteErr: promote.ErrBlacklisted}
 	d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: j,
-		Consensus: &mockJudge{confirm: true}, Promote: p}
+		Consensus: &variantMock{primary: true, secondary: true}, Promote: p}
 	var acc ObsAccum
 	d.Obs = &acc
 	if res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); err != nil || res == nil {

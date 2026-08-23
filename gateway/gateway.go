@@ -253,8 +253,12 @@ func New(cfg *Config) (*Gateway, error) {
 			return nil, fmt.Errorf("gateway: rejection store: %w", err)
 		}
 		decider.Promote = promote.NewDecision(entries, rejections, ttl, limit)
-		if cfg.Cache.PromoteConsensus == 2 && llmJudge != nil {
-			decider.Consensus = judge.Consensus(llmJudge)
+		if cfg.Cache.PromoteConsensus == 2 {
+			// The consensus second perspective comes from the judge
+			// itself (LLMJudge is a VariantJudge): the primary judge
+			// approves first, then the rephrased rubric confirms —
+			// 2 calls per promotion, never more (Issue #280).
+			decider.Consensus = llmJudge
 		}
 	}
 	// Grey-zone judge decisions become durable here (Issue #242 gap 1):

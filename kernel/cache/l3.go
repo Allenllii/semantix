@@ -78,11 +78,14 @@ type L3Decider struct {
 	// before (single judge per grey candidate, no promotion).
 	Promote Promote
 
-	// Consensus is the two-perspective gate applied BEFORE a promotion
-	// entry is written (Issue #280): primary && secondary rubric both
-	// must approve. nil → single-perspective baseline (consensus=1).
-	// The L3 reuse path itself always uses d.Judge (main-path cost
-	// unchanged); consensus only gates promotion eligibility.
+	// Consensus is the second-perspective provider of the promotion gate
+	// (Issue #280): after the primary judge (d.Judge) approves, a
+	// non-nil Consensus that implements judge.VariantJudge contributes
+	// its rephrased-rubric ConfirmSecondary — both perspectives must
+	// approve before a promotion entry is written. nil → single-
+	// perspective baseline (consensus=1). The L3 reuse path itself
+	// always uses d.Judge (main-path cost unchanged: primary 1 call +
+	// secondary 1 call when consensus is on).
 	Consensus judge.Judge
 }
 
@@ -462,17 +465,22 @@ func (d *L3Decider) judgeGrey(ctx context.Context, q Query, s *slice.Slice, rel 
 	ok := err == nil && v == judge.Confirm
 	if d.Promote != nil {
 		if ok {
-			// Consensus gate (Issue #280, A-MemGuard): both rubric
-			// perspectives must approve before promotion eligibility is
-			// granted. The L3 reuse already succeeded on the primary
-			// judge; consensus only decides whether future hits skip the
-			// judge. A consensus error is judge unavailability (Issue
-			// #245) — no promotion written, counted as a judge error.
-			consensus := d.Consensus
-			if consensus == nil {
-				consensus = d.Judge // consensus=1: single-perspective baseline
+			// Consensus gate (Issue #280, A-MemGuard): the primary judge
+			// already approved (that IS the first perspective); a second
+			// perspective — the rephrased rubric — must approve too before
+			// promotion eligibility is granted. L3 reuse already succeeded;
+			// consensus only decides whether future hits skip the judge. A
+			// consensus error is judge unavailability (Issue #245) — no
+			// promotion written, counted as a judge error.
+			approve := true
+			var cerr error
+			if d.Consensus != nil {
+				if vj, ok := d.Consensus.(judge.VariantJudge); ok {
+					approve, cerr = vj.ConfirmSecondary(ctx, cand)
+				} else {
+					approve = false // a non-variant consensus provider cannot contribute a second perspective
+				}
 			}
-			approve, cerr := consensus.Confirm(ctx, cand)
 			switch {
 			case cerr != nil:
 				o.JudgeError++
