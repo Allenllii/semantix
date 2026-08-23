@@ -24,6 +24,7 @@ import (
 	"semantix/kernel/ingest"
 	"semantix/kernel/inject"
 	"semantix/kernel/judge"
+	"semantix/kernel/promote"
 	"semantix/kernel/slice"
 	"semantix/kernel/usage"
 	"semantix/kernel/zone"
@@ -223,6 +224,38 @@ func New(cfg *Config) (*Gateway, error) {
 		}
 		g.adapt = adapt.New(adaptCfg, adaptPath)
 		decider.Adapt = g.adapt
+	}
+
+	// Promotion wiring (Issue #280): when promote_db is configured, the
+	// grey path gets the consensus-gated promotion decision — approved
+	// (query, slice, version) pairs skip the judge inside the TTL window,
+	// repeated rejections blacklist the pair. The rejection lessons live
+	// in an independent file next to the promotion entries (never
+	// injected/indexed). Consensus=2 wraps the LLM judge in the
+	// dual-rubric gate; consensus=1 keeps the single-judgement baseline.
+	if cfg.Cache.PromoteDB != "" {
+		ttl := cfg.Cache.PromoteTTLSeconds
+		if ttl == 0 {
+			ttl = DefaultPromoteTTLSeconds
+		}
+		limit := int64(cfg.Cache.RejectLimit)
+		if limit == 0 {
+			limit = DefaultRejectLimit
+		}
+		entries, err := promote.NewFileStore(cfg.Cache.PromoteDB)
+		if err != nil {
+			_ = closeStore(store)
+			return nil, fmt.Errorf("gateway: promote store: %w", err)
+		}
+		rejections, err := promote.NewRejectionFileStore(filepath.Join(filepath.Dir(cfg.Cache.PromoteDB), "rejections.jsonl"))
+		if err != nil {
+			_ = closeStore(store)
+			return nil, fmt.Errorf("gateway: rejection store: %w", err)
+		}
+		decider.Promote = promote.NewDecision(entries, rejections, ttl, limit)
+		if cfg.Cache.PromoteConsensus == 2 && llmJudge != nil {
+			decider.Consensus = judge.Consensus(llmJudge)
+		}
 	}
 	// Grey-zone judge decisions become durable here (Issue #242 gap 1):
 	// one structured log line plus a field on the turn's usage event, so a
