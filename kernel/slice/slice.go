@@ -135,6 +135,12 @@ type SliceMeta struct {
 	TaskType      string
 	Language      string
 	ProjectSlug   string
+	// Origin is the provenance/trust tag (Issue #279): writing channels
+	// stamp it, injection and the L3 gate check its integrity level.
+	// Empty means unlabelled (legacy) — treated as the lowest level
+	// (fail-closed: no injection, no L3 Hit pass-through). trust upgrades
+	// it; see Origin.Level.
+	Origin Origin `json:"origin,omitempty"`
 	// CompressionVersion identifies the deterministic extraction rules applied
 	// before Content and its hash-derived ID were produced. Empty means a
 	// legacy or generated slice that did not pass through source compression.
@@ -214,4 +220,49 @@ type Hit struct {
 	// third-party Index implementations are never blocked by default.
 	Lexical      float64 `json:"lexical,omitempty"`
 	LexicalValid bool    `json:"-"`
+}
+
+// Origin is the provenance/trust tag of a slice (Issue #279): writing
+// channels stamp it, and injection / the L3 gate check its integrity
+// level. The empty string means unlabelled (legacy) and is treated as
+// the lowest level — fail-closed (never injected, never passed through
+// the L3 Hit gate) unless explicitly trusted.
+type Origin string
+
+const (
+	// OriginSessionAuto: automatically extracted from a session transcript
+	// (ingest pipeline, gateway ingestion).
+	OriginSessionAuto Origin = "session-auto"
+	// OriginPrefetch: produced speculatively by the prefetch runner.
+	OriginPrefetch Origin = "prefetch"
+	// OriginImport: loaded from an external file — the most open channel,
+	// never trusted by default.
+	OriginImport Origin = "import"
+	// OriginUserCurated: explicitly curated by the user (extract CLI,
+	// trust upgrade, import --trust).
+	OriginUserCurated Origin = "user-curated"
+)
+
+// Level maps an Origin to its integrity level (Issue #279 §3.1):
+// import and unlabelled (legacy) → 1, session-auto and prefetch → 2,
+// user-curated → 3. A configured floor above a slice's level excludes it
+// from injection and downgrades its L3 Hit to judge-gated Grey.
+func (o Origin) Level() int {
+	switch o {
+	case OriginUserCurated:
+		return 3
+	case OriginSessionAuto, OriginPrefetch:
+		return 2
+	default: // "" (legacy) and OriginImport
+		return 1
+	}
+}
+
+// Valid reports whether o is a known non-empty origin tag.
+func (o Origin) Valid() bool {
+	switch o {
+	case OriginSessionAuto, OriginPrefetch, OriginImport, OriginUserCurated:
+		return true
+	}
+	return false
 }
