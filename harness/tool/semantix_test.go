@@ -151,17 +151,11 @@ func TestSemantixLookupSubprocess(t *testing.T) {
 // TestSemantixLookupTimeoutFailsSoft locks in the production resilience
 // contract independently of the argv test's deliberately widened budget.
 func TestSemantixLookupTimeoutFailsSoft(t *testing.T) {
-	bin := t.TempDir()
-	scriptName := "semantix"
-	scriptBody := "#!/bin/sh\necho unexpected\n"
-	if runtime.GOOS == "windows" {
-		scriptName = "semantix.bat"
-		scriptBody = "@echo off\r\necho unexpected\r\n"
-	}
-	if err := os.WriteFile(filepath.Join(bin, scriptName), []byte(scriptBody), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// A kernel that answers immediately: the point is that an already-expired
+	// deadline degrades softly even when nothing is slow. fakeKernelPATH keeps
+	// this hermetic — the previous fixture wrote a shell script onto PATH,
+	// which is exactly the host coupling Issue #296 removed.
+	fakeKernelPATH(t, fakeKernelArgv)
 
 	out, err := (semantixLookup{timeout: time.Nanosecond}).Execute(context.Background(),
 		json.RawMessage(`{"query":"deadline"}`))
