@@ -43,6 +43,17 @@ func (semantixLookup) SnipHint() SnipHint {
 	return SnipHint{Head: 20, Tail: 0}
 }
 
+// budget resolves the subprocess deadline. The 3s default is part of the
+// fail-soft contract — an overrun degrades to an empty result rather than an
+// error — and only tests populate timeout, so a test needing room for its own
+// assertions never has to move the production value.
+func (s semantixLookup) budget() time.Duration {
+	if s.timeout <= 0 {
+		return 3 * time.Second
+	}
+	return s.timeout
+}
+
 func (s semantixLookup) Execute(ctx context.Context, args json.RawMessage) (string, error) {
 	var p struct {
 		Query string `json:"query"`
@@ -57,11 +68,7 @@ func (s semantixLookup) Execute(ctx context.Context, args json.RawMessage) (stri
 	if p.Limit <= 0 || p.Limit > 50 {
 		p.Limit = 5
 	}
-	timeout := s.timeout
-	if timeout <= 0 {
-		timeout = 3 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithTimeout(ctx, s.budget())
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "semantix",
 		"lookup", "--query", p.Query, "--limit", fmt.Sprint(p.Limit), "--json").Output()
