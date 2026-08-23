@@ -57,13 +57,16 @@ func AsLoadAwarePlanFunc(p Prefetcher) sched.LoadAwarePrefetchPlanFunc {
 		if err != nil {
 			return sched.PrefetchPlanResult{Reason: string(ReasonPlanError)}
 		}
-		var ids []string
+		var ids, probeIDs []string
 		if len(decision.Tasks) > 0 {
 			ids = make([]string, 0, len(decision.Tasks))
 		}
 		for _, task := range decision.Tasks {
 			ids = append(ids, task.Key)
+			if task.Probe {
+				probeIDs = append(probeIDs, task.Key)
+			}
 		}
-		return sched.PrefetchPlanResult{IDs: ids, Reason: string(decision.Reason)}
+		return sched.PrefetchPlanResult{IDs: ids, ProbeIDs: probeIDs, Reason: string(decision.Reason)}
 	}
 }

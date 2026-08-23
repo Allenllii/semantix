@@ -407,10 +407,30 @@ func TestLoadAwarePrefetchReceivesNormalizedLoad(t *testing.T) {
 	}
 }
 
+func TestLoadAwarePrefetchCarriesProbeIDs(t *testing.T) {
+	d := NewRuleDecider(Config{})
+	d.SetLoadAwarePrefetchPlanFunc(func(_ []string, _ PrefetchLoadHint) PrefetchPlanResult {
+		return PrefetchPlanResult{
+			IDs:      []string{"read_file", "grep"},
+			ProbeIDs: []string{"grep"},
+			Reason:   "candidate",
+		}
+	})
+	plan, err := d.DecideRound(context.Background(), RoundInput{ToolCalls: []ToolCallInfo{
+		call("a", "read_a", true),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !equalStrings(plan.PrefetchProbeIDs, []string{"grep"}) {
+		t.Fatalf("probe IDs = %v, want [grep]", plan.PrefetchProbeIDs)
+	}
+}
+
 func TestBudgetPrefetchReasonOverridesCandidate(t *testing.T) {
 	d := NewRuleDecider(Config{})
 	d.SetLoadAwarePrefetchPlanFunc(func(_ []string, _ PrefetchLoadHint) PrefetchPlanResult {
-		return PrefetchPlanResult{IDs: []string{"read_file"}, Reason: "candidate"}
+		return PrefetchPlanResult{IDs: []string{"read_file"}, ProbeIDs: []string{"read_file"}, Reason: "candidate"}
 	})
 	plan, err := d.DecideRound(context.Background(), RoundInput{
 		ToolCalls: []ToolCallInfo{call("a", "read_a", true)},
@@ -419,7 +439,7 @@ func TestBudgetPrefetchReasonOverridesCandidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.PrefetchIDs != nil || plan.PrefetchReason != "budget:halt_prefetch" {
+	if plan.PrefetchIDs != nil || plan.PrefetchProbeIDs != nil || plan.PrefetchReason != "budget:halt_prefetch" {
 		t.Fatalf("plan = %+v", plan)
 	}
 }

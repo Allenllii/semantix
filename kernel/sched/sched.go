@@ -51,10 +51,13 @@ type RoundPlan struct {
 	TierReason     string     `json:"tierReason,omitempty"` // stable explanation; does not affect execution
 	InjectIDs      []string   // L2 slice IDs in canonical order
 	PrefetchIDs    []string   // prefetch targets (may be empty)
-	PrefetchReason string     `json:"prefetchReason,omitempty"`
-	SuspendTools   []string   `json:"suspendTools,omitempty"`
-	MaxParallel    int        `json:"maxParallel,omitempty"`  // 0 = harness default; >0 = forced cap
-	BudgetAction   string     `json:"budgetAction,omitempty"` // one of BudgetAction* below
+	// PrefetchProbeIDs is the subset admitted for exploration rather than
+	// normal exploitation (Issue #302).
+	PrefetchProbeIDs []string `json:"prefetchProbeIDs,omitempty"`
+	PrefetchReason   string   `json:"prefetchReason,omitempty"`
+	SuspendTools     []string `json:"suspendTools,omitempty"`
+	MaxParallel      int      `json:"maxParallel,omitempty"`  // 0 = harness default; >0 = forced cap
+	BudgetAction     string   `json:"budgetAction,omitempty"` // one of BudgetAction* below
 }
 
 const (
