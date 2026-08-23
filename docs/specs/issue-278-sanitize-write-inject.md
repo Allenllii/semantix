@@ -195,18 +195,20 @@ judge（Security §3.2.1「复用 §3.1 的净化管线」）。
 
 ## 8. 测试计划与验收标准
 
-- [ ] kernel/sanitize：转义迁移测试全绿（原 judge 测试迁入零改动）；
+- [x] kernel/sanitize：转义迁移测试全绿（原 judge 测试迁入零改动）；
       指令剥离/脱敏/幂等/确定性/绕过变体测试；Version 常量。
-- [ ] kernel/slice：newSlice 净化接线测试（含载荷内容 → 净化后入库、
+- [x] kernel/slice：newSlice 净化接线测试（含载荷内容 → 净化后入库、
       SanitizeVersion 记录、ID 基于净化后内容）；既有 extract 测试
       全绿（无敏感 fixture 不应受影响）。
-- [ ] kernel/inject：净化+转义顺序、预算用净化后长度、幂等（二次
+- [x] kernel/inject：净化+转义顺序、预算用净化后长度、幂等（二次
       注入字节不变）；既有 inject 测试全绿。
-- [ ] kernel/judge：llm.go 读侧完整管线（llm_test 断言更新）。
-- [ ] 全链路：载荷会话 → extract → inject 剥离验收；普通会话字节
+- [x] kernel/judge：llm.go 读侧完整管线（llm_test 断言更新）。
+- [x] 全链路：载荷会话 → extract → inject 剥离验收；普通会话字节
       回归锚。
-- [ ] 回归：`go test ./...`（除既有 pre-existing 环境失败）全绿。
-- [ ] 文档：Security §3.1 标注「已落地（Issue #278）」、README 状态行、
+- [x] 回归：`go test ./...`（除既有 pre-existing 环境失败：Windows
+      symlink 特权 / reasonix 在 PATH 导致 run(nil) 走 launchAgent）
+      全绿。
+- [x] 文档：Security §3.1 标注「已落地（Issue #278）」、README 状态行、
       docs/events.md 无事件变更（零新增 wire）。
 
 ## 9. 参考
