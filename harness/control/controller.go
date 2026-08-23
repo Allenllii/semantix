@@ -322,9 +322,10 @@ type Controller struct {
 }
 
 type approvalReply struct {
-	allow   bool
-	session bool
-	persist bool // true = write "always allow" rule to config
+	allow    bool
+	session  bool
+	persist  bool // true = write "always allow" rule to config
+	feedback string
 }
 
 type pendingApproval struct {
@@ -2281,7 +2282,7 @@ func (c *Controller) Approve(id string, allow, session, persist bool) {
 
 // ResolvePlanDecision answers the Plan card without collapsing revise and exit
 // into the generic approval boolean used by older clients.
-func (c *Controller) ResolvePlanDecision(id string, action PlanDecisionAction) error {
+func (c *Controller) ResolvePlanDecision(id string, action PlanDecisionAction, feedback string) error {
 	if c == nil {
 		return fmt.Errorf("controller is nil")
 	}
@@ -2300,7 +2301,10 @@ func (c *Controller) ResolvePlanDecision(id string, action PlanDecisionAction) e
 	}
 	pending.kind = "plan"
 	c.recordDecisionReceipt(pending, string(action))
-	pending.reply <- approvalReply{allow: action == PlanDecisionStartExecution}
+	pending.reply <- approvalReply{
+		allow:    action == PlanDecisionStartExecution,
+		feedback: clipUTF8(feedback, 4*1024),
+	}
 	return nil
 }
 
