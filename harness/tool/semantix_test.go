@@ -28,6 +28,22 @@ func TestSemantixLookupSchemaAndName(t *testing.T) {
 	}
 }
 
+// TestSemantixLookupBudget pins the production subprocess deadline. The 3s
+// default is half of the fail-soft contract — overrun degrades to an empty
+// result — so a test widening the budget for its own assertions must not be
+// able to move it. Zero value means production.
+func TestSemantixLookupBudget(t *testing.T) {
+	if got := (semantixLookup{}).budget(); got != 3*time.Second {
+		t.Errorf("production budget: got %s, want 3s", got)
+	}
+	if got := (semantixLookup{timeout: 250 * time.Millisecond}).budget(); got != 250*time.Millisecond {
+		t.Errorf("injected budget: got %s, want 250ms", got)
+	}
+	if got := (semantixLookup{timeout: -1}).budget(); got != 3*time.Second {
+		t.Errorf("negative budget must fall back to production: got %s", got)
+	}
+}
+
 func TestSemantixLookupRequiresQuery(t *testing.T) {
 	_, err := semantixLookup{}.Execute(context.Background(), json.RawMessage(`{}`))
 	if err == nil {
