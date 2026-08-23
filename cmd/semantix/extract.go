@@ -56,6 +56,7 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 		TaskType:      *taskType,
 		Language:      *language,
 		ProjectSlug:   *project,
+		Origin:        slice.OriginUserCurated, // Issue #279: explicit user action
 	}
 	if *fingerprintPaths != "" {
 		var paths []string

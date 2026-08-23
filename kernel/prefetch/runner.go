@@ -72,7 +72,10 @@ func (r *Runner) Run(ctx context.Context, tasks []PrefetchTask) ([]string, error
 			Scope:   scope,
 			Content: content,
 			Weight:  1.0,
-			Meta:    slice.SliceMeta{SourceSession: "prefetch:" + t.Key},
+			Meta: slice.SliceMeta{
+				SourceSession: "prefetch:" + t.Key,
+				Origin:        slice.OriginPrefetch, // Issue #279
+			},
 		}
 		sl.ID = resultSliceID(content, scope)
 		if err := r.Store.Put(sl); err != nil {

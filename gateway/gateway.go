@@ -522,6 +522,12 @@ func (m metaStore) Put(s *slice.Slice) error {
 	if s.Type == slice.Result {
 		s.Meta.ContextHash = m.ctxHash
 		s.Meta.Model = m.model
+		if s.Meta.Origin == "" {
+			// Issue #279: gateway ingestion is automatic extraction; a
+			// missing tag (legacy extractor) must not silently read as a
+			// higher trust level downstream.
+			s.Meta.Origin = slice.OriginSessionAuto
+		}
 	}
 	return m.inner.Put(s)
 }

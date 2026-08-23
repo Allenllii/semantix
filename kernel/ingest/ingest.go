@@ -238,6 +238,7 @@ func (p Pipeline) Run(src Source) (map[string]int, error) {
 		slices, err := p.Extractor.Extract(se.Transcript, slice.SliceMeta{
 			SourceSession: se.SessionID,
 			ProjectSlug:   p.Project,
+			Origin:        slice.OriginSessionAuto, // Issue #279: automatic extraction
 		})
 		if err != nil {
 			return stats, fmt.Errorf("ingest %s: extract: %w", se.SessionID, err)
