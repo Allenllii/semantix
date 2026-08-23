@@ -109,14 +109,18 @@ no-op 等价，照旧丢弃。
 
 ### 2.6 横幅与页脚
 
-- **横幅**（`renderApprovalBanner`，`chat_tui.go:3867`）：打字态下追加一行显示
-  已输入内容（复用 `rowLine`，`chooser.go:308`），并把末行提示换成
+- **横幅**（`renderApprovalBanner`）：打字态下把末行提示整行换成
   `ApprovalNoteHint`。
 
-  注意现有末行 `"↑/↓ navigate · Enter select · y/a/p/n shortcuts"` 是**硬编码
+  现有末行 `"↑/↓ navigate · Enter select · y/a/p/n shortcuts"` 是**硬编码
   英文**、未走 i18n。本 spec 不改它（超出范围），但也不在它旁边并排一句翻译过
   的提示——那会让面板一半英文一半中文。做法是**整行替换**：行选态显示原硬编码
   串，打字态显示 `ApprovalNoteHint`，任何时刻只有一种来源。
+
+  **不回显已输入内容**（issue 第 10 步要求「渲染已输入值与提示」，此处只做后
+  者）：打字态下 `hideComposer()` 为假，输入框就显示在屏上并带着那段文字，
+  横幅再画一遍是重复。chooser 的自由文本模式同样只在行上显示 `AskTypingHint`，
+  文字留在输入框里。
 
 - **页脚**（`status_footer.go:125`）：在两个 `pendingApproval` arm **之前**插入
   打字态 arm，`switch` 从上往下匹配，顺序不能反。
@@ -133,6 +137,16 @@ no-op 等价，照旧丢弃。
 现在只认 `chooserTyping()`，其余一律置空（`chat_tui.go:745-751`）。加
 `approvalTyping` 分支置为 `ApprovalNoteHint`；不加就会静默变成 `""`，说好的
 占位符提示不会出现。
+
+### 2.9 顺带修一个既有 papercut：不吞掉草稿
+
+审批卡是异步弹出的，用户很可能正在输入框里写别的东西。chooser 进自由文本模式
+时直接 `m.input.Reset()`（`chooser.go:170`），照抄就会把那段草稿吃掉。
+
+`beginApprovalNote` 改为先把 `m.input.Value()` 存进 `approvalNoteDraft`，
+`endApprovalNote` 在提交或 Esc 后原样还回。`endApprovalNote` 在未进打字态时是
+no-op——这很关键：普通的「按键即解析」路径因此完全不碰输入框，行为与今天逐字
+一致。
 
 ## 3. 非目标
 
@@ -205,5 +219,12 @@ no-op 等价，照旧丢弃。
 
 - 本 PR 的 base 是 PR #389 的分支而非 main。#389 若在评审中改动签名，本分支需
   跟随 rebase。#389 合入 main 后，本 PR 的 base 应切回 main。
+- 分支上并入了一个 `upstream/main` 的 merge commit，用于取得 `b877061`
+  （PR #390）。原因：#385 与 #387 的合并在文本上无冲突但语义冲突——#387 删掉了
+  `semantix_test.go` 的 `os`/`path/filepath`/`runtime` import，而 #385 新增的
+  测例正要用它们——导致 main 一度编译失败。不并这个 merge，本分支与其 base
+  （PR #389，当前 **Go checks 红**）都过不了 `go vet ./...`。
 - 本机无 C 编译器（`go test -race` 报 `-race requires cgo`），`-race` 由 CI
-  ubuntu-latest 承担。
+  ubuntu-latest 承担。本地以变异检验替代：同时拆掉 Update 路由块与
+  `handleApprovalKey` 的早返回后，三个打字态测例各自翻红，且失败形态正是要防
+  的 bug（打字中的「1」被解析成 `start_execution`）。
