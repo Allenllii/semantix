@@ -83,3 +83,28 @@ func TestSemantixLookupSubprocess(t *testing.T) {
 		t.Errorf("argv mismatch:\n got %q\nwant %q", out, want+"\n")
 	}
 }
+
+// TestSemantixLookupTimeoutFailsSoft locks in the production resilience
+// contract independently of the argv test's deliberately widened budget.
+func TestSemantixLookupTimeoutFailsSoft(t *testing.T) {
+	bin := t.TempDir()
+	scriptName := "semantix"
+	scriptBody := "#!/bin/sh\necho unexpected\n"
+	if runtime.GOOS == "windows" {
+		scriptName = "semantix.bat"
+		scriptBody = "@echo off\r\necho unexpected\r\n"
+	}
+	if err := os.WriteFile(filepath.Join(bin, scriptName), []byte(scriptBody), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	out, err := (semantixLookup{timeout: time.Nanosecond}).Execute(context.Background(),
+		json.RawMessage(`{"query":"deadline"}`))
+	if err != nil {
+		t.Fatalf("timeout must fail soft, got error: %v", err)
+	}
+	if out != "" {
+		t.Fatalf("timeout must fail soft with empty output, got %q", out)
+	}
+}
