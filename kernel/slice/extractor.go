@@ -13,6 +13,7 @@ import (
 	"time"
 
 	kernelevent "semantix/kernel/event"
+	"semantix/kernel/sanitize"
 )
 
 // Extractor turns session transcripts into slices.
@@ -382,6 +383,14 @@ func compressionMeta(meta SliceMeta, original string, stored []byte) SliceMeta {
 }
 
 func newSlice(t SliceType, sc Scope, content []byte, meta SliceMeta) *Slice {
+	// Write-side sanitization (Issue #278, Security §3.1): every slice
+	// extracted from a session passes the deterministic pipeline — escape
+	// stripping, injection-feature removal, sensitive redaction — before
+	// its ID is derived. The ID therefore fingerprints the SANITIZED
+	// content (same content, different rule version → different ID), and
+	// the inject side's idempotent re-run is a no-op for these slices.
+	content = []byte(sanitize.Sanitize(string(content)))
+	meta.SanitizeVersion = sanitize.Version
 	return &Slice{
 		ID:        sliceID(content, t, sc),
 		Type:      t,

@@ -103,10 +103,10 @@ func (s Scope) String() string {
 
 // SliceStats tracks usage feedback used by the evolution engine.
 type SliceStats struct {
-	Hits        uint64
-	Misses      uint64
-	Injected    uint64
-	Rejected    uint64
+	Hits         uint64
+	Misses       uint64
+	Injected     uint64
+	Rejected     uint64
 	UserFeedback float64 // +1 keep / -1 reject / 0 none
 	// LastUsed is the unix-seconds time this slice last served a hit or an
 	// injection. 0 = never used (or legacy line without the field). Unlike
@@ -139,6 +139,13 @@ type SliceMeta struct {
 	// before Content and its hash-derived ID were produced. Empty means a
 	// legacy or generated slice that did not pass through source compression.
 	CompressionVersion string `json:"compression_version,omitempty"`
+	// SanitizeVersion records the kernel/sanitize rule revision applied to
+	// Content at ingestion (Issue #278): every extracted slice passes the
+	// deterministic sanitization pipeline (escape stripping + injection
+	// feature removal + sensitive redaction) before its ID is derived.
+	// Empty means a legacy slice that predates the write-side pipeline —
+	// the inject side re-sanitizes idempotently as a backstop.
+	SanitizeVersion string `json:"sanitize_version,omitempty"`
 	// OriginalBytes and StoredBytes make extraction compression observable
 	// without mixing non-LLM work into the model usage ledger.
 	OriginalBytes int `json:"original_bytes,omitempty"`
@@ -175,17 +182,17 @@ type SliceMeta struct {
 
 // Slice is the core semantic slice value.
 type Slice struct {
-	ID        string      // stable UUID; content hash (sha256) is the version field
-	Type      SliceType
-	Scope     Scope
-	Content   []byte      // normalized text (Prompt/Context/Result/Memory) or tool sequence (ToolPattern)
+	ID      string // stable UUID; content hash (sha256) is the version field
+	Type    SliceType
+	Scope   Scope
+	Content []byte // normalized text (Prompt/Context/Result/Memory) or tool sequence (ToolPattern)
 	// Embedding is persisted only for model-produced vectors (hash vectors
 	// are recomputable from Content and are not stored). Store reads return
 	// nil by contract — nothing in the repo consumes persisted vectors; the
 	// raw bytes still round-trip through Export and compaction.
 	Embedding []float32 `json:",omitempty"`
 	Stats     SliceStats
-	Weight    float64     // value weight, updated by the evolution engine
+	Weight    float64 // value weight, updated by the evolution engine
 	Meta      SliceMeta
 	// CreatedAt is the unix-seconds creation time (maintenance gc retention
 	// basis). Zero means unknown (legacy/imported lines without the field):
