@@ -78,6 +78,7 @@ class CountProxy:
 
 
 def sum_ledger(rows: list[dict]) -> dict:
+    rows = [r for r in rows if "usage" in r]  # skip rejection-forensics lines
     total = {"prompt_tokens": 0, "completion_tokens": 0,
              "prompt_cache_hit_tokens": 0, "prompt_cache_miss_tokens": 0,
              "cached_tokens": 0, "calls": len(rows)}
@@ -147,6 +148,13 @@ api_key_env = "DEEPSEEK_API_KEY"
 context_window = 128000
 {effort}'''
         )
+        # Runtime credential resolution reads only $SEMANTIX_HOME/.env (process
+        # env is setup-probe only), so materialize the key into the run's home.
+        key = os.environ.get("DEEPSEEK_API_KEY", "")
+        if key:
+            env_file = self.home / ".env"
+            env_file.touch(mode=0o600, exist_ok=True)
+            env_file.write_text(f"DEEPSEEK_API_KEY={key}\n")
         self.binary = self.args.semantix_bin or shutil.which("semantix-agent") or str(
             HERE.parent.parent / "bin" / "semantix-agent"
         )

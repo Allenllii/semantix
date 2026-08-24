@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Score a predictions file with the official SWE-bench evaluation harness.
 
-Wraps `python -m swebench.harness.run_evaluation` (docker required) and moves
-the report into the run directory. Prebuilt images come from Docker Hub
-(--namespace swebench, default); --namespace none builds images locally.
+Wraps `python -m swebench.harness.run_evaluation` (docker required; swebench
+>= 5.x CLI) and moves the report into the run directory. Prebuilt image names
+come from the dataset's `image` column (Docker Hub `swebench/` namespace).
 
 Usage:
   python evaluate.py --run-dir results/<run_id> --dataset data/swebench_verified.jsonl \
-      [--max-workers 4] [--namespace swebench] [--timeout 1800]
+      [--max-workers 4] [--timeout 1800]
 """
 
 from __future__ import annotations
@@ -25,8 +25,6 @@ def main() -> None:
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--max-workers", type=int, default=4)
-    ap.add_argument("--namespace", default="swebench",
-                    help="'swebench' pulls prebuilt images; 'none' builds locally")
     ap.add_argument("--timeout", type=int, default=1800)
     args = ap.parse_args()
 
@@ -45,8 +43,6 @@ def main() -> None:
         "--max_workers", str(args.max_workers),
         "--run_id", run_id,
         "--timeout", str(args.timeout),
-        "--cache_level", "env",
-        "--namespace", "" if args.namespace == "none" else args.namespace,
     ]
     print("+", " ".join(cmd), flush=True)
     proc = subprocess.run(cmd, cwd=run_dir)
