@@ -1237,6 +1237,16 @@ func chatREPL(args []string, version string) int {
 	// model (carrying the conversation). It must NOT touch the running model —
 	// runModelSubcommand performs the swap on the live copy. The same stable sink
 	// feeds the new controller, so events keep flowing to this TUI.
+	// /effort support: the captured override must follow an in-session switch,
+	// or the --effort launch flag would out-vote /effort on the next /reload.
+	m.effortApplied = func(level string) {
+		if level == "" || level == "auto" {
+			overrides.Effort = nil
+			return
+		}
+		stored := level
+		overrides.Effort = &stored
+	}
 	m.buildController = func(spec controllerBuildSpec, carry []provider.Message, resumePath string, oldCtrl control.SessionAPI) (*control.Controller, error) {
 		effectiveOverrides := overrides
 		if spec.EffortOverride != nil {
