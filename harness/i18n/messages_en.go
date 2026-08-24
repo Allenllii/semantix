@@ -336,6 +336,8 @@ var English = Messages{
 	GoalCleared:                  "goal cleared",
 	GoalNotRunning:               "no running goal to pause",
 	GoalNotPaused:                "no paused or blocked goal to resume",
+	SessionEffortUnsupportedFmt:  "reasoning depth is not configurable for %s",
+	SessionEffortNotADepthFmt:    "%s toggles thinking for %s rather than setting a depth; a runtime override can only change depth",
 	GoalPaused:                   "goal paused — /goal resume continues it",
 	GoalPausedReason:             "paused by the user",
 	GoalPausedFmt:                "goal is paused (%s) — use /goal resume to continue",

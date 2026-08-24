@@ -216,6 +216,11 @@ type Controller struct {
 	// entering the provider-visible registry (Balanced dual-model Planner).
 	proxyToolsFn   func() map[string][]plugin.CachedTool
 	runtimeProfile capability.Profile
+	// sessionEffort is the local copy of the session-scoped reasoning depth,
+	// guarded by mu. The executor is authoritative once attached — this answers
+	// SessionEffort before one is, the same fallback shape AgentPreset uses.
+	// nil means the dial was never touched; a pointer to "" is an explicit auto.
+	sessionEffort *string
 	ablation       ablation.Set
 
 	// goals owns the active goal's FSM (status, intercepts, idle/turn counters)

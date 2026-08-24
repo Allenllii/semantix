@@ -128,7 +128,7 @@ func (a *Agent) buildSamplingRequest(ctx context.Context, trigger string) (sampl
 		MaxTokens:      a.maxOutputTokens,
 		Temperature:    provider.OptionalTemperature(a.temperature),
 		ResponseFormat: responseFormatFromRequest(ctx),
-		EffortOverride: a.governorOverride(),
+		EffortOverride: a.effectiveEffortOverride(),
 	}
 	// provider.request: the fully assembled request gets one last ruling
 	// (revalidated by the payload registry) before it goes on the wire.

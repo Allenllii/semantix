@@ -130,6 +130,21 @@ func EffortCapabilityForEntry(e *ProviderEntry) EffortCapability {
 	}
 }
 
+// DepthEffortLevels returns the subset of an entry's advertised /effort levels
+// that a per-request override can actually carry.
+//
+// EffortCapabilityForEntry is the right vocabulary for a config write, but the
+// wrong one for a runtime override: it advertises thinking on/off tokens
+// (adaptive, enabled, none) alongside real depths, and an override adjusts
+// depth only. Validating a session-scoped level against Levels alone would
+// accept, say, adaptive for MiniMax and then have the transport drop it with no
+// error anywhere. The rule itself lives in provider/openai so the two layers
+// stay in lockstep — see openai.DepthEffortLevels, and isDeepSeekEntry below
+// for the same delegation shape.
+func DepthEffortLevels(e *ProviderEntry) []string {
+	return openai.DepthEffortLevels(EffortCapabilityForEntry(e).Levels)
+}
+
 // NormalizeEffort maps a user-supplied /effort level into the value stored in
 // config. Empty means auto/provider default.
 func NormalizeEffort(e *ProviderEntry, raw string) (string, error) {
