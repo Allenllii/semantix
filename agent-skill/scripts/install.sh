@@ -119,9 +119,27 @@ fi
   || { echo "install: smoke test failed" >&2; exit 1; }
 echo "== installed: $BIN_DIR/semantix + $BIN_DIR/semantix-agent =="
 
-# 6. PATH hint (only when BIN_DIR is not already reachable).
+# 6. make BIN_DIR reachable. If it is already on PATH we are done; otherwise
+#    append the export to the shell's rc (idempotently) so new terminals find
+#    `semantix` — that is what lets the one-liner "just work" without a manual
+#    step. We also print the line to run in the CURRENT shell right away.
 case ":$PATH:" in
-  *":$BIN_DIR:"*) : ;;
-  *) echo "== add to PATH: export PATH=\"$BIN_DIR:\$PATH\"  (append to ~/.bashrc or ~/.zshrc) ==" ;;
+  *":$BIN_DIR:"*) : ;; # already reachable — nothing to do
+  *)
+    LINE="export PATH=\"$BIN_DIR:\$PATH\""
+    case "${SHELL:-}" in
+      */zsh)  RC="$HOME/.zshrc" ;;
+      */bash) [ "$OS" = darwin ] && RC="$HOME/.bash_profile" || RC="$HOME/.bashrc" ;;
+      *)      RC="$HOME/.profile" ;;
+    esac
+    if [ -f "$RC" ] && grep -qF "$BIN_DIR" "$RC" 2>/dev/null; then
+      echo "== PATH already set in $RC (new terminals will find semantix) =="
+    elif printf '\n# added by semantix install.sh\n%s\n' "$LINE" >> "$RC" 2>/dev/null; then
+      echo "== added $BIN_DIR to PATH in $RC =="
+    else
+      echo "== could not edit $RC — add this line to your shell rc: $LINE =="
+    fi
+    echo "== to use it in THIS terminal right now, run: $LINE =="
+    ;;
 esac
 echo "== done. run 'semantix' inside any project to start the agent (that folder is the workspace). =="

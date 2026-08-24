@@ -12,7 +12,7 @@
 curl -fsSL https://raw.githubusercontent.com/Gnosil/semantix/main/agent-skill/scripts/install.sh | sh
 ```
 
-自动检测平台、拉取最新 release、把两个二进制装到 `~/.local/bin`、开启跨会话记忆，并提示把该目录加进 `PATH`。装的是：
+自动检测平台、拉取最新 release、把两个二进制装到 `~/.local/bin`、开启跨会话记忆；若该目录不在 `PATH`，还会**自动写入你的 shell rc**（`~/.zshrc` / `~/.bashrc` / `~/.bash_profile`，幂等），新开终端即可直接敲 `semantix`（当前终端按提示 `source` 或重开）。装的是：
 
 - **`semantix`** —— 记忆内核 **兼** umbrella 启动器；
 - **`semantix-agent`** —— 交互式 coding agent（umbrella 会 exec 它）。
