@@ -1,6 +1,6 @@
 # Semantix — 技术总览（中文）
 
-> 这是 [README](../README.md) 的完整技术版。主页刻意保持精简；下面的内容面向想了解架构、机制、当前状态和数字出处的读者。
+> 这是 [中文 README](../README.zh-CN.md) 的完整技术版。主页刻意保持精简；下面的内容面向想了解架构、机制、当前状态和数字出处的读者。
 >
 > English version: [TECHNICAL-OVERVIEW.md](./TECHNICAL-OVERVIEW.md)
 
