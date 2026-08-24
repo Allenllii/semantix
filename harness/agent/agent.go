@@ -400,6 +400,18 @@ type Agent struct {
 	// update subsequent turns without rebuilding the agent.
 	agentPreset atomic.Value // string light|balanced|delivery
 
+	// sessionEffort is the session-scoped reasoning depth. Atomic for the same
+	// reason as agentPreset: subsequent rounds pick it up without a rebuild.
+	//
+	// It holds a *string, not a string, because three states behave
+	// differently and the third would otherwise be unreachable: unset (the
+	// governor may drive the slot), explicitly auto (the configured depth, and
+	// the governor stands down), and a depth. config.NormalizeEffort maps auto
+	// to "", so a bare string cannot tell "auto" from "never set" — and a user
+	// who could not express auto could never take the dial back once the
+	// governor experiment was on.
+	sessionEffort atomic.Value // *string; a typed-nil pointer means "unset"
+
 	// turn is the state of the Run currently executing; beginRunTurn replaces
 	// it wholesale. See turnruntime.go.
 	turn turnRuntime
@@ -1215,6 +1227,69 @@ func (a *Agent) SetAgentPreset(preset string) {
 		// Light may still elevate per-turn; baseline stays non-delivery.
 		a.deliveryProfile = false
 	}
+}
+
+// SetSessionEffort sets or clears the session-scoped reasoning depth used by
+// subsequent model rounds. Like SetAgentPreset it rebuilds nothing; unlike it,
+// the value reaches the wire per round rather than per turn — see
+// effectiveEffortOverride for when it bites.
+//
+// A nil level clears the override. A non-nil pointer to "" is an explicit
+// auto: use the provider's configured depth, and stand the governor down.
+func (a *Agent) SetSessionEffort(level *string) {
+	if a == nil {
+		return
+	}
+	if level == nil {
+		a.sessionEffort.Store((*string)(nil))
+		return
+	}
+	// Copy: the caller keeps its pointer and must not be able to mutate the
+	// session's level out from under a round that is being built.
+	stored := *level
+	a.sessionEffort.Store(&stored)
+}
+
+// SessionEffort returns the session-scoped depth and whether one is set. The
+// bool is the whole point: ("", true) is an explicit auto, ("", false) is an
+// untouched dial, and they resolve differently against the governor.
+func (a *Agent) SessionEffort() (string, bool) {
+	if a == nil {
+		return "", false
+	}
+	level, _ := a.sessionEffort.Load().(*string)
+	if level == nil {
+		return "", false
+	}
+	return *level, true
+}
+
+// effectiveEffortOverride resolves the single Request.EffortOverride slot
+// (provider.Request.EffortOverride) that the reasoning governor and the session
+// dial both want to write.
+//
+// The rule: an explicit session level wins whenever one is set — including an
+// explicit auto, which asks for the configured depth and therefore also stands
+// the governor down. The governor applies only when the user has never touched
+// the dial, which is the overwhelming majority of sessions.
+//
+// Why that direction: the governor is an experiment gated off by default
+// (SEMANTIX_EXPERIMENT_GOVERNOR), not a shipped safety invariant, and an
+// experiment silently beating an explicit user action is the wrong default.
+// Cost containment does not rest here either — the scheduler's budget path
+// degrades the tier or stops the round outright, so reasoning depth is not the
+// last line of defence.
+//
+// Timing: the value is read while a round's request is being built, and that
+// request is then frozen and replayed verbatim on every stream retry. A level
+// chosen mid-turn therefore engages at the next round, never mid-round; a turn
+// that answers with no tool calls has no next round, so its level lands on the
+// following turn.
+func (a *Agent) effectiveEffortOverride() string {
+	if level, ok := a.SessionEffort(); ok {
+		return level
+	}
+	return a.governorOverride()
 }
 
 // AgentPreset returns the current session role setting (never empty).

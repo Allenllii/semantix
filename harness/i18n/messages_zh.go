@@ -337,6 +337,8 @@ var Chinese = Messages{
 	GoalCleared:                  "目标已清除",
 	GoalNotRunning:               "没有运行中的目标可暂停",
 	GoalNotPaused:                "没有已暂停或被阻塞的目标可恢复",
+	SessionEffortUnsupportedFmt:  "%s 不支持配置推理深度",
+	SessionEffortNotADepthFmt:    "%s 对 %s 是思考开关而不是深度档；运行时覆盖只能改深度",
 	GoalPaused:                   "目标已暂停 — /goal resume 可继续",
 	GoalPausedReason:             "用户手动暂停",
 	GoalPausedFmt:                "目标已暂停（%s）— 使用 /goal resume 继续",
