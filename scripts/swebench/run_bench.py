@@ -144,6 +144,12 @@ class SemantixAdapter(Adapter):
         (self.home / "config.toml").write_text(
             f'''default_model = "deepseek"
 
+# Benchmark convention: every arm runs in its max-permission mode (codex
+# danger-full-access, claude --dangerously-skip-permissions, dsh
+# danger-full-access), so the bash OS-sandbox is off here too.
+[sandbox]
+bash = "off"
+
 [[providers]]
 name        = "deepseek"
 kind        = "openai"
