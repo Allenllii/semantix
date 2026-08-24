@@ -101,6 +101,9 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	thinking = strings.ToLower(strings.TrimSpace(thinking))
 	effort, _ := cfg.Extra["effort"].(string)
 	effort = strings.ToLower(strings.TrimSpace(effort))
+	// requestEfforts is the per-request EffortOverride vocabulary; nil means
+	// overrides are ignored (that path emits no output_config at all).
+	requestEfforts := requestEffortVocabulary(officialDeepSeek, thinking, effort)
 	vision, _ := cfg.Extra["vision"].(bool)
 	// DeepSeek's official Anthropic-compatible endpoint is text-only. Enforce
 	// that wire constraint here as defense in depth, independent of config or
@@ -110,6 +113,7 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	headers, _ := cfg.Extra["headers"].(map[string]string)
 	authHeader, _ := cfg.Extra["auth_header"].(bool)
 	maxOutputTokens, _ := cfg.Extra["max_output_tokens"].(int)
+	autoMaxOutput := maxOutputTokens <= 0 // auto-derived budget — re-resolved per request
 	if maxOutputTokens <= 0 {
 		// Messages requires max_tokens. 0 = automatic; negative also falls back
 		// because the wire field is mandatory.
@@ -150,6 +154,8 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		headers:          cleanCustomHeaders(headers),
 		authHeader:       authHeader,
 		defaultMaxTokens: maxOutputTokens,
+		autoMaxOutput:    autoMaxOutput,
+		requestEfforts:   requestEfforts,
 		http:             httpClient, // no overall timeout; lifecycle is ctx-driven
 		idleTimeout:      defaultStreamIdleTimeout,
 	}, nil
@@ -178,6 +184,8 @@ type client struct {
 	headers          map[string]string
 	authHeader       bool // send Authorization: Bearer instead of Anthropic's x-api-key header
 	defaultMaxTokens int
+	autoMaxOutput    bool     // true when max_output_tokens=0 (auto-derived budget, re-resolved per request)
+	requestEfforts   []string // depth levels a per-request EffortOverride may take; empty = overrides ignored
 	http             *http.Client
 	idleTimeout      time.Duration // SSE stall watchdog window; defaultStreamIdleTimeout unless a test overrides
 	authed           atomic.Bool   // a request has succeeded — gate transient-401 retry
@@ -216,6 +224,42 @@ func normalizeDeepSeekAnthropicEffort(model, effort string) string {
 	default:
 		return ""
 	}
+}
+
+// requestEffortVocabulary lists exactly the depth levels New would accept as a
+// per-request EffortOverride. Binary thinking knobs and disabled thinking
+// yield nil — an override adjusts depth, never whether thinking runs.
+func requestEffortVocabulary(deepseek bool, thinking, effort string) []string {
+	if deepseek {
+		if thinking == "disabled" || effort == "disabled" {
+			return nil
+		}
+		return []string{"low", "high", "max"}
+	}
+	if thinking != "adaptive" {
+		return nil
+	}
+	return []string{"low", "medium", "high", "xhigh", "max"}
+}
+
+// requestEffort resolves one request's reasoning depth: a vocabulary-approved
+// EffortOverride wins, anything else falls back to the configured effort.
+func (c *client) requestEffort(req provider.Request) string {
+	want := strings.ToLower(strings.TrimSpace(req.EffortOverride))
+	if want == "" || !supportsEffort(c.requestEfforts, want) {
+		return c.effort
+	}
+	return want
+}
+
+func supportsEffort(levels []string, want string) bool {
+	want = strings.ToLower(strings.TrimSpace(want))
+	for _, level := range levels {
+		if strings.ToLower(strings.TrimSpace(level)) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *client) RequiresToolCallReasoning() bool {
@@ -439,7 +483,19 @@ func (c *client) buildRequest(_ context.Context, req provider.Request) anthReque
 		}
 	}
 
+	effective := c.requestEffort(req)
 	maxTokens := req.MaxTokens
+	if maxTokens <= 0 && c.autoMaxOutput {
+		// Re-resolve so a per-request EffortOverride (high/max) can raise the
+		// auto-derived budget exactly like the OpenAI adapter does.
+		if c.deepseek {
+			reasoningOn := c.thinking != "disabled" &&
+				effective != "disabled" && effective != "off" && effective != "none"
+			maxTokens = provider.AutoOutputBudget(reasoningOn, effective)
+		} else if c.thinking == "adaptive" || c.thinking == "enabled" {
+			maxTokens = provider.AutoOutputBudget(true, effective)
+		}
+	}
 	if maxTokens <= 0 {
 		maxTokens = c.defaultMaxTokens
 		if maxTokens <= 0 {
@@ -464,12 +520,12 @@ func (c *client) buildRequest(_ context.Context, req provider.Request) anthReque
 		if t != "disabled" {
 			t = "enabled"
 		}
-		if c.effort == "disabled" {
+		if effective == "disabled" {
 			t = "disabled"
 		}
 		r.Thinking = &thinkingConfig{Type: t}
 		if t != "disabled" {
-			effort := normalizeDeepSeekAnthropicEffort(c.model, c.effort)
+			effort := normalizeDeepSeekAnthropicEffort(c.model, effective)
 			switch effort {
 			case "low", "high", "max":
 				r.OutputConfig = &outputConfig{Effort: effort}
@@ -479,13 +535,13 @@ func (c *client) buildRequest(_ context.Context, req provider.Request) anthReque
 		switch c.thinking {
 		case "adaptive":
 			r.Thinking = &thinkingConfig{Type: "adaptive", Display: "summarized"}
-			if c.effort != "" {
-				r.OutputConfig = &outputConfig{Effort: c.effort}
+			if effective != "" {
+				r.OutputConfig = &outputConfig{Effort: effective}
 			}
 		case "enabled", "disabled":
 			t := c.thinking
-			if c.effort == "enabled" || c.effort == "disabled" {
-				t = c.effort
+			if effective == "enabled" || effective == "disabled" {
+				t = effective
 			}
 			r.Thinking = &thinkingConfig{Type: t}
 		}
