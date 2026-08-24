@@ -38,16 +38,7 @@
 
 ## 跨会话记忆
 
-同一项目的构建约定、测试布局、服务启动参数，在每个新会话中都需重新建立。Semantix 从已结束的会话中提取可复用**切片**——任务模式、项目知识、工具序列、已验证结果——存入本地评分库，并在遇到相似任务时重新注入。每条命中均标注其检索 zone（🟢 hit · 🟡 grey · ⚪ miss）与来源会话：
-
-```text
-$ semantix search --query "修复 go 测试失败"
-1. 🟢 score=4.331011 zone=hit id=619551c54af5437a scope=project from:2026-08-14-c9d4
-   fix failing go test after refactor
-2. 🟢 score=3.852740 zone=hit id=73b12bb117664106 scope=project from:2026-08-13-b7c2
-   fix failing go test in kernel slice extractor
-🎯 3/3 hits in 3 sessions
-```
+同一项目的构建约定、测试布局、服务启动参数，在每个新会话中都需重新建立。Semantix 从已结束的会话中提取可复用**切片**——任务模式、项目知识、工具序列、已验证结果——存入本地评分库，并在遇到相似任务时重新注入。每条命中均标注其检索 zone（🟢 hit · 🟡 grey · ⚪ miss）与来源会话——真实的 `semantix search` / `dashboard` / `verify` 输出见[复用可视化实录](./docs/TECHNICAL-OVERVIEW.zh-CN.md#复用可视化)。
 
 命中、未命中与人工纠正均回流至切片评分与检索阈值，库的精度随使用提升，而非仅随体量增长；按类型分化的淘汰策略优先清除过期结果，保留项目知识。
 
@@ -83,34 +74,8 @@ $ semantix search --query "修复 go 测试失败"
 
 ### 实测
 
-真实命令输出（4 个会话的演示库实录）：
-
-```text
-$ semantix dashboard
-
-  semantix dashboard — reuse snapshot
-  ------------------------------------------------
-
-  💰 Cost savings
-     paid        $ 0.0060
-     baseline    $ 0.0141
-     saved       $ 0.0080  (56.99%)
-     ██████████████░░░░░░░░░░
-
-  🎯 Cache hit rate (L3/L2)
-     4 / 5 turns  (80.00%)
-     L3 1 · L2 3
-     ███████████████████░░░░░
-
-  🗂 Zone distribution (library replay)
-     hit  ████ 4   grey ██████ 6   miss  0
-
-  📦 Slice library
-     10 slices · 3 cross-session sessions
-```
-
 - 合成回放对照实验中节省 **79.8%** 成本（[docs/reports/m0-cost-comparison.md](./docs/reports/m0-cost-comparison.md)）
-- 上述演示库 **80% 缓存命中率（L3/L2）**
+- 4 个会话的演示库 **80% 缓存命中率（L3/L2）**——一屏 `semantix dashboard` 仪表盘的真实输出见[复用可视化实录](./docs/TECHNICAL-OVERVIEW.zh-CN.md#复用可视化)
 - `semantix verify` 回放门禁要求相关性 **≥ 70%**；用真实用户会话验证命中率是当前的 v1.0 门禁 —— [#58](https://github.com/Gnosil/semantix/issues/58)
 
 **以上是回放 / 演示测量，不是生产基准。** 完整证据链和全部技术细节见 [docs/TECHNICAL-OVERVIEW.zh-CN.md](./docs/TECHNICAL-OVERVIEW.zh-CN.md)。

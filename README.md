@@ -38,16 +38,7 @@ Fail-open throughout: on kernel error the agent falls back to its normal executi
 
 ## Cross-session memory
 
-A project's build conventions, test layout and service flags have to be re-established in every new session. Semantix extracts reusable **slices** from finished sessions — task patterns, project knowledge, tool sequences, verified results — into a local scored library, and reinjects the relevant ones when a similar task appears. Each hit carries its retrieval zone (🟢 hit · 🟡 grey · ⚪ miss) and its source session:
-
-```text
-$ semantix search --query "fix failing go test"
-1. 🟢 score=4.331011 zone=hit id=619551c54af5437a scope=project from:2026-08-14-c9d4
-   fix failing go test after refactor
-2. 🟢 score=3.852740 zone=hit id=73b12bb117664106 scope=project from:2026-08-13-b7c2
-   fix failing go test in kernel slice extractor
-🎯 3/3 hits in 3 sessions
-```
+A project's build conventions, test layout and service flags have to be re-established in every new session. Semantix extracts reusable **slices** from finished sessions — task patterns, project knowledge, tool sequences, verified results — into a local scored library, and reinjects the relevant ones when a similar task appears. Each hit carries its retrieval zone (🟢 hit · 🟡 grey · ⚪ miss) and its source session — real `semantix search` / `dashboard` / `verify` output lives in the [reuse visualization walkthrough](./docs/TECHNICAL-OVERVIEW.md#reuse-visualization).
 
 Hits, misses and manual corrections all feed back into slice scores and retrieval thresholds, so precision improves with use rather than volume alone. Type-aware eviction discards stale results first and retains project knowledge.
 
@@ -83,34 +74,8 @@ Beyond caching, the scheduler learns tool-usage patterns to parallelize eligible
 
 ### Measured
 
-Real output from a small demo library (4 extracted sessions):
-
-```text
-$ semantix dashboard
-
-  semantix dashboard — reuse snapshot
-  ------------------------------------------------
-
-  💰 Cost savings
-     paid        $ 0.0060
-     baseline    $ 0.0141
-     saved       $ 0.0080  (56.99%)
-     ██████████████░░░░░░░░░░
-
-  🎯 Cache hit rate (L3/L2)
-     4 / 5 turns  (80.00%)
-     L3 1 · L2 3
-     ███████████████████░░░░░
-
-  🗂 Zone distribution (library replay)
-     hit  ████ 4   grey ██████ 6   miss  0
-
-  📦 Slice library
-     10 slices · 3 cross-session sessions
-```
-
 - **79.8% cost saved** on a synthetic replay comparison — methodology in [docs/reports/m0-cost-comparison.md](./docs/reports/m0-cost-comparison.md)
-- **80% cache hit rate (L3/L2)** on the demo library above
+- **80% cache hit rate (L3/L2)** on a small demo library (4 extracted sessions) — the one-screen `semantix dashboard` snapshot is captured in the [reuse visualization walkthrough](./docs/TECHNICAL-OVERVIEW.md#reuse-visualization)
 - A replay gate (`semantix verify`) enforces **≥ 70% relevance**; validating that hit rate on real user sessions is the open v1.0 gate — [#58](https://github.com/Gnosil/semantix/issues/58)
 
 **These are replay / demo measurements, not production benchmarks.** The full evidence trail — and everything else technical — lives in [docs/TECHNICAL-OVERVIEW.md](./docs/TECHNICAL-OVERVIEW.md).

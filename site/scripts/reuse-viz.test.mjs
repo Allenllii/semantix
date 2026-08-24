@@ -5,16 +5,18 @@ import test from "node:test";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 
-test("README keeps the one-screen reuse snapshot and zone icons", async () => {
+test("README keeps the zone icons and points to the reuse walkthrough", async () => {
   const readme = await readFile(path.join(repoRoot, "README.md"), "utf8");
 
-  assert.match(readme, /semantix dashboard/);
-  assert.match(readme, /💰 Cost savings/);
-  assert.match(readme, /🎯 Cache hit rate \(L3\/L2\)/);
-  assert.match(readme, /🗂 Zone distribution/);
-  assert.match(readme, /📦 Slice library/);
   assert.match(readme, /🟢 hit · 🟡 grey · ⚪ miss/);
-  assert.match(readme, /🎯 3\/3 hits in 3 sessions/);
+  assert.match(readme, /TECHNICAL-OVERVIEW\.md#reuse-visualization/);
+
+  const readmeZh = await readFile(
+    path.join(repoRoot, "README.zh-CN.md"),
+    "utf8",
+  );
+  assert.match(readmeZh, /🟢 hit · 🟡 grey · ⚪ miss/);
+  assert.match(readmeZh, /TECHNICAL-OVERVIEW\.zh-CN\.md#复用可视化/);
 });
 
 test("technical overview documents the full reuse walkthrough and zone legend", async () => {
