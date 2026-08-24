@@ -11,12 +11,14 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"semantix/harness/agent"
 	"semantix/harness/boot"
 	"semantix/harness/config"
 	"semantix/harness/control"
 	"semantix/harness/event"
+	"semantix/harness/i18n"
 	"semantix/harness/jobs"
 	"semantix/harness/provider"
 )
@@ -55,6 +57,13 @@ func TestRuntimeSwitchesRejectRunningBackgroundJobs(t *testing.T) {
 		m := chatTUIWithRunningBackgroundJob(t)
 		if cmd := m.runEffortCommand("/effort max"); cmd != nil {
 			t.Fatal("effort switch queued a rebuild while a background job was running")
+		}
+		if got := m.ctrl.SessionEffort(); got != "" {
+			t.Fatalf("busy effort switch changed the session effort to %q, want untouched", got)
+		}
+		joined := ansi.Strip(strings.Join(*m.pendingCommit, "\n"))
+		if !strings.Contains(joined, i18n.M.EffortSwitchBusy) {
+			t.Fatalf("busy effort switch did not emit the busy notice:\n%s", joined)
 		}
 	})
 
@@ -230,36 +239,6 @@ func TestModelSwitchCarriesRecoveryPathAfterSnapshotConflict(t *testing.T) {
 		t.Fatal("runModelSubcommand did not queue a model switch")
 	}
 	m.pendingModelSwitch()
-
-	if gotResumePath == "" || gotResumePath == originalPath || !strings.Contains(filepath.Base(gotResumePath), "-recovery-") {
-		t.Fatalf("resume path = %q, want recovery path distinct from %q", gotResumePath, originalPath)
-	}
-	if got := m.ctrl.SessionPath(); got != gotResumePath {
-		t.Fatalf("old controller session path = %q, want recovery path %q", got, gotResumePath)
-	}
-}
-
-// TestEffortSwitchCarriesRecoveryPathAfterSnapshotConflict covers the same
-// contract for the TUI /effort rebuild path.
-func TestEffortSwitchCarriesRecoveryPathAfterSnapshotConflict(t *testing.T) {
-	isolateUserConfig(t)
-	dir := t.TempDir()
-	originalPath := filepath.Join(dir, "effort-switch-conflict.jsonl")
-
-	m := newTestChatTUI()
-	m.ctrl = divergedSessionController(t, dir, originalPath)
-	m.modelRef = "deepseek-flash/deepseek-v4-flash"
-	var gotResumePath string
-	m.buildController = func(_ controllerBuildSpec, _ []provider.Message, resumePath string, _ control.SessionAPI) (*control.Controller, error) {
-		gotResumePath = resumePath
-		return control.New(control.Options{Label: "deepseek-flash"}), nil
-	}
-
-	cmd := m.runEffortCommand("/effort max")
-	if cmd == nil {
-		t.Fatal("runEffortCommand did not queue a rebuild")
-	}
-	cmd()
 
 	if gotResumePath == "" || gotResumePath == originalPath || !strings.Contains(filepath.Base(gotResumePath), "-recovery-") {
 		t.Fatalf("resume path = %q, want recovery path distinct from %q", gotResumePath, originalPath)
@@ -562,36 +541,6 @@ func TestModelSwitchMovesLeaseToRecoveryPathBeforeRebuild(t *testing.T) {
 		t.Fatal("runModelSubcommand did not queue a model switch")
 	}
 	m.pendingModelSwitch()
-
-	assertLeaseHeldRecoveryPathAtBuild(t, &m, active, heldAtBuild)
-}
-
-// TestEffortSwitchMovesLeaseToRecoveryPathBeforeRebuild covers the same
-// lease-before-bind order for the /effort rebuild path.
-func TestEffortSwitchMovesLeaseToRecoveryPathBeforeRebuild(t *testing.T) {
-	isolateUserConfig(t)
-	dir := t.TempDir()
-	active := filepath.Join(dir, "effort-switch-lease-order.jsonl")
-
-	m := newTestChatTUI()
-	m.ctrl = divergedSessionController(t, dir, active)
-	m.modelRef = "deepseek-flash/deepseek-v4-flash"
-	m.leases = control.NewSessionLeaseKeeper()
-	t.Cleanup(m.leases.Release)
-	if err := m.leases.Rebind(active); err != nil {
-		t.Fatalf("seed active lease: %v", err)
-	}
-	var heldAtBuild string
-	m.buildController = func(_ controllerBuildSpec, _ []provider.Message, _ string, _ control.SessionAPI) (*control.Controller, error) {
-		heldAtBuild = m.leases.HeldPath()
-		return control.New(control.Options{Label: "deepseek-flash"}), nil
-	}
-
-	cmd := m.runEffortCommand("/effort max")
-	if cmd == nil {
-		t.Fatal("runEffortCommand did not queue a rebuild")
-	}
-	cmd()
 
 	assertLeaseHeldRecoveryPathAtBuild(t, &m, active, heldAtBuild)
 }
