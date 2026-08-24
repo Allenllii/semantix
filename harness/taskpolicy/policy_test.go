@@ -137,6 +137,89 @@ func TestQuotedConstraintsIgnored(t *testing.T) {
 	}
 }
 
+func TestQualifiedNoModifyDoesNotFreezeWorkspace(t *testing.T) {
+	// SWE-bench style framing: a scoped prohibition names its object; the fix
+	// itself requires edits, so a workspace-wide write freeze is wrong.
+	for _, raw := range []string{
+		"Resolve the issue below.\n- Do NOT modify existing test files.\n- Do not commit.",
+		"fix the bug, but don't change the public API",
+		"修复这个问题，但不要修改测试文件",
+	} {
+		p := Derive(Input{
+			Raw:         raw,
+			Instruction: StripQuotedConstraints(raw),
+			Preset:      agentpreset.Balanced,
+		})
+		if !p.AllowsMutation() {
+			t.Fatalf("qualified prohibition froze workspace: %q", raw)
+		}
+	}
+}
+
+func TestGlobalNoModifyStillBinds(t *testing.T) {
+	for _, raw := range []string{
+		"review this, do not modify anything",
+		"don't change the code, just explain it",
+		"分析问题，不要改代码",
+		"look at the failure. do not modify.",
+	} {
+		p := Derive(Input{
+			Raw:         raw,
+			Instruction: StripQuotedConstraints(raw),
+			Preset:      agentpreset.Balanced,
+		})
+		if p.AllowsMutation() {
+			t.Fatalf("global prohibition must bind: %q", raw)
+		}
+	}
+}
+
+func TestUnbalancedInlineCodeDoesNotSwallowLaterLines(t *testing.T) {
+	// A stray backtick on one line used to flip inline-code state for the rest
+	// of the input, silently dropping every later constraint line.
+	raw := "the failing key is `WIDGET_SETTING\nnow don't modify anything, analysis only"
+	stripped := StripQuotedConstraints(raw)
+	if !strings.Contains(strings.ToLower(stripped), "analysis only") {
+		t.Fatalf("later line was swallowed: %q", stripped)
+	}
+	p := Derive(Input{Raw: raw, Instruction: stripped, Preset: agentpreset.Balanced})
+	if p.AllowsMutation() {
+		t.Fatal("constraint after unbalanced backtick must still bind")
+	}
+}
+
+func TestUnbalancedQuoteDoesNotSwallowLaterLines(t *testing.T) {
+	raw := "error says \"unterminated\nread only please: analysis only"
+	if s := StripQuotedConstraints(raw); !strings.Contains(s, "analysis only") {
+		t.Fatalf("later line was swallowed: %q", s)
+	}
+}
+
+func TestTagWrappedCitationDoesNotBind(t *testing.T) {
+	// Constraint-looking prose inside an embedded block (issue body, log) is
+	// citation, not an instruction to the host.
+	raw := "Resolve the issue below.\n<issue>\nI made no changes to ax1, analysis only shows the bug.\n</issue>\nImplement a fix."
+	p := Derive(Input{
+		Raw:         raw,
+		Instruction: StripQuotedConstraints(raw),
+		Preset:      agentpreset.Balanced,
+	})
+	if !p.AllowsMutation() {
+		t.Fatal("cited text inside <issue> must not freeze the workspace")
+	}
+	// The same phrase outside any block still binds.
+	raw2 := "Look at this, analysis only.\n<issue>\nsome bug\n</issue>"
+	p2 := Derive(Input{Raw: raw2, Instruction: StripQuotedConstraints(raw2), Preset: agentpreset.Balanced})
+	if p2.AllowsMutation() {
+		t.Fatal("host constraint outside the block must bind")
+	}
+	// An unmatched angle-bracket placeholder is plain text, not a citation.
+	raw3 := "rename <old> to <new> everywhere, do not modify anything else manually; use the script"
+	if s := StripQuotedConstraints(raw3); !strings.Contains(s, "do not modify") {
+		t.Fatalf("placeholder text was stripped: %q", s)
+	}
+}
+
 func TestRiskOnlyRatchetsUp(t *testing.T) {
 	p := Derive(Input{Raw: "explain this", Preset: agentpreset.Balanced})
 	if p.Risk != RiskLow {
