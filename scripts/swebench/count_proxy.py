@@ -45,11 +45,16 @@ def build_opener() -> urllib.request.OpenerDirector:
 class Handler(BaseHTTPRequestHandler):
     upstream = ""
     ledger = ""
+    verbose = False
     opener: urllib.request.OpenerDirector | None = None
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *a):
         pass
+
+    def debug(self, msg: str) -> None:
+        if self.verbose:
+            print(msg, file=sys.stderr, flush=True)
 
     def record(self, usage: dict, model: str) -> None:
         if not usage:
@@ -93,6 +98,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         status = resp.getcode()
+        self.debug(f"{method} {self.path} -> {status}")
         ctype = resp.headers.get("Content-Type", "application/json")
         self.send_response(status)
         self.send_header("Content-Type", ctype)
@@ -112,6 +118,27 @@ class Handler(BaseHTTPRequestHandler):
                 self.record(obj.get("usage") or {}, obj.get("model", ""))
             except ValueError:
                 pass
+
+    @staticmethod
+    def usage_from_event(obj: dict) -> tuple[dict, str]:
+        """Pull a usage object out of one SSE event, across protocols:
+        OpenAI chat chunks (top-level usage), OpenAI Responses events
+        (response.completed carries response.usage), Anthropic messages
+        (message_start.message.usage input side, message_delta.usage output)."""
+        usage, model = {}, ""
+        if isinstance(obj.get("usage"), dict) and obj["usage"]:
+            usage = obj["usage"]
+            model = obj.get("model") or ""
+        response = obj.get("response") or {}
+        if isinstance(response, dict) and isinstance(response.get("usage"), dict) \
+                and response["usage"]:
+            usage = response["usage"]
+            model = response.get("model") or model
+        msg = obj.get("message") or {}
+        if isinstance(msg, dict) and isinstance(msg.get("usage"), dict):
+            usage = {**usage, **msg["usage"]}
+            model = msg.get("model") or model
+        return usage, model
 
     def tee_stream(self, resp) -> None:
         buffer = b""
@@ -139,16 +166,10 @@ class Handler(BaseHTTPRequestHandler):
                         obj = json.loads(payload)
                     except ValueError:
                         continue
-                    model = obj.get("model") or model
-                    if isinstance(obj.get("usage"), dict) and obj["usage"]:
-                        usage = obj["usage"]  # last one wins (cumulative)
-                    # Anthropic-style events carry usage under message/delta.
-                    msg = obj.get("message") or {}
-                    if isinstance(msg.get("usage"), dict):
-                        usage = {**usage, **msg["usage"]}
-                        model = msg.get("model") or model
-                    if obj.get("type") == "message_delta" and isinstance(obj.get("usage"), dict):
-                        usage = {**usage, **obj["usage"]}
+                    got, got_model = self.usage_from_event(obj)
+                    if got:
+                        usage = {**usage, **got}  # last/cumulative wins
+                    model = got_model or obj.get("model") or model
         self.record(usage, model)
 
 

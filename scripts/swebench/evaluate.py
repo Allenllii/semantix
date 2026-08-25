@@ -25,8 +25,6 @@ def main() -> None:
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--max-workers", type=int, default=4)
-    ap.add_argument("--namespace", default="swebench",
-                    help="'swebench' pulls prebuilt images; 'none' builds locally")
     ap.add_argument("--timeout", type=int, default=1800)
     args = ap.parse_args()
 
@@ -38,6 +36,9 @@ def main() -> None:
         model_name = json.loads(f.readline())["model_name_or_path"]
     run_id = run_dir.name
 
+    # swebench 5.x resolves per-instance eval images from the dataset's own
+    # `image` field (pre-pull + retag from the Epoch ghcr mirror if Docker Hub
+    # rate-limits anonymous pulls).
     cmd = [
         sys.executable, "-m", "swebench.harness.run_evaluation",
         "--dataset_name", str(Path(args.dataset).resolve()),
@@ -45,8 +46,6 @@ def main() -> None:
         "--max_workers", str(args.max_workers),
         "--run_id", run_id,
         "--timeout", str(args.timeout),
-        "--cache_level", "env",
-        "--namespace", "" if args.namespace == "none" else args.namespace,
     ]
     print("+", " ".join(cmd), flush=True)
     proc = subprocess.run(cmd, cwd=run_dir)

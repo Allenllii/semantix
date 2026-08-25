@@ -15,10 +15,10 @@
 
 | harness | 模型接入 | token/缓存计量 |
 | --- | --- | --- |
-| `semantix` | `semantix-agent run -p`，OpenAI 协议直连 `api.deepseek.com` | 原生 `--metrics` JSON（`cache_hit_tokens`/`cache_miss_tokens` 即 DeepSeek 上报计数） |
+| `semantix` | `semantix-agent run -p`，OpenAI 协议直连 `api.deepseek.com`。provider key **只从 Semantix 全局 `.env` 解析**（不读进程环境变量），adapter 自动写入 `$SEMANTIX_HOME/.env` | 原生 `--metrics` JSON（`cache_hit_tokens`/`cache_miss_tokens` 即 DeepSeek 上报计数） |
 | `claude-code` | `claude -p`，走 DeepSeek 的 Anthropic 兼容端点 `api.deepseek.com/anthropic` | 结果 JSON 的 `usage`（`cache_read_input_tokens` = 命中） |
-| `codex` | `codex exec --json`，OpenAI chat 协议。**codex >0.80.0 移除了 `wire_api="chat"`**，需固定 0.80.0（`npm i -g @openai/codex@0.80.0` 或 `--codex-bin`）；若端点支持 Responses API 可 `--codex-wire-api responses` 用新版 | codex 0.80 chat 路径不上报 token，故经 `count_proxy.py` 计量代理旁路记录 provider 返回的 usage（含 `prompt_cache_hit_tokens`） |
-| `dsh` | DeepSeek Harness（`npm i -g @deepseek-ai/dsh`）headless profile；`DSH_PERMISSION_MODE=danger-full-access` 免审批 | 解析 `$DSH_HOME/sessions/**/session.jsonl.zstd` 的 usage 事件（`cacheReadTokens` = 命中） |
+| `codex` | `codex exec --json`，默认 **Responses API**（DeepSeek 原生支持 `/v1/responses`），当前版 codex 直接可用。legacy chat 协议需 codex ≤0.80.0（`--codex-bin` + `--codex-wire-api chat`），且 DeepSeek 对 chat 多轮 tool 消息序校验严格，容易 400——不建议 | codex 自身 token 上报不可靠，经 `count_proxy.py` 计量代理旁路记录 provider 返回的 usage（含缓存字段） |
+| `dsh` | DeepSeek Harness（`npm i -g @deepseek-ai/dsh`）headless profile；`DSH_PERMISSION_MODE=danger-full-access` 免审批。**dsh 的 node fetch 不识别 HTTPS_PROXY**，在代理沙箱中必须经计量代理中转（adapter 自动处理） | 首选 `count_proxy.py` 线级 usage；回退解析 `$DSH_HOME/sessions/**/session.jsonl.zstd` 的 usage 事件（`cacheReadTokens` = 命中） |
 | `custom` | 任意 CLI，`--custom-spec spec.json` 描述命令模板与 usage 抽取 | spec 内 `usage_file` / `usage_regex` |
 
 四条 adapter 均已通过 `mock_provider.py` 冒烟（本地双协议 mock，无需 key / 无需出网），指标管线验证过：token、命中率、成本、patch 提取、preds.jsonl 全链路正确。
