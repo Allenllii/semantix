@@ -313,20 +313,30 @@ type Messages struct {
 
 	// in-chat memory/model/rewind notices.
 
-	MemoryEditHint               string
-	ForgetUsage                  string
-	ForgetDoneFmt                string
-	QuickRememberEmpty           string
-	QuickRememberDoneFmt         string
-	GoalEmpty                    string
-	GoalCurrentFmt               string
-	GoalSetFmt                   string
-	GoalCleared                  string
-	GoalNotRunning               string
-	GoalNotPaused                string
+	MemoryEditHint       string
+	ForgetUsage          string
+	ForgetDoneFmt        string
+	QuickRememberEmpty   string
+	QuickRememberDoneFmt string
+	GoalEmpty            string
+	GoalCurrentFmt       string
+	GoalSetFmt           string
+	GoalCleared          string
+	GoalNotRunning       string
+	GoalNotPaused        string
 	// SetEffort rejections. Session-scoped runtime depth, not the config write.
-	SessionEffortUnsupportedFmt  string // %s = model name
-	SessionEffortNotADepthFmt    string // %s = level, %s = model name
+	SessionEffortUnsupportedFmt string // %s = model name
+	SessionEffortNotADepthFmt   string // %s = level, %s = model name
+	// /effort CLI notices — the in-place switch, no controller rebuild.
+	EffortErrorFmt               string // %s = error
+	EffortNotConfigurableFmt     string // %s = provider name
+	EffortCurrentFmt             string // %s name, %s current, %s default, %s options
+	EffortUsageFmt               string // %s = level list
+	EffortNoConfigDir            string
+	EffortSwitchUnavailable      string
+	EffortSwitchBusy             string
+	EffortSwitchPending          string
+	EffortSwitchedFmt            string // %s = provider name, %s = level
 	GoalPaused                   string
 	GoalPausedReason             string
 	GoalPausedFmt                string // %s = stop cause

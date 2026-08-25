@@ -16,7 +16,7 @@ import (
 // Manager identity, current generation, and files even after the outgoing
 // Controller releases its owner reference.
 func TestCLIHotRebuildPathsKeepSessionTemp(t *testing.T) {
-	for _, command := range []string{"model", "effort", "reload"} {
+	for _, command := range []string{"model", "reload"} {
 		t.Run(command, func(t *testing.T) {
 			isolateUserConfig(t)
 
@@ -64,13 +64,6 @@ func TestCLIHotRebuildPathsKeepSessionTemp(t *testing.T) {
 				msg := m.pendingModelSwitch()
 				next, _ := m.Update(msg)
 				m = next.(chatTUI)
-			case "effort":
-				effortCmd := m.runEffortCommand("/effort max")
-				if effortCmd == nil {
-					t.Fatal("/effort did not schedule a replacement")
-				}
-				next, _ := m.Update(effortCmd())
-				m = next.(chatTUI)
 			case "reload":
 				reloadCmd := m.runReloadCommand()
 				if reloadCmd == nil {
@@ -108,6 +101,42 @@ func TestCLIHotRebuildPathsKeepSessionTemp(t *testing.T) {
 				t.Fatalf("temp file lost across %s rebuild: %q %v", command, body, err)
 			}
 		})
+	}
+}
+
+// TestEffortSwitchKeepsSessionTempInPlace: /effort now applies to the live
+// controller in place, so the session temp manager must stay on the same
+// controller untouched — only the rebuild paths above own the transfer.
+func TestEffortSwitchKeepsSessionTempInPlace(t *testing.T) {
+	isolateUserConfig(t)
+
+	oldCtrl := control.New(control.Options{Label: "deepseek-flash"})
+	t.Cleanup(oldCtrl.Close)
+	oldManager := oldCtrl.SessionTemp()
+
+	m := newTestChatTUI()
+	m.ctrl = oldCtrl
+	m.modelRef = "deepseek-flash/deepseek-v4-flash"
+	builds := 0
+	m.buildController = func(_ controllerBuildSpec, _ []provider.Message, _ string, _ control.SessionAPI) (*control.Controller, error) {
+		builds++
+		return control.New(control.Options{Label: "deepseek-flash"}), nil
+	}
+
+	if cmd := m.runEffortCommand("/effort max"); cmd != nil {
+		t.Fatal("/effort must switch in place, not schedule a replacement")
+	}
+	if m.ctrl != oldCtrl {
+		t.Fatal("/effort replaced the controller")
+	}
+	if builds != 0 {
+		t.Fatalf("/effort triggered %d rebuilds, want 0", builds)
+	}
+	if got := m.ctrl.SessionEffort(); got != "max" {
+		t.Fatalf("session effort = %q, want max", got)
+	}
+	if oldCtrl.SessionTemp() != oldManager {
+		t.Fatal("/effort rotated the session temp manager")
 	}
 }
 

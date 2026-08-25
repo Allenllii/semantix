@@ -50,7 +50,7 @@ func builtinSlashSpecs() []builtinSlashSpec {
 		{name: "/mouse", insert: "/mouse", hint: i18n.M.CmdMouse, showInHelp: true},
 		{name: "/diff-fold", insert: "/diff-fold", hint: i18n.M.CmdDiffFold, showInHelp: true},
 		{name: "/sandbox", insert: "/sandbox", hint: i18n.M.CmdSandbox, showInHelp: true},
-		{name: "/effort", insert: "/effort ", hint: i18n.M.CmdEffort, descend: true},
+		{name: "/effort", insert: "/effort ", hint: i18n.M.CmdEffort, descend: true, showInHelp: true},
 		{name: "/reasoning-language", insert: "/reasoning-language ", hint: i18n.M.CmdReasonLang, descend: true, showInHelp: true},
 		{name: "/theme", insert: "/theme ", hint: i18n.M.CmdTheme, descend: true},
 		{name: "/language", insert: "/language ", hint: i18n.M.CmdLanguage, descend: true, showInHelp: true},

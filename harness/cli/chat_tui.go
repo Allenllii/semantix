@@ -397,6 +397,11 @@ type chatTUI struct {
 	modelRef       string
 	runtimeProfile string
 	effortLevel    string // "" when the current provider/model has no configurable effort
+	// effortApplied notifies the launch wiring that an in-session /effort
+	// switch changed the level, so the captured build overrides stay in sync
+	// for a later /reload (a session launched with --effort would otherwise
+	// let the launch flag out-vote the in-session choice on rebuild).
+	effortApplied func(level string)
 
 	// leases owns the session lease guarding the TUI's active session file (set
 	// by chatREPL; nil in tests and when persistence is disabled). Every in-TUI
