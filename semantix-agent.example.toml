@@ -69,8 +69,8 @@ compact_force_ratio = 0.9   # force compacting at this high-water mark
 name        = "glm"
 kind        = "openai"
 base_url    = "https://open.bigmodel.cn/api/paas/v4"
-models      = ["glm-5.2", "glm-5.1", "glm-5", "glm-5-turbo"]
-default     = "glm-5.2"   # optional; defaults to the first of `models`
+models      = ["glm-5.3-flash", "glm-5.2", "glm-5.1", "glm-5", "glm-5-turbo"]
+default     = "glm-5.3-flash"   # optional; defaults to the first of `models`
 api_key_env = "GLM_API_KEY"
 context_window = 1000000
 
@@ -79,8 +79,8 @@ context_window = 1000000
 # name        = "zai"
 # kind        = "openai"
 # base_url    = "https://api.z.ai/api/paas/v4"
-# models      = ["glm-5.2", "glm-5.1", "glm-5", "glm-5-turbo"]
-# default     = "glm-5.2"
+# models      = ["glm-5.3-flash", "glm-5.2", "glm-5.1", "glm-5", "glm-5-turbo"]
+# default     = "glm-5.3-flash"
 # api_key_env = "ZAI_API_KEY"
 # context_window = 1000000
 
