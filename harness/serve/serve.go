@@ -1529,11 +1529,12 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type sessionEntry struct {
-		Name    string `json:"name"`
-		Path    string `json:"path"`
-		Title   string `json:"title,omitempty"`
-		Turns   int    `json:"turns,omitempty"`
-		Current bool   `json:"current,omitempty"`
+		Name     string `json:"name"`
+		Path     string `json:"path"`
+		Title    string `json:"title,omitempty"`
+		Turns    int    `json:"turns,omitempty"`
+		Current  bool   `json:"current,omitempty"`
+		InFlight bool   `json:"in_flight,omitempty"`
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -1552,6 +1553,11 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		}
 		name := strings.TrimSuffix(e.Name(), ".jsonl")
 		entry := sessionEntry{Name: name, Path: path, Current: filepath.Clean(path) == current}
+		// GUI-3 (#406): the branch sidecar carries the in-flight turn marker,
+		// so the task sidebar can show 运行中 without a second data structure.
+		if meta, ok, metaErr := agent.LoadBranchMeta(path); metaErr == nil && ok {
+			entry.InFlight = meta.InFlightTurn != nil
+		}
 		// Event-log aware: reading the .jsonl checkpoint directly would freeze
 		// turn counts and titles at the last checkpoint write.
 		if first, turns := agent.SessionPreview(path); turns > 0 {
