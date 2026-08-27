@@ -197,10 +197,11 @@ func (s *Server) workspaceEvents(w http.ResponseWriter, r *http.Request) {
 	for _, delivery := range replay {
 		writeWebDelivery(w, flusher, delivery)
 	}
-	if lastSeq == 0 {
+	if lastSeq == 0 || gap {
 		// Initial clients need actionable prompts that may have been emitted
 		// before they connected. Reconnects receive those events from history
-		// instead, avoiding duplicate approval cards.
+		// when available; a replay gap has no trustworthy history, so prompts
+		// are safely re-emitted for the new connection.
 		s.ctl().ReplayPendingPromptsWith(func() event.Sink {
 			return event.FuncSink(func(e event.Event) {
 				s.bc.EmitWebTo(ch, taskID, e)

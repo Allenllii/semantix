@@ -67,4 +67,5 @@ Filtered host-internal kinds that are never forwarded:
 4. On reconnect, preserve the last received SSE `id` as `Last-Event-ID` (the
    browser `EventSource` does this automatically). Initial connections replay
    pending prompts; reconnects rely on the event log so approval cards are not
-   duplicated.
+   duplicated. If the server reports a replay gap, it replays pending prompts
+   again because the missing history cannot be trusted.

@@ -71,13 +71,21 @@ func (b *Broadcaster) SetDisplayCurrency(currency string) {
 	b.mu.Unlock()
 }
 
-// ResetSession clears the usage ledger for /new, /resume and /fork.
+// ResetSession clears the usage ledger for /new, /resume and /fork. Workspace
+// replay is session-scoped, so old protocol history and subscribers are closed
+// as well; EventSource clients reconnect with the new task id instead of
+// receiving frames from the previous session.
 func (b *Broadcaster) ResetSession() {
 	if b == nil {
 		return
 	}
 	b.mu.Lock()
 	b.ledger = billing.NewLedger()
+	b.webHistory = nil
+	for sub := range b.webSubs {
+		delete(b.webSubs, sub)
+		close(sub.ch)
+	}
 	b.mu.Unlock()
 }
 

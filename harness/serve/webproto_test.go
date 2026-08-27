@@ -288,6 +288,27 @@ func TestBroadcasterWebReplayAndGap(t *testing.T) {
 	}
 }
 
+func TestBroadcasterResetSessionDropsWorkspaceHistory(t *testing.T) {
+	bc := NewBroadcaster()
+	bc.Emit(event.Event{Kind: event.Message, Text: "old task"})
+	ch, _, _, unsubscribe := bc.SubscribeWebSince(0, "old-task")
+	bc.ResetSession()
+	defer unsubscribe()
+	select {
+	case _, ok := <-ch:
+		if ok {
+			t.Fatal("workspace subscriber remained open across session reset")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("workspace subscriber was not closed on session reset")
+	}
+	_, replay, gap, unsubscribe2 := bc.SubscribeWebSince(1, "new-task")
+	defer unsubscribe2()
+	if !gap || len(replay) != 0 {
+		t.Fatalf("after reset replay=(%d frames, gap=%v), want empty history with gap", len(replay), gap)
+	}
+}
+
 func readOneSSE(sc *bufio.Scanner) (sseRecord, error) {
 	var rec sseRecord
 	for sc.Scan() {
