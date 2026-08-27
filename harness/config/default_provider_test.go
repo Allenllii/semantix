@@ -42,8 +42,8 @@ func TestApplyEnvDefaultProviderInjectsGLM(t *testing.T) {
 	if !ok {
 		t.Fatalf("glm provider not injected: %+v", cfg.Providers)
 	}
-	if p.APIKeyEnv != "GLM_API_KEY" || p.Default != "glm-5.2" {
-		t.Fatalf("glm provider = %+v, want GLM_API_KEY / glm-5.2", p)
+	if p.APIKeyEnv != "GLM_API_KEY" || p.Default != "glm-5.3-flash" {
+		t.Fatalf("glm provider = %+v, want GLM_API_KEY / glm-5.3-flash", p)
 	}
 	// DeepSeek must remain so the user can switch back.
 	if _, ok := cfg.Provider("deepseek-flash"); !ok {
