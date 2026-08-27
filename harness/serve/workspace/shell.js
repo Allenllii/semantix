@@ -295,6 +295,11 @@
     if (kind === "message") {
       workflow.assistant.text = String(data.text || "");
       workflow.assistant.reasoning = String(data.reasoning || "");
+      workflow.assistant.finalized = true;
+    } else if (workflow.assistant.finalized) {
+      // A completed message is authoritative. Ignore a late duplicate delta
+      // instead of appending it a second time to the visible answer.
+      return;
     } else if (kind === "reasoning") {
       workflow.assistant.reasoning = (workflow.assistant.reasoning || "") + String(data.reasoning || data.text || "");
     } else {
@@ -338,6 +343,7 @@
       record.state = "running";
       setStatus(record.card, "进行中", "running");
     }
+    record.card.article.setAttribute("data-ws-tool-state", record.state || "running");
     renderTool(record.card, record);
     if (tool.name === "todo_write" && tool.args) renderPlan(parsePlan(tool.args));
   }
