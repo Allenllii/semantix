@@ -108,11 +108,10 @@
   };
   var openMenu = null; // currently open dropdown element or null
 
-  // GUI-4 (#407): consume the versioned workspace stream as a transport
-  // contract. The shell does not synthesize chat/tool/cache cards here; it
-  // only validates ordering and lets the existing refresh paths react to a
-  // gap. Unknown event names and malformed payloads are deliberately ignored
-  // so a newer server cannot crash an older workspace page.
+  // GUI-4 (#407) + GUI-5 (#408): consume the versioned workspace stream as a
+  // transport contract and project it into the live workflow timeline.
+  // Unknown event names and malformed payloads are deliberately ignored so a
+  // newer server cannot crash an older workspace page.
   var workspaceEvents = null;
   var lastEventSeq = 0;
   var eventTaskID = "";
@@ -446,7 +445,11 @@
     if (!data || typeof data !== "object") return;
     // The inner eventwire frame remains the source of truth. The renderer only
     // projects it into cards; it never treats text as markup or invents data.
-    if (data.kind === "turn_started") workflow.assistant = null;
+    if (data.kind === "turn_started") {
+      workflow.assistant = null;
+      workflow.plan = null;
+      workflow.tools = Object.create(null);
+    }
     switch (payload.type) {
       case "user_message":
         var user = makeEvent("user", "用户", "›");
