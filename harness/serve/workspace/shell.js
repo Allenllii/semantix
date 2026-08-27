@@ -241,6 +241,7 @@
 
   function renderTool(card, record) {
     if (!card || !record) return;
+    record.progressEl = null;
     clearNode(card.body);
     if (record.args) appendExpandable(card.body, record.args, "展开参数", "ws-tool-preview");
     if (record.output) appendExpandable(card.body, record.output, "展开输出", "ws-tool-preview");
@@ -296,23 +297,34 @@
       workflow.assistant.text = String(data.text || "");
       workflow.assistant.reasoning = String(data.reasoning || "");
       workflow.assistant.finalized = true;
+      clearNode(workflow.assistant.body);
+      workflow.assistant.textEl = null;
+      workflow.assistant.reasoningEl = null;
+      if (workflow.assistant.text) appendExpandable(workflow.assistant.body, workflow.assistant.text, "展开回复");
+      if (workflow.assistant.reasoning) appendExpandable(workflow.assistant.body, workflow.assistant.reasoning, "展开思考过程");
     } else if (workflow.assistant.finalized) {
       // A completed message is authoritative. Ignore a late duplicate delta
       // instead of appending it a second time to the visible answer.
       return;
     } else if (kind === "reasoning") {
-      workflow.assistant.reasoning = (workflow.assistant.reasoning || "") + String(data.reasoning || data.text || "");
+      var reasoningDelta = String(data.reasoning || data.text || "");
+      workflow.assistant.reasoning = (workflow.assistant.reasoning || "") + reasoningDelta;
+      if (!workflow.assistant.reasoningEl) {
+        workflow.assistant.reasoningEl = document.createElement("pre");
+        workflow.assistant.reasoningEl.className = "ws-event__detail";
+        workflow.assistant.body.appendChild(workflow.assistant.reasoningEl);
+      }
+      workflow.assistant.reasoningEl.appendChild(document.createTextNode(reasoningDelta));
     } else {
-      workflow.assistant.text = (workflow.assistant.text || "") + String(data.text || "");
+      var textDelta = String(data.text || "");
+      workflow.assistant.text = (workflow.assistant.text || "") + textDelta;
+      if (!workflow.assistant.textEl) {
+        workflow.assistant.textEl = document.createElement("div");
+        workflow.assistant.textEl.className = "ws-event__text";
+        workflow.assistant.body.appendChild(workflow.assistant.textEl);
+      }
+      workflow.assistant.textEl.appendChild(document.createTextNode(textDelta));
     }
-    clearNode(workflow.assistant.body);
-    if (workflow.assistant.text) {
-      var text = document.createElement("div");
-      text.className = "ws-event__text";
-      text.textContent = workflow.assistant.text;
-      workflow.assistant.body.appendChild(text);
-    }
-    if (workflow.assistant.reasoning) appendExpandable(workflow.assistant.body, workflow.assistant.reasoning, "展开思考过程");
     setStatus(workflow.assistant, kind === "message" ? "已完成" : "生成中", kind === "message" ? "done" : "running");
   }
 
@@ -331,20 +343,37 @@
       record.state = "running";
       setStatus(record.card, "进行中", "running");
     } else if (kind === "tool_result") {
-      record.output = String(tool.output || "");
-      record.err = String(tool.err || "");
+      record.output = String(tool.output || "").slice(0, MAX_RENDER_CHARS);
+      record.err = String(tool.err || "").slice(0, MAX_RENDER_CHARS);
       record.truncated = !!tool.truncated;
       record.state = record.err ? "failed" : "done";
       setStatus(record.card, record.err ? "失败" : "已完成", record.err ? "failed" : "done");
       if (tool.durationMs) record.card.status.textContent += " · " + tool.durationMs + " ms";
     } else {
-      record.progress += String(tool.output || "");
+      var chunk = String(tool.output || "");
+      if (record.progress.length < MAX_RENDER_CHARS) {
+        var previousLength = record.progress.length;
+        record.progress += chunk.slice(0, MAX_RENDER_CHARS - record.progress.length);
+        if (record.progress.length < previousLength + chunk.length) record.truncated = true;
+      } else if (chunk) {
+        record.truncated = true;
+      }
       record.output = record.progress;
       record.state = "running";
       setStatus(record.card, "进行中", "running");
     }
     record.card.article.setAttribute("data-ws-tool-state", record.state || "running");
-    renderTool(record.card, record);
+    if (kind === "tool_progress") {
+      if (!record.progressEl) {
+        renderTool(record.card, record);
+        record.progressEl = document.createElement("pre");
+        record.progressEl.className = "ws-tool-preview";
+        record.card.body.appendChild(record.progressEl);
+      }
+      record.progressEl.textContent = record.output + (record.truncated ? "\n…（输出已限制）" : "");
+    } else {
+      renderTool(record.card, record);
+    }
     if (tool.name === "todo_write" && tool.args) renderPlan(parsePlan(tool.args));
   }
 
