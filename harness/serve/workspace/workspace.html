@@ -14,7 +14,7 @@
 <!-- Demo shell (issue #404): every visible string is inert placeholder
      content standing in for the GUI-1 mockup. No backend calls. -->
 
-<aside class="ws-side">
+<aside id="ws-side" class="ws-side" aria-label="项目与任务导航">
   <!-- Inline brand lockup instead of /assets/logo-wordmark.svg: that asset's
      vector paths still render the pre-rebrand Reasonix wordmark in blue,
      which would violate the GUI-1 mockup's Semantix branding. -->
@@ -53,6 +53,7 @@
 <div class="ws-main">
   <header class="ws-topbar">
     <div class="ws-chips">
+      <button class="icon-btn ws-side-toggle" type="button" data-ws-side-toggle aria-expanded="false" aria-controls="ws-side" aria-label="打开项目导航" title="打开项目导航"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h12" /></svg></button>
       <button class="ws-chip" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.8 4.5c0-.8.7-1.5 1.5-1.5h3l1.5 1.8h5.4c.8 0 1.5.7 1.5 1.5v5.2c0 .8-.7 1.5-1.5 1.5H3.3a1.5 1.5 0 0 1-1.5-1.5V4.5Z"/></svg>semantix<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
       <button class="ws-chip is-plain" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4.5" cy="12.5" r="2"/><circle cx="4.5" cy="3.5" r="2"/><path d="M11.5 4H7a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H8"/></svg>codex/latest-main<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
     </div>
@@ -147,6 +148,7 @@
       <pre class="ws-diff"><code><span class="hunk">@@ -110,7 +110,12 @@ func (c *Cache) makeKey(</span><span class="d-ctx"><span class="ln">110</span><span class="ln">110</span>              func (c *Cache) makeKey(</span><span class="d-ctx"><span class="ln">111</span><span class="ln">111</span>                prefix string, modelID string,</span><span class="d-ctx"><span class="ln">112</span><span class="ln">112</span>                shardFactor int,</span><span class="d-del"><span class="ln">113</span><span class="ln"></span>- key := hash(prefix)</span><span class="d-del"><span class="ln">114</span><span class="ln"></span>- return key</span><span class="d-add"><span class="ln"></span><span class="ln">113</span>+ // 优化：加入模型与分片因子，提升命中率</span><span class="d-add"><span class="ln">113</span><span class="ln">114</span>+ key := hash(prefix + modelID + "|" + shardFactor)</span><span class="d-add"><span class="ln">114</span><span class="ln">115</span>+ return key</span><span class="d-ctx"><span class="ln">116</span><span class="ln">116</span>}</span></code></pre>
     </aside>
   </div>
+  <button class="ws-side-scrim" type="button" data-ws-side-close aria-label="关闭项目导航"></button>
 </div>
 
 <script src="/workspace/shell.js"></script>

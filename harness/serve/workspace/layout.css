@@ -30,6 +30,8 @@ kbd {
   padding: 20px 14px 16px;
   gap: 4px;
   min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .ws-brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 18px; }
 .ws-brand svg { flex: none; }
@@ -47,6 +49,9 @@ kbd {
 .ws-item svg { flex: none; opacity: .85; }
 .ws-item .ws-kbd { margin-left: auto; }
 .ws-item.is-active { background: var(--sx-green-dim); color: var(--sx-text); }
+
+.ws-side-toggle { display: none; }
+.ws-side-scrim { display: none; }
 
 .ws-section-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -238,7 +243,9 @@ body.ws-right-collapsed .ws-context { display: none; }
 }
 @media (max-width: 860px) {
   body { grid-template-columns: minmax(0, 1fr); }
+  .ws-side-toggle { display: inline-flex; }
   .ws-side { position: fixed; inset: 0 auto 0 0; z-index: 30; width: var(--sx-side-w); transform: translateX(-100%); transition: transform .18s ease; }
   body.ws-side-open .ws-side { transform: none; box-shadow: 24px 0 48px rgba(0, 0, 0, .45); }
+  body.ws-side-open .ws-side-scrim { display: block; position: fixed; inset: 0; z-index: 20; border: 0; background: rgba(0, 0, 0, .48); cursor: pointer; }
   .ws-tree, .ws-center { padding-inline: 16px; }
 }

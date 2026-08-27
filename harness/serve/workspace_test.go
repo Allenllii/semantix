@@ -46,7 +46,9 @@ func TestServeWorkspaceShellRenders(t *testing.T) {
 	for _, want := range []string{
 		`data-ws-shell`,
 		`data-ws-brand`,             // inline Semantix lockup (serve's logo SVG still renders Reasonix)
-		`class="ws-side"`,           // left nav rail
+		`id="ws-side"`,              // left nav rail
+		`data-ws-side-toggle`,       // mobile drawer trigger
+		`data-ws-side-close`,        // mobile drawer scrim
 		`id="ws-context"`,           // right context panel
 		`data-ws-collapse`,          // collapse control
 		`aria-expanded="true"`,      // expanded by default at desktop widths
@@ -56,6 +58,20 @@ func TestServeWorkspaceShellRenders(t *testing.T) {
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("workspace shell missing %q", want)
+		}
+	}
+}
+
+func TestServeWorkspaceSideDrawerContract(t *testing.T) {
+
+	for asset, wants := range map[string][]string{
+		string(workspaceShellJS):   {"ws-side-open", "data-ws-side-toggle", "Escape", "aria-hidden"},
+		string(workspaceLayoutCSS): {"@media (max-width: 860px)", "body.ws-side-open .ws-side", "ws-side-scrim"},
+	} {
+		for _, want := range wants {
+			if !strings.Contains(asset, want) {
+				t.Errorf("workspace drawer asset missing %q", want)
+			}
 		}
 	}
 }
