@@ -22,6 +22,24 @@
 >
 > Semantix 同时处理这两个问题：既是内置记忆内核的完整编程 agent，也是可挂载至现有 agent 的独立内核。
 
+## 快速开始
+
+**安装** —— 一行命令，macOS / Linux（arm64 / amd64）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gnosil/semantix/main/agent-skill/scripts/install.sh | sh
+```
+
+装好 `semantix` + `semantix-agent` 到 `~/.local/bin`，默认开启跨会话记忆，并在该目录不在 `PATH` 时自动写入你的 shell rc。**使用** —— 在任意项目里启动 agent，当前文件夹即工作区：
+
+```bash
+cd ~/你的项目
+semantix                 # 裸命令 → 在当前目录启动编程 agent（首次运行引导配置 provider / API key）
+semantix search "..."    # 任意子命令 → 记忆内核（search / extract / inject / verify / usage）
+```
+
+固定版本 / 架构：`... | sh -s -- v0.7.2 arm64`。其他安装方式与完整命令参考见 [docs/QUICKSTART.md](./docs/QUICKSTART.md)。
+
 ## 两种形态
 
 **`semantix-agent` —— 完整 agent。** 一个 CLI 编程 agent，记忆内核随包内置：提取、检索、注入与自进化闭环在启动时已接好，内置约 50 家端点的 provider 预设。
@@ -80,19 +98,9 @@
 
 **以上是回放 / 演示测量，不是生产基准。** 完整证据链和全部技术细节见 [docs/TECHNICAL-OVERVIEW.zh-CN.md](./docs/TECHNICAL-OVERVIEW.zh-CN.md)。
 
-## 安装
+## 30 秒体验
 
-[Releases](https://github.com/Gnosil/semantix/releases) 提供 **macOS 与 Linux**（arm64 / amd64）二进制：
-
-```bash
-tar -xzf semantix-agent-<version>-<platform>.tar.gz
-cd semantix-agent-<version>-<platform>
-./semantix-install.sh   # 安装 semantix-agent + semantix + 配置
-```
-
-或源码构建（Go 1.26+）：`go build -o semantix ./cmd/semantix`
-
-**30 秒体验** —— 从历史会话提取切片并复用：
+已用上方一行命令装好？从历史会话提取切片并复用 —— 这就是记忆内核在工作：
 
 ```bash
 semantix extract --input session.jsonl --db .semantix/project.db --project demo
@@ -102,7 +110,7 @@ semantix verify  --session <会话目录> --project demo                    # �
 semantix dashboard                                                      # 一屏复用仪表盘
 ```
 
-完整命令参考、配置与 shell 补全：[docs/QUICKSTART.md](./docs/QUICKSTART.md)。
+想改用源码构建（Go 1.26+）：`go build -o semantix ./cmd/semantix && go build -o semantix-agent ./cmd/semantix-agent`。完整命令参考与配置见 [docs/QUICKSTART.md](./docs/QUICKSTART.md)。
 
 ## 集成
 

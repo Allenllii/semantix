@@ -22,6 +22,24 @@
 >
 > Semantix addresses both: a complete coding agent with the memory kernel built in, and a standalone kernel that attaches to an agent already in use.
 
+## Quick start
+
+**Install** — one line, macOS / Linux (arm64 / amd64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gnosil/semantix/main/agent-skill/scripts/install.sh | sh
+```
+
+This drops `semantix` + `semantix-agent` into `~/.local/bin` and turns on cross-session memory. **Use it** — start the agent inside any project; that folder becomes the workspace:
+
+```bash
+cd ~/your-project
+semantix                 # bare command → launch the coding agent here (first run sets up provider / API key)
+semantix search "..."    # any subcommand → the memory kernel (search / extract / inject / verify / usage)
+```
+
+Pin a version or arch with `... | sh -s -- v0.7.2 arm64`. Other install methods and the full command reference live in [docs/QUICKSTART.md](./docs/QUICKSTART.md).
+
 ## Two ways to run it
 
 **`semantix-agent` — the complete agent.** A CLI coding agent shipping with the memory kernel built in: extraction, retrieval, injection and the evolution loop are wired at boot, with provider presets for ~50 endpoints.
@@ -80,19 +98,9 @@ Beyond caching, the scheduler learns tool-usage patterns to parallelize eligible
 
 **These are replay / demo measurements, not production benchmarks.** The full evidence trail — and everything else technical — lives in [docs/TECHNICAL-OVERVIEW.md](./docs/TECHNICAL-OVERVIEW.md).
 
-## Install
+## Try it in 30 seconds
 
-Release binaries for **macOS and Linux** (arm64 / amd64) from [Releases](https://github.com/Gnosil/semantix/releases):
-
-```bash
-tar -xzf semantix-agent-<version>-<platform>.tar.gz
-cd semantix-agent-<version>-<platform>
-./semantix-install.sh        # installs semantix-agent + semantix + config
-```
-
-Or build from source (Go 1.26+): `go build -o semantix ./cmd/semantix`
-
-**Try it in 30 seconds** — extract slices from a past session, then reuse them:
+Installed via the one-liner above? Extract slices from a past session, then reuse them — this is the memory kernel at work:
 
 ```bash
 semantix extract --input session.jsonl --db .semantix/project.db --project demo
@@ -102,7 +110,7 @@ semantix verify  --session <session-dir> --project demo                    # rep
 semantix dashboard                                                         # one-screen snapshot
 ```
 
-Full command reference, configuration and shell completion: [docs/QUICKSTART.md](./docs/QUICKSTART.md).
+Prefer to build from source (Go 1.26+)? `go build -o semantix ./cmd/semantix && go build -o semantix-agent ./cmd/semantix-agent`. Full command reference and configuration: [docs/QUICKSTART.md](./docs/QUICKSTART.md).
 
 ## Integrations
 

@@ -2413,13 +2413,24 @@ func TestEffortCommandWritesCurrentDeepSeekProvider(t *testing.T) {
 	m := newTestChatTUI()
 	m.ctrl = control.New(control.Options{Label: "deepseek-flash"})
 	m.modelRef = "deepseek-flash/deepseek-v4-flash"
+	builds := 0
 	m.buildController = func(_ controllerBuildSpec, _ []provider.Message, _ string, _ control.SessionAPI) (*control.Controller, error) {
+		builds++
 		return control.New(control.Options{Label: "deepseek-flash"}), nil
 	}
 
 	cmd := m.runEffortCommand("/effort max")
-	if cmd == nil {
-		t.Fatal("/effort max should return a rebuild command")
+	if cmd != nil {
+		t.Fatal("/effort max must switch in place, not queue a rebuild")
+	}
+	if m.modelSwitchPending || m.pendingModelSwitch != nil {
+		t.Fatal("/effort must not arm a pending model switch")
+	}
+	if builds != 0 {
+		t.Fatalf("/effort triggered %d controller rebuilds, want 0", builds)
+	}
+	if got := m.ctrl.SessionEffort(); got != "max" {
+		t.Fatalf("live controller SessionEffort = %q, want max", got)
 	}
 
 	configPath := config.UserConfigPath()
@@ -2443,7 +2454,10 @@ func TestEffortCommandRejectsUnsupportedProvider(t *testing.T) {
 	}
 
 	if cmd := m.runEffortCommand("/effort max"); cmd != nil {
-		t.Fatal("unsupported provider should not rebuild")
+		t.Fatal("unsupported provider must not rebuild")
+	}
+	if got := m.ctrl.SessionEffort(); got != "" {
+		t.Fatalf("unsupported provider must not change the session effort, got %q", got)
 	}
 	if _, err := os.Stat(config.UserConfigPath()); !os.IsNotExist(err) {
 		t.Fatalf("unsupported provider should not write config, stat err=%v", err)
@@ -2460,14 +2474,17 @@ func TestEffortCommandAutoClearsProviderEffort(t *testing.T) {
 		return control.New(control.Options{Label: "deepseek-flash"}), nil
 	}
 
-	cmd := m.runEffortCommand("/effort max")
-	if cmd == nil {
-		t.Fatal("/effort max should return a rebuild command")
+	if cmd := m.runEffortCommand("/effort max"); cmd != nil {
+		t.Fatal("/effort max must switch in place, not queue a rebuild")
 	}
-	next, _ := m.Update(cmd())
-	m = next.(chatTUI)
-	if cmd := m.runEffortCommand("/effort auto"); cmd == nil {
-		t.Fatal("/effort auto should return a rebuild command")
+	if got := m.ctrl.SessionEffort(); got != "max" {
+		t.Fatalf("live controller SessionEffort = %q, want max", got)
+	}
+	if cmd := m.runEffortCommand("/effort auto"); cmd != nil {
+		t.Fatal("/effort auto must switch in place, not queue a rebuild")
+	}
+	if got := m.ctrl.SessionEffort(); got != "auto" {
+		t.Fatalf("live controller SessionEffort = %q, want auto", got)
 	}
 	body, err := os.ReadFile(config.UserConfigPath())
 	if err != nil {
@@ -2476,6 +2493,28 @@ func TestEffortCommandAutoClearsProviderEffort(t *testing.T) {
 	section := providerSection(string(body), "deepseek-flash")
 	if strings.Contains(section, `effort      = "`) {
 		t.Fatalf("auto should clear saved deepseek-flash effort:\n%s", section)
+	}
+}
+
+// TestEffortCommandNotifiesLaunchWiring: the in-session switch must update the
+// captured build override so a later /reload keeps the chosen level even when
+// the session launched with an explicit --effort flag.
+func TestEffortCommandNotifiesLaunchWiring(t *testing.T) {
+	isolateUserConfig(t)
+
+	m := newTestChatTUI()
+	m.ctrl = control.New(control.Options{Label: "deepseek-flash"})
+	m.modelRef = "deepseek-flash/deepseek-v4-flash"
+	var applied []string
+	m.effortApplied = func(level string) { applied = append(applied, level) }
+
+	m.runEffortCommand("/effort max")
+	if len(applied) != 1 || applied[0] != "max" {
+		t.Fatalf("effortApplied = %v, want [max]", applied)
+	}
+	m.runEffortCommand("/effort auto")
+	if len(applied) != 2 || applied[1] != "auto" {
+		t.Fatalf("effortApplied = %v, want [max auto]", applied)
 	}
 }
 

@@ -113,7 +113,9 @@ type client struct {
 	sessionCache                       bool
 	webSearch                          bool
 	maxOutputTokens                    int
-	vision                             bool // model accepts image input; embed Images as input_image parts
+	autoMaxOutput                      bool     // budget was derived from the effort ladder; re-resolved per request
+	vision                             bool     // model accepts image input; embed Images as input_image parts
+	requestEfforts                     []string // depth levels a per-request EffortOverride may take; empty = overrides ignored
 	http                               *http.Client
 	idleTimeout                        time.Duration
 	authed                             atomic.Bool
@@ -128,6 +130,12 @@ func New(cfg Config) provider.Provider {
 	vendor := DetectVendor(cfg.BaseURL)
 	cap := capabilitiesFor(vendor)
 	maxOutputTokens := cfg.MaxOutputTokens
+	// requestEfforts is the per-request EffortOverride vocabulary; nil means
+	// overrides are ignored (thinking-disabled endpoints have no depth scale).
+	requestEfforts := requestEffortVocabulary(vendor, cfg.Model, cfg.Effort)
+	// autoMaxOutput marks budgets derived from the effort ladder (deepseek/mimo)
+	// so buildRequestBody can re-resolve them from the effective effort.
+	autoMaxOutput := maxOutputTokens == 0 && cap.defaultMaxOutputTokens > 0 && (vendor == "deepseek" || vendor == "mimo")
 	// max_output_tokens=0 is automatic. Known vendors use the 16K/32K/64K ladder;
 	// thinking-disabled DeepSeek still gets the ordinary 16K auto budget.
 	// 128K is never chosen automatically. Compact_ratio is independent.
@@ -163,8 +171,10 @@ func New(cfg Config) provider.Provider {
 		name: cfg.Name, apiKey: cfg.APIKey, keyEnv: cfg.KeyEnv, keySource: cfg.KeySource,
 		baseURL: baseURL, requestURL: requestURL, model: cfg.Model, effort: cfg.Effort,
 		vendor: vendor, caps: cap, mode: cfg.mode(), sessionCache: sessionCache, webSearch: cfg.WebSearch, maxOutputTokens: maxOutputTokens,
-		vision: vision,
-		http:   httpClient, idleTimeout: defaultStreamIdleTimeout,
+		autoMaxOutput:  autoMaxOutput,
+		requestEfforts: requestEfforts,
+		vision:         vision,
+		http:           httpClient, idleTimeout: defaultStreamIdleTimeout,
 	}
 }
 
@@ -189,6 +199,45 @@ func responsesAutoOutputBudget(vendor, effort string) int {
 		e = "high"
 	}
 	return provider.AutoOutputBudget(true, e)
+}
+
+// requestEffortVocabulary lists exactly the depth levels New would accept
+// as a per-request EffortOverride. Thinking-disabled endpoints yield nil —
+// an override adjusts depth, never whether thinking runs.
+func requestEffortVocabulary(vendor, model, effort string) []string {
+	if responsesReasoningDisabled(effort) {
+		return nil
+	}
+	switch vendor {
+	case "deepseek":
+		// Official DeepSeek vocabulary: flash is the only model with effort=low.
+		if strings.EqualFold(strings.TrimSpace(model), "deepseek-v4-flash") {
+			return []string{"low", "high", "max"}
+		}
+		return []string{"high", "max"}
+	default:
+		return []string{"low", "medium", "high"}
+	}
+}
+
+// requestEffort resolves one request's reasoning depth: a vocabulary-approved
+// EffortOverride wins, anything else falls back to the configured effort.
+func (c *client) requestEffort(req provider.Request) string {
+	want := strings.ToLower(strings.TrimSpace(req.EffortOverride))
+	if want == "" || !supportsEffort(c.requestEfforts, want) {
+		return c.effort
+	}
+	return want
+}
+
+func supportsEffort(levels []string, want string) bool {
+	want = strings.ToLower(strings.TrimSpace(want))
+	for _, level := range levels {
+		if strings.ToLower(strings.TrimSpace(level)) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *client) Name() string { return c.name }
@@ -300,7 +349,8 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
 	messages := provider.SanitizeToolPairing(provider.ModelMessages(req.Messages))
 	body := map[string]any{"model": c.model, "stream": true}
 
-	effort := strings.ToLower(strings.TrimSpace(c.effort))
+	effective := c.requestEffort(req)
+	effort := strings.ToLower(strings.TrimSpace(effective))
 	switch effort {
 	case "auto":
 		effort = ""
@@ -312,11 +362,17 @@ func (c *client) buildRequestBody(req provider.Request) (map[string]any, bool, [
 	}
 	maxOutputTokens := req.MaxTokens
 	if maxOutputTokens == 0 {
-		maxOutputTokens = c.maxOutputTokens
+		if c.autoMaxOutput {
+			// Re-resolve so a per-request EffortOverride can move the auto budget
+			// up the 16K/32K/64K ladder, mirroring the OpenAI adapter.
+			maxOutputTokens = responsesAutoOutputBudget(c.vendor, effective)
+		} else {
+			maxOutputTokens = c.maxOutputTokens
+		}
 	}
 	if maxOutputTokens == 0 && c.caps.defaultMaxOutputTokens > 0 {
 		if c.vendor == "deepseek" || c.vendor == "mimo" {
-			maxOutputTokens = responsesAutoOutputBudget(c.vendor, c.effort)
+			maxOutputTokens = responsesAutoOutputBudget(c.vendor, effective)
 		} else {
 			maxOutputTokens = c.caps.defaultMaxOutputTokens
 		}

@@ -49,7 +49,7 @@ CURL="curl -fSL --retry 5 --retry-delay 2"
 # Resolve 'latest' to the newest published release tag via the GitHub API.
 if [ "$VERSION" = "latest" ]; then
   VERSION="$($CURL -s "https://api.github.com/repos/$REPO/releases/latest" \
-    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
+    | LC_ALL=C sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
   [ -n "$VERSION" ] || { echo "could not resolve the latest release tag" >&2; exit 1; }
 fi
 # Anchor the tag (reject junk that would only 404 at download time).
@@ -119,9 +119,35 @@ fi
   || { echo "install: smoke test failed" >&2; exit 1; }
 echo "== installed: $BIN_DIR/semantix + $BIN_DIR/semantix-agent =="
 
-# 6. PATH hint (only when BIN_DIR is not already reachable).
+# 6. make BIN_DIR reachable. If it is already on PATH we are done; otherwise
+#    append the export to the shell's rc (idempotently) so new terminals find
+#    `semantix` — that is what lets the one-liner "just work" without a manual
+#    step. We also print the line to run in the CURRENT shell right away.
 case ":$PATH:" in
-  *":$BIN_DIR:"*) : ;;
-  *) echo "== add to PATH: export PATH=\"$BIN_DIR:\$PATH\"  (append to ~/.bashrc or ~/.zshrc) ==" ;;
+  *":$BIN_DIR:"*)
+    echo "== done. run 'semantix' inside any project to start the agent (that folder is the workspace). =="
+    ;;
+  *)
+    LINE="export PATH=\"$BIN_DIR:\$PATH\""
+    case "${SHELL:-}" in
+      */zsh)  RC="$HOME/.zshrc" ;;
+      */bash) [ "$OS" = darwin ] && RC="$HOME/.bash_profile" || RC="$HOME/.bashrc" ;;
+      *)      RC="$HOME/.profile" ;;
+    esac
+    if [ -f "$RC" ] && grep -qF "$BIN_DIR" "$RC" 2>/dev/null; then
+      echo "== PATH already set in $RC =="
+    elif printf '\n# added by semantix install.sh\n%s\n' "$LINE" >> "$RC" 2>/dev/null; then
+      echo "== added $BIN_DIR to PATH in $RC =="
+    else
+      RC=""
+      echo "== could not edit your shell rc — add this line manually: $LINE =="
+    fi
+    # A piped installer runs in a child shell; it cannot change the terminal
+    # you launched it from, so the CURRENT shell still needs a reload.
+    echo ""
+    echo "== NOTE: this shell won't find 'semantix' until its PATH reloads =="
+    [ -n "$RC" ] && echo "==   do it now:  source $RC     (or just open a new terminal) =="
+    echo "==   verify anytime:  $BIN_DIR/semantix version =="
+    echo "== then run 'semantix' inside any project — that folder is the workspace. =="
+    ;;
 esac
-echo "== done. run 'semantix' inside any project to start the agent (that folder is the workspace). =="

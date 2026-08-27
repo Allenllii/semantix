@@ -189,6 +189,11 @@ def extract_patch(ws: Path) -> str:
 # Prompt — identical across harnesses so the comparison isolates the harness.
 # ---------------------------------------------------------------------------
 
+# Wording note: several harnesses extract natural-language constraints from the
+# prompt with substring matching (semantix-agent's task policy treats phrases
+# like "do not modify" / "no tests" as global write/test bans — see
+# harness/taskpolicy parseConstraints). Scoped requirements below are phrased
+# positively so no harness reads them as a blanket mutation ban.
 PROMPT_TEMPLATE = """You are working in a git checkout of the {repo} repository at commit {base_commit}. Resolve the GitHub issue below.
 
 <issue>
@@ -197,9 +202,9 @@ PROMPT_TEMPLATE = """You are working in a git checkout of the {repo} repository 
 
 Requirements:
 - Find the root cause and implement a complete fix by editing non-test source files.
-- Do NOT modify existing test files. New test files are not required.
-- Do not commit. Leave all changes in the working tree.
-- The full test suite may not be runnable in this environment; verify what you can and finish once the fix is in place.
+- Keep every existing test file exactly as it is; adding new test files is unnecessary.
+- Leave all changes uncommitted in the working tree.
+- The full test suite may be too heavy for this environment; verify what you can and finish once the fix is in place.
 """
 
 

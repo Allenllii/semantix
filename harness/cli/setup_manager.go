@@ -493,12 +493,16 @@ func runProviderSetupManager(s *providerSetupSession, configPath, envPath string
 				continue
 			}
 		case providerCount + 2:
+			if !addPresetProviderToSession(s) {
+				continue
+			}
+		case providerCount + 3:
 			rc := saveProviderSetupSession(s, configPath, envPath)
 			if rc == setupManagerContinue {
 				continue
 			}
 			return rc
-		case providerCount + 3:
+		case providerCount + 4:
 			fmt.Println(i18n.M.SetupCancelled)
 			return 1
 		default:
@@ -525,6 +529,7 @@ func providerManagerItems(s *providerSetupSession) []menuItem {
 	return append(items,
 		menuItem{name: i18n.M.SetupAddOpenAI, desc: i18n.M.CustomProviderDesc},
 		menuItem{name: i18n.M.SetupAddAnthropic, desc: i18n.M.AnthropicProviderDesc},
+		menuItem{name: i18n.M.SetupAddPreset, desc: i18n.M.SetupAddPresetDesc},
 		menuItem{name: i18n.M.SetupSaveExit, desc: i18n.M.SetupSaveExitDesc},
 		menuItem{name: i18n.M.SetupCancel, desc: i18n.M.SetupCancelDesc},
 	)
@@ -562,6 +567,43 @@ func addProviderToSession(s *providerSetupSession, anthropic bool) bool {
 	}
 	// After the new keys are staged, so usability sees them.
 	s.promoteDefaultToNewProviders(result.entries)
+	return true
+}
+
+// addPresetProviderToSession lets the user pick a curated provider preset
+// (GLM, Kimi, Qwen, …) and stages its entries, mirroring the custom-add flow.
+// The provider then shows in the manager list; its key can be set inline or
+// later from the provider's own menu. Returns false when nothing was added.
+func addPresetProviderToSession(s *providerSetupSession) bool {
+	presets := config.CuratedProviderPresets()
+	if len(presets) == 0 {
+		return false
+	}
+	items := make([]menuItem, 0, len(presets))
+	for _, p := range presets {
+		items = append(items, menuItem{name: p.Label, desc: p.Description})
+	}
+	idx, err := selectOne(i18n.M.SetupAddPresetLabel, items)
+	if err != nil {
+		return false
+	}
+	preset := presets[idx]
+	for _, entry := range preset.Entries {
+		if !confirmSharedCredential(s.cfg, entry, "") {
+			return false
+		}
+	}
+	if err := s.add(preset.Entries); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return false
+	}
+	s.addProviderAccess(preset.Entries)
+	s.promoteDefaultToNewProviders(preset.Entries)
+	// Offer to set the key inline (a preset's entries share one KeyEnv); the
+	// user can skip and set it later from the provider's own menu.
+	if len(preset.Entries) > 0 {
+		updateProviderKey(s, preset.Entries[0])
+	}
 	return true
 }
 

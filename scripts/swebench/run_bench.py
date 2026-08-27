@@ -88,7 +88,8 @@ def sum_ledger(rows: list[dict]) -> dict:
         total["completion_tokens"] += u.get("completion_tokens", u.get("output_tokens", 0) or 0)
         total["prompt_cache_hit_tokens"] += u.get("prompt_cache_hit_tokens", 0) or 0
         total["prompt_cache_miss_tokens"] += u.get("prompt_cache_miss_tokens", 0) or 0
-        details = u.get("prompt_tokens_details") or {}
+        details = (u.get("prompt_tokens_details") or
+                   u.get("input_tokens_details") or {})
         total["cached_tokens"] += details.get("cached_tokens", 0) or 0
     return total
 
@@ -133,10 +134,22 @@ class SemantixAdapter(Adapter):
         # cross-session slice library is part of what this benchmark measures.
         self.home = self.args.state_path / "semantix-home"
         self.home.mkdir(parents=True, exist_ok=True)
+        # Provider keys resolve ONLY from Semantix's global .env (never the
+        # process environment) — see ProviderEntry.APIKey in harness/config.
+        env_file = self.home / ".env"
+        env_file.write_text(
+            f"DEEPSEEK_API_KEY={os.environ.get('DEEPSEEK_API_KEY', 'smoke')}\n")
+        env_file.chmod(0o600)
         base = self.args.openai_base or DEEPSEEK_OPENAI_BASE
         effort = f'effort      = "{self.args.effort}"\n' if self.args.effort else ""
         (self.home / "config.toml").write_text(
             f'''default_model = "deepseek"
+
+# Benchmark convention: every arm runs in its max-permission mode (codex
+# danger-full-access, claude --dangerously-skip-permissions, dsh
+# danger-full-access), so the bash OS-sandbox is off here too.
+[sandbox]
+bash = "off"
 
 [[providers]]
 name        = "deepseek"
@@ -298,9 +311,10 @@ class CodexAdapter(Adapter):
     name = "codex"
 
     def prepare(self) -> None:
-        # wire_api="chat" (DeepSeek's protocol) was removed from codex after
-        # 0.80.0; pin that version (npm i -g @openai/codex@0.80.0 or --codex-bin)
-        # or pass --codex-wire-api responses if the endpoint supports it.
+        # DeepSeek serves a native Responses API (/v1/responses), so current
+        # codex works with wire_api="responses" (the default here). The chat
+        # wire needs codex ≤0.80.0 (--codex-bin) and trips DeepSeek's strict
+        # tool-message validation on multi-turn histories — avoid it.
         # Per-instance CODEX_HOME (state dir, not /tmp — codex refuses temp
         # dirs) so each instance's config can point at its metering proxy.
         self.config_template = f'''model = "{self.args.model}"
@@ -427,15 +441,21 @@ class DshAdapter(Adapter):
             raise SystemExit("DEEPSEEK_API_KEY is required for --harness dsh")
 
     def run_instance(self, ws: Path, prompt: str, inst: dict):
+        # dsh's node fetch ignores HTTPS_PROXY env vars, so direct egress is
+        # blocked in proxied sandboxes; routing through the metering proxy both
+        # fixes that and gives wire-level provider usage (cache fields included).
+        native = self.run_dir / "native"
+        native.mkdir(parents=True, exist_ok=True)
+        proxy = CountProxy(self.args.openai_base or DEEPSEEK_OPENAI_BASE,
+                           native / f"{inst['instance_id']}.dsh-usage.jsonl")
         env = clean_env()
         env.update({
             "DSH_HOME": str(self.dsh_home),
             "DSH_PERMISSION_MODE": "danger-full-access",
             "DSH_TELEMETRY_MODE": "DISABLED",
             "DEEPSEEK_API_KEY": os.environ.get("DEEPSEEK_API_KEY", "smoke"),
+            "DEEPSEEK_BASE_URL": proxy.base,
         })
-        if self.args.openai_base:
-            env["DEEPSEEK_BASE_URL"] = self.args.openai_base
         before = self._session_files()
         cmd = ["dsh", "--profile", "headless", "--patch", str(self.patch_file), prompt]
         try:
@@ -444,7 +464,8 @@ class DshAdapter(Adapter):
             exit_code, err = proc.returncode, ""
         except subprocess.TimeoutExpired:
             exit_code, err = None, f"timeout after {self.args.timeout}s"
-        raw = {"stdout_tail": ""}
+        ledger_rows = proxy.stop()
+        raw = {"stdout_tail": "", "wire_usage": sum_ledger(ledger_rows)}
         try:
             new = [p for p in self._session_files() if p not in before]
             raw.update(self._parse_sessions(new))
@@ -452,7 +473,7 @@ class DshAdapter(Adapter):
             err = (err + f"; session parse failed: {e!r}").strip("; ")
         if exit_code is not None:
             raw["stdout_tail"] = (proc.stdout or "")[-1500:]
-            if not raw.get("usage_events"):
+            if not raw.get("usage_events") and not raw["wire_usage"]["calls"]:
                 err = (err + f"; no usage found; stderr: {proc.stderr[:300]!r}").strip("; ")
         return exit_code, raw, err
 
@@ -494,8 +515,19 @@ class DshAdapter(Adapter):
         return {"usage_total": totals, "usage_events": events}
 
     def fill_metrics(self, m: InstanceMetrics, raw: dict) -> None:
+        wire = raw.get("wire_usage") or {}
+        if wire.get("calls"):
+            # Provider-reported usage from the metering proxy (authoritative).
+            m.input_tokens = wire["prompt_tokens"]
+            m.output_tokens = wire["completion_tokens"]
+            hit = wire["prompt_cache_hit_tokens"] or wire["cached_tokens"]
+            m.cache_hit_tokens = hit
+            m.cache_miss_tokens = (wire["prompt_cache_miss_tokens"]
+                                   or max(m.input_tokens - hit, 0))
+            m.steps = wire["calls"]
+            return
         u = raw.get("usage_total") or {}
-        # dsh usage is Anthropic-shaped: inputTokens excludes cache reads.
+        # dsh session usage is Anthropic-shaped: inputTokens excludes cache reads.
         hit = u.get("cacheReadTokens", 0)
         miss = u.get("inputTokens", 0) + u.get("cacheWriteTokens", 0)
         m.cache_hit_tokens = hit
@@ -638,8 +670,8 @@ def main() -> None:
     ap.add_argument("--effort", default="", help="semantix provider effort override")
     ap.add_argument("--ablate", default="", help="semantix --ablate arm")
     ap.add_argument("--semantix-bin", default="")
-    ap.add_argument("--codex-bin", default="", help="codex binary (e.g. a pinned 0.80.0 install)")
-    ap.add_argument("--codex-wire-api", default="chat", choices=["chat", "responses"])
+    ap.add_argument("--codex-bin", default="", help="codex binary override (chat wire needs ≤0.80.0)")
+    ap.add_argument("--codex-wire-api", default="responses", choices=["responses", "chat"])
     ap.add_argument("--state-dir", default=os.path.expanduser("~/.cache/semantix-swebench"),
                     help="adapter home dirs live here (not /tmp; codex refuses temp dirs)")
     ap.add_argument("--custom-spec", default="")

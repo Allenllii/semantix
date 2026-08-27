@@ -36,6 +36,9 @@ def main() -> None:
         model_name = json.loads(f.readline())["model_name_or_path"]
     run_id = run_dir.name
 
+    # swebench 5.x resolves per-instance eval images from the dataset's own
+    # `image` field (pre-pull + retag from the Epoch ghcr mirror if Docker Hub
+    # rate-limits anonymous pulls).
     cmd = [
         sys.executable, "-m", "swebench.harness.run_evaluation",
         "--dataset_name", str(Path(args.dataset).resolve()),
