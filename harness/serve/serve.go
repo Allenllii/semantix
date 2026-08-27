@@ -39,6 +39,21 @@ var indexHTML []byte
 //go:embed logo-wordmark.svg
 var logoWordmarkSVG []byte
 
+// Workspace shell (issue #404): a standalone static page that renders without
+// any backend calls. Split into small files per the epic's no-monolith rule.
+//
+//go:embed workspace/workspace.html
+var workspaceHTML []byte
+
+//go:embed workspace/tokens.css
+var workspaceTokensCSS []byte
+
+//go:embed workspace/layout.css
+var workspaceLayoutCSS []byte
+
+//go:embed workspace/shell.js
+var workspaceShellJS []byte
+
 // Server wires a controller to its HTTP surface. The Broadcaster must be the
 // same sink the controller was constructed with, so events reach SSE clients.
 type Server struct {
@@ -486,6 +501,10 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /assets/logo-wordmark.svg", s.logoWordmark)
 	mux.HandleFunc("GET /provider-setup", s.providerSetupStatus)
 	mux.HandleFunc("POST /provider-setup", s.providerSetupSave)
+	mux.HandleFunc("GET /workspace", s.workspacePage)
+	mux.HandleFunc("GET /workspace/tokens.css", staticBytes("text/css; charset=utf-8", &workspaceTokensCSS))
+	mux.HandleFunc("GET /workspace/layout.css", staticBytes("text/css; charset=utf-8", &workspaceLayoutCSS))
+	mux.HandleFunc("GET /workspace/shell.js", staticBytes("text/javascript; charset=utf-8", &workspaceShellJS))
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("GET /history", s.history)
 	mux.HandleFunc("GET /context", s.context)
@@ -624,6 +643,24 @@ func (s *Server) logoWordmark(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	_, _ = w.Write(logoWordmarkSVG)
+}
+
+// workspacePage serves the static GUI-1 shell. Like index it needs no session
+// or backend round-trips; everything interactive is inert placeholder content.
+func (s *Server) workspacePage(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(workspaceHTML)
+}
+
+// staticBytes returns a handler serving one embedded asset with a fixed
+// content type. Long-lived caching is safe: embedded assets change only with a
+// new binary.
+func staticBytes(contentType string, b *[]byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		_, _ = w.Write(*b)
+	}
 }
 
 // sseKeepaliveInterval is how often the /events handler emits a `: ping`
