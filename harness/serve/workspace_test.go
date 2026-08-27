@@ -45,7 +45,8 @@ func TestServeWorkspaceShellRenders(t *testing.T) {
 
 	for _, want := range []string{
 		`data-ws-shell`,
-		`data-ws-brand`,             // inline Semantix lockup (serve's logo SVG still renders Reasonix)
+		`data-ws-brand`,             // shared Semantix wordmark
+		`/assets/logo-wordmark.svg`, // shared asset is the single branding source
 		`id="ws-side"`,              // left nav rail
 		`data-ws-side-toggle`,       // mobile drawer trigger
 		`data-ws-side-close`,        // mobile drawer scrim
@@ -59,6 +60,19 @@ func TestServeWorkspaceShellRenders(t *testing.T) {
 		if !strings.Contains(html, want) {
 			t.Errorf("workspace shell missing %q", want)
 		}
+	}
+}
+
+func TestServeWorkspaceUsesSemantixWordmark(t *testing.T) {
+	logo := string(logoWordmarkSVG)
+	if !strings.Contains(logo, `aria-label="Semantix"`) {
+		t.Fatal("shared logo must identify Semantix")
+	}
+	if !strings.Contains(strings.ToLower(logo), "semantix") {
+		t.Fatal("shared logo must contain the Semantix wordmark")
+	}
+	if strings.Contains(logo, "#0153e5") {
+		t.Fatal("shared logo still contains the pre-rebrand blue Reasonix asset")
 	}
 }
 

@@ -34,8 +34,7 @@ kbd {
   overscroll-behavior: contain;
 }
 .ws-brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 18px; }
-.ws-brand svg { flex: none; }
-.ws-brand-name { font-weight: 700; font-size: 19px; letter-spacing: -.01em; color: var(--sx-text); }
+.ws-brand-logo { width: 136px; height: 32px; object-fit: contain; object-position: left center; }
 
 .ws-nav, .ws-side-foot { display: flex; flex-direction: column; gap: 2px; }
 .ws-item {
