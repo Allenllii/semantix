@@ -78,8 +78,14 @@
         <p class="ws-meta">读取仓库 · 复用现有抽象 · 运行验证</p>
       </article>
 
-      <div class="ws-bubble"><span class="tag">用户</span><p>现有 prefix cache 的命中率偏低，请分析原因并优化。</p></div>
-      <div class="ws-bubble"><span class="tag is-agent">semantix</span><p>收到。我将先读取仓库，定位缓存实现与调用链路，找出低命中原因并提出改进方案。</p></div>
+      <!-- GUI-5 (#408): live events replace the preview below once the first
+           protocol frame arrives. Keeping the preview makes the standalone
+           shell useful before a session has produced any events. -->
+      <div class="ws-timeline" data-ws-timeline aria-live="polite" aria-label="Agent 工作流时间线"></div>
+
+      <div class="ws-demo" data-ws-demo>
+        <div class="ws-bubble"><span class="tag">用户</span><p>现有 prefix cache 的命中率偏低，请分析原因并优化。</p></div>
+        <div class="ws-bubble"><span class="tag is-agent">semantix</span><p>收到。我将先读取仓库，定位缓存实现与调用链路，找出低命中原因并提出改进方案。</p></div>
 
       <section class="card">
         <header class="card-head"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M5.2 8.4 7 10.2l3.8-4.4"/></svg>计划</header>
@@ -101,7 +107,8 @@
         <pre class="diff-mini"><code><span class="d-ctx"><span class="ln">112</span><span class="ln">112</span> func (c *Cache) makeKey(</span><span class="d-del"><span class="ln">113</span><span class="ln"></span>- key := hash(prefix)</span><span class="d-del"><span class="ln">114</span><span class="ln"></span>- return key</span><span class="d-add"><span class="ln"></span><span class="ln">113</span>+ // 优化：加入模型与分片因子，提升命中率</span><span class="d-add"><span class="ln">113</span><span class="ln">114</span>+ key := hash(prefix + modelID + "|" + shardFactor)</span><span class="d-add"><span class="ln"></span><span class="ln">115</span>+ return key</span><span class="d-ctx"><span class="ln">116</span><span class="ln">116</span>}</span></code></pre>
       </section>
 
-      <div class="ws-statusbar"><span class="ws-dot is-on"></span>L1 prefix 命中&nbsp;&nbsp;·&nbsp;&nbsp;L2 4 slices&nbsp;&nbsp;·&nbsp;&nbsp;本轮缓存已复用<span class="chev">›</span></div>
+        <div class="ws-statusbar"><span class="ws-dot is-on"></span>L1 prefix 命中&nbsp;&nbsp;·&nbsp;&nbsp;L2 4 slices&nbsp;&nbsp;·&nbsp;&nbsp;本轮缓存已复用<span class="chev">›</span></div>
+      </div>
 
       <form class="composer" data-demo="static">
         <textarea placeholder="提出后续修改要求" rows="2" aria-label="提出后续修改要求"></textarea>
