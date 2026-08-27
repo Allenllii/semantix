@@ -443,6 +443,9 @@ type Messages struct {
 	SetupManagerTitle        string
 	SetupAddOpenAI           string
 	SetupAddAnthropic        string
+	SetupAddPreset           string
+	SetupAddPresetDesc       string
+	SetupAddPresetLabel      string
 	SetupProviderExistsFmt   string
 	SetupSaveExit            string
 	SetupSaveExitDesc        string
