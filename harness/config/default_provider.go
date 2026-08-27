@@ -56,9 +56,10 @@ func selectDefaultModel(getenv func(string) string) string {
 func builtinGLMProvider() ProviderEntry {
 	return ProviderEntry{
 		Name: defaultProviderGLM, Kind: "openai",
-		BaseURL: "https://open.bigmodel.cn/api/paas/v4",
-		Models:  []string{"glm-5.2", "glm-5.1", "glm-5", "glm-5-turbo"},
-		Default: "glm-5.2", APIKeyEnv: "GLM_API_KEY",
+		BaseURL:      "https://open.bigmodel.cn/api/paas/v4",
+		Models:       []string{"glm-5.3-flash", "glm-5.2", "glm-5.1", "glm-5", "glm-5-turbo"},
+		VisionModels: []string{"glm-5.3-flash"}, // glm-5.3-flash is natively multimodal (text+image+video)
+		Default:      "glm-5.2", APIKeyEnv: "GLM_API_KEY",
 		ContextWindow: 1_000_000,
 	}
 }
