@@ -59,6 +59,22 @@
     });
   }
 
+  function postJSON(url, body) {
+    return authReady.then(function () {
+      return nativeFetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body || {})
+      });
+    }).then(function (r) {
+      if (!r.ok) {
+        return r.text().then(function (text) {
+          throw new Error(text || "HTTP " + r.status);
+        });
+      }
+    });
+  }
+
   // ── #405 selector elements ──
   var el = {
     project: document.querySelector("[data-ws-project]"),
@@ -72,11 +88,22 @@
     effort: document.querySelector("[data-ws-effort]"),
     effortValue: document.querySelector("[data-ws-effort-value]"),
     effortMenu: document.querySelector("[data-ws-effort-menu]"),
-    notice: document.querySelector("[data-ws-notice]")
+    notice: document.querySelector("[data-ws-notice]"),
+    taskList: document.querySelector("[data-ws-task-list]"),
+    newTask: document.querySelector("[data-ws-new-task]"),
+    sideProjectName: document.querySelector("[data-ws-side-project-name]")
   };
 
+  // Sidebar/project shared state (GUI-3): whether the CURRENT session is
+  // running drives the 运行中 pill for the highlighted task row.
+  var sessionRunning = false;
   var EFFORT_LABELS = { low: "低", medium: "中", high: "高", max: "max" };
   var EFFORT_LEVELS = ["low", "medium", "high"];
+  var TASK_PILLS = {
+    running: ["运行中", "ws-state-running"],
+    done: ["完成", "ws-state-done"],
+    empty: ["空会话", "ws-state-empty"]
+  };
   var openMenu = null; // currently open dropdown element or null
 
   // ── tiny view helpers ──
@@ -139,16 +166,91 @@
   }
 
   // ── loaders: one per chip family ──
-  function loadProject() {
+  // refreshTasks reads /status + /sessions together: the project chip name,
+  // the sidebar project row, and the 运行中 pills all derive from the same
+  // real backend state (#405 #406).
+  function refreshTasks() {
     setState(el.project, "loading");
     return getJSON("/status").then(function (status) {
       var cwd = String(status.cwd || "");
       var name = cwd.split(/[\\/]/).filter(Boolean).pop() || "semantix";
       setValue(el.projectName, name);
+      if (el.sideProjectName) el.sideProjectName.textContent = name;
+      sessionRunning = !!status.running;
       setState(el.project, "ok");
+      return getJSON("/sessions").then(renderTasks);
     }).catch(function () {
       setValue(el.projectName, "未知项目");
       setState(el.project, "error");
+      renderTasks(null);
+    });
+  }
+
+  function deriveTaskState(s) {
+    if ((s.current && sessionRunning) || s.in_flight) return "running";
+    if ((s.turns || 0) > 0) return "done";
+    return "empty";
+  }
+
+  function renderTasks(sessions) {
+    if (!el.taskList) return;
+    while (el.taskList.firstChild) el.taskList.removeChild(el.taskList.firstChild);
+    if (!Array.isArray(sessions)) {
+      var err = document.createElement("li");
+      err.className = "ws-tasks-note";
+      err.textContent = "任务列表不可用。";
+      el.taskList.appendChild(err);
+      return;
+    }
+    if (!sessions.length) {
+      var empty = document.createElement("li");
+      empty.className = "ws-tasks-note";
+      empty.textContent = "还没有任务：点击上方「新建任务」开始第一个会话。";
+      el.taskList.appendChild(empty);
+      return;
+    }
+    sessions.forEach(function (s) {
+      var li = document.createElement("li");
+      var row = document.createElement("button");
+      row.type = "button";
+      row.className = "ws-task-row" + (s.current ? " is-current" : "");
+
+      var dot = document.createElement("span");
+      dot.className = "ws-dot" + (s.current ? " is-on" : "");
+
+      var title = document.createElement("span");
+      title.className = "ws-task-title";
+      title.textContent = s.title || s.name;
+
+      var meta = document.createElement("span");
+      meta.className = "ws-task-meta";
+      meta.textContent = s.turns ? s.turns + " 轮" : "";
+
+      var stateKey = deriveTaskState(s);
+      var pill = document.createElement("span");
+      pill.className = "ws-state-pill " + TASK_PILLS[stateKey][1];
+      pill.textContent = TASK_PILLS[stateKey][0];
+
+      row.appendChild(dot);
+      row.appendChild(title);
+      row.appendChild(meta);
+      row.appendChild(pill);
+      li.appendChild(row);
+
+      if (s.current) {
+        row.setAttribute("aria-current", "true");
+        row.title = "当前任务";
+      } else {
+        row.title = "切换到该任务（会话内容保留）";
+        row.addEventListener("click", function () { switchTask(s); });
+      }
+      el.taskList.appendChild(li);
+    });
+  }
+
+  function switchTask(s) {
+    postJSON("/resume", { path: s.path }).then(refreshTasks).catch(function (err) {
+      showNotice("切换任务失败：" + err.message, "error");
     });
   }
 
@@ -256,7 +358,18 @@
     document.addEventListener("click", function (e) {
       if (openMenu && openMenu.parentElement && !openMenu.parentElement.contains(e.target)) closeMenus();
     });
-    loadProject();
+    if (el.newTask) {
+      // 创建任务后自动进入新会话：/new 在服务端完成会话切换，这里只负责刷新侧栏 (#406).
+      el.newTask.addEventListener("click", function () {
+        setState(el.newTask, "loading");
+        postJSON("/new").then(refreshTasks).catch(function (err) {
+          showNotice("创建任务失败：" + err.message, "error");
+        }).finally(function () {
+          setState(el.newTask, "ok");
+        });
+      });
+    }
+    refreshTasks();
     loadBranches();
     loadModels(); // effort arrives piggybacked on GET /models
   }

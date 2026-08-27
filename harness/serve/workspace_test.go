@@ -101,6 +101,8 @@ func TestServeWorkspaceSelectorContract(t *testing.T) {
 		`data-ws-model`, `data-ws-model-menu`,
 		`data-ws-effort`, `data-ws-effort-menu`,
 		`data-ws-notice`,
+		// GUI-3 (#406) sidebar
+		`data-ws-new-task`, `data-ws-task-list`, `data-ws-side-project-name`,
 	}
 	for _, want := range htmlWants {
 		if !strings.Contains(string(workspaceHTML), want) {
@@ -119,6 +121,9 @@ func TestServeWorkspaceSelectorContract(t *testing.T) {
 		`"/submit"`,   // switches reuse the CLI command surface
 		`"/model "`,   //   .../model <ref>
 		`"/effort "`,  //   .../effort <level>
+		`"/sessions"`, // task list = live sessions, no second data model (#406)
+		`"/resume"`,   // task switching keeps session content server-side
+		`"/new"`,      // creating a task enters a fresh session
 		`模型不可用`,       // explicit unavailable-model signal (#405 acceptance)
 	} {
 		if !strings.Contains(js, want) {
@@ -131,6 +136,55 @@ func TestServeWorkspaceSelectorContract(t *testing.T) {
 	for _, forbidden := range []string{`"/events"`, `/history`} {
 		if strings.Contains(js, forbidden) {
 			t.Errorf("workspace shell.js dials out-of-contract endpoint %s", forbidden)
+		}
+	}
+}
+
+// TestServeSessionsExposeInFlight verifies the /sessions payload the sidebar
+// consumes: entries keep name/path identity and can flag running sessions via
+// the existing branch sidecar marker — still one shared data model (#406).
+func TestServeSessionsExposeInFlight(t *testing.T) {
+	srv := newWorkspaceTestServer(t)
+
+	resp, err := http.Get(srv.URL + "/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /sessions status = %d", resp.StatusCode)
+	}
+
+	var rows []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
+		t.Fatalf("decode /sessions: %v", err)
+	}
+	for i, row := range rows {
+		if _, ok := row["name"].(string); !ok {
+			t.Errorf("/sessions[%d] missing string name", i)
+		}
+		if _, ok := row["path"].(string); !ok {
+			t.Errorf("/sessions[%d] missing string path", i)
+		}
+		for key, want := range map[string]string{"in_flight": "bool", "current": "bool", "turns": "number", "title": "string"} {
+			v, ok := row[key]
+			if !ok {
+				continue
+			}
+			switch want {
+			case "bool":
+				if _, ok := v.(bool); !ok {
+					t.Errorf("/sessions[%d].%s = %#v, want bool", i, key, v)
+				}
+			case "number":
+				if _, ok := v.(float64); !ok {
+					t.Errorf("/sessions[%d].%s = %#v, want number", i, key, v)
+				}
+			case "string":
+				if _, ok := v.(string); !ok {
+					t.Errorf("/sessions[%d].%s = %#v, want string", i, key, v)
+				}
+			}
 		}
 	}
 }
