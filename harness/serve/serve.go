@@ -1307,6 +1307,21 @@ func (s *Server) models(w http.ResponseWriter, _ *http.Request) {
 	ctrl := s.ctl()
 	current := currentModelRef(ctrl)
 	label := ctrl.Label()
+	// GUI-2 (#405): expose the active provider's configured reasoning effort so
+	// browser pickers show real state instead of re-reading user config.
+	currentEffort := ""
+	for i := range cfg.Providers {
+		p := &cfg.Providers[i]
+		if !p.Configured() {
+			continue
+		}
+		if p.Name == current || p.Name == label || p.Name+"/"+p.Model == current {
+			if e := strings.TrimSpace(p.Effort); e != "" {
+				currentEffort = e
+				break
+			}
+		}
+	}
 	modelCounts := make(map[string]int)
 	for i := range cfg.Providers {
 		p := &cfg.Providers[i]
@@ -1387,7 +1402,7 @@ func (s *Server) models(w http.ResponseWriter, _ *http.Request) {
 	if out == nil {
 		out = []modelEntry{}
 	}
-	writeJSON(w, map[string]any{"current": current, "label": label, "default": cfg.DefaultModel, "models": out})
+	writeJSON(w, map[string]any{"current": current, "label": label, "default": cfg.DefaultModel, "effort": currentEffort, "models": out})
 }
 
 func currentModelRef(c control.SessionAPI) string {

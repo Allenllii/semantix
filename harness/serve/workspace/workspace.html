@@ -50,15 +50,27 @@
   <header class="ws-topbar">
     <div class="ws-chips">
       <button class="icon-btn ws-side-toggle" type="button" data-ws-side-toggle aria-expanded="false" aria-controls="ws-side" aria-label="打开项目导航" title="打开项目导航"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M2 8h12M2 12h12" /></svg></button>
-      <button class="ws-chip" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.8 4.5c0-.8.7-1.5 1.5-1.5h3l1.5 1.8h5.4c.8 0 1.5.7 1.5 1.5v5.2c0 .8-.7 1.5-1.5 1.5H3.3a1.5 1.5 0 0 1-1.5-1.5V4.5Z"/></svg>semantix<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
-      <button class="ws-chip is-plain" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4.5" cy="12.5" r="2"/><circle cx="4.5" cy="3.5" r="2"/><path d="M11.5 4H7a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H8"/></svg>codex/latest-main<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
+      <!-- GUI-2 (#405): selector chips are hydrated from live backend state by
+           shell.js. Static text below is only the pre-load placeholder. -->
+      <span class="ws-chip" data-ws-project data-ws-state="loading" title="工作目录"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.8 4.5c0-.8.7-1.5 1.5-1.5h3l1.5 1.8h5.4c.8 0 1.5.7 1.5 1.5v5.2c0 .8-.7 1.5-1.5 1.5H3.3a1.5 1.5 0 0 1-1.5-1.5V4.5Z"/></svg><span data-ws-project-name>⋯</span></span>
+      <span class="ws-menu">
+        <button class="ws-chip is-plain" type="button" data-ws-branch aria-haspopup="listbox" aria-expanded="false" data-ws-state="loading" title="当前会话分支（只读）"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="4.5" cy="12.5" r="2"/><circle cx="4.5" cy="3.5" r="2"/><path d="M11.5 4H7a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H8"/></svg><span data-ws-branch-name>⋯</span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
+        <ul class="ws-pop" role="listbox" data-ws-branch-menu hidden></ul>
+      </span>
     </div>
     <div class="ws-chips">
-      <button class="ws-chip is-plain" type="button">GLM-5.3-Flash<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
-      <button class="ws-chip is-plain" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v2.5M8 11.5V14M2 8h2.5M11.5 8H14"/><circle cx="8" cy="8" r="2.5"/></svg>高<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
+      <span class="ws-menu">
+        <button class="ws-chip is-plain" type="button" data-ws-model aria-haspopup="listbox" aria-expanded="false" data-ws-state="loading" title="当前模型"><span data-ws-model-name>⋯</span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
+        <ul class="ws-pop" role="listbox" data-ws-model-menu hidden></ul>
+      </span>
+      <span class="ws-menu">
+        <button class="ws-chip is-plain" type="button" data-ws-effort aria-haspopup="listbox" aria-expanded="false" data-ws-state="loading" title="推理强度"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v2.5M8 11.5V14M2 8h2.5M11.5 8H14"/><circle cx="8" cy="8" r="2.5"/></svg><span data-ws-effort-value>⋯</span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
+        <ul class="ws-pop" role="listbox" data-ws-effort-menu hidden></ul>
+      </span>
       <button class="icon-btn" type="button" data-ws-collapse aria-expanded="true" aria-controls="ws-context" title="折叠上下文面板"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2.5" width="12" height="11" rx="2"/><path d="M10 2.5v11M12.5 8H13" /></svg></button>
     </div>
   </header>
+  <p class="ws-notice" data-ws-notice role="status" hidden></p>
 
   <div class="ws-body">
     <section class="ws-center" aria-label="任务对话">
