@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -90,13 +91,75 @@ func TestServeWorkspaceSideDrawerContract(t *testing.T) {
 	}
 }
 
-// TestServeWorkspaceShellStandalone pins the issue's "renders without business
-// data" acceptance rule: the page must not dial any backend endpoint.
-func TestServeWorkspaceShellStandalone(t *testing.T) {
-	for _, endpoint := range []string{`'/events'`, `"/events"`, `/submit`, `/history`} {
-		if strings.Contains(string(workspaceHTML), endpoint) {
-			t.Errorf("workspace shell dials backend endpoint %s", endpoint)
+// TestServeWorkspaceSelectorContract pins the GUI-2 (#405) selector wiring:
+// hydration hooks in the page, the fragment-token auth bootstrap (same house
+// contract as index), and the exact backend endpoints shell.js may call.
+func TestServeWorkspaceSelectorContract(t *testing.T) {
+	htmlWants := []string{
+		`data-ws-project`, `data-ws-project-name`,
+		`data-ws-branch`, `data-ws-branch-menu`,
+		`data-ws-model`, `data-ws-model-menu`,
+		`data-ws-effort`, `data-ws-effort-menu`,
+		`data-ws-notice`,
+	}
+	for _, want := range htmlWants {
+		if !strings.Contains(string(workspaceHTML), want) {
+			t.Errorf("workspace page missing selector hook %q", want)
 		}
+	}
+
+	js := string(workspaceShellJS)
+	for _, want := range []string{
+		`URLSearchParams(window.location.hash.slice(1))`, // fragment-token bootstrap,
+		`/auth/token`, // same house contract as index.html
+		`window.history.replaceState`,
+		`"/status"`,   // project name from real backend state
+		`"/branches"`, // branch display from real backend state
+		`"/models"`,   // model list + current + effort
+		`"/submit"`,   // switches reuse the CLI command surface
+		`"/model "`,   //   .../model <ref>
+		`"/effort "`,  //   .../effort <level>
+		`模型不可用`,       // explicit unavailable-model signal (#405 acceptance)
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("workspace shell.js missing %q", want)
+		}
+	}
+
+	// Guard rails: the shell talks only to the whitelisted endpoints above —
+	// it must not stream events or read history like the full console does.
+	for _, forbidden := range []string{`"/events"`, `/history`} {
+		if strings.Contains(js, forbidden) {
+			t.Errorf("workspace shell.js dials out-of-contract endpoint %s", forbidden)
+		}
+	}
+}
+
+// TestServeModelsExposesEffort ensures GET /models carries the active
+// provider's reasoning effort so the effort chip reflects real config state.
+func TestServeModelsExposesEffort(t *testing.T) {
+	srv := newWorkspaceTestServer(t)
+
+	resp, err := http.Get(srv.URL + "/models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /models status = %d", resp.StatusCode)
+	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"current", "label", "default", "effort", "models"} {
+		if _, ok := payload[key]; !ok {
+			t.Errorf("GET /models response missing %q", key)
+		}
+	}
+	if _, ok := payload["effort"].(string); !ok {
+		t.Errorf("GET /models effort = %#v, want string", payload["effort"])
 	}
 }
 
