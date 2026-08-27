@@ -106,6 +106,28 @@
   };
   var openMenu = null; // currently open dropdown element or null
 
+  // GUI-4 (#407): consume the versioned workspace stream as a transport
+  // contract. The shell does not synthesize chat/tool/cache cards here; it
+  // only validates ordering and lets the existing refresh paths react to a
+  // gap. Unknown event names and malformed payloads are deliberately ignored
+  // so a newer server cannot crash an older workspace page.
+  var workspaceEvents = null;
+  var lastEventSeq = 0;
+  var eventTaskID = "";
+  var canonicalEventTypes = {
+    user_message: true,
+    assistant_message: true,
+    plan: true,
+    tool_start: true,
+    tool_result: true,
+    diff: true,
+    permission_request: true,
+    task_status: true,
+    cache_status: true,
+    error: true,
+    unknown: true
+  };
+
   // ── tiny view helpers ──
   function setState(chip, state) {
     chip.setAttribute("data-ws-state", state);
@@ -123,6 +145,41 @@
     el.notice.hidden = false;
     clearTimeout(showNotice.timer);
     showNotice.timer = setTimeout(function () { el.notice.hidden = true; }, 6000);
+  }
+
+  function handleWorkspaceEvent(message) {
+    var payload;
+    try {
+      payload = JSON.parse(message.data || "");
+    } catch (_) {
+      return;
+    }
+    if (!payload || payload.v !== 1 || !Number.isSafeInteger(payload.seq) || payload.seq < 1) return;
+    if (eventTaskID && payload.task_id !== eventTaskID) return;
+    if (!eventTaskID && typeof payload.task_id === "string") eventTaskID = payload.task_id;
+    if (payload.seq <= lastEventSeq) return;
+    if (lastEventSeq && payload.seq > lastEventSeq + 1) {
+      // A dropped frame or expired replay window is a signal to refresh
+      // derived state, never a reason to terminate the EventSource.
+      refreshTasks();
+      showNotice("事件流存在缺口，已刷新任务状态。", "warn");
+    }
+    lastEventSeq = payload.seq;
+    if (!canonicalEventTypes[payload.type]) return;
+    // The payload's inner eventwire data remains the sole source of truth.
+    // Rendering of each canonical type belongs to the conversation UI; this
+    // shell only keeps the stream alive and validates its envelope.
+  }
+
+  function connectWorkspaceEvents() {
+    if (!window.EventSource) return;
+    if (workspaceEvents) workspaceEvents.close();
+    eventTaskID = "";
+    lastEventSeq = 0;
+    workspaceEvents = new EventSource("/workspace/events");
+    Object.keys(canonicalEventTypes).forEach(function (type) {
+      workspaceEvents.addEventListener(type, handleWorkspaceEvent);
+    });
   }
 
   function closeMenus() {
@@ -251,7 +308,7 @@
   function switchTask(s) {
     postJSON("/resume", { path: s.path }).then(refreshTasks).catch(function (err) {
       showNotice("切换任务失败：" + err.message, "error");
-    });
+    }).then(connectWorkspaceEvents);
   }
 
   function loadBranches() {
@@ -366,6 +423,7 @@
           showNotice("创建任务失败：" + err.message, "error");
         }).finally(function () {
           setState(el.newTask, "ok");
+          connectWorkspaceEvents();
         });
       });
     }
@@ -375,6 +433,7 @@
   }
 
   initSelectors();
+  connectWorkspaceEvents();
 
   // ── #404 side drawer (narrow viewports only) ──
   var sideToggle = document.querySelector("[data-ws-side-toggle]");

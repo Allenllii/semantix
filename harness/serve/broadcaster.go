@@ -170,11 +170,11 @@ func (b *Broadcaster) EmitWebTo(target <-chan webDelivery, taskID string, e even
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	frame := b.newWebFrame(protoType, data)
 	for sub := range b.webSubs {
 		if (<-chan webDelivery)(sub.ch) != target {
 			continue
 		}
+		frame := b.newWebFrame(protoType, data)
 		select {
 		case sub.ch <- webDelivery{frame: frame, taskID: taskID}:
 		default:
@@ -234,8 +234,10 @@ func (b *Broadcaster) SubscribeWebSince(lastSeq uint64, taskID string) (<-chan w
 	defer b.mu.Unlock()
 
 	gap := false
-	if lastSeq > 0 && len(b.webHistory) > 0 && lastSeq < b.webHistory[0].seq-1 {
-		gap = true
+	if lastSeq > 0 {
+		if len(b.webHistory) == 0 || lastSeq < b.webHistory[0].seq-1 {
+			gap = true
+		}
 	}
 	replay := make([]webDelivery, 0, len(b.webHistory))
 	for _, frame := range b.webHistory {

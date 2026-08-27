@@ -124,6 +124,7 @@ func TestServeWorkspaceSelectorContract(t *testing.T) {
 		`"/sessions"`, // task list = live sessions, no second data model (#406)
 		`"/resume"`,   // task switching keeps session content server-side
 		`"/new"`,      // creating a task enters a fresh session
+		`"/workspace/events"`, // GUI-4 versioned SSE transport
 		`模型不可用`,       // explicit unavailable-model signal (#405 acceptance)
 	} {
 		if !strings.Contains(js, want) {
@@ -132,7 +133,7 @@ func TestServeWorkspaceSelectorContract(t *testing.T) {
 	}
 
 	// Guard rails: the shell talks only to the whitelisted endpoints above —
-	// it must not stream events or read history like the full console does.
+	// it must not use the legacy raw stream or invent a second history model.
 	for _, forbidden := range []string{`"/events"`, `/history`} {
 		if strings.Contains(js, forbidden) {
 			t.Errorf("workspace shell.js dials out-of-contract endpoint %s", forbidden)

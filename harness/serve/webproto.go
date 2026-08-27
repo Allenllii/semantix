@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"semantix/harness/event"
+	"semantix/harness/eventwire"
 )
 
 // Canonical frontend event types (issue #407). diff and plan are part of the
@@ -63,18 +64,14 @@ var protoSkips = map[string]bool{
 
 // wireKindKnown tracks every kind eventwire can emit, so forward-compat
 // classification can distinguish "known but skipped/typed" from genuinely new
-// kinds. Kept in sync with eventwire.kindNames by TestWebProtoCoversAllKinds.
-var wireKindKnown = map[string]bool{
-	"turn_started": true, "reasoning": true, "text": true, "message": true,
-	"tool_dispatch": true, "tool_result": true, "usage": true, "notice": true,
-	"phase": true, "approval_request": true, "ask_request": true,
-	"turn_done": true, "compaction_started": true, "compaction_done": true,
-	"tool_progress": true, "mcp_surface_ready": true, "retrying": true,
-	"steer": true, "guardian_assessment": true, "extension_surface": true,
-	"extension_status": true, "stream_attempt": true,
-	"context_maintenance": true, "workspace_changed": true,
-	"turn_phase": true, "completion_summary": true,
-}
+// kinds without duplicating eventwire's registry in this package.
+var wireKindKnown = func() map[string]bool {
+	known := make(map[string]bool)
+	for _, name := range eventwire.KindNames() {
+		known[name] = true
+	}
+	return known
+}()
 
 // ProtoTypeFor maps a wire kind to its canonical frontend type. The second
 // return reports whether the kind is forwarded at all (skipped kinds never
