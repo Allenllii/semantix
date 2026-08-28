@@ -930,7 +930,7 @@
       }
       showNotice("发送失败：" + err.message, "error");
     }).finally(function () {
-    if (el.input) el.input.dispatchEvent(new Event("input"));
+      if (el.input) el.input.dispatchEvent(new Event("input"));
     });
   }
 
@@ -1014,7 +1014,6 @@
       workflow.tools = Object.create(null);
       workflow.diffs = Object.create(null);
       workflow.approvals = Object.create(null);
-      workflow.localUser = null;
       renderDiffList();
       renderTerminalList();
       renderReviewList();
