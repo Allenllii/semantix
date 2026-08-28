@@ -141,6 +141,40 @@ func TestServeWorkspaceSelectorContract(t *testing.T) {
 	}
 }
 
+// TestServeWorkspaceWorkflowContract pins the GUI-5 projection boundary. The
+// browser must consume the versioned stream, merge by tool identity, and use
+// safe text nodes for untrusted event content rather than injecting markup.
+func TestServeWorkspaceWorkflowContract(t *testing.T) {
+	html := string(workspaceHTML)
+	for _, want := range []string{
+		`data-ws-timeline`, `data-ws-demo`, `aria-label="Agent 工作流时间线"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("workspace page missing workflow hook %q", want)
+		}
+	}
+
+	js := string(workspaceShellJS)
+	for _, want := range []string{
+		`Number.isSafeInteger(payload.seq)`,
+		`payload.seq <= lastEventSeq`,
+		`toolKey(tool, seq)`,
+		`data.kind === "tool_progress"`,
+		`renderPlan(parsePlan(tool.args))`,
+		`MAX_INLINE_CHARS`,
+		`MAX_RENDER_CHARS`,
+		`details.addEventListener("toggle"`,
+		`textContent`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("workflow renderer missing %q", want)
+		}
+	}
+	if strings.Contains(js, `innerHTML`) {
+		t.Error("workflow renderer must not inject event content through innerHTML")
+	}
+}
+
 // TestServeSessionsExposeInFlight verifies the /sessions payload the sidebar
 // consumes: entries keep name/path identity and can flag running sessions via
 // the existing branch sidecar marker — still one shared data model (#406).

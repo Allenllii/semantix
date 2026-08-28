@@ -91,7 +91,9 @@
     notice: document.querySelector("[data-ws-notice]"),
     taskList: document.querySelector("[data-ws-task-list]"),
     newTask: document.querySelector("[data-ws-new-task]"),
-    sideProjectName: document.querySelector("[data-ws-side-project-name]")
+    sideProjectName: document.querySelector("[data-ws-side-project-name]"),
+    timeline: document.querySelector("[data-ws-timeline]"),
+    demo: document.querySelector("[data-ws-demo]")
   };
 
   // Sidebar/project shared state (GUI-3): whether the CURRENT session is
@@ -106,11 +108,10 @@
   };
   var openMenu = null; // currently open dropdown element or null
 
-  // GUI-4 (#407): consume the versioned workspace stream as a transport
-  // contract. The shell does not synthesize chat/tool/cache cards here; it
-  // only validates ordering and lets the existing refresh paths react to a
-  // gap. Unknown event names and malformed payloads are deliberately ignored
-  // so a newer server cannot crash an older workspace page.
+  // GUI-4 (#407) + GUI-5 (#408): consume the versioned workspace stream as a
+  // transport contract and project it into the live workflow timeline.
+  // Unknown event names and malformed payloads are deliberately ignored so a
+  // newer server cannot crash an older workspace page.
   var workspaceEvents = null;
   var lastEventSeq = 0;
   var eventTaskID = "";
@@ -127,6 +128,279 @@
     error: true,
     unknown: true
   };
+
+  // GUI-5 (#408): the timeline is a projection of the versioned stream. The
+  // stream sequence is the only ordering authority; tool IDs are the only
+  // merge key. This keeps deltas idempotent without creating a second history
+  // store or guessing at events the server did not publish.
+  var MAX_INLINE_CHARS = 1200;
+  var MAX_RENDER_CHARS = 200000;
+  var workflow = {
+    assistant: null,
+    plan: null,
+    tools: Object.create(null),
+    active: false
+  };
+
+  function clearNode(node) {
+    while (node && node.firstChild) node.removeChild(node.firstChild);
+  }
+
+  function activateWorkflow() {
+    if (workflow.active) return;
+    workflow.active = true;
+    if (el.demo) el.demo.classList.add("is-hidden");
+  }
+
+  function resetWorkflow() {
+    workflow.assistant = null;
+    workflow.plan = null;
+    workflow.tools = Object.create(null);
+    workflow.active = false;
+    clearNode(el.timeline);
+    if (el.demo) el.demo.classList.remove("is-hidden");
+  }
+
+  function makeEvent(kind, label, icon) {
+    if (!el.timeline) return null;
+    activateWorkflow();
+    var article = document.createElement("article");
+    article.className = "ws-event ws-event--" + kind;
+    article.setAttribute("data-ws-event-kind", kind);
+    var head = document.createElement("header");
+    head.className = "ws-event__head";
+    var iconEl = document.createElement("span");
+    iconEl.className = "ws-event__icon";
+    iconEl.setAttribute("aria-hidden", "true");
+    iconEl.textContent = icon || "•";
+    var labelEl = document.createElement("strong");
+    labelEl.className = "ws-event__label";
+    labelEl.textContent = label || "事件";
+    var statusEl = document.createElement("span");
+    statusEl.className = "ws-event__status";
+    var body = document.createElement("div");
+    body.className = "ws-event__body";
+    head.appendChild(iconEl);
+    head.appendChild(labelEl);
+    head.appendChild(statusEl);
+    article.appendChild(head);
+    article.appendChild(body);
+    el.timeline.appendChild(article);
+    return { article: article, head: head, label: labelEl, status: statusEl, body: body };
+  }
+
+  function setStatus(card, text, state) {
+    if (!card || !card.status) return;
+    card.status.textContent = text || "";
+    card.status.className = "ws-event__status" + (state ? " is-" + state : "");
+    if (state === "failed") card.article.classList.add("ws-event--error");
+  }
+
+  function appendExpandable(parent, value, label, className) {
+    if (!parent || value === undefined || value === null) return;
+    var text = String(value);
+    if (!text) return;
+    var bounded = text.length > MAX_RENDER_CHARS ? text.slice(0, MAX_RENDER_CHARS) + "\n…（输出已限制为 200000 字符）" : text;
+    if (bounded.length <= MAX_INLINE_CHARS) {
+      var inline = document.createElement("pre");
+      inline.className = className || "ws-event__detail";
+      inline.textContent = bounded;
+      parent.appendChild(inline);
+      return;
+    }
+    var details = document.createElement("details");
+    details.className = "ws-event__detail";
+    var summary = document.createElement("summary");
+    summary.className = "ws-event__toggle";
+    summary.textContent = (label || "展开内容") + "（" + bounded.length + " 字符）";
+    var pre = document.createElement("pre");
+    pre.className = className || "ws-event__detail";
+    pre.textContent = bounded.slice(0, MAX_INLINE_CHARS) + "\n…";
+    details.addEventListener("toggle", function () {
+      if (details.open && pre.textContent.indexOf("\n…") !== -1) pre.textContent = bounded;
+    });
+    details.appendChild(summary);
+    details.appendChild(pre);
+    parent.appendChild(details);
+  }
+
+  function toolLabel(name) {
+    var labels = {
+      read_file: "读取文件", read_files: "读取文件", glob: "查找文件",
+      grep: "搜索内容", bash: "执行命令", shell: "执行命令",
+      write_file: "写入文件", edit_file: "编辑文件", apply_patch: "应用补丁",
+      todo_write: "更新计划", complete_step: "完成计划项"
+    };
+    return labels[name] || name || "工具";
+  }
+
+  function toolKey(tool, seq) {
+    return tool && tool.id ? String(tool.id) : "anonymous-tool-" + String(seq || lastEventSeq);
+  }
+
+  function renderTool(card, record) {
+    if (!card || !record) return;
+    record.progressEl = null;
+    clearNode(card.body);
+    if (record.args) appendExpandable(card.body, record.args, "展开参数", "ws-tool-preview");
+    if (record.output) appendExpandable(card.body, record.output, "展开输出", "ws-tool-preview");
+    if (record.err) appendExpandable(card.body, record.err, "展开错误", "ws-tool-preview");
+    if (record.truncated) {
+      var note = document.createElement("div");
+      note.className = "ws-timeline__notice";
+      note.textContent = "输出过长，服务端已截断显示。";
+      card.body.appendChild(note);
+    }
+  }
+
+  function parsePlan(value) {
+    if (!value) return null;
+    var raw = value;
+    if (typeof value === "string") {
+      try { raw = JSON.parse(value); } catch (_) {
+        return value.split(/\r?\n/).map(function (line) {
+          return line.replace(/^\s*(?:[-*]|\d+[.)])\s*/, "").trim();
+        }).filter(Boolean).map(function (content) { return { content: content, status: "pending" }; });
+      }
+    }
+    var items = Array.isArray(raw) ? raw : raw.todos || raw.items || raw.plan;
+    if (!Array.isArray(items)) return null;
+    return items.map(function (item) {
+      if (typeof item === "string") return { content: item, status: "pending" };
+      return { content: String(item.content || item.title || item.label || ""), status: String(item.status || "pending") };
+    }).filter(function (item) { return item.content; });
+  }
+
+  function renderPlan(items) {
+    if (!el.timeline || !items) return;
+    if (!workflow.plan) workflow.plan = makeEvent("plan", "计划", "✓");
+    if (!workflow.plan) return;
+    clearNode(workflow.plan.body);
+    var list = document.createElement("ol");
+    list.className = "ws-plan";
+    items.forEach(function (item) {
+      var li = document.createElement("li");
+      li.textContent = item.content;
+      if (item.status === "completed" || item.status === "done") li.className = "is-done";
+      list.appendChild(li);
+    });
+    workflow.plan.body.appendChild(list);
+    setStatus(workflow.plan, items.length + " 项", "done");
+  }
+
+  function renderAssistant(data) {
+    var kind = data.kind || "text";
+    if (!workflow.assistant) workflow.assistant = makeEvent("assistant", "semantix", "✦");
+    if (!workflow.assistant) return;
+    if (kind === "message") {
+      workflow.assistant.text = String(data.text || "");
+      workflow.assistant.reasoning = String(data.reasoning || "");
+      workflow.assistant.finalized = true;
+      clearNode(workflow.assistant.body);
+      workflow.assistant.textEl = null;
+      workflow.assistant.reasoningEl = null;
+      if (workflow.assistant.text) appendExpandable(workflow.assistant.body, workflow.assistant.text, "展开回复");
+      if (workflow.assistant.reasoning) appendExpandable(workflow.assistant.body, workflow.assistant.reasoning, "展开思考过程");
+    } else if (workflow.assistant.finalized) {
+      // A completed message is authoritative. Ignore a late duplicate delta
+      // instead of appending it a second time to the visible answer.
+      return;
+    } else if (kind === "reasoning") {
+      var reasoningDelta = String(data.reasoning || data.text || "");
+      workflow.assistant.reasoning = (workflow.assistant.reasoning || "") + reasoningDelta;
+      if (!workflow.assistant.reasoningEl) {
+        workflow.assistant.reasoningEl = document.createElement("pre");
+        workflow.assistant.reasoningEl.className = "ws-event__detail";
+        workflow.assistant.body.appendChild(workflow.assistant.reasoningEl);
+      }
+      workflow.assistant.reasoningEl.appendChild(document.createTextNode(reasoningDelta));
+    } else {
+      var textDelta = String(data.text || "");
+      workflow.assistant.text = (workflow.assistant.text || "") + textDelta;
+      if (!workflow.assistant.textEl) {
+        workflow.assistant.textEl = document.createElement("div");
+        workflow.assistant.textEl.className = "ws-event__text";
+        workflow.assistant.body.appendChild(workflow.assistant.textEl);
+      }
+      workflow.assistant.textEl.appendChild(document.createTextNode(textDelta));
+    }
+    setStatus(workflow.assistant, kind === "message" ? "已完成" : "生成中", kind === "message" ? "done" : "running");
+  }
+
+  function renderToolEvent(kind, tool, seq) {
+    if (!tool) return;
+    var key = toolKey(tool, seq);
+    var record = workflow.tools[key];
+    if (!record) {
+      record = { args: "", output: "", err: "", truncated: false, progress: "" };
+      record.card = makeEvent("tool", toolLabel(tool.name), "⚙");
+      workflow.tools[key] = record;
+    }
+    if (tool.name) record.card.label.textContent = toolLabel(tool.name) + " · " + tool.name;
+    if (tool.args) record.args = String(tool.args);
+    if (kind === "tool_start") {
+      record.state = "running";
+      setStatus(record.card, "进行中", "running");
+    } else if (kind === "tool_result") {
+      record.output = String(tool.output || "").slice(0, MAX_RENDER_CHARS);
+      record.err = String(tool.err || "").slice(0, MAX_RENDER_CHARS);
+      record.truncated = !!tool.truncated;
+      record.state = record.err ? "failed" : "done";
+      setStatus(record.card, record.err ? "失败" : "已完成", record.err ? "failed" : "done");
+      if (tool.durationMs) record.card.status.textContent += " · " + tool.durationMs + " ms";
+    } else {
+      var chunk = String(tool.output || "");
+      if (record.progress.length < MAX_RENDER_CHARS) {
+        var previousLength = record.progress.length;
+        record.progress += chunk.slice(0, MAX_RENDER_CHARS - record.progress.length);
+        if (record.progress.length < previousLength + chunk.length) record.truncated = true;
+      } else if (chunk) {
+        record.truncated = true;
+      }
+      record.output = record.progress;
+      record.state = "running";
+      setStatus(record.card, "进行中", "running");
+    }
+    record.card.article.setAttribute("data-ws-tool-state", record.state || "running");
+    if (kind === "tool_progress") {
+      if (!record.progressEl) {
+        renderTool(record.card, record);
+        record.progressEl = document.createElement("pre");
+        record.progressEl.className = "ws-tool-preview";
+        record.card.body.appendChild(record.progressEl);
+      }
+      record.progressEl.textContent = record.output + (record.truncated ? "\n…（输出已限制）" : "");
+    } else {
+      renderTool(record.card, record);
+    }
+    if (tool.name === "todo_write" && tool.args) renderPlan(parsePlan(tool.args));
+  }
+
+  function renderStatus(kind, data) {
+    var card;
+    if (kind === "error") {
+      card = makeEvent("error", "执行失败", "!");
+      if (card) { appendExpandable(card.body, data.err || data.text || data.detail, "查看错误"); setStatus(card, "失败", "failed"); }
+      return;
+    }
+    if (kind === "cache_status") {
+      card = makeEvent("cache", "缓存状态", "◌");
+      if (card) {
+        var u = data.usage || {};
+        var hit = Number(u.cacheHitTokens || 0), miss = Number(u.cacheMissTokens || 0);
+        card.body.textContent = "命中 " + hit + " · 未命中 " + miss;
+        setStatus(card, "已更新", "done");
+      }
+      return;
+    }
+    if (kind === "plan") { renderPlan(parsePlan(data.plan || data.text || data.detail)); return; }
+    card = makeEvent(kind === "retry" ? "retry" : "status", kind === "retry" ? "重试" : "任务状态", kind === "retry" ? "↻" : "•");
+    if (!card) return;
+    var text = data.text || data.detail || data.phase || data.outcome || "";
+    if (kind === "retry") text = "第 " + (data.retryAttempt || "?") + " / " + (data.retryMax || "?") + " 次重试" + (data.retryScope ? " · " + data.retryScope : "");
+    if (text) card.body.textContent = String(text);
+    setStatus(card, kind === "retry" ? "等待中" : "已记录", kind === "retry" ? "running" : "done");
+  }
 
   // ── tiny view helpers ──
   function setState(chip, state) {
@@ -166,14 +440,60 @@
     }
     lastEventSeq = payload.seq;
     if (!canonicalEventTypes[payload.type]) return;
-    // The payload's inner eventwire data remains the sole source of truth.
-    // Rendering of each canonical type belongs to the conversation UI; this
-    // shell only keeps the stream alive and validates its envelope.
+    var data;
+    try { data = typeof payload.data === "string" ? JSON.parse(payload.data || "{}") : payload.data; } catch (_) { return; }
+    if (!data || typeof data !== "object") return;
+    // The inner eventwire frame remains the source of truth. The renderer only
+    // projects it into cards; it never treats text as markup or invents data.
+    if (data.kind === "turn_started") {
+      workflow.assistant = null;
+      workflow.plan = null;
+      workflow.tools = Object.create(null);
+    }
+    switch (payload.type) {
+      case "user_message":
+        var user = makeEvent("user", "用户", "›");
+        if (user) { user.body.textContent = String(data.text || ""); setStatus(user, "已发送", "done"); }
+        break;
+      case "assistant_message":
+        renderAssistant(data);
+        break;
+      case "plan":
+        renderStatus("plan", data);
+        break;
+      case "tool_start":
+      case "tool_result":
+        renderToolEvent(data.kind === "tool_progress" ? "tool_progress" : payload.type, data.tool, payload.seq);
+        break;
+      case "error":
+        renderStatus("error", data);
+        break;
+      case "cache_status":
+        renderStatus("cache_status", data);
+        break;
+      case "task_status":
+        renderStatus(data.kind === "retrying" ? "retry" : "task_status", data);
+        break;
+      case "unknown":
+        // Forward-compatible frames remain visible as a neutral status card;
+        // malformed/unknown inner data still cannot break the page.
+        renderStatus("task_status", { text: data.text || data.detail || "收到未识别事件" });
+        break;
+      case "permission_request":
+        var approval = data.approval || data.ask || {};
+        var permission = makeEvent("status", "需要确认", "?");
+        if (permission) {
+          permission.body.textContent = String(approval.subject || approval.reason || approval.tool || "等待用户确认");
+          setStatus(permission, "等待中", "running");
+        }
+        break;
+    }
   }
 
   function connectWorkspaceEvents() {
     if (!window.EventSource) return;
     if (workspaceEvents) workspaceEvents.close();
+    resetWorkflow();
     eventTaskID = "";
     lastEventSeq = 0;
     workspaceEvents = new EventSource("/workspace/events");
