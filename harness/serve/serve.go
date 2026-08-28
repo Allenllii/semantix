@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -1530,12 +1531,16 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type sessionEntry struct {
-		Name     string `json:"name"`
-		Path     string `json:"path"`
-		Title    string `json:"title,omitempty"`
-		Turns    int    `json:"turns,omitempty"`
-		Current  bool   `json:"current,omitempty"`
-		InFlight bool   `json:"in_flight,omitempty"`
+		Name      string    `json:"name"`
+		Path      string    `json:"path"`
+		Title     string    `json:"title,omitempty"`
+		Turns     int       `json:"turns,omitempty"`
+		Current   bool      `json:"current,omitempty"`
+		InFlight  bool      `json:"in_flight,omitempty"`
+		Status    string    `json:"status"`
+		Project   string    `json:"project,omitempty"`
+		UpdatedAt time.Time `json:"updated_at,omitempty"`
+		Failure   string    `json:"failure,omitempty"`
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -1553,11 +1558,21 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		name := strings.TrimSuffix(e.Name(), ".jsonl")
-		entry := sessionEntry{Name: name, Path: path, Current: filepath.Clean(path) == current}
+		entry := sessionEntry{Name: name, Path: path, Current: filepath.Clean(path) == current, Status: "empty"}
+		updatedAt := agent.SessionContentModTime(path)
 		// GUI-3 (#406): the branch sidecar carries the in-flight turn marker,
 		// so the task sidebar can show 运行中 without a second data structure.
 		if meta, ok, metaErr := agent.LoadBranchMeta(path); metaErr == nil && ok {
 			entry.InFlight = meta.InFlightTurn != nil
+			if meta.WorkspaceRoot != "" {
+				entry.Project = filepath.Base(filepath.Clean(meta.WorkspaceRoot))
+			}
+			if meta.UpdatedAt.After(updatedAt) {
+				updatedAt = meta.UpdatedAt
+			}
+			if meta.RecoveryReason != "" {
+				entry.Failure = meta.RecoveryReason
+			}
 		}
 		// Event-log aware: reading the .jsonl checkpoint directly would freeze
 		// turn counts and titles at the last checkpoint write.
@@ -1565,12 +1580,25 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 			entry.Turns = turns
 			entry.Title = s.sessionTitle(r.Context(), e.Name(), first, agent.SessionContentModTime(path).UnixNano())
 		}
+		entry.UpdatedAt = updatedAt
+		switch {
+		case entry.InFlight:
+			entry.Status = "running"
+		case entry.Failure != "":
+			entry.Status = "recovered"
+		case entry.Turns > 0:
+			entry.Status = "done"
+		}
 		out = append(out, entry)
 	}
-	// reverse so newest first
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
-	}
+	// Directory enumeration order is not a history order. Sort by the same
+	// persisted/content timestamps the sidebar exposes, newest first.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
+			return out[i].Name > out[j].Name
+		}
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
 	if out == nil {
 		out = []sessionEntry{}
 	}
