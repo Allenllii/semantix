@@ -110,15 +110,18 @@
         <div class="ws-statusbar"><span class="ws-dot is-on"></span>L1 prefix 命中&nbsp;&nbsp;·&nbsp;&nbsp;L2 4 slices&nbsp;&nbsp;·&nbsp;&nbsp;本轮缓存已复用<span class="chev">›</span></div>
       </div>
 
-      <form class="composer" data-demo="static">
-        <textarea placeholder="提出后续修改要求" rows="2" aria-label="提出后续修改要求"></textarea>
+      <form class="composer" data-ws-composer data-demo="static">
+        <textarea data-ws-input placeholder="提出后续修改要求" rows="2" aria-label="提出后续修改要求"></textarea>
         <div class="composer-row">
-          <button class="icon-btn" type="button" aria-label="添加附件" style="border-radius:50%"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg></button>
-          <button class="perm-chip" type="button"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5 13 3.4v3.4c0 3.1-2.1 5.9-5 7.7-2.9-1.8-5-4.6-5-7.7V3.4L8 1.5Z"/><path d="m5.7 7.9 1.6 1.6 3-3.2"/></svg>完全访问<svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
+          <button class="icon-btn" data-ws-attach type="button" aria-label="添加附件" style="border-radius:50%"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg></button>
+          <input data-ws-attachment-input type="file" hidden multiple>
+          <span data-ws-attachments class="composer-attachments" aria-live="polite"></span>
+          <button class="perm-chip" data-ws-permission type="button" title="权限由服务端策略控制"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5 13 3.4v3.4c0 3.1-2.1 5.9-5 7.7-2.9-1.8-5-4.6-5-7.7V3.4L8 1.5Z"/><path d="m5.7 7.9 1.6 1.6 3-3.2"/></svg><span data-ws-permission-label>服务端权限</span><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
           <span class="ws-spacer"></span>
           <button class="ws-chip is-plain" type="button" style="color:var(--sx-text-2);font-weight:500">GLM-5.3-Flash<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
           <button class="ws-chip is-plain" type="button" style="color:var(--sx-text-2)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v2.5M8 11.5V14M2 8h2.5M11.5 8H14"/><circle cx="8" cy="8" r="2.5"/></svg>高<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m4 6 4 4 4-4"/></svg></button>
-          <button class="send-btn" type="button" aria-label="发送"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 13V3M4 7l4-4 4 4"/></svg></button>
+          <button class="send-btn" data-ws-send type="submit" aria-label="发送" disabled><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 13V3M4 7l4-4 4 4"/></svg></button>
+          <button class="send-btn ws-cancel-btn" data-ws-cancel type="button" aria-label="中止当前任务" title="中止当前任务" hidden><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="8" height="8" rx="1"/></svg></button>
         </div>
       </form>
 

@@ -307,6 +307,8 @@ body.ws-right-collapsed .ws-context { display: none; }
 }
 .composer textarea::placeholder { color: var(--sx-text-3); }
 .composer-row { display: flex; align-items: center; gap: 10px; }
+.composer-attachments { display: inline-flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
+.composer-attachment { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 7px; border: 1px solid var(--sx-border-strong); border-radius: 5px; color: var(--sx-text-3); font: 500 10.5px/1.2 var(--sx-font-mono); }
 .perm-chip {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 7px 12px; border-radius: 999px;
@@ -318,6 +320,8 @@ body.ws-right-collapsed .ws-context { display: none; }
   border: 0; background: var(--sx-green); color: #04140c;
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
+.send-btn:disabled { background: var(--sx-text-3); cursor: not-allowed; opacity: .55; }
+.ws-cancel-btn { background: var(--sx-del); color: #fff; }
 
 /* ---------- Context panel ---------- */
 
