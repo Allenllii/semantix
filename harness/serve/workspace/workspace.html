@@ -107,8 +107,9 @@
         <pre class="diff-mini"><code><span class="d-ctx"><span class="ln">112</span><span class="ln">112</span> func (c *Cache) makeKey(</span><span class="d-del"><span class="ln">113</span><span class="ln"></span>- key := hash(prefix)</span><span class="d-del"><span class="ln">114</span><span class="ln"></span>- return key</span><span class="d-add"><span class="ln"></span><span class="ln">113</span>+ // 优化：加入模型与分片因子，提升命中率</span><span class="d-add"><span class="ln">113</span><span class="ln">114</span>+ key := hash(prefix + modelID + "|" + shardFactor)</span><span class="d-add"><span class="ln"></span><span class="ln">115</span>+ return key</span><span class="d-ctx"><span class="ln">116</span><span class="ln">116</span>}</span></code></pre>
       </section>
 
-        <div class="ws-statusbar"><span class="ws-dot is-on"></span>L1 prefix 命中&nbsp;&nbsp;·&nbsp;&nbsp;L2 4 slices&nbsp;&nbsp;·&nbsp;&nbsp;本轮缓存已复用<span class="chev">›</span></div>
       </div>
+
+      <div class="ws-statusbar" data-ws-cache-status aria-live="polite"><span class="ws-dot"></span><span data-ws-cache-status-text>缓存状态：暂无数据</span><span class="chev">›</span></div>
 
       <form class="composer" data-ws-composer data-demo="static">
         <textarea data-ws-input placeholder="提出后续修改要求" rows="2" aria-label="提出后续修改要求"></textarea>

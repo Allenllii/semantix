@@ -100,6 +100,9 @@ func ProtoTypeFor(wireKind string) (string, bool) {
 		// Usage carries session cache hit/miss tokens; compaction reshapes the
 		// cacheable context — both are truthful cache-status inputs.
 		return ProtoTypeCacheStatus, true
+	case "kernel_cache":
+		// Kernel cache observations share the cache-status renderer with Usage.
+		return ProtoTypeCacheStatus, true
 	default:
 		if !wireKindKnown[wireKind] {
 			return ProtoTypeUnknown, true

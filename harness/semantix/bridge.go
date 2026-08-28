@@ -60,6 +60,7 @@ type Bridge struct {
 
 	mu    sync.Mutex
 	hs    *HarnessSink // lazily created once a session label is known
+	sink  event.Sink   // live harness sink for frontend cache observations
 	dir   string       // resolved sessions dir ("" = not yet)
 	label string       // controller session label (first real session id)
 	// lastSavings is the last observed cumulative usage savings, used to
@@ -124,6 +125,9 @@ func (b *Bridge) Sink(inner event.Sink) event.Sink {
 	if !b.Enabled() {
 		return inner
 	}
+	b.mu.Lock()
+	b.sink = inner
+	b.mu.Unlock()
 	return &mirrorSink{bridge: b, inner: inner}
 }
 
@@ -172,6 +176,7 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 	}
 	store, idx, err := b.kernelIndex()
 	if err != nil {
+		b.emitKernelCache("miss", "L2", nil, 0, "slice store unavailable")
 		return InjectResult{}
 	}
 	closeSliceStore(store)
@@ -183,7 +188,20 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 		Budget: budget,
 		Zones:  &z,
 	}).Build(query)
-	if err != nil || inj == nil || len(inj.Slices) == 0 {
+	if err != nil {
+		op := "miss"
+		if budget < b.cfg.Budget {
+			op = "degraded"
+		}
+		b.emitKernelCache(op, "L2", nil, 0, err.Error())
+		return InjectResult{}
+	}
+	if inj == nil || len(inj.Slices) == 0 {
+		op := "miss"
+		if budget < b.cfg.Budget {
+			op = "degraded"
+		}
+		b.emitKernelCache(op, "L2", nil, 0, "no matching slices")
 		return InjectResult{}
 	}
 	targets := make([]string, 0, len(inj.Slices))
@@ -194,7 +212,32 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 	}
 	sort.Strings(targets)
 	b.recordInjection(targets, inj.Bytes)
+	op := "inject"
+	if budget < b.cfg.Budget {
+		op = "degraded"
+	}
+	b.emitKernelCache(op, "L2", targets, inj.Bytes, "")
 	return InjectResult{Text: inj.Text, Targets: targets}
+}
+
+// emitKernelCache forwards an observed kernel cache operation to the live
+// harness sink. The kernel bus remains the source of truth for its own JSONL
+// mirror; this small projection is only for the workspace SSE/UI and is
+// fail-open when no frontend sink is attached.
+func (b *Bridge) emitKernelCache(op, layer string, ids []string, bytes int, reason string) {
+	if b == nil || !b.Enabled() {
+		return
+	}
+	ids = append([]string(nil), ids...)
+	b.mu.Lock()
+	sink := b.sink
+	label := b.label
+	b.mu.Unlock()
+	if sink == nil {
+		return
+	}
+	sink.Emit(event.Event{Kind: event.KernelCache, Text: op, Source: label,
+		KernelCache: &event.KernelCachePayload{Op: op, Layer: layer, SliceIDs: ids, Bytes: bytes, Reason: reason}})
 }
 
 func (b *Bridge) recordInjection(ids []string, bytes int) {
@@ -293,11 +336,24 @@ func (b *Bridge) Reuse(ctx context.Context, query string) ReuseSummary {
 	if err != nil {
 		return ReuseSummary{}
 	}
+	ids := make([]string, 0, len(hits))
 	sessions := make([]string, 0, len(hits))
 	for _, h := range hits {
 		if h.Slice != nil {
+			ids = append(ids, h.Slice.ID)
 			sessions = append(sessions, h.Slice.Meta.SourceSession)
 		}
+	}
+	if len(ids) > 0 {
+		sort.Strings(ids)
+		data, marshalErr := json.Marshal(kernelevent.SliceHitPayload{Layer: "L2", SliceIDs: ids})
+		if marshalErr == nil {
+			b.mu.Lock()
+			session := b.label
+			b.mu.Unlock()
+			b.events.Emit(kernelevent.Event{Kind: kernelevent.SliceHit, SessionID: session, At: time.Now().UTC(), Data: data})
+		}
+		b.emitKernelCache("hit", "L2", ids, 0, "")
 	}
 	sum := ReuseSummary{Hits: len(hits), Sources: topSources(sessions)}
 	if s, err := usage.Summarize(b.usagePath(), b.costMiss(), b.costHit()); err == nil {
@@ -441,6 +497,7 @@ func (b *Bridge) Close() error {
 	b.mu.Lock()
 	hs := b.hs
 	b.hs = nil
+	b.sink = nil
 	b.mu.Unlock()
 	if hs == nil {
 		return nil

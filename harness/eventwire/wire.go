@@ -47,6 +47,17 @@ type Event struct {
 	Phase string `json:"phase,omitempty"`
 	// Completion is set on completion_summary events (content-free quality summary).
 	Completion *CompletionSummary `json:"completion,omitempty"`
+	// KernelCache is set on kernel_cache events (observed L2/L3 cache activity).
+	KernelCache *KernelCache `json:"kernelCache,omitempty"`
+}
+
+// KernelCache is the JSON form of event.KernelCachePayload.
+type KernelCache struct {
+	Op       string   `json:"op,omitempty"`
+	Layer    string   `json:"layer,omitempty"`
+	SliceIDs []string `json:"sliceIds,omitempty"`
+	Bytes    int      `json:"bytes,omitempty"`
+	Reason   string   `json:"reason,omitempty"`
 }
 
 // CompletionSummary is the JSON form of event.CompletionSummaryInfo.
@@ -233,6 +244,10 @@ func ToWire(e event.Event) Event {
 				GapKinds:           append([]string(nil), c.GapKinds...),
 				ConstraintDegraded: c.ConstraintDegraded,
 			}
+		}
+	case event.KernelCache:
+		if c := e.KernelCache; c != nil {
+			w.KernelCache = &KernelCache{Op: c.Op, Layer: c.Layer, SliceIDs: append([]string(nil), c.SliceIDs...), Bytes: c.Bytes, Reason: c.Reason}
 		}
 	}
 	return w
@@ -665,6 +680,7 @@ var kindNames = map[event.Kind]string{
 	event.WorkspaceChanged:        "workspace_changed",
 	event.TurnPhase:               "turn_phase",
 	event.CompletionSummary:       "completion_summary",
+	event.KernelCache:             "kernel_cache",
 }
 
 // ContextMaintenance is the JSON form of event.ContextMaintenance.

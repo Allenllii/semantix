@@ -120,6 +120,10 @@ const (
 	// CompletionSummary reports a content-free end-of-turn quality summary for
 	// role-setting strategies (preset, verdict, check counts, review status).
 	CompletionSummary
+	// KernelCache reports an observed Semantix kernel cache operation. It is
+	// separate from Usage: Usage carries provider prefix-cache accounting (L1),
+	// while this event carries semantic slice observations (L2/L3).
+	KernelCache
 	// KindCount is a sentinel one past the last real Kind. New event kinds must
 	// be inserted above it so completeness tests cover them automatically.
 	KindCount
@@ -523,6 +527,18 @@ type CacheDiagnostics struct {
 	CacheHitTokens      int
 }
 
+// KernelCachePayload is the host-to-frontend projection of one observed
+// Semantix kernel cache operation. Op is "hit", "inject", "miss", or
+// "degraded"; Layer is "L2" or "L3". It carries observations only, never
+// unmeasured cost or performance claims.
+type KernelCachePayload struct {
+	Op       string   `json:"op,omitempty"`
+	Layer    string   `json:"layer,omitempty"`
+	SliceIDs []string `json:"sliceIds,omitempty"`
+	Bytes    int      `json:"bytes,omitempty"`
+	Reason   string   `json:"reason,omitempty"`
+}
+
 // FinalReadiness carries machine-readable recovery requirements on TurnDone.
 // Missing values are stable category ids; user-facing detail stays localized in
 // the frontend instead of scraping the diagnostic error string.
@@ -623,6 +639,8 @@ type Event struct {
 	PhaseName TurnPhaseName
 	// Completion is set on CompletionSummary events.
 	Completion *CompletionSummaryInfo
+	// KernelCache is set on KernelCache events.
+	KernelCache *KernelCachePayload
 }
 
 type WorkspaceWatchState string
