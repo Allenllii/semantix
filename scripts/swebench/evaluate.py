@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Score a predictions file with the official SWE-bench evaluation harness.
 
-Wraps `python -m swebench.harness.run_evaluation` (docker required) and moves
-the report into the run directory. Prebuilt images come from Docker Hub
-(--namespace swebench, default); --namespace none builds images locally.
+Wraps `python -m swebench.harness.run_evaluation` (docker required; swebench
+>= 5.x CLI) and moves the report into the run directory. Prebuilt image names
+come from the dataset's `image` column (Docker Hub `swebench/` namespace).
 
 Usage:
   python evaluate.py --run-dir results/<run_id> --dataset data/swebench_verified.jsonl \
-      [--max-workers 4] [--namespace swebench] [--timeout 1800]
+      [--max-workers 4] [--timeout 1800]
 """
 
 from __future__ import annotations

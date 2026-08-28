@@ -147,9 +147,20 @@ def _run(cmd: list[str], cwd: Path | None = None, check: bool = True, env: dict 
 
 def ensure_repo_cache(work_dir: Path, repo: str) -> Path:
     cache = work_dir / "repos" / (repo.replace("/", "__") + ".git")
-    if not cache.exists():
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        _run(["git", "clone", "--bare", f"https://github.com/{repo}.git", str(cache)])
+    if cache.exists():
+        return cache
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    # Serialize concurrent clones (workers race on first use of a repo);
+    # clone to a temp path so a killed clone never leaves a half-built cache.
+    import fcntl
+
+    with open(cache.with_suffix(".lock"), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not cache.exists():
+            tmp = cache.with_suffix(".tmp")
+            subprocess.run(["rm", "-rf", str(tmp)], check=True)
+            _run(["git", "clone", "--bare", f"https://github.com/{repo}.git", str(tmp)])
+            tmp.rename(cache)
     return cache
 
 
