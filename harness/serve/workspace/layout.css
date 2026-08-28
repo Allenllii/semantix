@@ -68,6 +68,13 @@ kbd {
 .ws-sub { margin-left: 27px; display: flex; flex-direction: column; gap: 1px; }
 .ws-task { position: relative; }
 .ws-task.is-current { background: var(--sx-hover); }
+.ws-session-filters { margin: 6px 10px 0 27px; display: grid; gap: 5px; }
+.ws-session-search, .ws-session-select {
+  width: 100%; min-width: 0; border: 1px solid var(--sx-border-strong);
+  border-radius: var(--sx-radius-s); background: var(--sx-chip); color: var(--sx-text-2);
+  padding: 6px 8px; font: 500 11px/1.2 var(--sx-font-sans);
+}
+.ws-session-search::placeholder { color: var(--sx-text-3); }
 
 .ws-side-foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--sx-border); }
 

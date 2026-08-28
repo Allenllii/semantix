@@ -93,6 +93,9 @@
     newTask: document.querySelector("[data-ws-new-task]"),
     sideProjectName: document.querySelector("[data-ws-side-project-name]"),
     timeline: document.querySelector("[data-ws-timeline]"),
+    sessionSearch: document.querySelector("[data-ws-session-search]"),
+    sessionProject: document.querySelector("[data-ws-session-project]"),
+    sessionStatus: document.querySelector("[data-ws-session-status]"),
     demo: document.querySelector("[data-ws-demo]"),
     fileHead: document.querySelector("[data-ws-file-head]"),
     contextDiff: document.querySelector("[data-ws-context-diff], .ws-diff"),
@@ -127,6 +130,8 @@
   var openMenu = null; // currently open dropdown element or null
 
   // GUI-4 (#407) + GUI-5 (#408): consume the versioned workspace stream as a
+  var sessionRows = [];
+  var SESSION_STATUS_LABELS = { running: "运行中", done: "已完成", recovered: "待恢复", empty: "空会话" };
   // transport contract and project it into the live workflow timeline.
   // Unknown event names and malformed payloads are deliberately ignored so a
   // newer server cannot crash an older workspace page.
@@ -1184,14 +1189,17 @@
       el.taskList.appendChild(err);
       return;
     }
-    if (!sessions.length) {
+    sessionRows = sessions;
+    refreshSessionProjectFilter();
+    var visible = filterSessions();
+    if (!visible.length) {
       var empty = document.createElement("li");
       empty.className = "ws-tasks-note";
-      empty.textContent = "还没有任务：点击上方「新建任务」开始第一个会话。";
+      empty.textContent = sessions.length ? "没有符合筛选条件的会话。" : "还没有任务：点击上方「新建任务」开始第一个会话。";
       el.taskList.appendChild(empty);
       return;
     }
-    sessions.forEach(function (s) {
+    visible.forEach(function (s) {
       var li = document.createElement("li");
       var row = document.createElement("button");
       row.type = "button";
@@ -1206,9 +1214,10 @@
 
       var meta = document.createElement("span");
       meta.className = "ws-task-meta";
-      meta.textContent = s.turns ? s.turns + " 轮" : "";
+      var updated = formatSessionTime(s.updated_at);
+      meta.textContent = (s.turns ? s.turns + " 轮" : "") + (updated ? " · " + updated : "");
 
-      var stateKey = deriveTaskState(s);
+      var stateKey = sessionStatus(s);
       var pill = document.createElement("span");
       pill.className = "ws-state-pill " + TASK_PILLS[stateKey][1];
       pill.textContent = TASK_PILLS[stateKey][0];
@@ -1239,6 +1248,45 @@
   function loadBranches() {
     setState(el.branch, "loading");
     return getJSON("/branches").then(function (data) {
+  function sessionStatus(s) {
+    var status = String(s && s.status || "").toLowerCase();
+    return SESSION_STATUS_LABELS[status] ? status : deriveTaskState(s);
+  }
+
+  function formatSessionTime(value) {
+    if (!value) return "";
+    var date = new Date(value);
+    if (isNaN(date.getTime())) return "";
+    return date.toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function refreshSessionProjectFilter() {
+    if (!el.sessionProject) return;
+    var selected = el.sessionProject.value;
+    while (el.sessionProject.options.length > 1) el.sessionProject.remove(1);
+    var projects = [];
+    sessionRows.forEach(function (s) {
+      var project = String(s.project || "").trim();
+      if (project && projects.indexOf(project) === -1) projects.push(project);
+    });
+    projects.sort().forEach(function (project) {
+      var option = document.createElement("option");
+      option.value = project; option.textContent = project;
+      el.sessionProject.appendChild(option);
+    });
+    el.sessionProject.value = projects.indexOf(selected) >= 0 ? selected : "";
+  }
+
+  function filterSessions() {
+    var keyword = String(el.sessionSearch && el.sessionSearch.value || "").trim().toLowerCase();
+    var project = String(el.sessionProject && el.sessionProject.value || "");
+    var status = String(el.sessionStatus && el.sessionStatus.value || "");
+    return sessionRows.filter(function (s) {
+      var haystack = [s.name, s.title, s.failure, s.project].join(" ").toLowerCase();
+      return (!keyword || haystack.indexOf(keyword) !== -1) && (!project || s.project === project) && (!status || sessionStatus(s) === status);
+    });
+  }
+
       var branches = Array.isArray(data.branches) ? data.branches : [];
       // Session branches are informational for the shell: read-only display
       // keeps fork/resume flows in the sessions picker where they belong.
@@ -1291,10 +1339,24 @@
         // #405 acceptance: an explicit, visible unavailable-model signal.
         setValue(el.modelName, "模型不可用");
         setState(el.model, "error");
+      if (s.failure) row.title += "；恢复提示：" + s.failure;
         el.model.title = "没有任何已配置的可用模型；请在 provider 设置中添加后刷新";
         fillList(el.modelMenu, [{ label: "模型不可用：未配置任何模型", disabled: true }]);
         showNotice("模型不可用：未发现已配置的聊天模型，请检查 provider 配置。", "warn");
         return;
+  function initSessionFilters() {
+    [el.sessionSearch, el.sessionProject, el.sessionStatus].forEach(function (control) {
+      if (!control) return;
+      control.addEventListener("input", function () { renderTasks(sessionRows); });
+      control.addEventListener("change", function () { renderTasks(sessionRows); });
+    });
+    document.addEventListener("keydown", function (event) {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k" && el.sessionSearch) {
+        event.preventDefault(); el.sessionSearch.focus();
+      }
+    });
+  }
+
       }
       var activeRef = null;
       fillList(el.modelMenu, models.map(function (m) {
@@ -1389,3 +1451,4 @@
   window.addEventListener("resize", function () { setSideOpen(document.body.classList.contains("ws-side-open")); });
   setSideOpen(false);
 })();
+  initSessionFilters();
