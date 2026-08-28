@@ -290,6 +290,33 @@ func TestToWireToolPayloadJSON(t *testing.T) {
 	}
 }
 
+func TestToWireToolStructuredFileDiff(t *testing.T) {
+	w := ToWire(event.Event{Kind: event.ToolDispatch, Tool: event.Tool{
+		ID: "c1", Name: "edit_file", FileDiff: event.FileDiff{
+			Path: "internal/cache.go", Status: "modified", Language: "go",
+			Diff:  "--- a/internal/cache.go\n+++ b/internal/cache.go\n@@ -1 +1 @@\n-old\n+new\n",
+			Added: 1, Removed: 1, Hunks: 1,
+			Lines: []event.DiffLine{{Kind: "hunk", Text: "@@ -1 +1 @@"}, {Kind: "deleted", OldLine: 1, Text: "old"}, {Kind: "added", NewLine: 1, Text: "new"}},
+		},
+	}})
+	if w.Tool == nil || w.Tool.FileDiff == nil {
+		t.Fatalf("structured file diff missing: %+v", w.Tool)
+	}
+	fd := w.Tool.FileDiff
+	if fd.Path != "internal/cache.go" || fd.Status != "modified" || fd.Language != "go" || fd.Added != 1 || fd.Removed != 1 || len(fd.Lines) != 3 {
+		t.Fatalf("structured file diff = %+v", fd)
+	}
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"fileDiff"`, `"status":"modified"`, `"oldLine":1`, `"newLine":1`} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("tool JSON = %s, want %s", b, want)
+		}
+	}
+}
+
 func TestToWireUsagePayloadJSON(t *testing.T) {
 	w := ToWire(event.Event{
 		Kind: event.Usage,

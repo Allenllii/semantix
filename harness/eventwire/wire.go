@@ -121,6 +121,7 @@ func ToWire(e event.Event) Event {
 			ParentID: e.Tool.ParentID, AttemptID: e.Tool.AttemptID,
 			Diff: e.Tool.Diff, Added: e.Tool.Added, Removed: e.Tool.Removed,
 		}
+		wt.FileDiff = toWireFileDiff(e.Tool.FileDiff)
 		if e.Tool.Profile != nil {
 			wt.Profile = &Profile{Model: e.Tool.Profile.Model, Effort: e.Tool.Profile.Effort}
 		}
@@ -384,8 +385,48 @@ type Tool struct {
 	Diff         string          `json:"diff,omitempty" externalizable:"true"`
 	Added        int             `json:"added,omitempty"`
 	Removed      int             `json:"removed,omitempty"`
+	FileDiff     *FileDiff       `json:"fileDiff,omitempty"`
 	Profile      *Profile        `json:"profile,omitempty"`
 	Execution    *ShellExecution `json:"execution,omitempty"`
+}
+
+// FileDiff is the workspace-safe structured form of event.FileDiff. The
+// legacy flat diff/added/removed fields on Tool stay for older clients.
+type FileDiff struct {
+	Path     string     `json:"path"`
+	Status   string     `json:"status"`
+	Language string     `json:"language,omitempty"`
+	Diff     string     `json:"diff,omitempty" externalizable:"true"`
+	Added    int        `json:"added"`
+	Removed  int        `json:"removed"`
+	Binary   bool       `json:"binary,omitempty"`
+	Hunks    int        `json:"hunks,omitempty"`
+	Lines    []DiffLine `json:"lines,omitempty"`
+}
+
+type DiffLine struct {
+	Kind    string `json:"kind"`
+	OldLine int    `json:"oldLine,omitempty"`
+	NewLine int    `json:"newLine,omitempty"`
+	Text    string `json:"text" externalizable:"true"`
+}
+
+func toWireFileDiff(in event.FileDiff) *FileDiff {
+	if in.Path == "" && in.Status == "" && in.Diff == "" && len(in.Lines) == 0 && !in.Binary {
+		return nil
+	}
+	out := &FileDiff{
+		Path: in.Path, Status: in.Status, Language: in.Language,
+		Diff: in.Diff, Added: in.Added, Removed: in.Removed,
+		Binary: in.Binary, Hunks: in.Hunks,
+	}
+	if len(in.Lines) > 0 {
+		out.Lines = make([]DiffLine, len(in.Lines))
+		for i, line := range in.Lines {
+			out.Lines[i] = DiffLine{Kind: line.Kind, OldLine: line.OldLine, NewLine: line.NewLine, Text: line.Text}
+		}
+	}
+	return out
 }
 
 // ShellExecution is the JSON form of event.ShellExecution (local UI metadata).
