@@ -265,7 +265,7 @@ func TestServeWorkspaceComposerContract(t *testing.T) {
 	for _, want := range []string{
 		`function sendComposer`, `function cancelComposer`, `function initComposer`,
 		`postJSON("/submit"`, `postJSON("/cancel"`, `data-ws-permission-label`,
-		`当前任务正在运行，请等待完成或先中止`, `内容未上传`,
+		`当前任务正在运行，请等待完成或先中止`, `内容未上传`, `已取消`, `cancelled`,
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("workspace composer behavior missing %q", want)
