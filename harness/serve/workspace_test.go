@@ -57,10 +57,30 @@ func TestServeWorkspaceShellRenders(t *testing.T) {
 		`提出后续修改要求`,                  // composer placeholder
 		`实现高缓存命中率`,                  // demo task title from the GUI-1 mockup
 		`src/cache/prefix_cache.go`, // file tree + diff headers
+		`data-ws-cache-status`,       // GUI-9 cache observability hook
+		`缓存状态：暂无数据`,                // no fabricated cache numbers before telemetry
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("workspace shell missing %q", want)
 		}
+	}
+}
+
+func TestServeWorkspaceCacheStatusContract(t *testing.T) {
+	html := string(workspaceHTML)
+	js := string(workspaceShellJS)
+	for _, want := range []string{
+		`data-ws-cache-status-text`, `aria-live="polite"`,
+		`function renderCacheBar`, `function updateCacheView`,
+		`kernelCache`, `cacheDiagnostics`, `semantix_reuse`,
+		`L1 prefix`, `L2 语义切片`, `L3 安全复用`, `暂无数据`,
+	} {
+		if !strings.Contains(html, want) && !strings.Contains(js, want) {
+			t.Errorf("workspace cache status missing %q", want)
+		}
+	}
+	if strings.Contains(html, "L2 4 slices") || strings.Contains(html, "本轮缓存已复用") {
+		t.Error("workspace cache status must not ship fabricated demo metrics")
 	}
 }
 
