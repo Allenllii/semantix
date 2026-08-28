@@ -82,7 +82,7 @@ harness 侧模块，不触碰内核）。判读字段（metrics `raw`）：
 - **同一 prompt 模板**（`common.PROMPT_TEMPLATE`）喂给所有 harness；system prompt 保持各 harness 原生（那正是 harness 差异的一部分）。
 - **同一冻结子集**（`--sample N --seed S` 或 `--ids` 文件），同一模型、同一时段（DeepSeek 2026-08-16 起分峰谷计价，跨时段跑会引入成本噪声；成本按 off-peak 表折算，峰时 ×2）。
 - patch 提取统一为 `git add -A && git diff --cached`（工作区全部改动，含新文件）。
-- semantix 的 `SEMANTIX_HOME` 在 run 内共享——跨实例记忆/缓存正是被测对象；如需无记忆对照，用 `--ablate` 或换 `--run-id` 清空 state。
+- 切片库（`project_dir`）在 run 内跨实例共享——跨实例记忆/缓存正是被测对象；如需无记忆对照，用 `--semantix-memory off`，或换 `--run-id` 清空 state。
 - 单实例 exit code 不作成败信号（semantix 有已知的非零退出怪癖），以 diff 非空 + 官方评测为准。
 - 每实例默认 2400s 超时；超时/崩溃记为 error，patch 照常提取（可能为空）。
 

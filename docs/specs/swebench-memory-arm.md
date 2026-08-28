@@ -11,7 +11,7 @@
 | R3 | 会话镜像永远空：同步 run 从不发 `TurnDone`，headless 退出不经过 `Close`；且 `TurnStarted` 不带用户文本、sink 构造 `firstUserText` 恒空 | `harness/agent/run_loop.go`、`harness/semantix/{bridge,sink}.go` | 镜像 JSONL 0 字节且永无 user 行 → `semantix extract` 无输入，Prompt 切片不可能产生 |
 | R4 | 内核计数不进 `--metrics` | `harness/cli/run_metrics.go` | 「记忆臂真的注入了」与「记忆臂冷跑」不可区分，实验不可判读 |
 
-另有两项非本次范围的既有事实（见 issue）：`--ablate` 只覆盖 harness 侧模块、不控制内核（`full-fold` 模块无消费者）；L3 判定链只部署在 gateway，agent 路径不经过 `DecideL3`。
+另有两项 issue 遗留（#428-B，已随本分支补完）：`--ablate` 此前只覆盖 harness 侧模块、不控制内核（且 `full-fold` 模块无消费者，已移除）——现新增 `kernel` 消融模块，`--ablate kernel` 在 boot 时强制关桥，单进程内即可做记忆消融；L3 判定链只部署在 gateway，agent 路径不经过 `DecideL3`（仍未变）。
 
 ## 2. 修复设计
 
