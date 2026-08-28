@@ -293,15 +293,16 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 
 	// Semantix memory kernel wiring (U8/H1): build the optional bridge and
 	// mirror every event into the kernel session JSONL. When [semantix] is
-	// not enabled the bridge returns the sink unchanged (zero overhead on
-	// the hot path); a broken kernel degrades fail-open, never blocking the
-	// main loop.
+	// not enabled (or the kernel ablation module is off) the bridge returns
+	// the sink unchanged (zero overhead on the hot path); a broken kernel
+	// degrades fail-open, never blocking the main loop.
 	semantixBridge := semantix.NewBridge(semantix.Config{
-		Enabled:     cfg.Semantix.Enabled,
+		Enabled:     cfg.Semantix.Enabled && !opts.Ablation.Off(ablation.Kernel),
 		Binary:      cfg.Semantix.Binary,
 		Inject:      cfg.Semantix.Inject,
 		Budget:      cfg.Semantix.Budget,
 		SessionsDir: cfg.Semantix.SessionsDir,
+		ProjectDir:  cfg.Semantix.ProjectDir,
 		CostMissUSD: cfg.Semantix.CostInputPriceUSD,
 		CostHitUSD:  cfg.Semantix.CostCachePriceUSD,
 	})
