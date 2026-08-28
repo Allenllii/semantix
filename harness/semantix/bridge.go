@@ -346,6 +346,13 @@ func (b *Bridge) Reuse(ctx context.Context, query string) ReuseSummary {
 	}
 	if len(ids) > 0 {
 		sort.Strings(ids)
+		data, marshalErr := json.Marshal(kernelevent.SliceHitPayload{Layer: "L2", SliceIDs: ids})
+		if marshalErr == nil {
+			b.mu.Lock()
+			session := b.label
+			b.mu.Unlock()
+			b.events.Emit(kernelevent.Event{Kind: kernelevent.SliceHit, SessionID: session, At: time.Now().UTC(), Data: data})
+		}
 		b.emitKernelCache("hit", "L2", ids, 0, "")
 	}
 	sum := ReuseSummary{Hits: len(hits), Sources: topSources(sessions)}
