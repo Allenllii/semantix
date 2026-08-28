@@ -100,12 +100,23 @@
     panels: document.querySelectorAll("[data-ws-panel]"),
     diffList: document.querySelector("[data-ws-diff-list]"),
     terminalList: document.querySelector("[data-ws-terminal-list]"),
-    reviewList: document.querySelector("[data-ws-review-list]")
+    reviewList: document.querySelector("[data-ws-review-list]"),
+    composer: document.querySelector("[data-ws-composer]"),
+    input: document.querySelector("[data-ws-input]"),
+    send: document.querySelector("[data-ws-send]"),
+    cancel: document.querySelector("[data-ws-cancel]"),
+    attach: document.querySelector("[data-ws-attach]"),
+    attachmentInput: document.querySelector("[data-ws-attachment-input]"),
+    attachments: document.querySelector("[data-ws-attachments]"),
+    permission: document.querySelector("[data-ws-permission]"),
+    permissionLabel: document.querySelector("[data-ws-permission-label]")
   };
 
   // Sidebar/project shared state (GUI-3): whether the CURRENT session is
   // running drives the 运行中 pill for the highlighted task row.
   var sessionRunning = false;
+  var composerBusy = false;
+  var composerAttachments = [];
   var EFFORT_LABELS = { low: "低", medium: "中", high: "高", max: "max" };
   var EFFORT_LEVELS = ["low", "medium", "high"];
   var TASK_PILLS = {
@@ -148,6 +159,7 @@
     tools: Object.create(null),
     diffs: Object.create(null),
     approvals: Object.create(null),
+    localUser: null,
     active: false
   };
 
@@ -167,6 +179,7 @@
     workflow.tools = Object.create(null);
     workflow.diffs = Object.create(null);
     workflow.approvals = Object.create(null);
+    workflow.localUser = null;
     workflow.active = false;
     clearNode(el.timeline);
     if (el.demo) el.demo.classList.remove("is-hidden");
@@ -856,6 +869,121 @@
     showNotice.timer = setTimeout(function () { el.notice.hidden = true; }, 6000);
   }
 
+  function updateComposerControls() {
+    var busy = composerBusy || sessionRunning;
+    if (el.send) {
+      el.send.disabled = busy || !el.input || !String(el.input.value || "").trim();
+      el.send.hidden = busy;
+    }
+    if (el.cancel) el.cancel.hidden = !busy;
+  }
+
+  function setComposerRunning(running) {
+    composerBusy = !!running;
+    updateComposerControls();
+  }
+
+  function renderComposerAttachments() {
+    if (!el.attachments) return;
+    clearNode(el.attachments);
+    composerAttachments.forEach(function (name) {
+      var item = document.createElement("span");
+      item.className = "composer-attachment";
+      item.textContent = name;
+      item.title = name + "（仅记录文件名，当前服务端不上传附件内容）";
+      el.attachments.appendChild(item);
+    });
+  }
+
+  function addOptimisticUserMessage(text) {
+    var card = makeEvent("user", "用户", "›");
+    if (!card) return;
+    card.body.textContent = text;
+    setStatus(card, "发送中", "running");
+    card.article.setAttribute("data-ws-local-user", "true");
+    workflow.localUser = { text: text, card: card };
+  }
+
+  function sendComposer() {
+    if (!el.input) return;
+    var text = String(el.input.value || "").trim();
+    if (!text) return;
+    if (sessionRunning || composerBusy) {
+      showNotice("当前任务正在运行，请等待完成或先中止。", "warn");
+      return;
+    }
+    var submitted = text;
+    if (composerAttachments.length) {
+      submitted += "\n\n附件文件名（内容未上传）： " + composerAttachments.join(", ");
+    }
+    addOptimisticUserMessage(text);
+    setComposerRunning(true);
+    postJSON("/submit", { input: submitted }).then(function () {
+      el.input.value = "";
+      composerAttachments = [];
+      renderComposerAttachments();
+      refreshTasks();
+    }).catch(function (err) {
+      setComposerRunning(false);
+      if (workflow.localUser && workflow.localUser.card) {
+        setStatus(workflow.localUser.card, "未发送", "failed");
+      }
+      showNotice("发送失败：" + err.message, "error");
+    }).finally(function () {
+    if (el.input) el.input.dispatchEvent(new Event("input"));
+    });
+  }
+
+  function cancelComposer() {
+    if (!composerBusy && !sessionRunning) return;
+    postJSON("/cancel").then(function () {
+      showNotice("已请求中止当前任务。", "warn");
+    }).catch(function (err) {
+      showNotice("中止失败：" + err.message, "error");
+    });
+  }
+
+  function renderPermission(mode) {
+    if (!el.permissionLabel) return;
+    var labels = { ask: "每次确认", auto: "自动确认", yolo: "完全访问" };
+    var value = labels[String(mode || "ask").toLowerCase()] || "服务端权限";
+    el.permissionLabel.textContent = value;
+    if (el.permission) el.permission.title = "当前权限：" + value + "。权限由服务端策略控制。";
+  }
+
+  function initComposer() {
+    if (!el.composer || !el.input) return;
+    if (el.send) el.send.addEventListener("click", function (event) { event.preventDefault(); sendComposer(); });
+    if (el.cancel) el.cancel.addEventListener("click", cancelComposer);
+    el.composer.addEventListener("submit", function (event) { event.preventDefault(); sendComposer(); });
+    el.input.addEventListener("input", function () { setComposerRunning(composerBusy); });
+    el.input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendComposer();
+      }
+      if (event.key === "Escape" && (composerBusy || sessionRunning)) {
+        event.preventDefault();
+        cancelComposer();
+      }
+    });
+    if (el.attach && el.attachmentInput) {
+      el.attach.addEventListener("click", function () { el.attachmentInput.click(); });
+      el.attachmentInput.addEventListener("change", function () {
+        Array.prototype.forEach.call(el.attachmentInput.files || [], function (file) {
+          if (file && file.name && composerAttachments.indexOf(file.name) === -1) composerAttachments.push(file.name);
+        });
+        renderComposerAttachments();
+        el.attachmentInput.value = "";
+      });
+    }
+    if (el.permission) el.permission.addEventListener("click", function () {
+      showNotice("权限由服务端策略控制；高风险操作会单独请求确认。", "warn");
+    });
+    renderComposerAttachments();
+    setComposerRunning(false);
+  }
+
   function handleWorkspaceEvent(message) {
     var payload;
     try {
@@ -886,12 +1014,18 @@
       workflow.tools = Object.create(null);
       workflow.diffs = Object.create(null);
       workflow.approvals = Object.create(null);
+      workflow.localUser = null;
       renderDiffList();
       renderTerminalList();
       renderReviewList();
     }
     switch (payload.type) {
       case "user_message":
+        if (workflow.localUser && workflow.localUser.text === String(data.text || "")) {
+          setStatus(workflow.localUser.card, "已发送", "done");
+          workflow.localUser = null;
+          break;
+        }
         var user = makeEvent("user", "用户", "›");
         if (user) { user.body.textContent = String(data.text || ""); setStatus(user, "已发送", "done"); }
         break;
@@ -906,12 +1040,18 @@
         renderToolEvent(data.kind === "tool_progress" ? "tool_progress" : payload.type, data.tool, payload.seq);
         break;
       case "error":
+        composerBusy = false;
+        updateComposerControls();
         renderStatus("error", data);
         break;
       case "cache_status":
         renderStatus("cache_status", data);
         break;
       case "task_status":
+        if (data.kind === "turn_done") {
+          composerBusy = false;
+          updateComposerControls();
+        }
         renderStatus(data.kind === "retrying" ? "retry" : "task_status", data);
         break;
       case "unknown":
@@ -998,11 +1138,15 @@
       setValue(el.projectName, name);
       if (el.sideProjectName) el.sideProjectName.textContent = name;
       sessionRunning = !!status.running;
+      renderPermission(status.toolApprovalMode);
+      updateComposerControls();
       setState(el.project, "ok");
       return getJSON("/sessions").then(renderTasks);
     }).catch(function () {
       setValue(el.projectName, "未知项目");
       setState(el.project, "error");
+      renderPermission("ask");
+      updateComposerControls();
       renderTasks(null);
     });
   }
@@ -1197,6 +1341,7 @@
   }
 
   initContextTabs();
+  initComposer();
   initSelectors();
   connectWorkspaceEvents();
 
