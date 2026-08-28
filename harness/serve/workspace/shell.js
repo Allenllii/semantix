@@ -109,7 +109,9 @@
     attachmentInput: document.querySelector("[data-ws-attachment-input]"),
     attachments: document.querySelector("[data-ws-attachments]"),
     permission: document.querySelector("[data-ws-permission]"),
-    permissionLabel: document.querySelector("[data-ws-permission-label]")
+    permissionLabel: document.querySelector("[data-ws-permission-label]"),
+    cacheStatus: document.querySelector("[data-ws-cache-status]"),
+    cacheStatusText: document.querySelector("[data-ws-cache-status-text]")
   };
 
   // Sidebar/project shared state (GUI-3): whether the CURRENT session is
@@ -125,6 +127,65 @@
     empty: ["空会话", "ws-state-empty"]
   };
   var openMenu = null; // currently open dropdown element or null
+
+  // GUI-9 (#412): cache status is a projection of observed events only. A
+  // null value means the corresponding layer has not produced telemetry yet;
+  // it must never be replaced with a demo number.
+  var cacheView = {
+    l1Hit: null,
+    l1Miss: null,
+    l2Hits: null,
+    l3Observed: null,
+    reason: ""
+  };
+
+  function renderCacheBar() {
+    if (!el.cacheStatusText) return;
+    var parts = [];
+    parts.push("L1 prefix：" + (cacheView.l1Hit === null ? "暂无数据" : "命中 " + cacheView.l1Hit + " · 未命中 " + cacheView.l1Miss));
+    parts.push("L2 语义切片：" + (cacheView.l2Hits === null ? "暂无数据" : "复用 " + cacheView.l2Hits + " slices"));
+    parts.push("L3 安全复用：" + (cacheView.l3Observed === null ? "暂无数据" : (cacheView.l3Observed ? "已观测" : "未命中")));
+    if (cacheView.reason) parts.push("原因：" + cacheView.reason);
+    el.cacheStatusText.textContent = parts.join("  ·  ");
+    if (el.cacheStatus) {
+      var observed = cacheView.l1Hit !== null || cacheView.l2Hits !== null || cacheView.l3Observed !== null;
+      var dot = el.cacheStatus.querySelector(".ws-dot");
+      if (dot) dot.classList.toggle("is-on", observed);
+    }
+  }
+
+  function updateCacheView(data) {
+    if (!data || typeof data !== "object") return;
+    var usage = data.usage || {};
+    if (data.kind === "usage" || data.usage) {
+      if (Number.isFinite(Number(usage.cacheHitTokens)) || Number.isFinite(Number(usage.cacheMissTokens))) {
+        cacheView.l1Hit = Number(usage.cacheHitTokens || 0);
+        cacheView.l1Miss = Number(usage.cacheMissTokens || 0);
+      }
+      var diagnostics = usage.cacheDiagnostics || {};
+      if (Array.isArray(diagnostics.prefixChangeReasons) && diagnostics.prefixChangeReasons.length) {
+        cacheView.reason = diagnostics.prefixChangeReasons.join(", ");
+      }
+    }
+    var kernel = data.kernelCache || {};
+    if (kernel.layer) {
+      if (kernel.layer === "L2") {
+        if (kernel.op === "hit" || kernel.op === "inject") cacheView.l2Hits = Array.isArray(kernel.sliceIds) ? kernel.sliceIds.length : 0;
+        if (kernel.op === "miss" || kernel.op === "degraded") cacheView.l2Hits = 0;
+      }
+      if (kernel.layer === "L3") cacheView.l3Observed = kernel.op === "hit";
+      if (kernel.reason) cacheView.reason = String(kernel.reason);
+    }
+    if (data.code === "semantix_reuse" && data.detail) {
+      try {
+        var reuse = JSON.parse(data.detail);
+        if (Number.isFinite(Number(reuse.hits))) cacheView.l2Hits = Number(reuse.hits);
+      } catch (_) { /* malformed optional detail is ignored */ }
+    }
+    renderCacheBar();
+  }
+
+  renderCacheBar();
 
   // GUI-4 (#407) + GUI-5 (#408): consume the versioned workspace stream as a
   // transport contract and project it into the live workflow timeline.
@@ -833,11 +894,14 @@
       return;
     }
     if (kind === "cache_status") {
+      updateCacheView(data);
       card = makeEvent("cache", "缓存状态", "◌");
       if (card) {
         var u = data.usage || {};
         var hit = Number(u.cacheHitTokens || 0), miss = Number(u.cacheMissTokens || 0);
-        card.body.textContent = "命中 " + hit + " · 未命中 " + miss;
+        var kernel = data.kernelCache || {};
+        var detail = kernel.layer ? (kernel.layer + " " + (kernel.op || "observed") + (Array.isArray(kernel.sliceIds) ? " · " + kernel.sliceIds.length + " slices" : "")) : (data.usage ? "L1 命中 " + hit + " · 未命中 " + miss : "已观测");
+        card.body.textContent = detail;
         setStatus(card, "已更新", "done");
       }
       return;
@@ -1069,6 +1133,7 @@
             renderReviewList();
           }
         }
+        if (data.code === "semantix_reuse") updateCacheView(data);
         renderStatus(data.kind === "retrying" ? "retry" : "task_status", data);
         break;
       case "unknown":
