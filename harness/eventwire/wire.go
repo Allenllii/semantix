@@ -30,6 +30,7 @@ type Event struct {
 	DecisionReceipt *DecisionReceipt    `json:"decisionReceipt,omitempty"`
 	Extension       *ExtensionSurface   `json:"extension,omitempty"`
 	Err             string              `json:"err,omitempty" externalizable:"true"`
+	Cancelled       bool                `json:"cancelled,omitempty"`
 	Outcome         string              `json:"outcome,omitempty"`
 	Readiness       *FinalReadiness     `json:"readiness,omitempty"`
 	Receipt         *CompletionReceipt  `json:"receipt,omitempty"`
@@ -190,6 +191,7 @@ func ToWire(e event.Event) Event {
 	case event.ExtensionSurface, event.ExtensionStatus:
 		w.Extension = ToWireExtensionSurface(e.Extension)
 	case event.TurnDone:
+		w.Cancelled = e.Cancelled
 		w.Outcome = e.Outcome
 		w.CheckpointTurn = e.CheckpointTurn
 		w.Receipt = completionReceiptWire(e.Receipt)
