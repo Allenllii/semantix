@@ -128,6 +128,7 @@ Cursor, Windsurf, Codex CLI, Gemini CLI, Copilot agent mode and Cline / Continue
 
 | Doc | What's inside |
 | --- | --- |
+| [ROADMAP.md](./ROADMAP.md) | Shipped / in progress / next (English summary) |
 | [docs/TECHNICAL-OVERVIEW.md](./docs/TECHNICAL-OVERVIEW.md) | **Start here** — concepts, cache layers, scheduler, prefetch, evolution loop, architecture, module map, status, roadmap, metrics |
 | [docs/QUICKSTART.md](./docs/QUICKSTART.md) | Install, 30-second demo, command reference, configuration |
 | [docs/Agent-Infra-架构设计.md](./docs/Agent-Infra-架构设计.md) | Full architecture design (Chinese) |
@@ -136,9 +137,15 @@ Cursor, Windsurf, Codex CLI, Gemini CLI, Copilot agent mode and Cline / Continue
 | [agent-skill/SKILL.md](./agent-skill/SKILL.md) | Self-serve integration for any harness |
 | [semantix.ensureok.ai](https://semantix.ensureok.ai) | Website, product docs and the blog |
 
+## Community
+
+- 💬 [GitHub Discussions](https://github.com/Gnosil/semantix/discussions) — Q&A, ideas, show & tell
+- 🐛 [Issue tracker](https://github.com/Gnosil/semantix/issues) — `good first issue` is the place to start
+- 📖 [Blog](https://semantix.ensureok.ai/blog) — semantic caching and agent-memory write-ups
+
 ## Contributing
 
-Semantix is early-stage. Contributions are welcome across semantic caching, retrieval, scheduling, speculative execution, evaluation methodology and harness adapters — see [CONTRIBUTING.md](./CONTRIBUTING.md). Branch naming `feat/<unit>`; PRs require green `go vet` and `go test -race`.
+Semantix is early-stage. Contributions are welcome across semantic caching, retrieval, scheduling, speculative execution, evaluation methodology and harness adapters — see [CONTRIBUTING.md](./CONTRIBUTING.md) for the workflow (branch from `main`, PRs require green `go vet` and `go test -race`). Issues and PRs in English or Chinese are both fine.
 
 **Without writing code:** run `semantix verify` against your own sessions and post the resulting hit rate to [#58](https://github.com/Gnosil/semantix/issues/58). Aggregated community results decide the v1.0 gate.
 

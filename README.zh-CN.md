@@ -128,6 +128,7 @@ Cursor、Windsurf、Codex CLI、Gemini CLI、Copilot agent 模式、Cline / Cont
 
 | 文档 | 内容 |
 | --- | --- |
+| [ROADMAP.md](./ROADMAP.md) | 已发布 / 进行中 / 下一步（英文摘要，中文版为唯一事实来源） |
 | [docs/TECHNICAL-OVERVIEW.zh-CN.md](./docs/TECHNICAL-OVERVIEW.zh-CN.md) | **从这里开始** —— 核心概念、三级缓存、调度与预取、复用可视化、模块地图、项目状态、安全设计 |
 | [docs/QUICKSTART.md](./docs/QUICKSTART.md) | 安装、命令参考、shell 补全、配置 |
 | [docs/Agent-Infra-架构设计.md](./docs/Agent-Infra-架构设计.md) | 完整架构设计（问题、分层、组件、风险、指标） |
@@ -137,9 +138,15 @@ Cursor、Windsurf、Codex CLI、Gemini CLI、Copilot agent 模式、Cline / Cont
 | [agent-skill/SKILL.md](./agent-skill/SKILL.md) | 面向任意 harness 的自助集成 |
 | [semantix.ensureok.ai](https://semantix.ensureok.ai) | 官网、产品文档与博客 |
 
+## 社区
+
+- 💬 [GitHub Discussions](https://github.com/Gnosil/semantix/discussions) — 问答、想法、展示
+- 🐛 [Issue 列表](https://github.com/Gnosil/semantix/issues) — 认领 `good first issue` 入门
+- 📖 [博客](https://semantix.ensureok.ai/blog) — 语义缓存与 agent 记忆层系列文章
+
 ## 参与贡献
 
-Semantix 处于早期阶段。语义缓存、检索、调度、投机执行、评测方法、harness 适配器等方向均欢迎贡献，参与方式见 [CONTRIBUTING.md](./CONTRIBUTING.md)。分支命名 `feat/<unit>`，PR 需 `go vet` 与 `go test -race` 全绿。
+Semantix 处于早期阶段。语义缓存、检索、调度、投机执行、评测方法、harness 适配器等方向均欢迎贡献，工作流见 [CONTRIBUTING.md](./CONTRIBUTING.md)（从 `main` 切分支，PR 需 `go vet` 与 `go test -race` 全绿）。中英文 issue / PR 均可。
 
 **无需写代码的参与方式：** 以自有会话运行 `semantix verify`，将命中率结果提交至 [#58](https://github.com/Gnosil/semantix/issues/58)。社区汇总结果决定 v1.0 门禁是否通过。
 
