@@ -78,6 +78,24 @@ func TestToWireContextMaintenanceJSON(t *testing.T) {
 	}
 }
 
+func TestToWireKernelCacheJSON(t *testing.T) {
+	w := ToWire(event.Event{Kind: event.KernelCache, KernelCache: &event.KernelCachePayload{
+		Op: "degraded", Layer: "L2", SliceIDs: []string{"b", "a"}, Bytes: 128, Reason: "budget",
+	}})
+	if w.Kind != "kernel_cache" || w.KernelCache == nil {
+		t.Fatalf("kernel cache wire = %+v", w)
+	}
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"kind":"kernel_cache"`, `"op":"degraded"`, `"layer":"L2"`, `"sliceIds":["b","a"]`, `"reason":"budget"`} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("kernel cache JSON = %s, missing %s", b, want)
+		}
+	}
+}
+
 func TestToWireNoticeCarriesCode(t *testing.T) {
 	w := ToWire(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeFinalReadiness, Text: "readiness copy"})
 	b, err := json.Marshal(w)

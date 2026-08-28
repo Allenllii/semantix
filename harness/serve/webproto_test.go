@@ -67,6 +67,7 @@ func TestWebProtoPayloadRefinement(t *testing.T) {
 		{"turn_done failed", []byte(`{"kind":"turn_done","err":"boom"}`), ProtoTypeError},
 		{"usage carries cache", []byte(`{"kind":"usage","sessionCacheHitTokens":5}`), ProtoTypeCacheStatus},
 		{"compaction is cache", []byte(`{"kind":"compaction_done"}`), ProtoTypeCacheStatus},
+		{"kernel cache is cache", []byte(`{"kind":"kernel_cache"}`), ProtoTypeCacheStatus},
 	}
 	for _, tc := range cases {
 		got, keep, _ := classifyFrame(tc.frame)
