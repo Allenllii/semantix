@@ -214,6 +214,20 @@ func TestToWireTurnOutcomeIsOptionalAndMachineReadable(t *testing.T) {
 	}
 }
 
+func TestToWireTurnDoneCarriesCancellation(t *testing.T) {
+	w := ToWire(event.Event{Kind: event.TurnDone, Cancelled: true})
+	if !w.Cancelled {
+		t.Fatal("cancelled TurnDone lost its cancellation flag")
+	}
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal cancelled turn: %v", err)
+	}
+	if !strings.Contains(string(b), `"cancelled":true`) {
+		t.Fatalf("cancelled TurnDone JSON = %s, want cancellation flag", b)
+	}
+}
+
 func TestToWireTurnDoneCheckpointTurnPreservesZeroAndOmitsNil(t *testing.T) {
 	turn := 0
 	withCheckpoint, err := json.Marshal(ToWire(event.Event{Kind: event.TurnDone, CheckpointTurn: &turn}))
