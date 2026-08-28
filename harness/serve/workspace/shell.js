@@ -625,9 +625,10 @@
       head.textContent = "权限请求 · " + String(approval.tool || "工具");
       var status = document.createElement("span");
       status.className = "ws-review-status";
-      status.textContent = record.status === "approved" ? "已通过" : record.status === "rejected" ? "已拒绝" : record.status === "submitting" ? "提交中" : "待确认";
+      status.textContent = record.status === "approved" ? "已通过" : record.status === "rejected" ? "已拒绝" : record.status === "cancelled" ? "已取消" : record.status === "submitting" ? "提交中" : "待确认";
       if (record.status === "approved") status.classList.add("is-approved");
       if (record.status === "rejected") status.classList.add("is-rejected");
+      if (record.status === "cancelled") status.classList.add("is-cancelled");
       head.appendChild(status);
       entry.appendChild(head);
       var body = document.createElement("div");
@@ -929,6 +930,7 @@
         setStatus(workflow.localUser.card, "未发送", "failed");
       }
       showNotice("发送失败：" + err.message, "error");
+      workflow.localUser = null;
     }).finally(function () {
       if (el.input) el.input.dispatchEvent(new Event("input"));
     });
@@ -1041,6 +1043,10 @@
       case "error":
         composerBusy = false;
         updateComposerControls();
+        if (workflow.localUser) {
+          setStatus(workflow.localUser.card, "未发送", "failed");
+          workflow.localUser = null;
+        }
         renderStatus("error", data);
         break;
       case "cache_status":
@@ -1048,8 +1054,20 @@
         break;
       case "task_status":
         if (data.kind === "turn_done") {
+          var cancelled = !!data.cancelled || String(data.outcome || "").toLowerCase() === "cancelled";
           composerBusy = false;
           updateComposerControls();
+          if (workflow.localUser) {
+            setStatus(workflow.localUser.card, cancelled ? "已取消" : "已发送", cancelled ? "cancelled" : "done");
+            workflow.localUser = null;
+          }
+          if (cancelled) {
+            Object.keys(workflow.approvals).forEach(function (id) {
+              var record = workflow.approvals[id];
+              if (record && (record.status === "pending" || record.status === "submitting")) record.status = "cancelled";
+            });
+            renderReviewList();
+          }
         }
         renderStatus(data.kind === "retrying" ? "retry" : "task_status", data);
         break;

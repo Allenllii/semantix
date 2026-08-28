@@ -176,6 +176,7 @@ body.ws-right-collapsed .ws-context { display: none; }
 .ws-event--error .ws-event__icon { color: var(--sx-del); }
 .ws-event__status { color: var(--sx-text-3); }
 .ws-event__status.is-running { color: var(--sx-orange); }
+.ws-event__status.is-cancelled { color: var(--sx-orange); }
 .ws-event__status.is-done { color: var(--sx-green-strong); }
 .ws-event__status.is-failed { color: var(--sx-del); }
 .ws-event__detail {
@@ -236,6 +237,7 @@ body.ws-right-collapsed .ws-context { display: none; }
 .ws-terminal-output { margin: 0; padding: 9px 10px; max-height: 240px; overflow: auto; color: var(--sx-text-2); font: 400 11px/1.6 var(--sx-font-mono); white-space: pre-wrap; word-break: break-word; }
 .ws-terminal-status, .ws-review-status { margin-left: auto; color: var(--sx-text-3); font: 600 10.5px/1.4 var(--sx-font-mono); }
 .ws-terminal-status.is-failed, .ws-review-status.is-rejected { color: var(--sx-del); }
+.ws-review-status.is-cancelled { color: var(--sx-orange); }
 .ws-terminal-status.is-done, .ws-review-status.is-approved { color: var(--sx-green-strong); }
 .ws-review-body { padding: 9px 10px; color: var(--sx-text-2); font: 400 12px/1.55 var(--sx-font-sans); }
 .ws-review-path { font: 600 11.5px/1.4 var(--sx-font-mono); color: var(--sx-text); overflow-wrap: anywhere; }
