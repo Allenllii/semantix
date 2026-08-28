@@ -125,6 +125,11 @@ func TestServeWorkspaceSelectorContract(t *testing.T) {
 		`"/resume"`,           // task switching keeps session content server-side
 		`"/new"`,              // creating a task enters a fresh session
 		`"/workspace/events"`, // GUI-4 versioned SSE transport
+		`data-ws-session-search`,
+		`data-ws-session-project`,
+		`data-ws-session-status`,
+		`function filterSessions`,
+		`function initSessionFilters`,
 		`模型不可用`,               // explicit unavailable-model signal (#405 acceptance)
 	} {
 		if !strings.Contains(js, want) {
@@ -302,7 +307,7 @@ func TestServeSessionsExposeInFlight(t *testing.T) {
 		if _, ok := row["path"].(string); !ok {
 			t.Errorf("/sessions[%d] missing string path", i)
 		}
-		for key, want := range map[string]string{"in_flight": "bool", "current": "bool", "turns": "number", "title": "string"} {
+		for key, want := range map[string]string{"in_flight": "bool", "current": "bool", "turns": "number", "title": "string", "status": "string", "project": "string", "updated_at": "string", "failure": "string"} {
 			v, ok := row[key]
 			if !ok {
 				continue
