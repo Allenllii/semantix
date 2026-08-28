@@ -93,7 +93,14 @@
     newTask: document.querySelector("[data-ws-new-task]"),
     sideProjectName: document.querySelector("[data-ws-side-project-name]"),
     timeline: document.querySelector("[data-ws-timeline]"),
-    demo: document.querySelector("[data-ws-demo]")
+    demo: document.querySelector("[data-ws-demo]"),
+    fileHead: document.querySelector("[data-ws-file-head]"),
+    contextDiff: document.querySelector("[data-ws-context-diff], .ws-diff"),
+    tabs: document.querySelectorAll("[data-ws-tab]"),
+    panels: document.querySelectorAll("[data-ws-panel]"),
+    diffList: document.querySelector("[data-ws-diff-list]"),
+    terminalList: document.querySelector("[data-ws-terminal-list]"),
+    reviewList: document.querySelector("[data-ws-review-list]")
   };
 
   // Sidebar/project shared state (GUI-3): whether the CURRENT session is
@@ -139,6 +146,8 @@
     assistant: null,
     plan: null,
     tools: Object.create(null),
+    diffs: Object.create(null),
+    approvals: Object.create(null),
     active: false
   };
 
@@ -156,9 +165,49 @@
     workflow.assistant = null;
     workflow.plan = null;
     workflow.tools = Object.create(null);
+    workflow.diffs = Object.create(null);
+    workflow.approvals = Object.create(null);
     workflow.active = false;
     clearNode(el.timeline);
     if (el.demo) el.demo.classList.remove("is-hidden");
+    renderDiffList();
+    renderTerminalList();
+    renderReviewList();
+  }
+
+  function activateContextTab(name) {
+    var active = String(name || "files");
+    if (!el.tabs || !el.tabs.length) return;
+    el.tabs.forEach(function (tab) {
+      var selected = tab.getAttribute("data-ws-tab") === active;
+      tab.classList.toggle("is-active", selected);
+      tab.setAttribute("aria-selected", String(selected));
+      tab.setAttribute("tabindex", selected ? "0" : "-1");
+    });
+    if (el.panels) el.panels.forEach(function (panel) {
+      var visible = panel.getAttribute("data-ws-panel") === active;
+      panel.classList.toggle("is-active", visible);
+      panel.hidden = !visible;
+    });
+  }
+
+  function initContextTabs() {
+    if (!el.tabs || !el.tabs.length) return;
+    el.tabs.forEach(function (tab, index) {
+      tab.addEventListener("click", function () { activateContextTab(tab.getAttribute("data-ws-tab")); });
+      tab.addEventListener("keydown", function (event) {
+        var next = index;
+        if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % el.tabs.length;
+        else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (index + el.tabs.length - 1) % el.tabs.length;
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = el.tabs.length - 1;
+        else return;
+        event.preventDefault();
+        el.tabs[next].focus();
+        activateContextTab(el.tabs[next].getAttribute("data-ws-tab"));
+      });
+    });
+    activateContextTab("files");
   }
 
   function makeEvent(kind, label, icon) {
@@ -224,6 +273,377 @@
     parent.appendChild(details);
   }
 
+  var diffStatusLabels = { added: "新增", modified: "修改", deleted: "删除" };
+  var syntaxKeywords = {
+    go: "break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var",
+    js: "break case catch class const continue debugger default delete do else export extends finally for function if import in instanceof let new return super switch this throw try typeof var void while with yield async await",
+    ts: "break case catch class const continue debugger default delete do else export extends finally for function if import in instanceof let new return super switch this throw try typeof var void while with yield async await interface type enum implements public private readonly",
+    py: "and as assert async await break case class continue def del elif else except finally for from global if import in is lambda match nonlocal not or pass raise return try while with yield",
+    rs: "as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while",
+    json: "true false null",
+    sh: "if then else elif fi for while in do done case esac function",
+    bash: "if then else elif fi for while in do done case esac function"
+  };
+
+  function syntaxClass(token, language) {
+    if (/^(?:\"|\\'|`)/.test(token)) return "ws-syntax-string";
+    if (/^(?:\/\/|#)/.test(token)) return "ws-syntax-comment";
+    if (/^\d/.test(token)) return "ws-syntax-number";
+    if ((syntaxKeywords[language] || "").split(" ").indexOf(token) !== -1) return "ws-syntax-keyword";
+    return "";
+  }
+
+  function appendHighlightedCode(parent, text, language) {
+    var source = String(text || "");
+    var re = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\/\/.*|#.*|\b\d+(?:\.\d+)?\b|\b[A-Za-z_$][\w$]*\b)/g;
+    var cursor = 0;
+    var match;
+    while ((match = re.exec(source)) !== null) {
+      if (match.index > cursor) parent.appendChild(document.createTextNode(source.slice(cursor, match.index)));
+      var token = match[0];
+      var className = syntaxClass(token, language);
+      if (!className) parent.appendChild(document.createTextNode(token));
+      else {
+        var span = document.createElement("span");
+        span.className = className;
+        span.textContent = token;
+        parent.appendChild(span);
+      }
+      cursor = match.index + token.length;
+    }
+    if (cursor < source.length) parent.appendChild(document.createTextNode(source.slice(cursor)));
+  }
+
+  function appendDiffRows(parent, rows, language) {
+    rows.forEach(function (row) {
+      if (!row || typeof row !== "object") return;
+      var kind = String(row.kind || "meta");
+      var line = document.createElement("div");
+      line.className = "ws-diff-line ws-diff-line--" + kind;
+      var oldNo = document.createElement("span");
+      oldNo.className = "ws-diff-line__number";
+      oldNo.textContent = row.oldLine ? String(row.oldLine) : "";
+      var newNo = document.createElement("span");
+      newNo.className = "ws-diff-line__number";
+      newNo.textContent = row.newLine ? String(row.newLine) : "";
+      var marker = document.createElement("span");
+      marker.className = "ws-diff-line__marker";
+      marker.textContent = kind === "added" ? "+" : kind === "deleted" ? "−" : kind === "context" ? " " : "";
+      var code = document.createElement("code");
+      code.className = "ws-diff-line__code";
+      if (kind === "hunk" || kind === "meta") code.textContent = String(row.text || "");
+      else appendHighlightedCode(code, row.text, language);
+      line.appendChild(oldNo);
+      line.appendChild(newNo);
+      line.appendChild(marker);
+      line.appendChild(code);
+      parent.appendChild(line);
+    });
+  }
+
+  function copyText(value, button) {
+    var text = String(value || "");
+    var success = function () {
+      if (!button) return;
+      var original = button.textContent;
+      button.textContent = "已复制";
+      setTimeout(function () { button.textContent = original; }, 1400);
+    };
+    var fallback = function () {
+      var input = document.createElement("textarea");
+      input.value = text;
+      input.setAttribute("readonly", "true");
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.select();
+      try { if (document.execCommand("copy")) success(); } catch (_) {}
+      document.body.removeChild(input);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(success).catch(fallback);
+      return;
+    }
+    fallback();
+  }
+
+  function renderDiff(parent, fileDiff, options) {
+    if (!parent || !fileDiff || typeof fileDiff !== "object") return;
+    options = options || {};
+    var view = document.createElement("section");
+    view.className = "ws-diff-view" + (options.context ? " ws-diff-view--context" : "");
+    if (!options.hideHeader) {
+      var head = document.createElement("header");
+      head.className = "ws-diff-view__head";
+      var identity = document.createElement("div");
+      identity.className = "ws-diff-view__identity";
+      var path = document.createElement("strong");
+      path.className = "ws-diff-view__path";
+      path.textContent = String(fileDiff.path || "未命名文件");
+      var status = document.createElement("span");
+      status.className = "ws-diff-view__status ws-diff-view__status--" + String(fileDiff.status || "unknown");
+      status.textContent = diffStatusLabels[fileDiff.status] || "变更";
+      identity.appendChild(path);
+      identity.appendChild(status);
+      var stats = document.createElement("span");
+      stats.className = "ws-diff-view__stats";
+      stats.textContent = "+" + Number(fileDiff.added || 0) + " / −" + Number(fileDiff.removed || 0);
+      var copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "ws-diff-view__copy";
+      copy.textContent = "复制 Diff";
+      copy.setAttribute("aria-label", "复制 " + String(fileDiff.path || "文件") + " 的 Diff");
+      copy.addEventListener("click", function () { copyText(fileDiff.diff, copy); });
+      head.appendChild(identity);
+      head.appendChild(stats);
+      head.appendChild(copy);
+      view.appendChild(head);
+    }
+    var body = document.createElement("div");
+    body.className = "ws-diff-view__body";
+    if (fileDiff.binary) body.textContent = "二进制文件，服务端未生成文本 Diff。";
+    else {
+      var rows = Array.isArray(fileDiff.lines) ? fileDiff.lines : [];
+      if (rows.length) {
+        var limit = 180;
+        var language = String(fileDiff.language || "text").toLowerCase();
+        appendDiffRows(body, rows.slice(0, limit), language);
+        if (rows.length > limit) {
+          var details = document.createElement("details");
+          details.className = "ws-diff-view__fold";
+          var summary = document.createElement("summary");
+          summary.textContent = "展开剩余 " + (rows.length - limit) + " 行";
+          details.appendChild(summary);
+          var rest = document.createElement("div");
+          appendDiffRows(rest, rows.slice(limit), language);
+          details.appendChild(rest);
+          body.appendChild(details);
+        }
+      } else if (fileDiff.diff) {
+        // Legacy servers still expose the exact unified diff. Do not derive
+        // status or line numbers client-side; show the raw source instead.
+        var legacy = document.createElement("pre");
+        legacy.className = "ws-diff-view__legacy";
+        legacy.textContent = String(fileDiff.diff);
+        body.appendChild(legacy);
+      } else body.textContent = "没有可展示的文本 Diff。";
+    }
+    view.appendChild(body);
+    parent.appendChild(view);
+  }
+
+  function renderContextDiff(fileDiff) {
+    if (!el.contextDiff || !fileDiff) return;
+    if (el.fileHead) {
+      clearNode(el.fileHead);
+      var path = document.createElement("span");
+      path.textContent = String(fileDiff.path || "未命名文件");
+      var status = document.createElement("span");
+      status.className = "modified ws-filehead__status";
+      status.textContent = diffStatusLabels[fileDiff.status] || "变更";
+      el.fileHead.appendChild(path);
+      el.fileHead.appendChild(status);
+    }
+    clearNode(el.contextDiff);
+    renderDiff(el.contextDiff, fileDiff, { context: true, hideHeader: true });
+  }
+
+  function syncTreeSelection(path) {
+    var target = String(path || "").replace(/\\/g, "/");
+    if (!target) return;
+    var rows = document.querySelectorAll(".ws-tree .tree-row");
+    var exact = null;
+    var fallback = null;
+    rows.forEach(function (row) {
+      row.classList.remove("is-selected");
+      var name = row.querySelector(".name");
+      if (!name) return;
+      var label = String(name.textContent || "").replace(/\\/g, "/");
+      var declared = row.getAttribute("data-ws-path");
+      if (declared && declared === target) exact = row;
+      if (!fallback && (label === target || target.endsWith("/" + label))) fallback = row;
+    });
+    var selected = exact || fallback;
+    if (selected) selected.classList.add("is-selected");
+  }
+
+  function renderDiffList() {
+    if (!el.diffList) return;
+    clearNode(el.diffList);
+    var paths = Object.keys(workflow.diffs);
+    if (!paths.length) {
+      var empty = document.createElement("p");
+      empty.className = "ws-context-empty";
+      empty.textContent = "收到变更后，Diff 会显示在这里。";
+      el.diffList.appendChild(empty);
+      return;
+    }
+    paths.forEach(function (path) {
+      renderDiff(el.diffList, workflow.diffs[path]);
+    });
+  }
+
+  function terminalCommand(args) {
+    if (!args) return "";
+    var raw = args;
+    if (typeof args === "string") {
+      try { raw = JSON.parse(args); } catch (_) { return args; }
+    }
+    if (raw && typeof raw === "object") {
+      if (typeof raw.command === "string") return raw.command;
+      if (typeof raw.cmd === "string") return raw.cmd;
+      if (Array.isArray(raw.argv)) return raw.argv.map(String).join(" ");
+    }
+    return String(args);
+  }
+
+  function renderTerminalList() {
+    if (!el.terminalList) return;
+    clearNode(el.terminalList);
+    var records = Object.keys(workflow.tools).map(function (key) { return workflow.tools[key]; }).filter(function (record) {
+      return record && record.terminal;
+    });
+    if (!records.length) {
+      var empty = document.createElement("p");
+      empty.className = "ws-context-empty";
+      empty.textContent = "执行命令后，终端输出会显示在这里。";
+      el.terminalList.appendChild(empty);
+      return;
+    }
+    records.forEach(function (record) {
+      var entry = document.createElement("article");
+      entry.className = "ws-terminal-entry";
+      var head = document.createElement("header");
+      head.className = "ws-terminal-head";
+      head.textContent = record.name || "终端";
+      var status = document.createElement("span");
+      status.className = "ws-terminal-status";
+      var state = record.state === "running" ? "进行中" : record.err ? "失败" : "已完成";
+      status.textContent = state;
+      if (record.err) status.classList.add("is-failed");
+      else if (record.state === "done") status.classList.add("is-done");
+      if (record.execution && typeof record.execution.exitCode === "number") {
+        status.textContent += " · 退出 " + record.execution.exitCode;
+      }
+      head.appendChild(status);
+      entry.appendChild(head);
+      var command = document.createElement("div");
+      command.className = "ws-terminal-command";
+      command.textContent = "$ " + terminalCommand(record.args);
+      entry.appendChild(command);
+      var output = record.output || (record.execution && record.execution.outputTail) || record.err || "";
+      if (output) {
+        var pre = document.createElement("pre");
+        pre.className = "ws-terminal-output";
+        pre.textContent = String(output);
+        entry.appendChild(pre);
+      }
+      el.terminalList.appendChild(entry);
+    });
+  }
+
+  function reviewRisk(record) {
+    if (record.execution && record.execution.mutationRisk) return String(record.execution.mutationRisk);
+    if (record.state === "running") return "等待服务端完成执行并返回风险状态";
+    return "风险由服务端权限策略判定";
+  }
+
+  function resolveReviewApproval(id, allow) {
+    var record = workflow.approvals[id];
+    if (!record || record.status !== "pending") return;
+    record.status = "submitting";
+    renderReviewList();
+    postJSON("/approve", { id: id, allow: !!allow, session: false, persist: false }).then(function () {
+      record.status = allow ? "approved" : "rejected";
+      renderReviewList();
+    }).catch(function (err) {
+      record.status = "pending";
+      renderReviewList();
+      showNotice("Review 决策未提交：" + err.message, "error");
+    });
+  }
+
+  function renderReviewList() {
+    if (!el.reviewList) return;
+    clearNode(el.reviewList);
+    var changes = Object.keys(workflow.tools).map(function (key) { return workflow.tools[key]; }).filter(function (record) {
+      return record && record.fileDiff;
+    });
+    var approvals = Object.keys(workflow.approvals).map(function (key) { return workflow.approvals[key]; });
+    if (!changes.length && !approvals.length) {
+      var empty = document.createElement("p");
+      empty.className = "ws-context-empty";
+      empty.textContent = "暂无待审阅变更或权限请求。";
+      el.reviewList.appendChild(empty);
+      return;
+    }
+    changes.forEach(function (record) {
+      var entry = document.createElement("article");
+      entry.className = "ws-review-entry";
+      var head = document.createElement("header");
+      head.className = "ws-review-head";
+      head.textContent = "文件变更";
+      var status = document.createElement("span");
+      status.className = "ws-review-status";
+      status.textContent = record.state === "running" ? "待执行" : record.err ? "执行失败" : "已报告";
+      if (record.err) status.classList.add("is-rejected");
+      else if (record.state === "done") status.classList.add("is-approved");
+      head.appendChild(status);
+      entry.appendChild(head);
+      var body = document.createElement("div");
+      body.className = "ws-review-body";
+      var path = document.createElement("div");
+      path.className = "ws-review-path";
+      path.textContent = String(record.fileDiff.path || "未命名文件") + "  +" + Number(record.fileDiff.added || 0) + " / −" + Number(record.fileDiff.removed || 0);
+      body.appendChild(path);
+      var risk = document.createElement("div");
+      risk.className = "ws-review-risk";
+      risk.textContent = reviewRisk(record);
+      body.appendChild(risk);
+      entry.appendChild(body);
+      el.reviewList.appendChild(entry);
+    });
+    approvals.forEach(function (record) {
+      var approval = record.approval || {};
+      var entry = document.createElement("article");
+      entry.className = "ws-review-entry";
+      var head = document.createElement("header");
+      head.className = "ws-review-head";
+      head.textContent = "权限请求 · " + String(approval.tool || "工具");
+      var status = document.createElement("span");
+      status.className = "ws-review-status";
+      status.textContent = record.status === "approved" ? "已通过" : record.status === "rejected" ? "已拒绝" : record.status === "submitting" ? "提交中" : "待确认";
+      if (record.status === "approved") status.classList.add("is-approved");
+      if (record.status === "rejected") status.classList.add("is-rejected");
+      head.appendChild(status);
+      entry.appendChild(head);
+      var body = document.createElement("div");
+      body.className = "ws-review-body";
+      body.textContent = String(approval.subject || approval.reason || "服务端要求确认后才会执行。");
+      if (approval.reason && approval.subject) {
+        var reason = document.createElement("div");
+        reason.className = "ws-review-risk";
+        reason.textContent = String(approval.reason);
+        body.appendChild(reason);
+      }
+      if (record.status === "pending" && approval.id) {
+        var actions = document.createElement("div");
+        actions.className = "ws-review-actions";
+        [true, false].forEach(function (allow) {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.textContent = allow ? "通过" : "拒绝";
+          button.setAttribute("data-ws-review-allow", String(allow));
+          button.addEventListener("click", function () { resolveReviewApproval(String(approval.id), allow); });
+          actions.appendChild(button);
+        });
+        body.appendChild(actions);
+      }
+      entry.appendChild(body);
+      el.reviewList.appendChild(entry);
+    });
+  }
+
   function toolLabel(name) {
     var labels = {
       read_file: "读取文件", read_files: "读取文件", glob: "查找文件",
@@ -243,6 +663,7 @@
     record.progressEl = null;
     clearNode(card.body);
     if (record.args) appendExpandable(card.body, record.args, "展开参数", "ws-tool-preview");
+    if (record.fileDiff) renderDiff(card.body, record.fileDiff);
     if (record.output) appendExpandable(card.body, record.output, "展开输出", "ws-tool-preview");
     if (record.err) appendExpandable(card.body, record.err, "展开错误", "ws-tool-preview");
     if (record.truncated) {
@@ -332,12 +753,23 @@
     var key = toolKey(tool, seq);
     var record = workflow.tools[key];
     if (!record) {
-      record = { args: "", output: "", err: "", truncated: false, progress: "" };
+      record = { args: "", output: "", err: "", truncated: false, progress: "", fileDiff: null, terminal: false, name: "" };
       record.card = makeEvent("tool", toolLabel(tool.name), "⚙");
       workflow.tools[key] = record;
     }
-    if (tool.name) record.card.label.textContent = toolLabel(tool.name) + " · " + tool.name;
+    if (tool.name) {
+      record.name = String(tool.name);
+      record.terminal = record.terminal || tool.name === "bash" || tool.name === "shell" || !!tool.execution;
+      record.card.label.textContent = toolLabel(tool.name) + " · " + tool.name;
+    }
     if (tool.args) record.args = String(tool.args);
+    if (tool.fileDiff) {
+      record.fileDiff = tool.fileDiff;
+      workflow.diffs[String(tool.fileDiff.path || key)] = tool.fileDiff;
+      renderContextDiff(tool.fileDiff);
+      syncTreeSelection(tool.fileDiff.path);
+    }
+    if (tool.execution) record.execution = tool.execution;
     if (kind === "tool_start") {
       record.state = "running";
       setStatus(record.card, "进行中", "running");
@@ -373,6 +805,9 @@
     } else {
       renderTool(record.card, record);
     }
+    renderDiffList();
+    renderTerminalList();
+    renderReviewList();
     if (tool.name === "todo_write" && tool.args) renderPlan(parsePlan(tool.args));
   }
 
@@ -449,6 +884,11 @@
       workflow.assistant = null;
       workflow.plan = null;
       workflow.tools = Object.create(null);
+      workflow.diffs = Object.create(null);
+      workflow.approvals = Object.create(null);
+      renderDiffList();
+      renderTerminalList();
+      renderReviewList();
     }
     switch (payload.type) {
       case "user_message":
@@ -481,6 +921,10 @@
         break;
       case "permission_request":
         var approval = data.approval || data.ask || {};
+        if (approval.id) {
+          workflow.approvals[String(approval.id)] = { approval: approval, status: "pending" };
+          renderReviewList();
+        }
         var permission = makeEvent("status", "需要确认", "?");
         if (permission) {
           permission.body.textContent = String(approval.subject || approval.reason || approval.tool || "等待用户确认");
@@ -752,6 +1196,7 @@
     loadModels(); // effort arrives piggybacked on GET /models
   }
 
+  initContextTabs();
   initSelectors();
   connectWorkspaceEvents();
 

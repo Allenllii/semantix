@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2290,10 +2291,15 @@ func (a *Agent) emitFullToolDispatch(ctx context.Context, c provider.ToolCall, r
 	t, _, ambiguous := a.svc.tools.ResolveCall(c.Name)
 	ok := t != nil && len(ambiguous) == 0
 	ev := event.Tool{ID: c.ID, Name: c.Name, Args: c.Arguments, ReadOnly: ok && t.ReadOnly(), Refreshed: refreshed}
-	ev.FileDiff = event.FileDiff{Diff: c.Diff, Added: c.Added, Removed: c.Removed}
-	if ok && ev.Diff == "" && ev.Added == 0 && ev.Removed == 0 {
-		if ch, ok := tool.PreviewChange(ctx, t, json.RawMessage(c.Arguments)); ok {
-			ev.FileDiff = event.FileDiff{Diff: ch.Diff, Added: ch.Added, Removed: ch.Removed}
+	ev.FileDiff = fileDiffFromToolCall(c)
+	if ok && !t.ReadOnly() {
+		// Re-run the same preview used by execution. Besides retaining the
+		// existing diff, this supplies backend-owned path/status/line metadata
+		// to workspace clients without making them inspect tool arguments.
+		if pv, previewable := t.(tool.Previewer); previewable {
+			if ch, err := pv.Preview(ctx, json.RawMessage(c.Arguments)); err == nil {
+				ev.FileDiff = fileDiffFromChange(ch, toolPathFromArgs(c.Arguments))
+			}
 		}
 	}
 	if ok {
@@ -2304,6 +2310,68 @@ func (a *Agent) emitFullToolDispatch(ctx context.Context, c provider.ToolCall, r
 		}
 	}
 	a.svc.sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: ev})
+}
+
+func fileDiffFromChange(ch diff.Change, requestedPath string) event.FileDiff {
+	path := strings.TrimSpace(requestedPath)
+	if path == "" {
+		path = ch.Path
+	}
+	status := "modified"
+	switch ch.Kind {
+	case diff.Create:
+		status = "added"
+	case diff.Delete:
+		status = "deleted"
+	}
+	out := event.FileDiff{
+		Path: path, Status: status, Language: languageForPath(path),
+		Diff: ch.Diff, Added: ch.Added, Removed: ch.Removed,
+		Binary: ch.Binary, Hunks: ch.Hunks,
+	}
+	for _, line := range diff.ParseUnified(ch.Diff) {
+		out.Lines = append(out.Lines, event.DiffLine{
+			Kind: string(line.Kind), OldLine: line.OldLine,
+			NewLine: line.NewLine, Text: line.Text,
+		})
+	}
+	return out
+}
+
+func fileDiffFromToolCall(c provider.ToolCall) event.FileDiff {
+	if c.Diff == "" && c.Added == 0 && c.Removed == 0 {
+		return event.FileDiff{}
+	}
+	path := toolPathFromArgs(c.Arguments)
+	out := event.FileDiff{
+		Path: path, Status: "modified", Language: languageForPath(path),
+		Diff: c.Diff, Added: c.Added, Removed: c.Removed,
+	}
+	for _, line := range diff.ParseUnified(c.Diff) {
+		out.Lines = append(out.Lines, event.DiffLine{
+			Kind: string(line.Kind), OldLine: line.OldLine,
+			NewLine: line.NewLine, Text: line.Text,
+		})
+	}
+	return out
+}
+
+func toolPathFromArgs(args string) string {
+	var input struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(args), &input); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(input.Path)
+}
+
+func languageForPath(path string) string {
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
+	if ext == "" {
+		return "text"
+	}
+	return ext
 }
 
 // emitResolvedToolDispatch upserts the real target classification of a stable

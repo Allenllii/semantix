@@ -130,6 +130,13 @@ func TestBuild_Binary(t *testing.T) {
 	}
 }
 
+func TestParseUnifiedNormalizesCRLFRows(t *testing.T) {
+	rows := ParseUnified("--- a/x.go\r\n+++ b/x.go\r\n@@ -1 +1 @@\r\n-old\r\n+new\r\n")
+	if len(rows) != 5 || rows[2].Kind != LineHunk || rows[3].Text != "old" || rows[4].Text != "new" {
+		t.Fatalf("CRLF rows = %+v", rows)
+	}
+}
+
 // TestBuild_MinimalEditScript checks the third-party line diff keeps the same
 // user-visible contract: a single line inserted into a run of identical lines
 // must not be rendered as a block delete+insert.
@@ -164,5 +171,25 @@ func TestExactDiffTooLarge(t *testing.T) {
 	}
 	if !exactDiffTooLarge(oldLines, newLines) {
 		t.Fatal("large changed window should skip exact diff")
+	}
+}
+
+func TestParseUnifiedCarriesKindsAndLineNumbers(t *testing.T) {
+	src := "--- a/demo.go\n+++ b/demo.go\n@@ -2,3 +2,3 @@\n context\n-old\n+new\n"
+	rows := ParseUnified(src)
+	if len(rows) != 6 {
+		t.Fatalf("rows = %d, want 6: %+v", len(rows), rows)
+	}
+	if rows[2].Kind != LineHunk || rows[2].Text != "@@ -2,3 +2,3 @@" {
+		t.Fatalf("hunk row = %+v", rows[2])
+	}
+	if rows[3].Kind != LineContext || rows[3].OldLine != 2 || rows[3].NewLine != 2 || rows[3].Text != "context" {
+		t.Fatalf("context row = %+v", rows[3])
+	}
+	if rows[4].Kind != LineDeleted || rows[4].OldLine != 3 || rows[4].NewLine != 0 || rows[4].Text != "old" {
+		t.Fatalf("deleted row = %+v", rows[4])
+	}
+	if rows[5].Kind != LineAdded || rows[5].OldLine != 0 || rows[5].NewLine != 3 || rows[5].Text != "new" {
+		t.Fatalf("added row = %+v", rows[5])
 	}
 }

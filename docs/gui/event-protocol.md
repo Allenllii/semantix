@@ -41,12 +41,39 @@ Every frame carries the full SSE form:
 | task_status          | turn_started, turn_phase, completion_summary, retrying, guardian_assessment, extension_status | turn lifecycle phases |
 | error                | turn_done(err≠"")                                      | payload-dependent promotion from task_status |
 | plan                 | —                                                      | **reserved**: no producer yet; never emitted in v1 |
-| diff                 | —                                                      | **reserved**: no producer yet; never emitted in v1 |
+| diff                 | —                                                      | **reserved** as a standalone event; file changes ride on `tool_start` / `tool_result` |
 | unknown              | any kind added after this protocol version             | forward-compat wrapper |
 
 Filtered host-internal kinds that are never forwarded:
 `stream_attempt`, `extension_surface`, `mcp_surface_ready`,
 `workspace_changed`, `context_maintenance`.
+
+## File diff payload (GUI-6)
+
+Writer tool events may include `data.tool.fileDiff`. It is the backend's
+authoritative file-change model:
+
+```json
+{
+  "path": "internal/cache.go",
+  "status": "modified",
+  "language": "go",
+  "diff": "--- a/internal/cache.go\n+++ b/internal/cache.go\n...",
+  "added": 1,
+  "removed": 1,
+  "lines": [
+    {"kind": "hunk", "text": "@@ -1 +1 @@"},
+    {"kind": "deleted", "oldLine": 1, "text": "old"},
+    {"kind": "added", "newLine": 1, "text": "new"}
+  ]
+}
+```
+
+`status` is one of `added`, `modified`, or `deleted`; `added`/`removed` and
+the line numbers are computed by the host. A client renders `lines` as-is and
+copies `diff` verbatim, so UI labels, gutters, and fold controls never become
+part of copied source. Binary previews set `binary: true` and omit textual
+rows. Older clients may continue using the legacy flat `tool.diff` fields.
 
 ## Client rules
 

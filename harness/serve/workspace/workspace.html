@@ -125,13 +125,14 @@
     </section>
 
     <aside id="ws-context" class="ws-context" aria-label="上下文面板">
-      <nav class="ws-tabs" role="tablist">
-        <button class="ws-tab is-active" role="tab" aria-selected="true" type="button">文件</button>
-        <button class="ws-tab" role="tab" aria-selected="false" type="button">Diff</button>
-        <button class="ws-tab" role="tab" aria-selected="false" type="button">终端</button>
-        <button class="ws-tab" role="tab" aria-selected="false" type="button">Review</button>
+      <nav class="ws-tabs" role="tablist" aria-label="上下文视图">
+        <button id="ws-tab-files" class="ws-tab is-active" data-ws-tab="files" aria-controls="ws-panel-files" role="tab" aria-selected="true" type="button">文件</button>
+        <button id="ws-tab-diff" class="ws-tab" data-ws-tab="diff" aria-controls="ws-panel-diff" role="tab" aria-selected="false" type="button" tabindex="-1">Diff</button>
+        <button id="ws-tab-terminal" class="ws-tab" data-ws-tab="terminal" aria-controls="ws-panel-terminal" role="tab" aria-selected="false" type="button" tabindex="-1">终端</button>
+        <button id="ws-tab-review" class="ws-tab" data-ws-tab="review" aria-controls="ws-panel-review" role="tab" aria-selected="false" type="button" tabindex="-1">Review</button>
       </nav>
 
+      <section id="ws-panel-files" class="ws-context-panel is-active" data-ws-panel="files" role="tabpanel" aria-labelledby="ws-tab-files">
       <ul class="ws-tree">
         <li><div class="tree-row" style="color:var(--sx-text)"><svg class="tree-chevron" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m6 4 4 4-4 4"/></svg><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.4"/><ellipse cx="8" cy="8" rx="6.2" ry="2.6"/><ellipse cx="8" cy="8" rx="6.2" ry="2.6" transform="rotate(60 8 8)"/></svg><span class="name">semantix</span></div>
           <ul>
@@ -157,8 +158,27 @@
         </li>
       </ul>
 
-      <div class="ws-filehead">src/cache/prefix_cache.go<span class="modified">M</span><span class="more">···</span></div>
+      <div class="ws-filehead" data-ws-file-head>src/cache/prefix_cache.go<span class="modified">M</span><span class="more">···</span></div>
       <pre class="ws-diff"><code><span class="hunk">@@ -110,7 +110,12 @@ func (c *Cache) makeKey(</span><span class="d-ctx"><span class="ln">110</span><span class="ln">110</span>              func (c *Cache) makeKey(</span><span class="d-ctx"><span class="ln">111</span><span class="ln">111</span>                prefix string, modelID string,</span><span class="d-ctx"><span class="ln">112</span><span class="ln">112</span>                shardFactor int,</span><span class="d-del"><span class="ln">113</span><span class="ln"></span>- key := hash(prefix)</span><span class="d-del"><span class="ln">114</span><span class="ln"></span>- return key</span><span class="d-add"><span class="ln"></span><span class="ln">113</span>+ // 优化：加入模型与分片因子，提升命中率</span><span class="d-add"><span class="ln">113</span><span class="ln">114</span>+ key := hash(prefix + modelID + "|" + shardFactor)</span><span class="d-add"><span class="ln">114</span><span class="ln">115</span>+ return key</span><span class="d-ctx"><span class="ln">116</span><span class="ln">116</span>}</span></code></pre>
+      </section>
+
+      <section id="ws-panel-diff" class="ws-context-panel" data-ws-panel="diff" role="tabpanel" aria-labelledby="ws-tab-diff" hidden>
+        <div class="ws-context-scroll" data-ws-diff-list>
+          <p class="ws-context-empty">收到变更后，Diff 会显示在这里。</p>
+        </div>
+      </section>
+
+      <section id="ws-panel-terminal" class="ws-context-panel" data-ws-panel="terminal" role="tabpanel" aria-labelledby="ws-tab-terminal" hidden>
+        <div class="ws-context-scroll" data-ws-terminal-list>
+          <p class="ws-context-empty">执行命令后，终端输出会显示在这里。</p>
+        </div>
+      </section>
+
+      <section id="ws-panel-review" class="ws-context-panel" data-ws-panel="review" role="tabpanel" aria-labelledby="ws-tab-review" hidden>
+        <div class="ws-context-scroll" data-ws-review-list>
+          <p class="ws-context-empty">暂无待审阅变更或权限请求。</p>
+        </div>
+      </section>
     </aside>
   </div>
   <button class="ws-side-scrim" type="button" data-ws-side-close aria-label="关闭项目导航"></button>

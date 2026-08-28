@@ -285,12 +285,28 @@ type ShellExecution struct {
 
 // FileDiff is a previewed change carried on a writer tool's full ToolDispatch
 // and on its ApprovalRequest, so a frontend can render +/- lines before the
-// call runs. Diff is the unified diff (empty for read-only tools, binary files,
-// or no-op changes); Added/Removed are its line tallies.
+// call runs. The structured metadata is produced by the host; clients must
+// not infer status or line numbers from Diff. Diff remains the exact unified
+// diff used for copying (empty for no-op changes and binary files).
 type FileDiff struct {
-	Diff    string
-	Added   int
-	Removed int
+	Path     string
+	Status   string
+	Language string
+	Diff     string
+	Added    int
+	Removed  int
+	Binary   bool
+	Hunks    int
+	Lines    []DiffLine
+}
+
+// DiffLine is one server-parsed row of a unified diff. OldLine/NewLine are
+// zero when the row has no corresponding side (added/deleted rows).
+type DiffLine struct {
+	Kind    string
+	OldLine int
+	NewLine int
+	Text    string
 }
 
 // Approval identifies a pending tool-call approval for an ApprovalRequest

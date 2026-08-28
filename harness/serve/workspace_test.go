@@ -115,17 +115,17 @@ func TestServeWorkspaceSelectorContract(t *testing.T) {
 		`URLSearchParams(window.location.hash.slice(1))`, // fragment-token bootstrap,
 		`/auth/token`, // same house contract as index.html
 		`window.history.replaceState`,
-		`"/status"`,   // project name from real backend state
-		`"/branches"`, // branch display from real backend state
-		`"/models"`,   // model list + current + effort
-		`"/submit"`,   // switches reuse the CLI command surface
-		`"/model "`,   //   .../model <ref>
-		`"/effort "`,  //   .../effort <level>
-		`"/sessions"`, // task list = live sessions, no second data model (#406)
-		`"/resume"`,   // task switching keeps session content server-side
-		`"/new"`,      // creating a task enters a fresh session
+		`"/status"`,           // project name from real backend state
+		`"/branches"`,         // branch display from real backend state
+		`"/models"`,           // model list + current + effort
+		`"/submit"`,           // switches reuse the CLI command surface
+		`"/model "`,           //   .../model <ref>
+		`"/effort "`,          //   .../effort <level>
+		`"/sessions"`,         // task list = live sessions, no second data model (#406)
+		`"/resume"`,           // task switching keeps session content server-side
+		`"/new"`,              // creating a task enters a fresh session
 		`"/workspace/events"`, // GUI-4 versioned SSE transport
-		`模型不可用`,       // explicit unavailable-model signal (#405 acceptance)
+		`模型不可用`,               // explicit unavailable-model signal (#405 acceptance)
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("workspace shell.js missing %q", want)
@@ -172,6 +172,79 @@ func TestServeWorkspaceWorkflowContract(t *testing.T) {
 	}
 	if strings.Contains(js, `innerHTML`) {
 		t.Error("workflow renderer must not inject event content through innerHTML")
+	}
+}
+
+// TestServeWorkspaceDiffContract pins GUI-6's source-of-truth boundary: the
+// browser renders the server's structured fileDiff rows and copies the exact
+// unified diff string, without rebuilding status, counts, or line numbers.
+func TestServeWorkspaceDiffContract(t *testing.T) {
+	html := string(workspaceHTML)
+	for _, want := range []string{`data-ws-file-head`, `class="ws-diff"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("workspace page missing diff hook %q", want)
+		}
+	}
+	js := string(workspaceShellJS)
+	for _, want := range []string{
+		`function renderDiff`, `fileDiff.lines`, `fileDiff.diff`,
+		`navigator.clipboard.writeText`, `appendDiffRows`,
+		`展开剩余`, `ws-diff-line__number`, `ws-syntax-keyword`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("workspace diff renderer missing %q", want)
+		}
+	}
+	if strings.Contains(js, `innerHTML`) {
+		t.Error("workspace diff renderer must not inject event content through innerHTML")
+	}
+	css := string(workspaceLayoutCSS)
+	for _, want := range []string{`.ws-diff-view`, `.ws-diff-line--added`, `.ws-diff-view__copy`, `.ws-diff-view__fold`} {
+		if !strings.Contains(css, want) {
+			t.Errorf("workspace diff styles missing %q", want)
+		}
+	}
+}
+
+// TestServeWorkspaceWorkbenchContract pins GUI-7's context-panel boundary:
+// all four views are real tab/panel pairs, and terminal/review data is
+// projected from the existing workspace event and approval contracts.
+func TestServeWorkspaceWorkbenchContract(t *testing.T) {
+	html := string(workspaceHTML)
+	for _, want := range []string{
+		`data-ws-tab="files"`, `data-ws-tab="diff"`,
+		`data-ws-tab="terminal"`, `data-ws-tab="review"`,
+		`data-ws-panel="files"`, `data-ws-panel="diff"`,
+		`data-ws-panel="terminal"`, `data-ws-panel="review"`,
+		`role="tabpanel"`, `aria-controls="ws-panel-review"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("workspace page missing workbench hook %q", want)
+		}
+	}
+
+	js := string(workspaceShellJS)
+	for _, want := range []string{
+		`function activateContextTab`, `function initContextTabs`,
+		`function syncTreeSelection`, `function renderDiffList`,
+		`function renderTerminalList`, `function renderReviewList`,
+		`tool.execution`, `execution.exitCode`, `execution.outputTail`,
+		`postJSON("/approve"`, `session: false`, `persist: false`,
+		`data-ws-review-allow`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("workspace workbench projection missing %q", want)
+		}
+	}
+	if strings.Contains(js, `innerHTML`) {
+		t.Error("workspace workbench renderer must not inject event content through innerHTML")
+	}
+
+	css := string(workspaceLayoutCSS)
+	for _, want := range []string{`.ws-context-panel`, `.ws-terminal-entry`, `.ws-review-entry`, `.ws-context-scroll`} {
+		if !strings.Contains(css, want) {
+			t.Errorf("workspace workbench styles missing %q", want)
+		}
 	}
 }
 
