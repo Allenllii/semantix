@@ -248,6 +248,34 @@ func TestServeWorkspaceWorkbenchContract(t *testing.T) {
 	}
 }
 
+// TestServeWorkspaceComposerContract pins GUI-8's composer boundary: browser
+// actions use the existing HTTP routes and never alter permission mode locally.
+func TestServeWorkspaceComposerContract(t *testing.T) {
+	html := string(workspaceHTML)
+	for _, want := range []string{
+		`data-ws-composer`, `data-ws-input`, `data-ws-send`, `data-ws-cancel`,
+		`data-ws-attach`, `data-ws-attachment-input`, `data-ws-permission`,
+		`type="submit"`, `hidden`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("workspace composer missing hook %q", want)
+		}
+	}
+	js := string(workspaceShellJS)
+	for _, want := range []string{
+		`function sendComposer`, `function cancelComposer`, `function initComposer`,
+		`postJSON("/submit"`, `postJSON("/cancel"`, `data-ws-permission-label`,
+		`当前任务正在运行，请等待完成或先中止`, `内容未上传`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("workspace composer behavior missing %q", want)
+		}
+	}
+	if strings.Contains(js, `postJSON("/tool-approval-mode"`) || strings.Contains(js, `postJSON("/bypass"`) {
+		t.Error("workspace composer must not change permission mode from the browser")
+	}
+}
+
 // TestServeSessionsExposeInFlight verifies the /sessions payload the sidebar
 // consumes: entries keep name/path identity and can flag running sessions via
 // the existing branch sidecar marker — still one shared data model (#406).
