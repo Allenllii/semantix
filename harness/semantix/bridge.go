@@ -36,6 +36,12 @@ type Config struct {
 	Inject bool
 	// Budget caps the L2 injection block size in bytes (default 4096).
 	Budget int
+	// GreyMode controls the grey-zone injection policy: "" / "drop" keeps
+	// the fail-closed default (only zone.Hit slices injected); "audit"
+	// admits grey slices under a separate unverified marker so grey-zone
+	// hit-rate loss is measurable instead of silent (W3 of the efficiency
+	// plan; GW4 measured 8/10 repeated tasks landing in grey).
+	GreyMode string
 	// SessionsDir is where the session JSONL mirror is written; empty uses
 	// <controller session dir>/sessions.
 	SessionsDir string
@@ -177,11 +183,12 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 	closeSliceStore(store)
 	z := zone.Default()
 	inj, err := (&inject.Injector{
-		Index:  idx,
-		Scope:  slice.Project,
-		K:      5,
-		Budget: budget,
-		Zones:  &z,
+		Index:     idx,
+		Scope:     slice.Project,
+		K:         5,
+		Budget:    budget,
+		Zones:     &z,
+		AllowGrey: b.cfg.GreyMode == "audit",
 	}).Build(query)
 	if err != nil || inj == nil || len(inj.Slices) == 0 {
 		return InjectResult{}
