@@ -84,6 +84,15 @@ type Injector struct {
 	// reusable slices (zone.Hit) enter the block; grey/miss candidates are
 	// skipped (Krites §3.1 — the grey zone must be verified, not injected).
 	Zones *zone.Zones
+	// AllowGrey switches the grey policy from drop (default, fail-closed)
+	// to audit: grey-zone slices enter the block under a distinct
+	// "(grey, unverified)" header — clearly separated from verified hits so
+	// the model treats them as hints, not ground truth. Rationale: GW4
+	// measured 8 of 10 repeated tasks landing in grey, so a hard drop
+	// silently forfeits most of the reuse value; the audit mode keeps the
+	// grey signal measurable (Injection.GreyIncluded) and injectable while
+	// preserving the verified/grey boundary inside the block.
+	AllowGrey bool
 }
 
 // Injection is the assembled, deterministic reuse block.
@@ -92,6 +101,10 @@ type Injection struct {
 	Text    string         // marker-wrapped block to place in the compose step
 	Bytes   int
 	Dropped int // slices dropped by zone filter or budget (whole-slice truncation)
+	// GreyIncluded counts grey-zone slices admitted under AllowGrey (audit
+	// mode). Zero in the default drop mode; a persistent non-zero value is
+	// the signal to recalibrate zone thresholds (W3 of the efficiency plan).
+	GreyIncluded int
 }
 
 const (
@@ -121,6 +134,8 @@ func (in *Injector) Build(query string) (*Injection, error) {
 	}
 
 	var kept []*slice.Slice
+	var grey []*slice.Slice
+	var greyKept []*slice.Slice
 	var dropped int
 	var buf bytes.Buffer
 	buf.WriteString(blockOpen)
@@ -128,9 +143,21 @@ func (in *Injector) Build(query string) (*Injection, error) {
 		if in.MinScore > 0 && h.Score < in.MinScore {
 			continue
 		}
-		if in.Zones != nil && in.Zones.Classify(h.Score, top1) != zone.Hit {
-			dropped++
-			continue
+		if in.Zones != nil {
+			switch in.Zones.Classify(h.Score, top1) {
+			case zone.Hit:
+				// verified: admitted below
+			case zone.Grey:
+				if !in.AllowGrey {
+					dropped++
+					continue
+				}
+				grey = append(grey, h.Slice)
+				continue
+			default: // miss
+				dropped++
+				continue
+			}
 		}
 		if buf.Len()+len(h.Slice.Content)+len(blockClose)+64 > budget && len(kept) > 0 {
 			dropped++
@@ -142,19 +169,36 @@ func (in *Injector) Build(query string) (*Injection, error) {
 
 	// Canonical order: ID-sorted for byte-stable output (never score order).
 	sort.Slice(kept, func(i, j int) bool { return kept[i].ID < kept[j].ID })
+	sort.Slice(grey, func(i, j int) bool { return grey[i].ID < grey[j].ID })
 
 	// Rebuild the text in canonical order (the first pass wrote score order).
+	// Grey slices form a visually separate tail section: same block, but the
+	// per-slice header marks them unverified. The budget bound still applies
+	// to grey slices — audit mode must not become a budget bypass.
 	buf.Reset()
 	buf.WriteString(blockOpen)
 	for _, sl := range kept {
 		fmt.Fprintf(&buf, "--- slice %s ---\n%s\n", sl.ID, escapeMarker(string(sl.Content)))
 	}
+	for _, sl := range grey {
+		if buf.Len()+len(sl.Content)+len(blockClose)+64 > budget && len(kept) > 0 {
+			break
+		}
+		fmt.Fprintf(&buf, "--- slice %s (grey, unverified) ---\n%s\n", sl.ID, escapeMarker(string(sl.Content)))
+		greyKept = append(greyKept, sl)
+	}
 	buf.WriteString(blockClose)
 
+	// Canonical order: the union is ID-sorted (byte-stable injection
+	// invariant); the grey tail in Text is a display-layer distinction.
+	admitted := append(kept, greyKept...)
+	sort.Slice(admitted, func(i, j int) bool { return admitted[i].ID < admitted[j].ID })
+
 	return &Injection{
-		Slices:  kept,
-		Text:    buf.String(),
-		Bytes:   buf.Len(),
-		Dropped: dropped,
+		Slices:       admitted,
+		Text:         buf.String(),
+		Bytes:        buf.Len(),
+		Dropped:      dropped,
+		GreyIncluded: len(greyKept),
 	}, nil
 }
