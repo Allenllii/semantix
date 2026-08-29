@@ -28,6 +28,7 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	fingerprintPaths := flags.String("fingerprint", "", "comma-separated relative paths to fingerprint (sha256) into each slice's Deps")
 	l3Safe := flags.Bool("l3-safe", false, "mark dependency-free Result slices as explicitly L3-reusable (opt-in; ignored when --fingerprint is set)")
 	embedder := flags.String("embedder", "hash", "embedder for stored slices: hash (default, zero-dependency) | model (remote OpenAI-compatible API; see SEMANTIX_EMBED_* env)")
+	tStepSplit := flags.Bool("t-step-split", false, "split tool sequences into subtask-level T-slices at verification (test) boundaries")
 	if err := flags.Parse(args); err != nil {
 		return usageWrap(err)
 	}
@@ -48,6 +49,9 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	}
 
 	extractor := deps.newExtractor()
+	if *tStepSplit {
+		extractor = slice.NewExtractorWithOptions(slice.ExtractOptions{TStepSplit: true})
+	}
 	if extractor == nil {
 		return errors.New("slice extractor is unavailable; merge the U4 implementation first")
 	}
