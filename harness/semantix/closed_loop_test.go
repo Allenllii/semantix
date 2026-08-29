@@ -20,7 +20,7 @@ func TestBridgePersistsPrefetchAndEvolutionEventsInSessionJSONL(t *testing.T) {
 	b.Events().Emit(kernelevent.Event{Kind: kernelevent.SliceHit, SessionID: "session-c4", At: time.Now().UTC(), Data: hitData})
 	b.Events().Emit(kernelevent.Event{Kind: kernelevent.SliceInject, SessionID: "session-c4", At: time.Now().UTC(), Data: injectData})
 	for turn := 1; turn <= 60; turn++ {
-		b.RecordPrefetch(false, []string{"slice-a"}, turn)
+		b.RecordPrefetch(false, []string{"slice-a"}, nil, turn, 0)
 	}
 	if err := b.Close(); err != nil {
 		t.Fatal(err)

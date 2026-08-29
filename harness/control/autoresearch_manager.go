@@ -1,7 +1,7 @@
 package control
 
 // legacyResearchArchive is a read-only compatibility boundary for Goal
-// sidecars and prompts that still reference an old .reasonix/autoresearch
+// sidecars and prompts that still reference an old .semantix/autoresearch
 // task. New Goal runs never create, update, list, or expose those archives.
 
 import (

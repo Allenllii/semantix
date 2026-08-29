@@ -89,7 +89,8 @@ func TestWarmPopulatesCacheInBackground(t *testing.T) {
 	fail.Store(false)
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if confirm, ok := cj.Cache.Get(VerdictKey("q", "s")); ok {
+		// Primary-rubric warm lands under the "p" namespace.
+		if confirm, ok := cj.Cache.Get("p" + VerdictKey("q", "s")); ok {
 			if !confirm {
 				t.Fatal("warmed verdict should be confirm")
 			}

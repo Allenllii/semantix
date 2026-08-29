@@ -62,7 +62,7 @@ func seedGreyCandidate(t *testing.T, g *Gateway, id, query string) {
 	seed(t, g, &slice.Slice{
 		ID: id, Type: slice.Result, Scope: slice.Project,
 		Content: []byte(query + " " + query + " cached answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	})
 }
 

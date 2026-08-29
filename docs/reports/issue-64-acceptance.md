@@ -1,7 +1,7 @@
 # Issue #64 验收报告 — M1-U13b: fork 端到端闭环验证
 
 > 状态：验证通过（2026-08-13）。对应 Issue：`#64 M1-U13b: fork 端到端闭环验证
-> （Reasonix fork 挂载后真实会话跑注入）`。
+> （Semantix fork 挂载后真实会话跑注入）`。
 > 验证规格：`docs/specs/issue-64-fork-e2e.md`。
 > 挂载设计真源：`docs/reports/h1-mount-design.md`（U7 HarnessSink / U8a inject / U8b lookup）。
 
@@ -18,7 +18,7 @@
 | 项 | 值 |
 |---|---|
 | 日期 | 2026-08-13 |
-| 模型 | deepseek/deepseek-v4-flash（fork reasonix 会话默认模型） |
+| 模型 | deepseek/deepseek-v4-flash（fork semantix 会话默认模型） |
 | semantix 二进制 | `C:\Users\liwen\go\bin\semantix.exe`（`go install ./cmd/semantix`） |
 | fork 仓库 | Gnosil/DeepSeek-Reasonix @ main（U7/U8 挂载已合入，守卫测试 PASS 记录于 `docs/reports/customer-delivery.md`） |
 | 会话旁路产物 | `.semantix/sessions/boot-1.jsonl`（73 行：4 user + 4 assistant + 65 tool/error 行） |
@@ -60,7 +60,7 @@ semantix inject --query "缓存命中 为什么 那么高" --scope user --db use
 ```
 
 - 连续两次输出 sha256：`d695f0f8a75aa63a4ca60bc902dff15cbf0a079a4b568bff3674b7256719f296`（两次相同）
-- **字节稳定性确认**：注入块可被厂商前缀缓存稳定吸收（L2 前提，见 `docs/reports/reasonix-kvcache-mechanisms.md`）
+- **字节稳定性确认**：注入块可被厂商前缀缓存稳定吸收（L2 前提，见 `docs/reports/semantix-kvcache-mechanisms.md`）
 
 ## 5. fork 侧回归状态
 
@@ -71,7 +71,7 @@ semantix inject --query "缓存命中 为什么 那么高" --scope user --db use
 
 > 说明：fork 仓库为独立 clone，本次验证未重复拉取 fork 代码（本机网络对
 > github.com 直连不稳，此前惯例走 gh api / goproxy.cn 旁路）。若需独立复跑
-> fork 守卫测试，见 `docs/reports/reasonix-kvcache-mechanisms.md` §6 的
+> fork 守卫测试，见 `docs/reports/semantix-kvcache-mechanisms.md` §6 的
 > `cache-guard.sh` 路径。
 
 ## 6. 结论

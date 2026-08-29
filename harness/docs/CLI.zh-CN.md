@@ -1,4 +1,4 @@
-# Reasonix CLI 命令参考
+# Semantix CLI 命令参考
 
 <a href="../README.zh-CN.md">README</a>
 &nbsp;·&nbsp;
@@ -12,14 +12,14 @@
 ## 启动会话
 
 ```sh
-reasonix
-reasonix --model deepseek-pro
-reasonix --profile delivery --effort high
-reasonix --dir /path/to/project
+semantix-agent
+semantix-agent --model deepseek-pro
+semantix-agent --profile delivery --effort high
+semantix-agent --dir /path/to/project
 ```
 
-不带子命令运行 `reasonix` 会进入交互式终端界面。尚未配置 provider 时，先运行
-`reasonix setup`。
+不带子命令运行 `semantix-agent` 会进入交互式终端界面。尚未配置 provider 时，先运行
+`semantix-agent setup`。
 
 | 参数 | 用途 |
 | --- | --- |
@@ -41,25 +41,25 @@ reasonix --dir /path/to/project
 ## 更新原生 CLI
 
 ```sh
-reasonix upgrade                  # 安装最新正式版
-reasonix upgrade --check          # 只报告目标版本
-reasonix upgrade --force          # 重新安装当前正式版
+semantix-agent upgrade                  # 安装最新正式版
+semantix-agent upgrade --check          # 只报告目标版本
+semantix-agent upgrade --force          # 重新安装当前正式版
 ```
 
 更新器只选择严格的 `vX.Y.Z` 非 prerelease GitHub Release。1.x 兼容期内，旧渠道
 位置参数与 `--channel` 仍可使用，但都会解析到同一正式版并打印废弃提示。历史
-`[cli].update_channel` 值不再影响更新，并会在 Reasonix 下次保存配置时移除。别名
-`reasonix update` 的行为完全相同。
+`[cli].update_channel` 值不再影响更新，并会在 Semantix 下次保存配置时移除。别名
+`semantix-agent update` 的行为完全相同。
 
 ## 配置供应商
 
 ```sh
-reasonix setup                    # 管理用户全局配置
-reasonix setup --local            # 管理 ./reasonix.toml
-reasonix setup /path/to/config.toml
+semantix-agent setup                    # 管理用户全局配置
+semantix-agent setup --local            # 管理 ./semantix-agent.toml
+semantix-agent setup /path/to/config.toml
 ```
 
-在交互式终端中，`reasonix setup` 是一个暂存式供应商管理器。它会列出已配置的
+在交互式终端中，`semantix-agent setup` 是一个暂存式供应商管理器。它会列出已配置的
 provider，并支持：
 
 - 添加 OpenAI-compatible 或 Anthropic-compatible provider；
@@ -73,7 +73,7 @@ provider，并支持：
 不会直接覆盖。
 
 Provider 定义只保存 `api_key_env` 变量名。即使使用 `--local`，Key 的真实值也始终保存
-在 CLI 与桌面端共用的 Reasonix 全局 `.env` 中。如果变量名已被其他 provider 使用，
+在 CLI 与桌面端共用的 Semantix 全局 `.env` 中。如果变量名已被其他 provider 使用，
 setup 会询问是否共享该凭据；两个 provider 使用不同 Key 时，应改用不同变量名。通过
 setup 添加或删除 provider 时，也会同步维护桌面端 provider access，因此相同模型可以
 直接在桌面端使用。
@@ -83,15 +83,15 @@ setup 添加或删除 provider 时，也会同步维护桌面端 provider access
 使用用户全局货币命令查看或选择 DeepSeek 官方区域价格表：
 
 ```sh
-reasonix config currency             # 显示已保存值和最终解析结果
-reasonix config currency auto        # 跟随解析后的 locale
-reasonix config currency CNY
-reasonix config currency USD
+semantix-agent config currency             # 显示已保存值和最终解析结果
+semantix-agent config currency auto        # 跟随解析后的 locale
+semantix-agent config currency CNY
+semantix-agent config currency USD
 ```
 
 `auto` 会把简体或繁体中文 locale 解析为 CNY，把英文及其他 locale 解析为 USD。显式
 选择 `CNY` 或 `USD` 后，货币不再跟随界面语言。该偏好只保存在用户全局配置中，项目
-`reasonix.toml` 无法覆盖，因此不支持 `--local`。自定义 provider 价格不会被修改。
+`semantix-agent.toml` 无法覆盖，因此不支持 `--local`。自定义 provider 价格不会被修改。
 
 在交互式会话中，`/currency` 显示已保存值和最终解析结果；
 `/currency auto|CNY|USD` 会修改偏好并刷新当前运行时，同时保留当前对话。
@@ -102,13 +102,13 @@ reasonix config currency USD
 或为当前项目添加覆盖：
 
 ```sh
-reasonix config compact-ratio              # 查看生效值及来源
-reasonix config compact-ratio 75           # 设置用户全局默认值
-reasonix config compact-ratio --local 75   # 写入 ./reasonix.toml 项目覆盖
+semantix-agent config compact-ratio              # 查看生效值及来源
+semantix-agent config compact-ratio 75           # 设置用户全局默认值
+semantix-agent config compact-ratio --local 75   # 写入 ./semantix-agent.toml 项目覆盖
 ```
 
 可设置范围为 65–85%，内置默认值为 80%。数值越低越早压缩，可能降低 prompt prefix
-缓存复用率；数值越高则会在压缩前保留更多上下文。项目 `reasonix.toml` 的优先级高于
+缓存复用率；数值越高则会在压缩前保留更多上下文。项目 `semantix-agent.toml` 的优先级高于
 用户全局配置。修改会应用于新启动的 CLI 会话；已经运行的会话继续使用启动时加载的阈值。
 
 ## 一次性运行与自动化
@@ -116,14 +116,14 @@ reasonix config compact-ratio --local 75   # 写入 ./reasonix.toml 项目覆盖
 脚本只需要最终回答时，使用 `-p` / `--print`：
 
 ```sh
-reasonix -p "总结这个仓库"
-reasonix -p "总结这个仓库" --output-format json
-reasonix run "实现 main.go 里的 TODO"
-reasonix run --auto "实现 main.go 里的 TODO"
-echo "解释这段代码" | reasonix run
+semantix-agent -p "总结这个仓库"
+semantix-agent -p "总结这个仓库" --output-format json
+semantix-agent run "实现 main.go 里的 TODO"
+semantix-agent run --auto "实现 main.go 里的 TODO"
+echo "解释这段代码" | semantix-agent run
 ```
 
-未使用 `-p` 或结构化输出格式时，`reasonix run` 保持正常的终端流式展示。它也接受
+未使用 `-p` 或结构化输出格式时，`semantix-agent run` 保持正常的终端流式展示。它也接受
 `--model`、`--profile`、`--max-steps`、`--effort`、`--dir`、`--add-dir`、
 `--continue`、`--resume QUERY`、`--copy`、`--allowed-tools` 和
 `--permission-mode`，以及作为 `--permission-mode auto` 别名的 `--auto` / `-y`。
@@ -136,10 +136,10 @@ echo "解释这段代码" | reasonix run
 `--metrics` 文件，因此记录下来的每次运行都能自证跑的是哪一组。
 
 ```sh
-reasonix run --ablate evidence,planner --metrics run.json "修复失败的测试"
+semantix-agent run --ablate evidence,planner --metrics run.json "修复失败的测试"
 ```
 
-这是测量工具，不是调优开关：关掉某个子系统只会让 Reasonix 在它本来负责的工作上变差。
+这是测量工具，不是调优开关：关掉某个子系统只会让 Semantix 在它本来负责的工作上变差。
 
 ### 轨迹记录
 
@@ -152,7 +152,7 @@ JSONL 记录，便于离线回放并归因时间去向（工具执行 vs. 两次
 转录一样谨慎处理。
 
 ```sh
-reasonix run --metrics run.json --trajectory run.trajectory.jsonl "修复失败的测试"
+semantix-agent run --metrics run.json --trajectory run.trajectory.jsonl "修复失败的测试"
 ```
 
 ### 输出格式
@@ -164,9 +164,9 @@ reasonix run --metrics run.json --trajectory run.trajectory.jsonl "修复失败�
 | `stream-json` | 每行输出一个共用 `eventwire` JSON 对象，最后再输出最终结果对象。 |
 
 ```sh
-reasonix -p "列出有风险的改动" --output-format text
-reasonix -p "总结 diff" --output-format json
-reasonix run "运行测试" --output-format stream-json
+semantix-agent -p "列出有风险的改动" --output-format text
+semantix-agent -p "总结 diff" --output-format json
+semantix-agent run "运行测试" --output-format stream-json
 ```
 
 最终结构化对象的格式如下：
@@ -195,7 +195,7 @@ reasonix run "运行测试" --output-format stream-json
 `total_cost` 使用 `currency` 给出的 ISO 货币代码计价；DeepSeek 官方价格目前会输出
 `CNY` 或 `USD`。`total_cost_usd` 作为数字兼容别名继续保留，并与 `total_cost` 数值
 相同；即使 `currency` 为 `CNY`，它也不会按旧字段名自动换算为美元。新接入必须同时读取
-`total_cost` 和 `currency`。如果一次结构化运行包含多种货币，Reasonix 会直接报错，
+`total_cost` 和 `currency`。如果一次结构化运行包含多种货币，Semantix 会直接报错，
 不会输出容易误解的合计金额。
 
 执行失败时使用 `subtype: "error_during_execution"` 和 `is_error: true`。
@@ -207,7 +207,7 @@ reasonix run "运行测试" --output-format stream-json
 使用独立的事件参数：
 
 ```sh
-reasonix run --events-jsonl "运行 focused tests"
+semantix-agent run --events-jsonl "运行 focused tests"
 ```
 
 每行都包含 `schema_version`、`sequence` 和 `kind`，最后一行为
@@ -217,32 +217,32 @@ reasonix run --events-jsonl "运行 focused tests"
 
 以下只读命令可以查询持久化状态，但不会输出 transcript、label、command、output、路径、
 PID 或 hostname。这里的“只读”是指不会修改 transcript、runtime、recovery 或被查询的
-状态；首次使用脱敏机器接口时，Reasonix 可能会在用户状态目录初始化一个私有身份密钥：
+状态；首次使用脱敏机器接口时，Semantix 可能会在用户状态目录初始化一个私有身份密钥：
 
 ```sh
-reasonix session list --json [--dir SESSION_DIR | --project-root PATH]
-reasonix session show <machine-session-id> --json [--dir SESSION_DIR | --project-root PATH]
-reasonix session status <machine-session-id> --json [--dir SESSION_DIR | --project-root PATH]
-reasonix session recovery [<machine-session-id>] --json [--dir SESSION_DIR | --project-root PATH]
-reasonix task list --json [--dir SESSION_DIR | --project-root PATH] [--session MACHINE_SESSION_ID]
-reasonix task show <task-id> --json [--dir SESSION_DIR | --project-root PATH] [--session MACHINE_SESSION_ID]
-reasonix task monitor list --json [--dir PROJECT_DIR]
-reasonix task monitor status <task-id> --json [--dir PROJECT_DIR]
-reasonix task monitor events <task-id> --json|--jsonl [--dir PROJECT_DIR] [--after N] [--follow]
-reasonix hook list --json [--project-root PATH] [--home-dir PATH]
-reasonix hook status --json [--project-root PATH] [--home-dir PATH]
+semantix-agent session list --json [--dir SESSION_DIR | --project-root PATH]
+semantix-agent session show <machine-session-id> --json [--dir SESSION_DIR | --project-root PATH]
+semantix-agent session status <machine-session-id> --json [--dir SESSION_DIR | --project-root PATH]
+semantix-agent session recovery [<machine-session-id>] --json [--dir SESSION_DIR | --project-root PATH]
+semantix-agent task list --json [--dir SESSION_DIR | --project-root PATH] [--session MACHINE_SESSION_ID]
+semantix-agent task show <task-id> --json [--dir SESSION_DIR | --project-root PATH] [--session MACHINE_SESSION_ID]
+semantix-agent task monitor list --json [--dir PROJECT_DIR]
+semantix-agent task monitor status <task-id> --json [--dir PROJECT_DIR]
+semantix-agent task monitor events <task-id> --json|--jsonl [--dir PROJECT_DIR] [--after N] [--follow]
+semantix-agent hook list --json [--project-root PATH] [--home-dir PATH]
+semantix-agent hook status --json [--project-root PATH] [--home-dir PATH]
 ```
 
 对于 `session` 和 `task`，`--dir` 明确指定 session 存储目录，`--project-root`
-则解析指定项目的 session store；两者不能同时使用。都未指定时，Reasonix 选择当前
+则解析指定项目的 session store；两者不能同时使用。都未指定时，Semantix 选择当前
 项目的 session store。对于 `hook`，`--dir` 是 `--project-root` 的别名。
 `hook list` 的状态值为 `active` 或 `invalid`；`invalid` 表示配置的
 event 因事件名、命令/context 来源或工具事件 matcher 无效而无法执行。非工具事件
 会忽略 matcher。
 
-机器 session ID 是带密钥的 opaque hash，不是 transcript 文件名。在同一个 Reasonix
+机器 session ID 是带密钥的 opaque hash，不是 transcript 文件名。在同一个 Semantix
 用户状态目录中，同一 session 的 ID 保持稳定；不同安装密钥会生成互不关联的 ID，无法再
-根据时间戳或模型 label 离线猜测。迁移 Reasonix 状态目录时，如果自动化依赖已有 machine
+根据时间戳或模型 label 离线猜测。迁移 Semantix 状态目录时，如果自动化依赖已有 machine
 ID，需要一并保留该私有身份密钥。任务仍在运行时
 `finished_at` 为空；只有任务已经结束并且持久化产物存在时，才会输出
 `artifact_complete=true`。没有 live session lease 的 `running` 记录会显示为
@@ -259,11 +259,11 @@ Schema version 1 的兼容规则：
 ## 恢复会话
 
 ```sh
-reasonix --continue
-reasonix --resume
-reasonix --resume provider-config
-reasonix --resume <session-id>
-reasonix --resume provider-config --copy
+semantix-agent --continue
+semantix-agent --resume
+semantix-agent --resume provider-config
+semantix-agent --resume <session-id>
+semantix-agent --resume provider-config --copy
 ```
 
 - `--continue` 立即恢复最新保存的会话。
@@ -272,20 +272,20 @@ reasonix --resume provider-config --copy
   子串。没有匹配或匹配不唯一时会返回明确错误。
 - 为保持兼容，仍接受 `--resume=true` 和 `--resume=false`。
 - `--copy` 不修改原 transcript，而是在新的可写会话中继续。原会话已被另一个
-  Reasonix 进程占用时可以使用它。
+  Semantix 进程占用时可以使用它。
 
-一次性运行可用 `reasonix run --resume QUERY "任务"`，支持 session 文件路径、
-session ID，或来自 `--events-jsonl` / `reasonix session show --json` 的不透明
+一次性运行可用 `semantix-agent run --resume QUERY "任务"`，支持 session 文件路径、
+session ID，或来自 `--events-jsonl` / `semantix-agent session show --json` 的不透明
 machine session ID。Session lease 会阻止桌面端和 CLI 同时写入同一个 transcript。
 
 ## 权限
 
 ```sh
-reasonix --permission-mode plan
-reasonix --permission-mode acceptEdits
-reasonix -p "运行指定测试" --allowed-tools "Bash(go test ./...)"
-reasonix --allowed-tools "Bash(git *) Edit"
-reasonix --allowed-tools "Bash(go test ./...)" --allowed-tools read_file
+semantix-agent --permission-mode plan
+semantix-agent --permission-mode acceptEdits
+semantix-agent -p "运行指定测试" --allowed-tools "Bash(go test ./...)"
+semantix-agent --allowed-tools "Bash(git *) Edit"
+semantix-agent --allowed-tools "Bash(go test ./...)" --allowed-tools read_file
 ```
 
 | 模式 | 行为 |
@@ -297,13 +297,13 @@ reasonix --allowed-tools "Bash(go test ./...)" --allowed-tools read_file
 | `plan` | 以只读 Plan 模式启动交互式会话。 |
 | `bypassPermissions` | 跳过审批；等同于 YOLO。 |
 
-无人值守执行需要放行普通 writer fallback 时，使用 `reasonix run --auto ...`
+无人值守执行需要放行普通 writer fallback 时，使用 `semantix-agent run --auto ...`
 （或 `-y`）。这个别名不能和显式 `--permission-mode` 同时使用。
 
 `--allowed-tools` 是会话权限覆盖，不是 provider tool schema 过滤器。规则可以用逗号
 或空格分隔，也可重复传入参数。配置中的 deny 规则始终优先于命令行 allow 规则。
 
-在非交互运行（`reasonix run` / `-p`）下没有可应答的审批，各模式都以非阻塞方式解析。
+在非交互运行（`semantix-agent run` / `-p`）下没有可应答的审批，各模式都以非阻塞方式解析。
 默认 `ask` / `manual` 对显式 Ask 决策和普通 writer fallback 失败关闭，只读调用仍会执行；
 `acceptEdits` 放行其列出的文件编辑工具，其他 Ask 决策失败关闭；`auto` 放行普通 writer
 fallback，但仍拒绝显式 ask 规则；`dontAsk` 拒绝未批准的 writer；`bypassPermissions`
@@ -315,13 +315,13 @@ fallback，但仍拒绝显式 ask 规则；`dontAsk` 拒绝未批准的 writer�
 ## 附加目录
 
 ```sh
-reasonix --add-dir ../shared
-reasonix -p "同时更新两个项目" \
+semantix-agent --add-dir ../shared
+semantix-agent -p "同时更新两个项目" \
   --add-dir ../frontend \
   --add-dir ../backend
 ```
 
-相对路径从 workspace 根目录解析，并且必须是已存在的目录。Reasonix 会解析符号链接、
+相对路径从 workspace 根目录解析，并且必须是已存在的目录。Semantix 会解析符号链接、
 去重，并在当前会话中扩展文件写入工具和沙盒 Bash 的写入边界。这些目录只在运行时生效，
 不会写入配置。
 
@@ -353,10 +353,10 @@ reasonix -p "同时更新两个项目" \
 
 剪贴板操作按内容类型明确分开。本地 transcript 和输入框选区写入系统剪贴板，并且只有写入
 成功后才提示完成；SSH 会回退到明确标记的 OSC 52 请求。文本粘贴继续走终端的
-bracketed-paste 动作（macOS 通常为 `Cmd+V`，其它平台使用终端自身配置）。Reasonix 接管
+bracketed-paste 动作（macOS 通常为 `Cmd+V`，其它平台使用终端自身配置）。Semantix 接管
 本地会话的鼠标时，没有选区的右键会读取剪贴板文本并走同一粘贴路径，有选区时右键优先复制。
 SSH 下远端进程无法读取本机剪贴板，请使用终端粘贴快捷键；`/mouse` 可恢复终端原生右键菜单。
-图片粘贴由 Reasonix 接管：macOS/Linux 使用 `Ctrl+V`，Windows 使用 `Alt+V`，也可运行
+图片粘贴由 Semantix 接管：macOS/Linux 使用 `Ctrl+V`，Windows 使用 `Alt+V`，也可运行
 `/paste-image`；附件标记准备完成前，底栏会显示“正在粘贴图片…”。
 
 ## 会话内命令
@@ -381,7 +381,7 @@ SSH 下远端进程无法读取本机剪贴板，请使用终端粘贴快捷键�
 | `/sandbox` | 查看沙盒状态。 |
 | `/goal` | 启动、查看或清除长周期 Goal。 |
 | `/docs [问题]` | 显示内置语料身份，或先本地检索，再让当前配置的 AI 根据版本匹配证据回答。 |
-| `/reasonix:docs [问题]` | 当已有自定义命令或兼容插件/Skill 别名占用 `/docs` 时优先使用的内置后备入口；若这个名称也已被占用，菜单会选择下一个空闲的 `reasonix:` 限定名，不覆盖原命令。 |
+| `/semantix:docs [问题]` | 当已有自定义命令或兼容插件/Skill 别名占用 `/docs` 时优先使用的内置后备入口；若这个名称也已被占用，菜单会选择下一个空闲的 `semantix:` 限定名，不覆盖原命令。 |
 | `/mcp`、`/skills`、`/hooks` | 查看和管理扩展。 |
 | `/remember <note>` | 把常驻 note 追加到项目指令文档；`# <note>` 是快捷方式。 |
 | `/memory [subcommand]` | 查看指令、记忆 provenance、召回、revision 与恢复。 |
@@ -407,7 +407,7 @@ SSH 下远端进程无法读取本机剪贴板，请使用终端粘贴快捷键�
 | `/memory archived` | 列出 archive facts 及其受管路径。 |
 | `/memory recover <archive-path>` | 不覆盖 active data，把 archive 恢复为新 revision。 |
 
-这些命令始终作用于当前 session controller。当会话位于远端主机上（`reasonix remote
+这些命令始终作用于当前 session controller。当会话位于远端主机上（`semantix-agent remote
 connect` 或桌面的远程网页窗口）时，它们使用远程 memory catalog，绝不回退读取桌面本机
 记忆。权限、自动召回、写入确认和迁移行为见
 [Context Engine v2](./SESSION_MEMORY_RETRIEVAL.zh-CN.md)。

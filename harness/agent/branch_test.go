@@ -12,8 +12,8 @@ import (
 )
 
 func TestBranchMetaCrossProcessReadModifyWrite(t *testing.T) {
-	if os.Getenv("REASONIX_META_LOCK_HELPER") == "1" {
-		path := os.Getenv("REASONIX_META_LOCK_PATH")
+	if os.Getenv("SEMANTIX_META_LOCK_HELPER") == "1" {
+		path := os.Getenv("SEMANTIX_META_LOCK_PATH")
 		unlock, err := LockSessionMetaPath(path)
 		if err != nil {
 			t.Fatal(err)
@@ -28,12 +28,12 @@ func TestBranchMetaCrossProcessReadModifyWrite(t *testing.T) {
 			unlock()
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(os.Getenv("REASONIX_META_READY"), []byte("ready"), 0o600); err != nil {
+		if err := os.WriteFile(os.Getenv("SEMANTIX_META_READY"), []byte("ready"), 0o600); err != nil {
 			unlock()
 			t.Fatal(err)
 		}
 		for {
-			if _, err := os.Stat(os.Getenv("REASONIX_META_RELEASE")); err == nil {
+			if _, err := os.Stat(os.Getenv("SEMANTIX_META_RELEASE")); err == nil {
 				break
 			}
 			time.Sleep(5 * time.Millisecond)
@@ -51,10 +51,10 @@ func TestBranchMetaCrossProcessReadModifyWrite(t *testing.T) {
 	release := filepath.Join(dir, "release")
 	cmd := exec.Command(os.Args[0], "-test.run", "^TestBranchMetaCrossProcessReadModifyWrite$")
 	cmd.Env = append(os.Environ(),
-		"REASONIX_META_LOCK_HELPER=1",
-		"REASONIX_META_LOCK_PATH="+path,
-		"REASONIX_META_READY="+ready,
-		"REASONIX_META_RELEASE="+release,
+		"SEMANTIX_META_LOCK_HELPER=1",
+		"SEMANTIX_META_LOCK_PATH="+path,
+		"SEMANTIX_META_READY="+ready,
+		"SEMANTIX_META_RELEASE="+release,
 	)
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)

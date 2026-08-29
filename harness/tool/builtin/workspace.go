@@ -24,7 +24,7 @@ import (
 // root, so writes stay inside the project by default. ForbidReadRoots confines
 // the read/list/search built-ins so they cannot peek at the listed directories.
 // Bash is the OS-sandbox spec for the bash tool (as ConfineBash). SessionGuard
-// rejects writer-tool targets inside Reasonix's own session stores and makes
+// rejects writer-tool targets inside Semantix's own session stores and makes
 // bash warn when a command references them (see SessionDataGuard).
 type Workspace struct {
 	Dir             string
@@ -36,7 +36,7 @@ type Workspace struct {
 	ProxySpec       netclient.ProxySpec
 	ReadPaths       *PathResolver
 	SessionGuard    SessionDataGuard
-	// ManagedConfig names the Reasonix-owned config files the file-writers may
+	// ManagedConfig names the Semantix-owned config files the file-writers may
 	// touch outside WriteRoots after a fresh per-write human approval (see
 	// ManagedConfigPaths). The zero value disables the escape hatch.
 	ManagedConfig ManagedConfigPaths

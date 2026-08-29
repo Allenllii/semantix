@@ -72,6 +72,7 @@ type tuiDiagnostics struct {
 	generation          uint64 // increments on each idle→running transition
 	lastHeartbeat       time.Time
 	lastHeartbeatSource string
+	lastIdleLog         time.Time // idle checks stay 1 Hz; diagnostic lines are sampled
 	// escalatedGeneration is the generation currently inside dump/cancel/grace
 	// (0 means none). Cleared when a heartbeat aborts the grace window so a
 	// later stall can re-enter escalation for hard-kill only.
@@ -114,14 +115,14 @@ type realTicker struct{ *time.Ticker }
 
 func (t realTicker) C() <-chan time.Time { return t.Ticker.C }
 
-func startTUIDiagnostics(reasonixHome string) *tuiDiagnostics {
+func startTUIDiagnostics(semantixHome string) *tuiDiagnostics {
 	d := &tuiDiagnostics{
 		previous:  slog.Default(),
 		writer:    io.Discard,
 		stopWatch: make(chan struct{}),
 		phase:     watchdogBooting,
 	}
-	if logDir := tuiDiagnosticLogDir(reasonixHome); logDir != "" {
+	if logDir := tuiDiagnosticLogDir(semantixHome); logDir != "" {
 		if err := os.MkdirAll(logDir, 0o700); err == nil {
 			pruneTUIDiagnosticLogs(logDir, time.Now())
 			if file, err := os.CreateTemp(logDir, "cli-tui-*.log"); err == nil {
@@ -341,6 +342,13 @@ func (d *tuiDiagnostics) onTick(now time.Time) {
 	hardKilledGen := d.hardKilledGen
 	statusFn := d.statusFn
 	cancelFn := d.cancelFn
+	if phase == watchdogIdle && !d.lastIdleLog.IsZero() && now.Sub(d.lastIdleLog) < time.Minute {
+		d.mu.Unlock()
+		return
+	}
+	if phase == watchdogIdle {
+		d.lastIdleLog = now
+	}
 	d.logfLocked("heartbeat t=%s phase=%s gen=%d last_progress_age=%s last_source=%s cancel_requested=%v hard_kill_phase=%v",
 		now.UTC().Format(time.RFC3339Nano),
 		phase,
@@ -583,11 +591,11 @@ func (d *tuiDiagnostics) Close() {
 	})
 }
 
-func tuiDiagnosticLogDir(reasonixHome string) string {
-	if strings.TrimSpace(reasonixHome) == "" {
+func tuiDiagnosticLogDir(semantixHome string) string {
+	if strings.TrimSpace(semantixHome) == "" {
 		return ""
 	}
-	return filepath.Join(reasonixHome, "logs")
+	return filepath.Join(semantixHome, "logs")
 }
 
 func pruneTUIDiagnosticLogs(logDir string, now time.Time) {
@@ -637,7 +645,7 @@ func (w *boundedDiagnosticWriter) Write(p []byte) (int, error) {
 	}
 	if n < total && !w.truncated {
 		w.truncated = true
-		_, _ = io.WriteString(w.dst, "\nreasonix: CLI TUI diagnostic log limit reached; further diagnostics omitted\n")
+		_, _ = io.WriteString(w.dst, "\nsemantix: CLI TUI diagnostic log limit reached; further diagnostics omitted\n")
 		w.remaining = 0
 	}
 	return total, nil

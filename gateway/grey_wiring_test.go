@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"semantix/kernel/embed"
+	"semantix/kernel/fuse"
 )
 
 // TestNewWiresGreyAuditMode: grey_mode=audit must set injector.AllowGrey;
@@ -26,18 +27,16 @@ func TestNewWiresGreyAuditMode(t *testing.T) {
 // index; the model backend implies the HNSW ANN index (buildEmbedder's
 // contract: real vectors at 10^4+ scale are where the O(n) scan breaks).
 func TestIndexKindPerBackend(t *testing.T) {
-	hashIdx := newRetriever(RetrieverSettings{Kind: "hybrid", Dim: 8})
+	hashIdx := newRetriever("hybrid", 8, fuse.Config{}, EmbedSettings{})
 	hh := hashIdx.(*hybridIndex)
 	if _, ok := hh.vec.vec.(*embed.VectorIndex); !ok {
 		t.Fatalf("hash backend vector index = %T, want *embed.VectorIndex", hh.vec.vec)
 	}
 
-	modelIdx := newRetriever(RetrieverSettings{
-		Kind:         "hybrid",
-		Dim:          8,
-		EmbedBackend: "model",
-		EmbedBaseURL: "http://127.0.0.1:1",
-		EmbedModel:   "m",
+	modelIdx := newRetriever("hybrid", 8, fuse.Config{}, EmbedSettings{
+		Backend: "model",
+		BaseURL: "http://127.0.0.1:1",
+		Model:   "m",
 	})
 	mh := modelIdx.(*hybridIndex)
 	// No API key in this test env: buildEmbedder degrades to hash+brute

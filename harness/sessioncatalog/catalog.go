@@ -42,7 +42,7 @@ type Catalog struct {
 	pathCh           chan sessionPathRequest
 	pathQueued       sync.Map
 	directoryLocksMu sync.Mutex
-	directoryLocks   map[string]*sync.Mutex
+	directoryLocks   map[string]*dirLockEntry
 	workerCtx        context.Context
 	workerCancel     context.CancelFunc
 	stop             chan struct{}
@@ -83,7 +83,7 @@ func Open(ctx context.Context, opts Options) (*Catalog, error) {
 		opts.InMemory = true
 	}
 	if !opts.InMemory {
-		if env := strings.TrimSpace(os.Getenv("REASONIX_SESSION_CATALOG_MEMORY")); env == "1" {
+		if env := strings.TrimSpace(os.Getenv("SEMANTIX_SESSION_CATALOG_MEMORY")); env == "1" {
 			opts.InMemory = true
 		}
 	}
@@ -96,7 +96,7 @@ func Open(ctx context.Context, opts Options) (*Catalog, error) {
 		reconcileCh:    make(chan DirectoryTarget, 64),
 		reconcileDirty: map[string]DirectoryTarget{},
 		pathCh:         make(chan sessionPathRequest, opts.QueueCapacity),
-		directoryLocks: map[string]*sync.Mutex{},
+		directoryLocks: map[string]*dirLockEntry{},
 		stop:           make(chan struct{}),
 		closeDone:      make(chan struct{}),
 		status:         Status{State: StateOpening, Path: opts.Path},

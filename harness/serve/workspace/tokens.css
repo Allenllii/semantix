@@ -1,0 +1,50 @@
+/* Semantix workspace shell design tokens (issue #404).
+   The brand green matches the official site's --primary
+   (site/src/app/globals.css). Permission orange is reserved for the
+   composer's access-level chip, per the GUI-1 mockup. */
+
+:root {
+  /* Brand */
+  --sx-green: oklch(0.608 0.14 165);
+  --sx-green-strong: #2dd4a0;
+  --sx-green-mark: #17b583;
+  --sx-green-dim: oklch(0.608 0.14 165 / 16%);
+  --sx-green-border: oklch(0.608 0.14 165 / 38%);
+
+  /* Permission / warning */
+  --sx-orange: #f5a623;
+  --sx-orange-dim: rgba(245, 166, 35, 12%);
+  --sx-orange-border: rgba(245, 166, 35, 38%);
+
+  /* Neutral layers, darkest to lightest */
+  --sx-bg-side: #08090a;
+  --sx-bg-canvas: #0d0f10;
+  --sx-surface: #141718;
+  --sx-surface-2: #1a1e20;
+  --sx-chip: #101314;
+  --sx-hover: rgba(255, 255, 255, 4%);
+  --sx-border: rgba(255, 255, 255, 6%);
+  --sx-border-strong: rgba(255, 255, 255, 11%);
+
+  /* Text */
+  --sx-text: #e9edeb;
+  --sx-text-2: #9ba39f;
+  --sx-text-3: #69736e;
+
+  /* Diff semantics */
+  --sx-del: #f47272;
+  --sx-del-bg: rgba(244, 114, 114, 9%);
+  --sx-add: #4ade80;
+  --sx-add-bg: rgba(74, 222, 128, 10%);
+
+  /* Typography */
+  --sx-font-sans: "DM Sans", "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --sx-font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+
+  /* Geometry */
+  --sx-radius-s: 8px;
+  --sx-radius-m: 12px;
+  --sx-radius-l: 18px;
+  --sx-side-w: 272px;
+  --sx-context-w: 420px;
+}

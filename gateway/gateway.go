@@ -18,11 +18,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"semantix/kernel/adapt"
 	"semantix/kernel/cache"
 	kernelevent "semantix/kernel/event"
 	"semantix/kernel/ingest"
 	"semantix/kernel/inject"
 	"semantix/kernel/judge"
+	"semantix/kernel/promote"
 	"semantix/kernel/slice"
 	"semantix/kernel/usage"
 	"semantix/kernel/zone"
@@ -38,6 +40,7 @@ type Gateway struct {
 	decider  *cache.L3Decider
 	injector *inject.Injector
 	usageLog *usage.Recorder
+	quota    *quotaEngine // nil unless [billing] enabled (gateway/quota.go)
 	client   *http.Client
 
 	// healthProbe checks upstream reachability for /healthz (nil or a
@@ -52,12 +55,35 @@ type Gateway struct {
 	closing    bool
 	disabled   bool // SEMANTIX_GATEWAY_DISABLE ablation switch
 
+	// Suspected-false-hit tracking (Issue #262 §3.3): the most recent L3
+	// reuse per session, bounded, so a same-session retry of a served
+	// query bypasses L3 and is recorded as L3FalseHit.
+	reuseMu  sync.Mutex
+	l3Reuses map[string]l3ReuseEntry
+
+	// Per-entry adaptive thresholds (Issue #259 阶段 3): the engine the
+	// decider consults and the feedback hooks feed; nil when adaptation
+	// is disabled by config. zones is the effective classifier snapshot
+	// (explicit config > evolve > defaults) used as the cold-start prior.
+	adapt *adapt.Engine
+	zones zone.Zones
+
 	now func() time.Time
 
 	// lexicalBlocks counts zone-Hit candidates downgraded by the lexical
 	// support gate (Issue #260), for hit-rate-loss accounting.
 	lexicalBlocks atomic.Int64
 }
+
+// l3ReuseEntry records one L3-served request per session (Issue #262).
+type l3ReuseEntry struct {
+	Query   string // the served query, for retry similarity
+	SliceID string
+	At      time.Time // LRU eviction timestamp
+}
+
+// maxL3ReuseEntries bounds the per-session reuse map (LRU eviction).
+const maxL3ReuseEntries = 1024
 
 // disableEnv reports the ablation switch SEMANTIX_GATEWAY_DISABLE. Only
 // truthy values disable ("1", "true", "yes", "on") — "0"/"false" must keep
@@ -84,20 +110,27 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gateway: open store %s: %w", cfg.Store.DB, err)
 	}
-	// Startup is a process boundary: fold any journal into the base before
-	// serving (freeze-window semantics — the library never shifts mid-flight).
-	// Best-effort: a failed fold still leaves a consistent store.
-	if c, ok := store.(interface{ Compact() error }); ok {
-		if err := c.Compact(); err != nil {
-			log.Printf("gateway: store compact: %v", err)
-		}
+	// Startup is a process boundary: run the scoring + eviction pass and
+	// fold the journal before serving (freeze-window semantics — the
+	// library never shifts mid-flight; over-cap growth during a run is
+	// tolerated and converges at the next boot/gc). Best-effort: a failed
+	// pass still leaves a consistent store.
+	gcRes, gcErr := slice.GC(store, slice.GCOptions{
+		Rescore:     true,
+		MaxSlices:   cfg.Store.EffectiveMaxSlices(),
+		Params:      slice.DefaultScoreParams(),
+		ArchivePath: cfg.Store.DB + ".archive.jsonl",
+	})
+	if gcErr != nil {
+		log.Printf("gateway: store maintenance: %v", gcErr)
+	} else if gcRes.Removed > 0 || gcRes.RescoredWeights > 0 {
+		log.Printf("gateway: store maintenance: rescored=%d evicted=%d archived=%d capacity=%d",
+			gcRes.RescoredWeights, gcRes.Removed, gcRes.Archived, gcRes.Capacity)
 	}
-	idx := newRetriever(RetrieverSettings{
-		Kind:         cfg.Retrieval.Retriever,
-		Dim:          cfg.Retrieval.VectorDim,
-		EmbedBackend: cfg.Retrieval.EmbedBackend,
-		EmbedBaseURL: cfg.Retrieval.EmbedBaseURL,
-		EmbedModel:   cfg.Retrieval.EmbedModel,
+	idx := newRetriever(cfg.Retrieval.Retriever, cfg.Retrieval.VectorDim, cfg.fusionConfig(), EmbedSettings{
+		Backend: cfg.Retrieval.EmbedBackend,
+		BaseURL: cfg.Retrieval.EmbedBaseURL,
+		Model:   cfg.Retrieval.EmbedModel,
 	})
 	if err := loadIndex(store, idx); err != nil {
 		_ = closeStore(store)
@@ -146,13 +179,14 @@ func New(cfg *Config) (*Gateway, error) {
 	if budget <= 0 {
 		budget = inject.DefaultBudget
 	}
-	z := zone.Default()
-	injector := &inject.Injector{Index: idx, Store: store, Scope: scope, K: topK, Budget: budget, Zones: &z}
-	// W3 grey audit mode: grey slices enter the block under an unverified
-	// marker instead of being silently dropped (GW4: 8/10 repeated tasks
-	// landed in grey under the default drop policy).
-	if cfg.Retrieval.GreyMode == "audit" {
-		injector.AllowGrey = true
+	// Grey-zone thresholds (Issue #259 阶段 1): explicit [retrieval]
+	// tau_*/abs_* keys, else the evolve-tuned TauL2 (evolve_db), else the
+	// tuned defaults. zoneConfig is validated by Load, so a non-nil error
+	// here means the evolve state file itself is unreadable/corrupt.
+	z, err := cfg.zoneConfig()
+	if err != nil {
+		_ = closeStore(store)
+		return nil, err
 	}
 
 	var rec *usage.Recorder
@@ -164,22 +198,90 @@ func New(cfg *Config) (*Gateway, error) {
 		}
 	}
 
-	decider := &cache.L3Decider{Index: idx, Store: store, Root: root, K: topK, Judge: llmJudge}
+	decider := &cache.L3Decider{Index: idx, Store: store, Root: root, K: topK, Judge: llmJudge, MinOrigin: cfg.minInjectOrigin()}
 	// Issue #260: lexical support floor for the L3 Hit path (0 disables the
 	// gate; nil keeps the kernel default).
 	if cfg.Cache.LexicalFloor != nil {
 		decider.LexicalFloor = cfg.Cache.LexicalFloor
 	}
 	g := &Gateway{
-		cfg:      cfg,
-		store:    store,
-		index:    idx,
-		decider:  decider,
-		injector: injector,
+		cfg:     cfg,
+		store:   store,
+		index:   idx,
+		decider: decider,
+		injector: &inject.Injector{Index: idx, Store: store, Scope: scope, K: topK, Budget: budget, Zones: &z,
+			MinOrigin: cfg.minInjectOrigin(),
+			// W3 grey audit mode: grey slices enter the block under an
+			// unverified marker instead of being silently dropped (GW4:
+			// 8/10 repeated tasks landed in grey under the default drop
+			// policy).
+			AllowGrey: cfg.Retrieval.GreyMode == "audit",
+		},
 		usageLog: rec,
 		client:   &http.Client{Timeout: 120 * time.Second},
 		disabled: disableEnv(),
+		l3Reuses: make(map[string]l3ReuseEntry),
 		now:      time.Now,
+		zones:    z,
+	}
+	// Per-entry adaptive TauLow (Issue #259 阶段 3, vCache route): each
+	// high-frequency reused slice learns its own grey floor from the
+	// gateway's positive/negative evidence. The engine is nil when
+	// disabled by config (adaptive = false or error_bound = -1); the
+	// decider's nil-safe Adapt hook then keeps every entry on the
+	// global/per-type thresholds (cold start). Adaptive state is derived
+	// and rebuildable — a corrupt file only logs, never blocks startup.
+	if cfg.Retrieval.Adaptive == nil || *cfg.Retrieval.Adaptive {
+		adaptCfg := adapt.Config{}
+		if cfg.Retrieval.ErrorBound != 0 {
+			adaptCfg.ErrorBound = cfg.Retrieval.ErrorBound
+		}
+		adaptPath := cfg.Retrieval.AdaptDB
+		if adaptPath == "" {
+			adaptPath = adapt.DefaultAdaptDB(cfg.Store.DB)
+		}
+		g.adapt = adapt.New(adaptCfg, adaptPath)
+		decider.Adapt = g.adapt
+	}
+
+	// Promotion wiring (Issue #280): when promote_db is configured, the
+	// grey path gets the consensus-gated promotion decision — approved
+	// (query, slice, version) pairs skip the judge inside the TTL window,
+	// repeated rejections blacklist the pair. The rejection lessons live
+	// in an independent file next to the promotion entries (never
+	// injected/indexed). Consensus=2 wraps the LLM judge in the
+	// dual-rubric gate; consensus=1 keeps the single-judgement baseline.
+	if cfg.Cache.PromoteDB != "" {
+		ttl := cfg.Cache.PromoteTTLSeconds
+		if ttl == 0 {
+			ttl = DefaultPromoteTTLSeconds
+		}
+		limit := int64(cfg.Cache.RejectLimit)
+		if limit == 0 {
+			limit = DefaultRejectLimit
+		}
+		entries, err := promote.NewFileStore(cfg.Cache.PromoteDB)
+		if err != nil {
+			_ = closeStore(store)
+			return nil, fmt.Errorf("gateway: promote store: %w", err)
+		}
+		rejections, err := promote.NewRejectionFileStore(filepath.Join(filepath.Dir(cfg.Cache.PromoteDB), "rejections.jsonl"))
+		if err != nil {
+			_ = closeStore(store)
+			return nil, fmt.Errorf("gateway: rejection store: %w", err)
+		}
+		decider.Promote = promote.NewDecision(entries, rejections, ttl, limit)
+		consensus := cfg.Cache.PromoteConsensus
+		if consensus == 0 {
+			consensus = DefaultPromoteConsensus
+		}
+		if consensus == 2 {
+			// The consensus second perspective comes from the judge
+			// itself (LLMJudge is a VariantJudge): the primary judge
+			// approves first, then the rephrased rubric confirms —
+			// 2 calls per promotion, never more (Issue #280).
+			decider.Consensus = llmJudge
+		}
 	}
 	// Grey-zone judge decisions become durable here (Issue #242 gap 1):
 	// one structured log line plus a field on the turn's usage event, so a
@@ -187,6 +289,41 @@ func New(cfg *Config) (*Gateway, error) {
 	g.decider.OnJudge = g.observeJudge
 	g.decider.OnLexicalGate = g.observeLexicalGate
 	g.healthProbe = g.probeUpstreams
+	if gcErr == nil && gcRes.Removed > 0 {
+		// Type-aware eviction observation (Issue #277): a library-level
+		// Compact event makes the startup eviction visible to kernel/event
+		// consumers. "maintenance" is a fixed library-scope session id, not
+		// a real conversation. Best-effort — a failed write only drops the
+		// observation.
+		data, merr := json.Marshal(kernelevent.CompactPayload{
+			Trigger:       "evict",
+			Before:        gcRes.Checked,
+			After:         gcRes.Checked - gcRes.Removed,
+			EvictedByType: gcRes.EvictedByType,
+		})
+		if merr == nil {
+			g.recordKernelEvent("maintenance", "", "", kernelevent.Event{
+				Kind: kernelevent.Compact,
+				At:   time.Now(),
+				Data: data,
+			})
+		}
+	}
+
+	// Customer free-tier gate (gateway/quota.go). The persisted counter
+	// lives next to the slice store unless [billing] state_file overrides.
+	if cfg.Billing.Enabled {
+		statePath := cfg.Billing.StateFile
+		if statePath == "" {
+			statePath = filepath.Join(filepath.Dir(cfg.Store.DB), "quota-state.json")
+		}
+		qe, qerr := newQuotaEngine(cfg.Billing, statePath, g.client, g.now)
+		if qerr != nil {
+			_ = closeStore(store)
+			return nil, fmt.Errorf("gateway: billing: %w", qerr)
+		}
+		g.quota = qe
+	}
 	return g, nil
 }
 
@@ -408,6 +545,12 @@ func (m metaStore) Put(s *slice.Slice) error {
 	if s.Type == slice.Result {
 		s.Meta.ContextHash = m.ctxHash
 		s.Meta.Model = m.model
+		if s.Meta.Origin == "" {
+			// Issue #279: gateway ingestion is automatic extraction; a
+			// missing tag (legacy extractor) must not silently read as a
+			// higher trust level downstream.
+			s.Meta.Origin = slice.OriginSessionAuto
+		}
 	}
 	return m.inner.Put(s)
 }

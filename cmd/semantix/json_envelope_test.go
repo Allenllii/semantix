@@ -18,10 +18,7 @@ import (
 func TestLookupJSONEnvelope(t *testing.T) {
 	dir := t.TempDir()
 	db := filepath.Join(dir, "lib.db")
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	sl := &slice.Slice{ID: "s1", Type: slice.Prompt, Scope: slice.Project, Content: []byte("修复 go 测试失败")}
 	if err := store.Put(sl); err != nil {
 		t.Fatal(err)
@@ -73,10 +70,7 @@ func TestLookupJSONEnvelope(t *testing.T) {
 func TestSearchJSONEnvelope(t *testing.T) {
 	dir := t.TempDir()
 	db := filepath.Join(dir, "lib.db")
-	store, err := slice.NewFileStore(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, db)
 	sl := &slice.Slice{ID: "s1", Type: slice.Prompt, Scope: slice.Project, Content: []byte("配置 CI 流水线")}
 	if err := store.Put(sl); err != nil {
 		t.Fatal(err)

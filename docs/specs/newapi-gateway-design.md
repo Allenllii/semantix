@@ -7,7 +7,7 @@
 > 的请求在到达上游 LLM 之前先过语义缓存——**L3 命中零上游调用、L2 注入跳过重复探索**，
 > 达成省 token、省成本的效果。
 >
-> 与既有集成方式的关系：LangChain 中间件是「消息级」读/写记忆，Reasonix fork 是「事件级」，
+> 与既有集成方式的关系：LangChain 中间件是「消息级」读/写记忆，Semantix fork 是「事件级」，
 > 本设计是**「请求级」的 HTTP 网关形态**——同一个「读记忆（inject/lookup）+ 写记忆（extract）」模型，
 > 只是挂在 API 网关上，零侵入任何 agent harness，天然适配所有 OpenAI 兼容客户端。
 
@@ -89,7 +89,7 @@
 |---|---|---|
 | §3.8 / §7 M2 | Claude / Anthropic 适配（messages 格式转换 + `cache_control` 断点） | **配置层显式拒绝**：`vendor="anthropic"` 在 `validate()` 直接报错，避免把 Anthropic 流量误发到 OpenAI 式端点。§3.6 对 Claude 打断点同理未做 |
 | §3.5 | `promote.CascadeInvalidate` 级联失效 | gateway 零引用 `kernel/promote`。上游内容版本变化时不会级联失效下游条目（deps 指纹仍能兜住文件类变更） |
-| §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` | **GW6 已接线**（Issue #186）：`gateway/retriever.go` `newRetriever` 按配置构造索引——`bm25` 保持 `kernel/bm25`；`vector` 用 `kernel/embed` HashEmbedder + VectorIndex（cosine）；`hybrid` 双路检索、分数归一化融合（[0,1] 尺度，与 zone 绝对阈值兼容）。`vector_dim` 键（默认 256）控制 HashEmbedder 维度；非法 retriever 值 `validate()` 报错 |
+| §3.9 | `[retrieval] retriever = bm25 \| vector \| hybrid` | **GW6 已接线**（Issue #186）：`gateway/retriever.go` `newRetriever` 按配置构造索引——`bm25` 保持 `kernel/bm25`；`vector` 用 `kernel/embed` HashEmbedder + VectorIndex（cosine）；`hybrid` 双路检索、`kernel/fuse` 融合（Issue #274）：weighted 等权/可配权重（默认，历史行为）或 rrf（倒数排名融合，分数线性标度化到 [0,1]，zone 绝对阈值语义保持）。`vector_dim` 键（默认 256）控制 HashEmbedder 维度；非法 retriever/fusion 值 `validate()` 报错 |
 | §3.4 | 未命中流式：上游不返回 usage 时，网关在 `[DONE]` 前补含注入统计的末块 | 已实现（Issue #187）：完整流且上游无 usage 时，在 `[DONE]` 前补发 OpenAI 格式 usage 事件（含 `prompt_tokens_details.cached_tokens` 注入统计 + `"estimator":"bytes/4"`）；异常断流只补 `[DONE]` 不补 usage（半截流不计量） |
 | §3.7 | 流式路径的**响应侧**写记忆 | **已实现**（Issue #182）：`streamThrough` 聚合 SSE 内容进旁路记忆。GW4 实机验证（Issue #184，`gateway-m1-acceptance.md` §5.2）：流式任务 t09 在切片库中有 3 条自己的 Result 切片，**流式响应确实成为可复用 Result 切片**。此前本行记载的「L3 的写入实际只来自非流式请求」已过期，据实测更正 |
 | §3.2 | `/healthz` 检查「切片库可打开 + **上游可达性**」 | 切片库在 `New()` 阶段已打开（打不开进程起不来）；上游探活已实现（Issue #183）：`GET {base_url}/models` 逐个上游探测，2xx=健康，任一失败/超时返回 503 + OpenAI envelope；`[server] health_timeout_seconds` 可配（0=禁用探活） |
@@ -154,7 +154,7 @@ Semantix Gateway（★ 本设计的核心新组件）
 
 | 层 | 机制 | 网关中的落点 | 省钱方式 |
 |---|---|---|---|
-| **L1** | 前缀字节稳定 | 网关把注入块放在 **system 提示末尾、消息尾部之前**（Reasonix KV Cache 机制研究结论：静态在前、动态在后），且注入块 ID 规范序 → 字节稳定 | 上游按**缓存价**计费（DeepSeek miss $0.27/M vs hit $0.07/M，价差约 4 倍） |
+| **L1** | 前缀字节稳定 | 网关把注入块放在 **system 提示末尾、消息尾部之前**（Semantix KV Cache 机制研究结论：静态在前、动态在后），且注入块 ID 规范序 → 字节稳定 | 上游按**缓存价**计费（DeepSeek miss $0.27/M vs hit $0.07/M，价差约 4 倍） |
 | **L2** | 语义切片注入 | 未命中时 `inject.Injector.Build(query)` 检索 top-k 切片，拼入请求后转发上游 | 模型**跳过重复探索**，少生成工具调用/中间步骤 → 省**输出 token**（演示中 80% 的重复步骤被替代，是主要节省来源） |
 | **L3** | 已验证结果复用 | 请求归一化 → 指纹校验（deps/mtime）→ `judge.RuleGate` 验证 → 命中直接返回缓存响应 | **零上游调用**，节省约 100% 的该请求成本 |
 
@@ -281,7 +281,7 @@ X-Semantix-Cache: miss
 - **deps 指纹**：复用 `fingerprint.Capture/Verify`（path → sha256）+ mtime 快速失败（`SliceMeta.Mtimes`）——**文件一变缓存即失效**（issue-08 已验收的机制）；网关条目的 deps root 由配置提供（如项目根目录），缺失文件一律视为已变更 → 失效；**网关生成且 deps 为空的结果默认不进入 L3**（`l3_safe=false`，需显式配置才启用）——否则指纹/RuleGate 验证形同虚设（空 deps 时 Chain 会跳过指纹阶段）；
 - **验证**：`judge.RuleGate.Chain`（grey zone 规则，Krites §3.1）；grey 区候选可配置 `SEMANTIX_JUDGE_API_KEY` 走 LLM judge 确认；**judge 一律异步/离主链路执行**（不阻塞响应，保持 <100ms）；
 - **提升与级联失效**：`promote.Store` 存提升条目 + 包级函数 `promote.CascadeInvalidate(store, sourceSliceID, currentContent)`——上游响应内容变化（content 版本号变更）时**级联失效**同一源切片衍生的下游缓存条目；
-- **TTL**：缓存条目按模型 vendor 差异化（DeepSeek 24h / DashScope 5m / Anthropic 5m，沿用 `reasonix-kvcache-mechanisms.md` 的 vendor-aware 结论）；Kimi/Moonshot 与 GPT 的缓存 TTL **以上游文档确认后配置**（Moonshot 历史上需显式建缓存，勿假设自动生效）；
+- **TTL**：缓存条目按模型 vendor 差异化（DeepSeek 24h / DashScope 5m / Anthropic 5m，沿用 `semantix-kvcache-mechanisms.md` 的 vendor-aware 结论）；Kimi/Moonshot 与 GPT 的缓存 TTL **以上游文档确认后配置**（Moonshot 历史上需显式建缓存，勿假设自动生效）；
 - **模型名进缓存键**：防止 Claude 的响应被 GPT 复用（跨模型语义相同但行为/风格不同，绝不混用）；
 - **只缓存可安全复用结果**：带工具调用副作用的结果默认不入 L3（R-Slice 需 `--l3-safe` 或 deps 指纹非空，见 `SliceMeta.L3Safe`）。
 
@@ -333,6 +333,9 @@ scope = "project"                         # 默认切片作用域
 
 [retrieval]
 retriever = "hybrid"                      # bm25 | vector | hybrid（GW6 接线：vector/hybrid 走 kernel/embed HashEmbedder，无需外部 embedding API）
+fusion = "weighted"                      # hybrid 融合策略（Issue #274）：weighted（等权/可配权重，默认）| rrf（倒数排名融合）
+rrf_k = 60                               # RRF 常数（rrf 模式，默认 60）
+bm25_weight = 0.5                        # weighted 模式 BM25 路权重（[0,1]，默认 0.5；显式 0 = 纯向量路）
 top_k = 5
 budget = 4096                             # L2 注入块字节预算
 vector_dim = 256                          # HashEmbedder 维度（<=0 取默认 256；模型级 Embedder 接入后忽略）

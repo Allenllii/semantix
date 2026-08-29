@@ -382,7 +382,7 @@ func machineSessionIDWithKey(branchID string, identityKey []byte) string {
 		return ""
 	}
 	digest := hmac.New(sha256.New, identityKey)
-	_, _ = digest.Write([]byte("reasonix-machine-session-v1\x00"))
+	_, _ = digest.Write([]byte("semantix-machine-session-v1\x00"))
 	_, _ = digest.Write([]byte(branchID))
 	return "session_" + hex.EncodeToString(digest.Sum(nil)[:16])
 }

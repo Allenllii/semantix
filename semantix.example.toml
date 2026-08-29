@@ -8,11 +8,39 @@ name = "my-project"          # 项目 slug（切片 scope=project 的聚合键�
 # 切片库路径（extract/lookup/inject/verify 的 --db 默认值）
 db = ".semantix/project.db"
 scope = "project"           # 默认切片作用域：session | project | user
+max_slices = 5000           # 库条目上限（超限按价值评分归档到 <db>.archive.jsonl；0 = 不限）
+
+[score]                     # 价值评分（gc / gateway 启动时批算，决定淘汰序）
+half_life_days = 30         # 时效半衰期：30 天不用价值减半
+grace_days = 7              # 新切片保护窗：淘汰序中排最后（不豁免上限）
 
 [retrieval]
 retriever = "hybrid"        # bm25 | vector | hybrid（RRF 融合）
 limit = 5                   # search 默认 top-k
 vector_dim = 256            # HashEmbedder 维度（模型级 Embedder 接入后忽略）
+# Grey-zone 四阈值（Issue #259 阶段 1）：缺省 = kernel/zone 内置默认；
+# CLI --tau-*/--abs-* flag 优先于此处的值。
+tau_high = 0.8              # 相对置信：明确 hit 下界 (0,1]
+tau_low = 0.55              # 相对置信：grey 下界 (0,1]，须 < tau_high
+abs_high = 0.7              # 绝对分：明确 hit 地板（>= 0）
+abs_low = 0.45              # 绝对分：grey 地板（>= 0）
+# evolve_db 为 `usage --evolve-db` 输出的状态目录：其 tuned tau_l2 在
+# 未显式配置 tau_low 时驱动 grey 下界（clamp 到 [0.30, 0.80]）。
+# evolve_db = ".semantix/evolve"
+
+# 按切片类型分化（Issue #259 阶段 2）：只写要改的字段，未写字段继承
+# 全局阈值；类型名限 prompt|context|tool_pattern|result|memory。
+# [retrieval.by_type.result]   # R 切片直接回答用户 → 更严
+# tau_high = 0.85
+# tau_low = 0.60
+# [retrieval.by_type.context]  # C/P 仅做上下文 → 可放宽
+# tau_low = 0.50
+
+# 逐条目自适应（Issue #259 阶段 3，vCache 路线）：每个高频复用切片
+# 从正/误命中反馈在线学习自己的 tau_low；全局阈值作先验/冷启动。
+adaptive = true             # 开关（缺省 true；false = 全部用全局阈值）
+error_bound = 0.05          # 条目级误命中率上界（-1 关闭自适应）
+# adapt_db = ".semantix/l3-adapt.json"   # 状态文件（缺省 <db 同目录>/l3-adapt.json）
 
 [inject]
 budget = 4096               # L2 注入块最大字节数（整切片截断）

@@ -20,10 +20,7 @@ import (
 func TestConfigDefaultsWiredIntoCommands(t *testing.T) {
 	dir := t.TempDir()
 	customDB := filepath.Join(dir, "custom.db")
-	store, err := slice.NewFileStore(customDB)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := openTestStore(t, customDB)
 	for i, q := range []string{"修复 go 测试失败", "修复 go 测试超时", "修复 go 测试崩溃"} {
 		sl := &slice.Slice{ID: fmt.Sprintf("c%d", i), Type: slice.Prompt, Scope: slice.Project, Content: []byte(q)}
 		if err := store.Put(sl); err != nil {

@@ -132,7 +132,7 @@ func doctorRepairCommand(args []string) int {
 	fs := flag.NewFlagSet("doctor repair", flag.ContinueOnError)
 	root := fs.String("root", ".", "project root to inspect")
 	apply := fs.Bool("apply", false, "quarantine invalid config and restore the last-known-good global snapshot")
-	includeProject := fs.Bool("project", false, "allow --apply to quarantine an invalid project reasonix.toml")
+	includeProject := fs.Bool("project", false, "allow --apply to quarantine an invalid project semantix-agent.toml")
 	jsonOut := fs.Bool("json", false, "print result as JSON")
 	if code, ok := parseCommandFlags(fs, args); !ok {
 		return code

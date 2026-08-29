@@ -99,8 +99,12 @@ func (c *VerdictCache) Len() int {
 }
 
 // CachedJudge decorates any Judge with the verdict cache and optional
-// background warming. It implements Judge, so it composes with RuleGate.Chain
-// and the L3Decider unchanged.
+// background warming. It implements Judge and VariantJudge (Issue #280):
+// the secondary consensus perspective lives in its own cache namespace and
+// delegates to the inner judge's ConfirmSecondary when available, so a
+// cached primary verdict can never stand in for an independent
+// second-rubric judgement. It composes with RuleGate.Chain and the
+// L3Decider unchanged.
 type CachedJudge struct {
 	Inner Judge
 	Cache *VerdictCache
@@ -112,19 +116,40 @@ type CachedJudge struct {
 	inflight   map[string]bool
 }
 
-// Confirm implements Judge.
+// Confirm implements Judge (primary rubric, cache namespace "p").
 func (c *CachedJudge) Confirm(ctx context.Context, cand Candidate) (bool, error) {
+	return c.confirm(ctx, cand, "p", false)
+}
+
+// ConfirmSecondary implements VariantJudge (rephrased rubric, cache
+// namespace "s"). Without an inner VariantJudge it falls back to the plain
+// Confirm — mirroring the consensus baseline degradation.
+func (c *CachedJudge) ConfirmSecondary(ctx context.Context, cand Candidate) (bool, error) {
+	return c.confirm(ctx, cand, "s", true)
+}
+
+func (c *CachedJudge) confirm(ctx context.Context, cand Candidate, ns string, secondary bool) (bool, error) {
 	if c.Cache == nil {
 		c.Cache = NewVerdictCache()
 	}
-	key := VerdictKey(cand.Query, cand.SliceID)
+	key := ns + VerdictKey(cand.Query, cand.SliceID)
 	if confirm, ok := c.Cache.Get(key); ok {
 		return confirm, nil
 	}
-	confirm, err := c.Inner.Confirm(ctx, cand)
+	var confirm bool
+	var err error
+	if secondary {
+		if vj, ok := c.Inner.(VariantJudge); ok {
+			confirm, err = vj.ConfirmSecondary(ctx, cand)
+		} else {
+			confirm, err = c.Inner.Confirm(ctx, cand)
+		}
+	} else {
+		confirm, err = c.Inner.Confirm(ctx, cand)
+	}
 	if err != nil {
 		if c.Warm {
-			c.warmInBackground(key, cand)
+			c.warmInBackground(key, cand, ns, secondary)
 		}
 		return false, err // fail closed, nothing cached
 	}
@@ -134,7 +159,7 @@ func (c *CachedJudge) Confirm(ctx context.Context, cand Candidate) (bool, error)
 
 // warmInBackground re-runs the judge once per candidate, off the request
 // path. A repeat candidate already being warmed is not re-spawned.
-func (c *CachedJudge) warmInBackground(key string, cand Candidate) {
+func (c *CachedJudge) warmInBackground(key string, cand Candidate, ns string, secondary bool) {
 	c.inflightMu.Lock()
 	if c.inflight == nil {
 		c.inflight = map[string]bool{}
@@ -153,10 +178,20 @@ func (c *CachedJudge) warmInBackground(key string, cand Candidate) {
 		}()
 		bgCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
-		confirm, err := c.Inner.Confirm(bgCtx, cand)
+		var confirm bool
+		var err error
+		if secondary {
+			if vj, ok := c.Inner.(VariantJudge); ok {
+				confirm, err = vj.ConfirmSecondary(bgCtx, cand)
+			} else {
+				confirm, err = c.Inner.Confirm(bgCtx, cand)
+			}
+		} else {
+			confirm, err = c.Inner.Confirm(bgCtx, cand)
+		}
 		if err != nil {
 			return // stay uncached: next request may warm again
 		}
-		c.Cache.Set(VerdictKey(cand.Query, cand.SliceID), confirm)
+		c.Cache.Set(key, confirm)
 	}(cand)
 }

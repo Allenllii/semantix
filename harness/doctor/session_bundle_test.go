@@ -17,7 +17,7 @@ import (
 
 func TestWriteSessionBundleIncludesRecoveryChain(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
+	t.Setenv("SEMANTIX_HOME", home)
 
 	dir := filepath.Join(home, "projects", "workspace", "sessions")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -86,13 +86,13 @@ func TestWriteSessionBundleIncludesRecoveryChain(t *testing.T) {
 		t.Fatalf("manifest JSON: %v", err)
 	}
 	if strings.Contains(string(files["manifest.json"]), home) {
-		t.Fatalf("manifest leaked REASONIX_HOME path:\n%s", files["manifest.json"])
+		t.Fatalf("manifest leaked SEMANTIX_HOME path:\n%s", files["manifest.json"])
 	}
 	if manifest.Version != "test-version" {
 		t.Fatalf("manifest version = %q", manifest.Version)
 	}
-	if !strings.Contains(manifest.RequestedRef, "<REASONIX_HOME>") {
-		t.Fatalf("requested ref = %q, want redacted REASONIX_HOME path", manifest.RequestedRef)
+	if !strings.Contains(manifest.RequestedRef, "<SEMANTIX_HOME>") {
+		t.Fatalf("requested ref = %q, want redacted SEMANTIX_HOME path", manifest.RequestedRef)
 	}
 	if len(manifest.Sessions) != 2 {
 		t.Fatalf("manifest sessions = %+v, want recovery plus parent", manifest.Sessions)

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"semantix/gateway"
+	"semantix/kernel/fuse"
 	"semantix/kernel/slice"
 	"semantix/kernel/zone"
 )
@@ -121,11 +122,10 @@ func runProbe(args []string, stdout, stderr io.Writer, deps dependencies) error 
 				}
 			}
 		}
-		idx := gateway.NewFusedIndex(gateway.RetrieverSettings{
-			Kind:         *retrieverKind,
-			EmbedBackend: *embedBackend,
-			EmbedBaseURL: *embedBaseURL,
-			EmbedModel:   *embedModel,
+		idx := gateway.NewFusedIndex(*retrieverKind, 0, fuse.Config{}, gateway.EmbedSettings{
+			Backend: *embedBackend,
+			BaseURL: *embedBaseURL,
+			Model:   *embedModel,
 		})
 		for _, scope := range []slice.Scope{slice.Session, slice.Project, slice.User} {
 			items, err := store.List(scope)

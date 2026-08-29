@@ -120,6 +120,10 @@ const (
 	// CompletionSummary reports a content-free end-of-turn quality summary for
 	// role-setting strategies (preset, verdict, check counts, review status).
 	CompletionSummary
+	// KernelCache reports an observed Semantix kernel cache operation. It is
+	// separate from Usage: Usage carries provider prefix-cache accounting (L1),
+	// while this event carries semantic slice observations (L2/L3).
+	KernelCache
 	// KindCount is a sentinel one past the last real Kind. New event kinds must
 	// be inserted above it so completeness tests cover them automatically.
 	KindCount
@@ -285,12 +289,28 @@ type ShellExecution struct {
 
 // FileDiff is a previewed change carried on a writer tool's full ToolDispatch
 // and on its ApprovalRequest, so a frontend can render +/- lines before the
-// call runs. Diff is the unified diff (empty for read-only tools, binary files,
-// or no-op changes); Added/Removed are its line tallies.
+// call runs. The structured metadata is produced by the host; clients must
+// not infer status or line numbers from Diff. Diff remains the exact unified
+// diff used for copying (empty for no-op changes and binary files).
 type FileDiff struct {
-	Diff    string
-	Added   int
-	Removed int
+	Path     string
+	Status   string
+	Language string
+	Diff     string
+	Added    int
+	Removed  int
+	Binary   bool
+	Hunks    int
+	Lines    []DiffLine
+}
+
+// DiffLine is one server-parsed row of a unified diff. OldLine/NewLine are
+// zero when the row has no corresponding side (added/deleted rows).
+type DiffLine struct {
+	Kind    string
+	OldLine int
+	NewLine int
+	Text    string
 }
 
 // Approval identifies a pending tool-call approval for an ApprovalRequest
@@ -507,6 +527,18 @@ type CacheDiagnostics struct {
 	CacheHitTokens      int
 }
 
+// KernelCachePayload is the host-to-frontend projection of one observed
+// Semantix kernel cache operation. Op is "hit", "inject", "miss", or
+// "degraded"; Layer is "L2" or "L3". It carries observations only, never
+// unmeasured cost or performance claims.
+type KernelCachePayload struct {
+	Op       string   `json:"op,omitempty"`
+	Layer    string   `json:"layer,omitempty"`
+	SliceIDs []string `json:"sliceIds,omitempty"`
+	Bytes    int      `json:"bytes,omitempty"`
+	Reason   string   `json:"reason,omitempty"`
+}
+
 // FinalReadiness carries machine-readable recovery requirements on TurnDone.
 // Missing values are stable category ids; user-facing detail stays localized in
 // the frontend instead of scraping the diagnostic error string.
@@ -557,6 +589,11 @@ const (
 	// (U33/H4a): Detail holds the JSON ReuseSummary (hits / savings_usd /
 	// sources), Text the one-line form for sinks without a panel.
 	NoticeCodeSemantixReuse = "semantix_reuse"
+	// NoticeCodeSemantixInject reports a non-empty [semantix-reuse] L2 block
+	// was assembled for a turn; Detail carries {"bytes": n}. Emitted at most
+	// once per user turn so metrics can count injection coverage without
+	// scraping the prompt.
+	NoticeCodeSemantixInject = "semantix_inject"
 )
 
 type Event struct {
@@ -607,6 +644,8 @@ type Event struct {
 	PhaseName TurnPhaseName
 	// Completion is set on CompletionSummary events.
 	Completion *CompletionSummaryInfo
+	// KernelCache is set on KernelCache events.
+	KernelCache *KernelCachePayload
 }
 
 type WorkspaceWatchState string

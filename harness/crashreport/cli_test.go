@@ -87,7 +87,7 @@ func TestCapturePanicWritesBoundedSanitizedReport(t *testing.T) {
 
 func TestSendUsesSharedProtocolWithoutDeletingLocalReport(t *testing.T) {
 	home := t.TempDir()
-	if err := CapturePanic(home, "v1.20.0", "boom", []byte("goroutine 1 [running]:\nreasonix.run()\n\t/home/alice/reasonix/main.go:12")); err != nil {
+	if err := CapturePanic(home, "v1.20.0", "boom", []byte("goroutine 1 [running]:\nsemantix.run()\n\t/home/alice/semantix/main.go:12")); err != nil {
 		t.Fatal(err)
 	}
 	pending, err := Load(home, "")
@@ -144,7 +144,7 @@ func TestConcurrentCaptureKeepsQueueBounded(t *testing.T) {
 		go func(value int) {
 			defer wg.Done()
 			<-start
-			if err := CapturePanic(home, "v1.20.0", value, []byte("reasonix.run()\n\t/home/alice/main.go:12")); err != nil {
+			if err := CapturePanic(home, "v1.20.0", value, []byte("semantix.run()\n\t/home/alice/main.go:12")); err != nil {
 				t.Errorf("CapturePanic: %v", err)
 			}
 		}(i)
@@ -170,7 +170,7 @@ func TestCapturePanicPrunesOnlyCurrentReportFormat(t *testing.T) {
 	}
 
 	for i := range maxReports + 1 {
-		if err := CapturePanic(home, "v1.20.0", i, []byte("reasonix.run()\n\t/home/alice/main.go:12")); err != nil {
+		if err := CapturePanic(home, "v1.20.0", i, []byte("semantix.run()\n\t/home/alice/main.go:12")); err != nil {
 			t.Fatal(err)
 		}
 	}

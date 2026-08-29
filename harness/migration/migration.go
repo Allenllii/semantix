@@ -82,7 +82,7 @@ func RunLegacyRescue(sink event.Sink) Result {
 	}
 	result := Result{}
 	if config.IsolatedHomeDir() != "" {
-		emit(event.LevelInfo, "migration rescue: REASONIX_HOME is set; implicit legacy migration is skipped")
+		emit(event.LevelInfo, "migration rescue: SEMANTIX_HOME is set; implicit legacy migration is skipped")
 		emit(event.LevelInfo, result.Summary())
 		return result
 	}

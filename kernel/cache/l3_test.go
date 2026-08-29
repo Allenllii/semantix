@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -112,11 +113,11 @@ func TestDecideL3SkipsNonResultSlices(t *testing.T) {
 	idx := bm25.New()
 	// A Prompt slice with identical content: not reusable as L3 outcome.
 	idx.Insert(&slice.Slice{
-		ID:    "l3-p",
-		Type:  slice.Prompt,
-		Scope: slice.Project,
+		ID:      "l3-p",
+		Type:    slice.Prompt,
+		Scope:   slice.Project,
 		Content: []byte("已复用的验证结果：修复 go 测试失败需要先跑 go vet"),
-		Meta:  slice.SliceMeta{SourceSession: "s1", Deps: deps},
+		Meta:    slice.SliceMeta{SourceSession: "s1", Deps: deps},
 	})
 	d := &L3Decider{Index: idx, Root: root}
 	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
@@ -472,6 +473,7 @@ func TestDecideL3GreyZoneJudgeErrorFailsClosed(t *testing.T) {
 		t.Fatalf("judge error must fail closed, got %+v", res)
 	}
 }
+
 // fakeIndex returns a fixed hit list; used to exercise the lexical gate
 // independent of a real retriever.
 type fakeIndex struct {
@@ -479,7 +481,7 @@ type fakeIndex struct {
 }
 
 func (f *fakeIndex) Insert(*slice.Slice) error { return nil }
-func (f *fakeIndex) Remove(string) error        { return nil }
+func (f *fakeIndex) Remove(string) error       { return nil }
 func (f *fakeIndex) Search(string, int, slice.Scope) ([]slice.Hit, error) {
 	return f.hits, nil
 }
@@ -573,5 +575,306 @@ func TestL3LexicalGateObservations(t *testing.T) {
 	}
 	if obs[1].Blocked || obs[1].Zone != "hit" || obs[1].Lexical != 1 {
 		t.Fatalf("obs[1] = %+v, want allowed hit lexical=1", obs[1])
+	}
+}
+
+// --- Issue #262: negative observability (Obs / OnDecide / ObsAccum) ---
+
+// wantObs asserts every field of the observed snapshot. Zero expectations
+// are meaningful: each rejection class must be counted separately and
+// nothing may leak across classes.
+func wantObs(t *testing.T, got, want Obs, what string) {
+	t.Helper()
+	if got != want {
+		t.Fatalf("%s: obs = %+v, want %+v", what, got, want)
+	}
+}
+
+func TestL3DeciderObsCounters(t *testing.T) {
+	t.Run("reuse counts candidate+reused", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		d := &L3Decider{Index: idx, Root: root, Obs: &ObsAccum{}}
+		res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+		if err != nil || res == nil {
+			t.Fatalf("reuse failed: res=%v err=%v", res, err)
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Reused: 1}, "clear hit reuse")
+	})
+
+	t.Run("modified deps count as fingerprint reject", func(t *testing.T) {
+		root, idx, dep, _ := buildTestLib(t)
+		if err := os.WriteFile(filepath.Join(root, dep), []byte("module demo\nv2\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		d := &L3Decider{Index: idx, Root: root, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("modified deps must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, FingerprintReject: 1}, "dep modified")
+	})
+
+	t.Run("context isolation counts separately", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		d := &L3Decider{Index: idx, Root: root, Obs: &ObsAccum{}}
+		q := Query{UserInput: "修复 go 测试失败", Scope: slice.Project, ContextHash: "h-other"}
+		if res, _ := d.DecideL3(context.Background(), q); res != nil {
+			t.Fatal("context mismatch must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, IsolatedReject: 1}, "context isolation")
+	})
+
+	t.Run("grey without judge counts rules reject", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("grey without judge must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, RulesReject: 1}, "grey no judge")
+	})
+
+	t.Run("judge declined counts judge reject", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		mj := &mockJudge{confirm: false}
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("judge declined must reject")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeReject: 1}, "judge declined")
+	})
+
+	t.Run("judge approved then verified counts approve+reused", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		mj := &mockJudge{confirm: true}
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj, Obs: &ObsAccum{}}
+		res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+		if err != nil || res == nil {
+			t.Fatalf("judge-approved grey must reuse: res=%v err=%v", res, err)
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeApproved: 1, Reused: 1}, "judge approved")
+	})
+
+	// Issue #245: a judge that cannot be reached is unavailability, not a
+	// rule rejection and not a decline. wantObs compares the whole struct,
+	// so these also assert RulesReject == 0 and JudgeReject == 0 for free.
+	t.Run("judge error counts judge error not rules reject", func(t *testing.T) {
+		root, idx, _, _ := buildTestLib(t)
+		mj := &mockJudge{confirm: true, err: context.DeadlineExceeded}
+		d := &L3Decider{Index: idx, Root: root, Zones: greyZones(), Judge: mj, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("judge error must fail closed")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeError: 1}, "grey-arm judge error")
+	})
+
+	// The second arm that reaches judgeGrey: an Issue #260 lexical-support
+	// downgrade of a zone.Hit. JudgeError is therefore not a grey-verdict-only
+	// counter, and the spec's definition depends on both arms feeding it.
+	t.Run("lexical-gate judge error counts judge error", func(t *testing.T) {
+		root, sl := l3Fixture(t)
+		idx := &fakeIndex{hits: []slice.Hit{{Slice: sl, Score: 0.9, Lexical: 0, LexicalValid: true}}}
+		mj := &mockJudge{confirm: true, err: context.DeadlineExceeded}
+		d := &L3Decider{Index: idx, Root: root, Judge: mj, Obs: &ObsAccum{}}
+		if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res != nil {
+			t.Fatal("lexical-downgraded hit with an erroring judge must fail closed")
+		}
+		wantObs(t, d.Obs.Snapshot(), Obs{Candidates: 1, Grey: 1, JudgeError: 1}, "lexical-arm judge error")
+	})
+}
+
+func TestL3DeciderOnDecidePerCallDelta(t *testing.T) {
+	root, idx, _, _ := buildTestLib(t)
+	var calls []Obs
+	d := &L3Decider{
+		Index: idx, Root: root,
+		OnDecide: func(o Obs) { calls = append(calls, o) },
+	}
+	// Two calls with different outcomes: hit-reuse, then miss (unrelated).
+	if res, _ := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project}); res == nil {
+		t.Fatal("first call must reuse")
+	}
+	if res, _ := d.DecideL3(context.Background(), Query{UserInput: "完全不相关的主题", Scope: slice.Project}); res != nil {
+		t.Fatal("second call must miss")
+	}
+	if len(calls) != 2 {
+		t.Fatalf("OnDecide calls = %d, want 2", len(calls))
+	}
+	wantObs(t, calls[0], Obs{Candidates: 1, Reused: 1}, "delta call 1")
+	// The unrelated query still retrieves the Result slice but the zone
+	// verdict is miss → rules reject (Candidates + RulesReject, no reuse).
+	wantObs(t, calls[1], Obs{Candidates: 1, RulesReject: 1}, "delta call 2 (clear miss)")
+}
+
+func TestL3ObsAccumSnapshotIsThreadSafe(t *testing.T) {
+	acc := &ObsAccum{}
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				acc.add(Obs{Candidates: 1, JudgeReject: 1, JudgeError: 1})
+				_ = acc.Snapshot()
+			}
+		}()
+	}
+	wg.Wait()
+	got := acc.Snapshot()
+	want := Obs{Candidates: 800, JudgeReject: 800, JudgeError: 800}
+	if got != want {
+		t.Fatalf("accumulated = %+v, want %+v", got, want)
+	}
+}
+
+// Per-type thresholds participate in the real L3 decision (Issue #259
+// 阶段 2): the same Result candidate that reuses under the global
+// baseline is rejected when its type carries a stricter override.
+func TestDecideL3PerTypeOverride(t *testing.T) {
+	root, idx, _, _ := buildTestLib(t)
+	// Baseline: global defaults (nil Zones → zone.Default).
+	base := &L3Decider{Index: idx, Root: root}
+	res, err := base.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("baseline must reuse the Result candidate")
+	}
+
+	// Strict result override: unreachable thresholds for this type.
+	strict := zone.Zones{TauHigh: 1.0, TauLow: 0.99, AbsHigh: 1e9, AbsLow: 1e9,
+		ByType: map[string]zone.Zones{
+			"result": {TauHigh: 1.0, TauLow: 0.99, AbsHigh: 1e9, AbsLow: 1e9},
+		}}
+	dec := &L3Decider{Index: idx, Root: root, Zones: &strict}
+	res2, err := dec.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res2 != nil {
+		t.Fatalf("strict result override must reject reuse, got %+v", res2)
+	}
+}
+
+// stubAdapt returns a fixed learned TauLow per slice.
+type stubAdapt struct{ tau float64 }
+
+func (a stubAdapt) TauLow(sliceID string, global float64) float64 { return a.tau }
+
+// The per-entry adaptive TauLow replaces the effective grey floor before
+// classification (Issue #259 阶段 3): a candidate whose relative
+// confidence sits in the grey band under the baseline falls to Miss once
+// the entry's learned TauLow rises above it, while a learned value above
+// TauHigh is clamped so the grey zone never collapses.
+func TestDecideL3AdaptiveTauLow(t *testing.T) {
+	// Two Result candidates: a perfect one (relConf 1.0, always a Hit) and
+	// a weaker peer with relConf 0.70 (score 0.7 / resultTop1 1.0) — grey
+	// under the default TauLow 0.55. The weaker one is listed first so the
+	// loop reaches it before the clear Hit; the Obs counters reveal which
+	// gate routed it.
+	mk := func() []slice.Hit {
+		return []slice.Hit{hitOf("weak", slice.Result, 0.7), hitOf("strong", slice.Result, 1.0)}
+	}
+	observe := func(tau float64) (Obs, *L3Result) {
+		d := &L3Decider{Index: &fixedIndex{hits: mk()}, Root: t.TempDir(), Adapt: stubAdapt{tau: tau}}
+		var acc ObsAccum
+		d.Obs = &acc
+		res, _ := d.DecideL3(context.Background(), Query{UserInput: "q", Scope: slice.Project})
+		return acc.Snapshot(), res
+	}
+	// TauLow 0.50: the weak candidate (0.70) stays grey-routed.
+	lo, resLo := observe(0.50)
+	if lo.Grey != 1 || lo.RulesReject != 1 || resLo == nil || resLo.SliceID != "strong" {
+		t.Fatalf("tau 0.50: grey=%d rules_reject=%d res=%+v, want grey-routed weak + strong reuse", lo.Grey, lo.RulesReject, resLo)
+	}
+	// TauLow 0.80 (clamped to TauHigh-0.05 = 0.75): 0.70 < 0.75 → Miss.
+	hi, resHi := observe(0.80)
+	if hi.Grey != 0 || hi.RulesReject != 1 || resHi == nil || resHi.SliceID != "strong" {
+		t.Fatalf("tau 0.80: grey=%d rules_reject=%d res=%+v, want straight-Miss weak + strong reuse", hi.Grey, hi.RulesReject, resHi)
+	}
+}
+
+// With a threshold band narrower than minGreyWidth, the adaptive clamp
+// must never turn a tighten into a loosening: the value in effect is the
+// floor (review finding, Issue #259 阶段 3).
+func TestDecideL3AdaptiveClampNeverLoosens(t *testing.T) {
+	// tau_high 0.56 / tau_low 0.55: band is 0.01 < minGreyWidth 0.05.
+	narrow := zone.Zones{TauHigh: 0.56, TauLow: 0.55, AbsHigh: 0.7, AbsLow: 0.45}
+	// Learned 0.60 would clamp to 0.51 (TauHigh-0.05) — below the prior
+	// 0.55; the floor must keep the prior so classification never widens.
+	d := &L3Decider{Index: &fixedIndex{hits: []slice.Hit{hitOf("weak", slice.Result, 0.7), hitOf("strong", slice.Result, 1.0)}},
+		Root: t.TempDir(), Zones: &narrow, Adapt: stubAdapt{tau: 0.60}}
+	var acc ObsAccum
+	d.Obs = &acc
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "q", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// With prior 0.55 the weak candidate (relConf 0.70) is grey-routed;
+	// if the clamp had loosened it to 0.51 it would still be grey, so the
+	// observable difference is the MISS path: use a weak score below the
+	// prior but above the loosened clamp. relConf 0.53: >= 0.51 (loosened)
+	// → grey; < 0.55 (prior floor) → Miss.
+	d2 := &L3Decider{Index: &fixedIndex{hits: []slice.Hit{hitOf("weak", slice.Result, 0.53), hitOf("strong", slice.Result, 1.0)}},
+		Root: t.TempDir(), Zones: &narrow, Adapt: stubAdapt{tau: 0.60}}
+	var acc2 ObsAccum
+	d2.Obs = &acc2
+	res2, err := d2.DecideL3(context.Background(), Query{UserInput: "q", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acc2.Snapshot().Grey != 0 || res2 == nil || res2.SliceID != "strong" {
+		t.Fatalf("loosened clamp would grey-route relConf 0.53; got grey=%d res=%+v (want Miss + strong reuse)", acc2.Snapshot().Grey, res2)
+	}
+	_ = res
+}
+
+// --- Issue #279: provenance integrity gate ---
+
+// TestDecideL3MinOriginDowngradesLowIntegrity: with a session-auto
+// floor, an import/legacy Result slice that would otherwise pass the
+// Hit gate is downgraded to Grey — judge-gated, and with no judge
+// wired it is conservatively rejected (never served straight).
+func TestDecideL3MinOriginDowngradesLowIntegrity(t *testing.T) {
+	root, idx, _, sl := buildTestLib(t)
+	sl.Meta.Origin = slice.OriginImport
+	if err := idx.Insert(sl); err != nil { // bm25 stores a clone: re-index with the tag
+		t.Fatal(err)
+	}
+	// Both floors: zero (kernel default) reuses, session-auto rejects.
+	open := &L3Decider{Index: idx, Root: root}
+	res, err := open.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("zero floor must reuse an import slice (embedding-caller default)")
+	}
+
+	gated := &L3Decider{Index: idx, Root: root, MinOrigin: slice.OriginSessionAuto}
+	res, err = gated.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != nil {
+		t.Fatalf("import slice under a session-auto floor must not pass straight through, got %+v", res)
+	}
+}
+
+// TestDecideL3MinOriginAdmitsSessionAuto: a session-auto slice reuses
+// normally under the session-auto floor (no behavior change for the
+// trusted channels).
+func TestDecideL3MinOriginAdmitsSessionAuto(t *testing.T) {
+	root, idx, _, sl := buildTestLib(t)
+	sl.Meta.Origin = slice.OriginSessionAuto
+	if err := idx.Insert(sl); err != nil { // bm25 stores a clone: re-index with the tag
+		t.Fatal(err)
+	}
+	d := &L3Decider{Index: idx, Root: root, MinOrigin: slice.OriginSessionAuto}
+	res, err := d.DecideL3(context.Background(), Query{UserInput: "修复 go 测试失败", Scope: slice.Project})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res == nil {
+		t.Fatal("session-auto slice must reuse under the session-auto floor")
 	}
 }

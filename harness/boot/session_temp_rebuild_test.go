@@ -15,7 +15,7 @@ func TestRebuildReusesSessionTempManager(t *testing.T) {
 	// Isolate config/home so boot.Build does not touch the developer home.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("REASONIX_HOME", filepath.Join(home, ".reasonix"))
+	t.Setenv("SEMANTIX_HOME", filepath.Join(home, ".semantix"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 

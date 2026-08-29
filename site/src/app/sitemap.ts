@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { geoDocuments } from "@/lib/geo-docs";
+import { documents } from "@/lib/docs";
 import { listBlogPosts } from "@/lib/blog";
 import { siteIdentity } from "@/lib/site-identity";
 
@@ -21,7 +21,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${BASE}/about`, lastModified, changeFrequency: "monthly", priority: 0.8 },
     { url: `${BASE}/contact`, lastModified, changeFrequency: "monthly", priority: 0.7 },
     { url: `${BASE}/docs`, lastModified, changeFrequency: "weekly", priority: 0.9 },
-    ...geoDocuments.map((document) => ({
+    ...documents.map((document) => ({
       url: `${BASE}/docs/${document.slug}`,
       lastModified: new Date(document.lastUpdated),
       changeFrequency: "weekly" as const,

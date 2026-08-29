@@ -5,7 +5,7 @@
 // Architecture role (see docs/events.md §3): the kernel stays decoupled from
 // any specific harness. A Source yields per-session event batches; the
 // Pipeline converts each batch into slices (via kernel/slice.Extractor) and
-// persists them (Store + Index). A Reasonix-style JSONL source is provided;
+// persists them (Store + Index). A Semantix-style JSONL source is provided;
 // an in-process harness adapter would implement Source over its own event
 // stream.
 package ingest
@@ -32,7 +32,7 @@ import (
 type SessionEvents struct {
 	SessionID  string
 	Events     []event.Event
-	Transcript []byte // raw JSONL, Reasonix-style
+	Transcript []byte // raw JSONL, Semantix-style
 }
 
 // Source yields session event batches in chronological order. It returns
@@ -41,9 +41,9 @@ type Source interface {
 	Next() (*SessionEvents, error)
 }
 
-// --- Reasonix JSONL source ---
+// --- Semantix JSONL source ---
 
-// JSONLSource reads Reasonix-style session JSONL files (one JSON object per
+// JSONLSource reads Semantix-style session JSONL files (one JSON object per
 // line: role/content/tool_calls) from explicit paths or a directory
 // (non-recursive, *.jsonl), ordered by mtime.
 type JSONLSource struct {
@@ -238,6 +238,7 @@ func (p Pipeline) Run(src Source) (map[string]int, error) {
 		slices, err := p.Extractor.Extract(se.Transcript, slice.SliceMeta{
 			SourceSession: se.SessionID,
 			ProjectSlug:   p.Project,
+			Origin:        slice.OriginSessionAuto, // Issue #279: automatic extraction
 		})
 		if err != nil {
 			return stats, fmt.Errorf("ingest %s: extract: %w", se.SessionID, err)

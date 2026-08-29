@@ -300,7 +300,7 @@ func TestBotDoctorPrefersUserBotSettingsOverProjectBotConfig(t *testing.T) {
 	}
 
 	project := t.TempDir()
-	if err := os.WriteFile(filepath.Join(project, "reasonix.toml"), []byte(`
+	if err := os.WriteFile(filepath.Join(project, "semantix-agent.toml"), []byte(`
 [bot]
 enabled = false
 `), 0o644); err != nil {
@@ -332,7 +332,7 @@ func TestBotDoctorUsesProjectBotConfigWhenUserBotIsUnconfigured(t *testing.T) {
 	projectCfg.Bot.Connections = []config.BotConnectionConfig{
 		{ID: "weixin-weixin", Provider: "weixin", Domain: "weixin", Label: "微信", Enabled: true, Status: "connected"},
 	}
-	if err := projectCfg.SaveTo("reasonix.toml"); err != nil {
+	if err := projectCfg.SaveTo("semantix-agent.toml"); err != nil {
 		t.Fatalf("save project config: %v", err)
 	}
 
@@ -364,7 +364,7 @@ func TestBotDoctorUsesProjectBotConfigWhenUserConfigOnlyHasBotDefaults(t *testin
 	projectCfg.Bot.Connections = []config.BotConnectionConfig{
 		{ID: "feishu-lark", Provider: "feishu", Domain: "lark", Label: "Lark", Enabled: true, Status: "connected"},
 	}
-	if err := projectCfg.SaveTo("reasonix.toml"); err != nil {
+	if err := projectCfg.SaveTo("semantix-agent.toml"); err != nil {
 		t.Fatalf("save project config: %v", err)
 	}
 

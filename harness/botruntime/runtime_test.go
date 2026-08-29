@@ -374,7 +374,7 @@ func TestConnectionChannelConfigsCarrySessionMappingsOnlyPerConnection(t *testin
 			WorkspaceRoot: "/connection",
 			SessionMappings: []config.BotConnectionSessionMapping{{
 				RemoteID:      "wx-group-1",
-				SessionID:     "path:/tmp/reasonix-session.jsonl",
+				SessionID:     "path:/tmp/semantix-session.jsonl",
 				ChatType:      string(bot.ChatGroup),
 				UserID:        "wx-user-1",
 				Scope:         "project",
@@ -389,7 +389,7 @@ func TestConnectionChannelConfigsCarrySessionMappingsOnlyPerConnection(t *testin
 	if len(mappings) != 1 {
 		t.Fatalf("connection mappings = %+v, want one mapping", mappings)
 	}
-	if got := mappings[0]; got.RemoteID != "wx-group-1" || got.SessionID != "path:/tmp/reasonix-session.jsonl" || got.ChatType != string(bot.ChatGroup) || got.UserID != "wx-user-1" || got.WorkspaceRoot != "/mapped" || got.UpdatedAt == "" {
+	if got := mappings[0]; got.RemoteID != "wx-group-1" || got.SessionID != "path:/tmp/semantix-session.jsonl" || got.ChatType != string(bot.ChatGroup) || got.UserID != "wx-user-1" || got.WorkspaceRoot != "/mapped" || got.UpdatedAt == "" {
 		t.Fatalf("connection mapping = %+v, want copied routing fields", got)
 	}
 

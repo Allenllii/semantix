@@ -11,7 +11,7 @@
 
 ## 0. 战略决策（2026-08-17，Song）
 
-**停止在 DeepSeek-Reasonix fork 仓库上改动。** Reasonix 的 agent 系统（主循环/工具/TUI 骨架）
+**停止在 DeepSeek-Reasonix fork 仓库上改动。** Semantix 的 agent 系统（主循环/工具/TUI 骨架）
 直接**复用进 semantix 仓**（MIT 允许，保留 attribution），在 semantix 开长期集成分支，
 换上我们自己的视觉（Semantix Design，蓝图 §4），与 kernel **进程内**结合。
 
@@ -47,7 +47,7 @@ harness 行为 + 可量化收益（H3）；③ 命中率/成本随使用提升�
 
 **范围内**：
 
-- C0 Reasonix agent 系统 vendor 进本仓（目录/模块/构建/attribution）
+- C0 Semantix agent 系统 vendor 进本仓（目录/模块/构建/attribution）
 - C1 资源目录（进程内构造 + 新增 `ResourceCatalog` 事件 Kind 用于落盘观测）
 - C2 调度接线（harness 直接调用 `sched.Decider` + `RoundPlan` 字段扩展）
 - C3 预算配额模型（BudgetController 阶梯降级）
@@ -56,7 +56,7 @@ harness 行为 + 可量化收益（H3）；③ 命中率/成本随使用提升�
 
 **不在范围内**：桌面端 Wails 重画（#158，等 C0 落地后在本仓续作）；serve/JSON-RPC 对外协议
 （Agile 3）；会话级调度（蓝图 §6：先工具级）；`Decider` 接口签名变更（冻结，只加 `RoundPlan` 字段）；
-上游 Reasonix 的后续同步（正式脱钩）。
+上游 Semantix 的后续同步（正式脱钩）。
 
 ## 3. C0 Vendor 方案（新顶层目录）
 
@@ -64,7 +64,7 @@ harness 行为 + 可量化收益（H3）；③ 命中率/成本随使用提升�
 semantix/
 ├── kernel/          # 既有，不动
 ├── gateway/         # 既有，不动
-├── harness/         # 新增：Reasonix agent 系统落点（单 Go module 合并进本仓 module）
+├── harness/         # 新增：Semantix agent 系统落点（单 Go module 合并进本仓 module）
 │   ├── agent/       # 主循环（run_loop / execute_batch / turnruntime / sampling_request）
 │   ├── tool/        # 内置工具注册表
 │   ├── control/     # 单 Controller 多前端骨架（蓝图 §2.2「最大资产」）
@@ -74,7 +74,7 @@ semantix/
 └── cmd/semantix-agent/  # 新增：合体后的可执行入口（TUI 主力形态）
 ```
 
-- **模块路径**：全部改写为 `semantix/harness/...`（进本仓 module，不留 `reasonix` module）；
+- **模块路径**：全部改写为 `semantix/harness/...`（进本仓 module，不留 `semantix-agent` module）；
 - **裁剪原则**：只搬 agent 系统运行必需（memory/skills/权限门控/事件流按需保留），
   desktop/、ACP、serve 等前端本期不搬（#158 时再取）；搬运清单在 U38 实现 PR 中逐目录列出；
   **判定标准（R1）**：agent 主循环直接 import 的包必搬，仅测试/工具链引用的不搬；
@@ -208,7 +208,7 @@ C1 目录快照异步、可能滞后，kernel 经 `BudgetAction` 下发的是**�
   （agent+tool+control+tui+provider），冒烟绿了再谈裁剪回补；
 - **wire 契约演进纪律不因进程内而放松**：事件 Kind 只追加不重排；`RoundPlan` 只加 omitempty 字段
   ——会话 JSONL 是落盘契约，旧文件必须永远可回放；
-- **与上游脱钩**：Reasonix 后续修复不再自动获得 → `ATTRIBUTION.md` 记录脱钩 commit，
+- **与上游脱钩**：Semantix 后续修复不再自动获得 → `ATTRIBUTION.md` 记录脱钩 commit，
   重大上游修复按需手工 cherry-pick；
 - **集成分支长期漂移**：`harness-integration` 与 main 的偏差随时间增大 → 每完成一个 U 即回合一次
   main（小步合入，不攒大 PR）。

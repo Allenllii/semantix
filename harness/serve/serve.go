@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,21 @@ var indexHTML []byte
 
 //go:embed logo-wordmark.svg
 var logoWordmarkSVG []byte
+
+// Workspace shell (issue #404): a standalone static page that renders without
+// any backend calls. Split into small files per the epic's no-monolith rule.
+//
+//go:embed workspace/workspace.html
+var workspaceHTML []byte
+
+//go:embed workspace/tokens.css
+var workspaceTokensCSS []byte
+
+//go:embed workspace/layout.css
+var workspaceLayoutCSS []byte
+
+//go:embed workspace/shell.js
+var workspaceShellJS []byte
 
 // Server wires a controller to its HTTP surface. The Broadcaster must be the
 // same sink the controller was constructed with, so events reach SSE clients.
@@ -486,7 +502,12 @@ func (s *Server) handler() http.Handler {
 	mux.HandleFunc("GET /assets/logo-wordmark.svg", s.logoWordmark)
 	mux.HandleFunc("GET /provider-setup", s.providerSetupStatus)
 	mux.HandleFunc("POST /provider-setup", s.providerSetupSave)
+	mux.HandleFunc("GET /workspace", s.workspacePage)
+	mux.HandleFunc("GET /workspace/tokens.css", staticBytes("text/css; charset=utf-8", &workspaceTokensCSS))
+	mux.HandleFunc("GET /workspace/layout.css", staticBytes("text/css; charset=utf-8", &workspaceLayoutCSS))
+	mux.HandleFunc("GET /workspace/shell.js", staticBytes("text/javascript; charset=utf-8", &workspaceShellJS))
 	mux.HandleFunc("GET /events", s.events)
+	mux.HandleFunc("GET /workspace/events", s.workspaceEvents)
 	mux.HandleFunc("GET /history", s.history)
 	mux.HandleFunc("GET /context", s.context)
 	mux.HandleFunc("POST /submit", s.submit)
@@ -624,6 +645,24 @@ func (s *Server) logoWordmark(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	_, _ = w.Write(logoWordmarkSVG)
+}
+
+// workspacePage serves the static GUI-1 shell. Like index it needs no session
+// or backend round-trips; everything interactive is inert placeholder content.
+func (s *Server) workspacePage(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(workspaceHTML)
+}
+
+// staticBytes returns a handler serving one embedded asset with a fixed
+// content type. Long-lived caching is safe: embedded assets change only with a
+// new binary.
+func staticBytes(contentType string, b *[]byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		_, _ = w.Write(*b)
+	}
 }
 
 // sseKeepaliveInterval is how often the /events handler emits a `: ping`
@@ -1270,6 +1309,21 @@ func (s *Server) models(w http.ResponseWriter, _ *http.Request) {
 	ctrl := s.ctl()
 	current := currentModelRef(ctrl)
 	label := ctrl.Label()
+	// GUI-2 (#405): expose the active provider's configured reasoning effort so
+	// browser pickers show real state instead of re-reading user config.
+	currentEffort := ""
+	for i := range cfg.Providers {
+		p := &cfg.Providers[i]
+		if !p.Configured() {
+			continue
+		}
+		if p.Name == current || p.Name == label || p.Name+"/"+p.Model == current {
+			if e := strings.TrimSpace(p.Effort); e != "" {
+				currentEffort = e
+				break
+			}
+		}
+	}
 	modelCounts := make(map[string]int)
 	for i := range cfg.Providers {
 		p := &cfg.Providers[i]
@@ -1350,7 +1404,7 @@ func (s *Server) models(w http.ResponseWriter, _ *http.Request) {
 	if out == nil {
 		out = []modelEntry{}
 	}
-	writeJSON(w, map[string]any{"current": current, "label": label, "default": cfg.DefaultModel, "models": out})
+	writeJSON(w, map[string]any{"current": current, "label": label, "default": cfg.DefaultModel, "effort": currentEffort, "models": out})
 }
 
 func currentModelRef(c control.SessionAPI) string {
@@ -1477,11 +1531,16 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	type sessionEntry struct {
-		Name    string `json:"name"`
-		Path    string `json:"path"`
-		Title   string `json:"title,omitempty"`
-		Turns   int    `json:"turns,omitempty"`
-		Current bool   `json:"current,omitempty"`
+		Name      string    `json:"name"`
+		Path      string    `json:"path"`
+		Title     string    `json:"title,omitempty"`
+		Turns     int       `json:"turns,omitempty"`
+		Current   bool      `json:"current,omitempty"`
+		InFlight  bool      `json:"in_flight,omitempty"`
+		Status    string    `json:"status"`
+		Project   string    `json:"project,omitempty"`
+		UpdatedAt time.Time `json:"updated_at,omitempty"`
+		Failure   string    `json:"failure,omitempty"`
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -1499,19 +1558,47 @@ func (s *Server) sessions(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		name := strings.TrimSuffix(e.Name(), ".jsonl")
-		entry := sessionEntry{Name: name, Path: path, Current: filepath.Clean(path) == current}
+		entry := sessionEntry{Name: name, Path: path, Current: filepath.Clean(path) == current, Status: "empty"}
+		updatedAt := agent.SessionContentModTime(path)
+		// GUI-3 (#406): the branch sidecar carries the in-flight turn marker,
+		// so the task sidebar can show 运行中 without a second data structure.
+		if meta, ok, metaErr := agent.LoadBranchMeta(path); metaErr == nil && ok {
+			entry.InFlight = meta.InFlightTurn != nil
+			if meta.WorkspaceRoot != "" {
+				entry.Project = filepath.Base(filepath.Clean(meta.WorkspaceRoot))
+			}
+			if meta.UpdatedAt.After(updatedAt) {
+				updatedAt = meta.UpdatedAt
+			}
+			if meta.RecoveryReason != "" {
+				entry.Failure = meta.RecoveryReason
+			}
+		}
 		// Event-log aware: reading the .jsonl checkpoint directly would freeze
 		// turn counts and titles at the last checkpoint write.
 		if first, turns := agent.SessionPreview(path); turns > 0 {
 			entry.Turns = turns
 			entry.Title = s.sessionTitle(r.Context(), e.Name(), first, agent.SessionContentModTime(path).UnixNano())
 		}
+		entry.UpdatedAt = updatedAt
+		switch {
+		case entry.InFlight:
+			entry.Status = "running"
+		case entry.Failure != "":
+			entry.Status = "recovered"
+		case entry.Turns > 0:
+			entry.Status = "done"
+		}
 		out = append(out, entry)
 	}
-	// reverse so newest first
-	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
-		out[i], out[j] = out[j], out[i]
-	}
+	// Directory enumeration order is not a history order. Sort by the same
+	// persisted/content timestamps the sidebar exposes, newest first.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
+			return out[i].Name > out[j].Name
+		}
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
 	if out == nil {
 		out = []sessionEntry{}
 	}

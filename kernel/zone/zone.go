@@ -43,6 +43,29 @@ type Zones struct {
 	TauLow  float64 // relative confidence >= TauLow  -> Grey
 	AbsHigh float64 // absolute score floor for Hit (top1 >= AbsHigh)
 	AbsLow  float64 // absolute score floor for Grey (top1 >= AbsLow)
+	// ByType holds per-slice-type overrides (Issue #259 阶段 2), keyed by
+	// the stable wire name of slice.SliceType (prompt|context|
+	// tool_pattern|result|memory — see slice.Type.String). Each override
+	// is a complete four-threshold snapshot; the global fields above act
+	// as the baseline for types without an override. nil = no per-type
+	// differentiation (the historical behavior). This package deliberately
+	// keys by string so zone stays free of the slice dependency.
+	ByType map[string]Zones
+}
+
+// ForType returns the effective thresholds for a slice type: the per-type
+// override when present, otherwise the global baseline itself (the
+// receiver, so a zero ByType costs nothing and behavior is unchanged).
+// The returned override's own ByType is cleared: overrides are leaf
+// snapshots, never nested.
+func (z Zones) ForType(typeName string) Zones {
+	if z.ByType != nil {
+		if o, ok := z.ByType[typeName]; ok {
+			o.ByType = nil
+			return o
+		}
+	}
+	return z
 }
 
 // Default returns the tuned default thresholds.

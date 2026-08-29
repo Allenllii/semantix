@@ -84,7 +84,9 @@ var Chinese = Messages{
 	ChatStatusCacheAvgFmt:                  "平均 %s",
 	ChatStatusPlanApproval:                 "1 开始执行 · 2 修改计划 · 3 暂不执行并退出 · n/Esc 继续规划 · PgUp/PgDn/Ctrl+Home/End 滚动",
 	PlanApprovalPrompt:                     "计划已生成（见上方）— 请选择下一步操作",
-	PlanApprovalChoices:                    "1. 开始执行\n2. 修改计划（继续规划）\n3. 暂不执行，退出计划模式\n选择 [1/2/3]（y 开始执行；n/Esc 继续规划）",
+	PlanApprovalChoices:                    "1. 开始执行\n2. 修改计划（继续规划；可留说明）\n3. 暂不执行，退出计划模式\n选择 [1/2/3]（y 开始执行；n/Esc 继续规划）",
+	ApprovalNoteHint:                       "说明要改什么，Enter 提交，Esc 返回",
+	ChatStatusApprovalNote:                 "Enter 提交说明 · Esc 返回选项 · 留空即继续规划",
 	ChatStatusToolApproval:                 "1 本次允许 · 2 本会话允许此范围 · 提供时 3/4 为前缀或保存 · n/Esc 拒绝 · Ctrl-C 取消本轮",
 	AskTypeSomething:                       "自己输入",
 	AskTypingHint:                          "输入后按 Enter 确认",
@@ -224,7 +226,7 @@ var Chinese = Messages{
 	SkillPickerStatusNotDir:      "非目录",
 	SkillPickerStatusUnreadable:  "无权限",
 	SlashPromptEmpty:             "该 MCP prompt 没有返回可发送的内容",
-	SlashMCPNone:                 "没有配置 MCP 服务器 — 在 reasonix.toml 加一个 [[plugins]] 条目",
+	SlashMCPNone:                 "没有配置 MCP 服务器 — 在 semantix-agent.toml 加一个 [[plugins]] 条目",
 	CtrlCQuitHint:                "再按一次 Ctrl+C 退出",
 	CompHintSlash:                "↑/↓ 移动 · Tab/Enter 选中 · Esc 关闭",
 	CompHintFile:                 "↑/↓ 移动 · Tab/Enter 进入文件夹或选中文件 · Esc 关闭",
@@ -308,7 +310,7 @@ var Chinese = Messages{
 	ArgEffortXHigh:      "超高推理",
 	ArgEffortMax:        "最高推理",
 	ArgThemeCurrent:     "当前",
-	ArgLanguageAuto:     "从 REASONIX_LANG / 系统 locale 自动检测",
+	ArgLanguageAuto:     "从 SEMANTIX_LANG / 系统 locale 自动检测",
 	ArgLanguageEn:       "English",
 	ArgLanguageZh:       "中文",
 
@@ -320,9 +322,9 @@ var Chinese = Messages{
 	ListSkillsHeaderFmt: "skills（%d 个）",
 	ListSkillsNone:      "暂无 skill — 调用内置的（如 /init），或用 install_skill 创建一个",
 	ListHooksHeaderFmt:  "hooks（生效 %d 个）",
-	ListHooksNone:       "无生效 hooks — 在 .reasonix/settings.json（项目）或 <Semantix home>/settings.json（全局）配置",
+	ListHooksNone:       "无生效 hooks — 在 .semantix/settings.json（项目）或 <Semantix home>/settings.json（全局）配置",
 	ListMcpHeader:       "MCP 服务器",
-	ListMcpNone:         "未连接 MCP 服务器 — 在 reasonix.toml（[[plugins]]）或项目 .mcp.json 中添加",
+	ListMcpNone:         "未连接 MCP 服务器 — 在 semantix-agent.toml（[[plugins]]）或项目 .mcp.json 中添加",
 
 	MemoryEditHint:               "可直接编辑记忆文档，或输入 “/remember 内容” 快速记录；文档改动会在下次会话生效",
 	ForgetUsage:                  "用法：/forget <name> — name 是 /memory 中显示的条目标识",
@@ -335,6 +337,17 @@ var Chinese = Messages{
 	GoalCleared:                  "目标已清除",
 	GoalNotRunning:               "没有运行中的目标可暂停",
 	GoalNotPaused:                "没有已暂停或被阻塞的目标可恢复",
+	SessionEffortUnsupportedFmt:  "%s 不支持配置推理深度",
+	SessionEffortNotADepthFmt:    "%s 对 %s 是思考开关而不是深度档；运行时覆盖只能改深度",
+	EffortErrorFmt:               "effort：%s",
+	EffortNotConfigurableFmt:     "%s 不支持配置 effort",
+	EffortCurrentFmt:             "%s 的 effort：%s（默认：%s；可选：%s）",
+	EffortUsageFmt:               "用法：/effort %s",
+	EffortNoConfigDir:            "effort：无法解析用户配置目录",
+	EffortSwitchUnavailable:      "本会话不支持切换 effort",
+	EffortSwitchBusy:             "请先完成或取消当前工作并停止后台任务，再更改 effort",
+	EffortSwitchPending:          "请等待当前运行时切换完成",
+	EffortSwitchedFmt:            "%s 的 effort 已设为 %s（后续回合生效，不重建会话）",
 	GoalPaused:                   "目标已暂停 — /goal resume 可继续",
 	GoalPausedReason:             "用户手动暂停",
 	GoalPausedFmt:                "目标已暂停（%s）— 使用 /goal resume 继续",
@@ -394,6 +407,9 @@ var Chinese = Messages{
 	SetupManagerTitle:        "供应商配置",
 	SetupAddOpenAI:           "添加 OpenAI 兼容供应商",
 	SetupAddAnthropic:        "添加 Anthropic 兼容供应商",
+	SetupAddPreset:           "从推荐预设添加",
+	SetupAddPresetDesc:       "GLM、Kimi、Qwen、MiniMax… 一键模板",
+	SetupAddPresetLabel:      "推荐供应商 · 选一个添加",
 	SetupProviderExistsFmt:   "供应商 %q 已存在。请进入现有供应商管理来编辑模型或设置。",
 	SetupSaveExit:            "保存并退出",
 	SetupSaveExitDesc:        "写入当前暂存的修改",
@@ -534,7 +550,7 @@ var Chinese = Messages{
 	ReportHeaderFmt:           "CLI 崩溃报告 %s",
 	ReportCapturedFmt:         "捕获时间：%s",
 	ReportPreviewOnlyFmt:      "当前仅预览。运行 `semantix-agent report send %s` 可发送这份报告。",
-	ReportSendPrompt:          "将这份已脱敏报告发送到 crash.reasonix.io？",
+	ReportSendPrompt:          "将这份已脱敏报告发送到 crash.semantix.ensureok.ai？",
 	ReportKept:                "报告已保留在本地。",
 	ReportDeletedFmt:          "已删除 CLI 崩溃报告 %s。",
 	ReportSentFmt:             "已发送 CLI 崩溃报告 %s。",
@@ -548,7 +564,7 @@ var Chinese = Messages{
   semantix-agent report send [ID]       发送已审阅报告，成功后删除本地副本
   semantix-agent report delete [ID]     不发送，直接删除本地报告`,
 
-	CLITelemetryConsentNotice:           "Semantix 可以向 crash.reasonix.io 发送匿名、完全不含内容的 CLI 使用统计：随机安装 ID、版本、操作系统和固定质量分桶。绝不会发送 prompt、回答、代码、路径、模型或工具内容、环境变量。之后可运行 `semantix-agent config telemetry off` 关闭。",
+	CLITelemetryConsentNotice:           "Semantix 可以向 crash.semantix.ensureok.ai 发送匿名、完全不含内容的 CLI 使用统计：随机安装 ID、版本、操作系统和固定质量分桶。绝不会发送 prompt、回答、代码、路径、模型或工具内容、环境变量。之后可运行 `semantix-agent config telemetry off` 关闭。",
 	CLITelemetryConsentPrompt:           "允许发送匿名 CLI 使用统计吗？",
 	CLITelemetryConsentInvalid:          "请输入 y 或 n。",
 	CLITelemetryConsentSaveFailedFmt:    "由于无法保存偏好设置，CLI 使用统计仍保持关闭：%v",
@@ -565,12 +581,12 @@ var Chinese = Messages{
   semantix-agent web [--model NAME] [--addr HOST:PORT] [--no-open]  启动本地 Web UI 并用默认浏览器打开
   semantix-agent serve [--model NAME] [--addr HOST:PORT] [--auth none|token|password] [--token STR] [--password STR] [--hash-password]  通过 HTTP+SSE 提供服务（支持可选认证）
   semantix-agent acp [--model NAME]                           通过 stdio 提供 Agent Client Protocol（也可用：semantix-agent --acp）
-  semantix-agent setup [path]                                 交互式配置向导；生成 reasonix.toml（及 .env）
+  semantix-agent setup [path]                                 交互式配置向导；生成 semantix-agent.toml（及 .env）
   semantix-agent config reasoning-language [auto|zh|en]        配置可见思考语言
   semantix-agent config compact-ratio [--local] [65..85]       配置自动压缩阈值
   semantix-agent config telemetry [auto|on|off]                配置不含内容的 CLI 使用统计
   semantix-agent report [list|show|send|delete] [ID]           审阅并明确发送本地 CLI 崩溃报告
-  semantix-agent mcp <add|remove|list|import>                 管理 reasonix.toml 里的 MCP 服务器
+  semantix-agent mcp <add|remove|list|import>                 管理 semantix-agent.toml 里的 MCP 服务器
   semantix-agent subagent <list|create|edit|delete|try|run>   管理和运行隔离子智能体 profile
   semantix-agent init                                         查看如何生成项目记忆（AGENTS.md）
   semantix-agent doctor [--json]                              输出脱敏的本地诊断信息
@@ -600,7 +616,7 @@ var Chinese = Messages{
   echo "解释这段代码" | semantix-agent run
 
 配置：
-  优先级：flag > ./reasonix.toml > <Semantix home>/config.toml > 内置默认值
+  优先级：flag > ./semantix-agent.toml > <Semantix home>/config.toml > 内置默认值
   密钥通过 api_key_env 从环境变量注入（如 DEEPSEEK_API_KEY）。
   运行 'semantix-agent setup' 生成配置；详见 docs/SPEC.md。
 `,

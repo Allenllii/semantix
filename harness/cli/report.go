@@ -22,7 +22,7 @@ func reportCommand(args []string) int {
 }
 
 func reportCommandWithIO(args []string, interactive bool, in io.Reader, out, errOut io.Writer) int {
-	home := config.ReasonixHomeDir()
+	home := config.SemantixHomeDir()
 	action := ""
 	id := ""
 	if len(args) > 0 {

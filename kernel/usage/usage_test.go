@@ -169,6 +169,7 @@ func writeAll(t *testing.T, path string, data []byte) {
 		t.Fatal(err)
 	}
 }
+
 // TestEventL3SliceIDRoundTrip: the L3 source slice id survives the usage
 // wire (Issue #267 step 4) so a wrong reused answer can be traced back
 // to the exact slice for rejection.
@@ -189,6 +190,7 @@ func TestEventL3SliceIDRoundTrip(t *testing.T) {
 		t.Fatalf("round-trip = %+v", back)
 	}
 }
+
 // TestSummarizeInjectROI (Issue #270 step 1): the injection economics
 // figure pairs the L2 injection spend against the savings it participates
 // in (L2 price delta + L3 full-turn savings), per 1M injected tokens.
@@ -239,5 +241,51 @@ func TestSummarizeInjectROIZeroWhenNoInjection(t *testing.T) {
 	}
 	if s.InjectROI != 0 {
 		t.Fatalf("InjectROI = %v, want 0", s.InjectROI)
+	}
+}
+
+// TestSummarizeL3NegativeObservability covers the Issue #262 additive
+// fields: per-turn L3 decision detail sums into the Summary, and older
+// log lines without the fields read as zero (backward compatible).
+func TestSummarizeL3NegativeObservability(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.jsonl")
+	r, err := NewRecorder(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs := []Event{
+		// Legacy-style line: no L3 negative fields at all.
+		{SessionID: "s1", Turn: 1, TokensIn: 100, L3Reuse: true},
+		// Full negative detail on one turn.
+		{
+			SessionID: "s1", Turn: 2, TokensIn: 200,
+			L3GreyCandidates: 3, L3JudgeReject: 1, L3JudgeApproved: 2,
+			L3RulesReject: 4, L3FingerprintReject: 1, L3IsolatedReject: 2,
+		},
+		// Suspected false hit: retry bypassed L3 and went upstream.
+		{SessionID: "s2", Turn: 1, TokensIn: 300, L3FalseHit: true},
+	}
+	for _, e := range evs {
+		if err := r.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := Summarize(path, DefaultCostMissPerMTok, DefaultCostHitPerMTok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.L3Reuses != 1 {
+		t.Fatalf("l3 reuses = %d, want 1", s.L3Reuses)
+	}
+	if s.L3GreyCandidates != 3 || s.L3JudgeReject != 1 || s.L3JudgeApproved != 2 {
+		t.Fatalf("grey/judge = %d/%d/%d, want 3/1/2",
+			s.L3GreyCandidates, s.L3JudgeReject, s.L3JudgeApproved)
+	}
+	if s.L3RulesReject != 4 || s.L3FingerprintReject != 1 || s.L3IsolatedReject != 2 {
+		t.Fatalf("rejects = %d/%d/%d, want 4/1/2",
+			s.L3RulesReject, s.L3FingerprintReject, s.L3IsolatedReject)
+	}
+	if s.L3FalseHits != 1 {
+		t.Fatalf("false hits = %d, want 1", s.L3FalseHits)
 	}
 }

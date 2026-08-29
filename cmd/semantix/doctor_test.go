@@ -445,20 +445,19 @@ func TestParseDoctorConfigEscapedQuotes(t *testing.T) {
 	}
 }
 
-// TestDoctorHelpShowsProductCommands: mounting doctor/completion/install must
-// not hide the other product-group commands from `semantix help` (review m6).
-func TestDoctorHelpShowsPlanned(t *testing.T) {
+// TestDoctorHelpShowsProductCommands: `semantix help` must list the product
+// group's remaining commands after the tool-set minimization (doctor / install
+// / version); completion/config/init/intro were removed.
+func TestDoctorHelpShowsProductCommands(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"help"}, &stdout, &stderr, productionDependencies()); code != 0 {
 		t.Fatalf("help: code = %d", code)
 	}
-	if !strings.Contains(stdout.String(), "Product & management") ||
-		!strings.Contains(stdout.String(), "completion") ||
-		!strings.Contains(stdout.String(), "install") ||
-		!strings.Contains(stdout.String(), "version") ||
-		!strings.Contains(stdout.String(), "config") ||
-		!strings.Contains(stdout.String(), "init") {
-		t.Errorf("help must show product-group commands:\n%s", stdout.String())
+	out := stdout.String()
+	for _, want := range []string{"Product & management", "doctor", "install", "version"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help must show product-group command %q:\n%s", want, out)
+		}
 	}
 }
 

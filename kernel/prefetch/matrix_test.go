@@ -260,3 +260,151 @@ func TestPlanUsesLastToolOfSequence(t *testing.T) {
 		t.Fatalf("want read_file, got %v", tasks)
 	}
 }
+
+// --- Issue #272: Markov metrics (coverage / accuracy) + Beta posterior ---
+
+func TestStatsMarkovMetricsAccuracyAndZeroDenominators(t *testing.T) {
+	m := NewMatrixPrefetcher(Config{})
+	s := m.Stats()
+	if s.ReadOnlyCalls != 0 || s.Coverage != 0 || s.TotalHits != 0 || s.TotalWastes != 0 || s.Accuracy != 0 {
+		t.Fatalf("empty stats must be zero-valued (N/A via zero denominators), got %+v", s)
+	}
+	m.Observe("bash", "grep", true)
+	m.ObserveHit("grep")
+	m.ObserveHit("grep")
+	m.ObserveWaste("grep")
+	s = m.Stats()
+	if s.TotalHits != 2 || s.TotalWastes != 1 || s.Accuracy != 2.0/3.0 {
+		t.Fatalf("accuracy: hits=%d wastes=%d accuracy=%v", s.TotalHits, s.TotalWastes, s.Accuracy)
+	}
+	// legacy fields unchanged
+	if s.Transitions != 1 || len(s.Pairs) != 1 || s.Pairs["bash"] != 1 {
+		t.Fatalf("legacy transition fields broken: %+v", s)
+	}
+	if len(s.TopNext) != 1 || s.TopNext["bash→grep"] != 1 {
+		t.Fatalf("legacy TopNext broken: %v", s.TopNext)
+	}
+}
+
+func TestCoverageTracksRecentPlan(t *testing.T) {
+	m := NewMatrixPrefetcher(Config{MinConf: 0.3})
+	// cold-start calls before any Plan: count toward the read-only
+	// denominator but can never be covered
+	m.Observe("bash", "grep", true)
+	m.Observe("bash", "grep", true)
+	m.Observe("bash", "glob", true)
+	// 9 grep vs 2 glob → grep 0.82 > 0.3 proposed, glob 0.18 filtered
+	for i := 0; i < 7; i++ {
+		m.Observe("bash", "grep", true)
+	}
+	m.Observe("bash", "glob", true)
+	tasks, err := m.Plan([]string{"bash"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 || tasks[0].Key != "grep" {
+		t.Fatalf("want only grep proposed, got %v", tasks)
+	}
+	// post-plan executions: grep covered, glob not, writer excluded
+	m.Observe("bash", "grep", true)
+	m.Observe("bash", "glob", true)
+	m.Observe("bash", "edit_file", false)
+	s := m.Stats()
+	if s.ReadOnlyCalls != 13 || s.CoveredCalls != 1 {
+		t.Fatalf("readOnly=%d covered=%d", s.ReadOnlyCalls, s.CoveredCalls)
+	}
+	if s.Coverage != 1.0/13.0 {
+		t.Fatalf("coverage=%v want %v", s.Coverage, 1.0/13.0)
+	}
+	// a second plan with no proposals clears the proposal set: nothing covers
+	if _, err := m.Plan([]string{"never_seen"}); err != nil {
+		t.Fatal(err)
+	}
+	m.Observe("bash", "grep", true)
+	if s2 := m.Stats(); s2.CoveredCalls != 1 {
+		t.Fatalf("empty plan must clear proposal set, covered=%d", s2.CoveredCalls)
+	}
+}
+
+func TestStatsPerKeyPosterior(t *testing.T) {
+	m := NewMatrixPrefetcher(Config{}) // Decay 0.2
+	m.ObserveHit("grep")               // hw=1.0  ww=0.0
+	m.ObserveHit("grep")               // hw=1.8  ww=0.0
+	m.ObserveWaste("grep")             // hw=1.44 ww=1.0
+	s := m.Stats()
+	if a, ok := s.Alpha["grep"]; !ok || math.Abs(a-2.44) > 1e-9 {
+		t.Fatalf("Alpha=%v (ok=%v), want 2.44", a, ok)
+	}
+	if b, ok := s.Beta["grep"]; !ok || math.Abs(b-2.0) > 1e-9 {
+		t.Fatalf("Beta=%v (ok=%v), want 2.0", b, ok)
+	}
+	if mu := s.HitRate["grep"]; math.Abs(mu-2.44/4.44) > 1e-9 {
+		t.Fatalf("HitRate=%v, want %v", mu, 2.44/4.44)
+	}
+	if lb := s.LowerBound["grep"]; lb <= 0 || lb >= s.HitRate["grep"] {
+		t.Fatalf("lower bound %v must lie in (0, mu=%v)", lb, s.HitRate["grep"])
+	}
+	if s.Hits["grep"] != 2 || s.Wastes["grep"] != 1 {
+		t.Fatalf("counts hits=%d wastes=%d", s.Hits["grep"], s.Wastes["grep"])
+	}
+}
+
+// TestBetaSingleWasteDoesNotDemote pins the small-sample stability of the
+// Beta posterior: one waste feedback leaves the posterior mean at
+// (0+1)/(0+1+2) = 1/3 > 1/4, so a learned candidate survives. The former
+// raw EWMA (w/h = ∞ after one waste) demoted immediately — that overreaction
+// is what the prior smoothing removes (Issue #272).
+func TestBetaSingleWasteDoesNotDemote(t *testing.T) {
+	m := NewMatrixPrefetcher(Config{WasteHitLimit: 3.0})
+	for i := 0; i < 10; i++ {
+		m.Observe("bash", "grep", true)
+	}
+	m.ObserveWaste("grep")
+	tasks, _ := m.Plan([]string{"bash"})
+	if len(tasks) != 1 || tasks[0].Key != "grep" {
+		t.Fatalf("single waste must not demote a learned candidate, got %v", tasks)
+	}
+}
+
+// TestBetaDriftInjection is the drift-injection experiment (Issue #272
+// acceptance): 10 hits → sustained wastes → 20 hits. Asserts ① one waste
+// does not demote (prior smoothing), ② sustained waste monotonically drags
+// the posterior mean below the threshold within a bounded window (drift is
+// eventually recognized), ③ sustained hits restore eligibility.
+func TestBetaDriftInjection(t *testing.T) {
+	m := NewMatrixPrefetcher(Config{WasteHitLimit: 3.0})
+	for i := 0; i < 10; i++ {
+		m.Observe("bash", "grep", true)
+	}
+	for i := 0; i < 10; i++ {
+		m.ObserveHit("grep")
+	}
+	// ① first waste: posterior smoothing must keep the candidate eligible
+	m.ObserveWaste("grep")
+	if tasks, _ := m.Plan([]string{"bash"}); len(tasks) == 0 {
+		t.Fatal("drift phase: first waste must not demote (prior smoothing)")
+	}
+	// ② sustained waste must demote within a bounded window (verified by
+	// hand: with Decay 0.2 the 9th waste crosses μ < 0.25)
+	demotedAt := -1
+	for i := 0; i < 24; i++ {
+		m.ObserveWaste("grep")
+		if tasks, _ := m.Plan([]string{"bash"}); len(tasks) == 0 {
+			demotedAt = i + 2 // first waste was outside the loop
+			break
+		}
+	}
+	if demotedAt <= 0 {
+		t.Fatal("sustained waste must eventually demote the candidate")
+	}
+	if demotedAt > 12 {
+		t.Fatalf("drift must be recognized within a bounded window, demoted at waste #%d", demotedAt)
+	}
+	// ③ recovery: sustained hits must restore eligibility
+	for i := 0; i < 20; i++ {
+		m.ObserveHit("grep")
+	}
+	if tasks, _ := m.Plan([]string{"bash"}); len(tasks) != 1 {
+		t.Fatalf("sustained hits must restore the candidate, got %v", tasks)
+	}
+}

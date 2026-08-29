@@ -331,12 +331,17 @@ func chooseRoute(policy agentpreset.PresetPolicy, intent Intent, risk Risk, in I
 func parseConstraints(instruction string) Constraints {
 	var c Constraints
 	lower := strings.ToLower(instruction)
-	// Analysis-only / no modifications
+	// Analysis-only / no modifications. Bare phrases bind globally; a
+	// prohibition verb followed by a specific object ("do not modify existing
+	// test files") scopes to that object and must not freeze the workspace.
 	if matchesAny(lower, []string{
-		"只分析", "只读", "不要修改", "别改", "不要改", "仅分析", "只看不改",
-		"analyze only", "analysis only", "don't modify", "do not modify",
-		"don't change", "do not change", "no changes", "read only", "read-only",
-		"without modifying", "without changes", "don't edit", "do not edit",
+		"只分析", "只读", "仅分析", "只看不改",
+		"analyze only", "analysis only", "no changes", "read only", "read-only",
+		"without changes",
+	}) || prohibitsAllMutation(lower, []string{
+		"不要修改", "别改", "不要改",
+		"don't modify", "do not modify", "don't change", "do not change",
+		"without modifying", "don't edit", "do not edit",
 	}) {
 		c.ForbidMutation = true
 		c.Notes = append(c.Notes, "user_forbid_mutation")
@@ -410,6 +415,42 @@ func matchesAny(lower string, needles []string) bool {
 	return false
 }
 
+// prohibitsAllMutation reports whether any prohibition verb phrase is used
+// globally: bare ("do not modify."), or followed by an all-of-workspace
+// object ("don't change anything", "不要改代码"). A specific object after the
+// verb ("do not modify existing test files") is a scoped instruction the
+// model follows in-context; it must not become a workspace-wide write freeze.
+func prohibitsAllMutation(lower string, verbs []string) bool {
+	globalObjects := []string{
+		"anything", "any file", "any code", "code", "the code", "the codebase",
+		"任何", "代码", "文件", "东西",
+	}
+	for _, v := range verbs {
+		v = strings.ToLower(v)
+		for rest := lower; ; {
+			idx := strings.Index(rest, v)
+			if idx < 0 {
+				break
+			}
+			tail := rest[idx+len(v):]
+			if end := strings.IndexAny(tail, ".!;。！；\n"); end >= 0 {
+				tail = tail[:end]
+			}
+			tail = strings.TrimSpace(strings.Trim(tail, ",，:："))
+			if tail == "" {
+				return true
+			}
+			for _, o := range globalObjects {
+				if strings.HasPrefix(tail, o) {
+					return true
+				}
+			}
+			rest = rest[idx+len(v):]
+		}
+	}
+	return false
+}
+
 func isSecurityClass(instruction string) bool {
 	lower := strings.ToLower(instruction)
 	return matchesAny(lower, []string{
@@ -432,8 +473,37 @@ func isHighRisk(instruction string) bool {
 
 // StripQuotedConstraints removes fenced code blocks and quoted spans so
 // constraint phrases inside citations do not bind the host.
+// tagOpenRe matches an opening <tag …> of a tag-wrapped span. Such spans in
+// user turns are embedded material (an issue body, a log, a diff): citations.
+var tagOpenRe = regexp.MustCompile(`<([A-Za-z][A-Za-z0-9_-]*)(\s[^<>]*)?>`)
+
+func stripTagBlocks(s string) string {
+	var b strings.Builder
+	for {
+		loc := tagOpenRe.FindStringSubmatchIndex(s)
+		if loc == nil {
+			b.WriteString(s)
+			return b.String()
+		}
+		name := s[loc[2]:loc[3]]
+		rest := s[loc[1]:]
+		ci := strings.Index(strings.ToLower(rest), "</"+strings.ToLower(name)+">")
+		if ci < 0 {
+			// Unmatched opener (e.g. "use <placeholder> here"): plain text.
+			b.WriteString(s[:loc[1]])
+			s = rest
+			continue
+		}
+		b.WriteString(s[:loc[0]])
+		b.WriteByte('\n')
+		s = rest[ci+len(name)+3:]
+	}
+}
+
 func StripQuotedConstraints(raw string) string {
 	s := raw
+	// Tag-wrapped citation blocks <issue>…</issue>
+	s = stripTagBlocks(s)
 	// Fenced code blocks ``` ... ```
 	s = stripFences(s)
 	// Inline code `...`
@@ -466,6 +536,14 @@ func stripInlineCode(s string) string {
 	var b strings.Builder
 	in := false
 	for _, r := range s {
+		// Inline code never spans lines; resetting here keeps an unbalanced
+		// backtick from swallowing every later line (which would silently
+		// unbind host constraints that follow it).
+		if r == '\n' {
+			in = false
+			b.WriteRune(r)
+			continue
+		}
 		if r == '`' {
 			in = !in
 			continue
@@ -481,6 +559,13 @@ func stripQuoted(s string, open, close rune) string {
 	var b strings.Builder
 	in := false
 	for _, r := range s {
+		// Single-line spans only (see caller comment): an unclosed quote must
+		// not consume the rest of the input.
+		if r == '\n' {
+			in = false
+			b.WriteRune(r)
+			continue
+		}
 		if !in && r == open {
 			in = true
 			continue

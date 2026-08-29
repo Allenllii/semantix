@@ -60,6 +60,7 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 		TaskType:      *taskType,
 		Language:      *language,
 		ProjectSlug:   *project,
+		Origin:        slice.OriginUserCurated, // Issue #279: explicit user action
 	}
 	if *fingerprintPaths != "" {
 		var paths []string
@@ -122,6 +123,7 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 	defer closeStore(store)
 
 	stored := 0
+	storedItems := make([]*slice.Slice, 0, len(items))
 	for i, item := range items {
 		if item == nil {
 			return fmt.Errorf("extractor returned nil slice at position %d", i)
@@ -134,10 +136,42 @@ func runExtract(args []string, stdout, stderr io.Writer, deps dependencies) erro
 			return fmt.Errorf("store slice %q: %w", item.ID, err)
 		}
 		stored++
+		storedItems = append(storedItems, item)
 	}
 
-	fmt.Fprintf(stdout, "extracted=%d stored=%d scope=%s db=%s\n", len(items), stored, scopeName(scope), dbPath)
+	rawBytes, storedBytes, compressionRatio := extractionCompression(storedItems)
+	fmt.Fprintf(stdout, "extracted=%d stored=%d scope=%s db=%s raw_bytes=%d stored_bytes=%d compression_ratio=%.4f\n",
+		len(items), stored, scopeName(scope), dbPath, rawBytes, storedBytes, compressionRatio)
+	// Water-level hint (never an error, never triggers eviction here — the
+	// hot write path stays O(1); the cap is enforced at gc / gateway boot).
+	if maxSlices := cfgInt(deps.resolved, "store.max_slices", 5000); maxSlices > 0 {
+		if all, err := store.ListAll(); err == nil && len(all)*10 >= maxSlices*9 {
+			fmt.Fprintf(stderr, "semantix: library at %d/%d slices (>=90%%) — run `semantix gc` to rescore and archive low-value slices\n",
+				len(all), maxSlices)
+		}
+	}
 	return nil
+}
+
+func extractionCompression(items []*slice.Slice) (rawBytes, storedBytes int, ratio float64) {
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		stored := len(item.Content)
+		raw := stored
+		meta := item.Meta
+		if meta.CompressionVersion != "" && meta.OriginalBytes > 0 &&
+			meta.StoredBytes == stored && meta.OriginalBytes >= meta.StoredBytes {
+			raw = meta.OriginalBytes
+		}
+		rawBytes += raw
+		storedBytes += stored
+	}
+	if rawBytes > 0 {
+		ratio = float64(rawBytes-storedBytes) / float64(rawBytes)
+	}
+	return rawBytes, storedBytes, ratio
 }
 
 func readInput(path string) ([]byte, error) {

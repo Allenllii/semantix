@@ -102,7 +102,7 @@ func rebuildWithPrevious(ctx context.Context, old *control.Controller, previous 
 		opts.SessionTemp = old.SessionTemp()
 	}
 
-	home := config.ReasonixHomeDir()
+	home := config.SemantixHomeDir()
 	// fromGraph must be the PREVIOUS generation's graph when available.
 	// Building "current disk" for both from and to collapses every plan to no-op.
 	var fromGraph *extension.DependencyGraph

@@ -30,6 +30,7 @@ type Event struct {
 	DecisionReceipt *DecisionReceipt    `json:"decisionReceipt,omitempty"`
 	Extension       *ExtensionSurface   `json:"extension,omitempty"`
 	Err             string              `json:"err,omitempty" externalizable:"true"`
+	Cancelled       bool                `json:"cancelled,omitempty"`
 	Outcome         string              `json:"outcome,omitempty"`
 	Readiness       *FinalReadiness     `json:"readiness,omitempty"`
 	Receipt         *CompletionReceipt  `json:"receipt,omitempty"`
@@ -46,6 +47,17 @@ type Event struct {
 	Phase string `json:"phase,omitempty"`
 	// Completion is set on completion_summary events (content-free quality summary).
 	Completion *CompletionSummary `json:"completion,omitempty"`
+	// KernelCache is set on kernel_cache events (observed L2/L3 cache activity).
+	KernelCache *KernelCache `json:"kernelCache,omitempty"`
+}
+
+// KernelCache is the JSON form of event.KernelCachePayload.
+type KernelCache struct {
+	Op       string   `json:"op,omitempty"`
+	Layer    string   `json:"layer,omitempty"`
+	SliceIDs []string `json:"sliceIds,omitempty"`
+	Bytes    int      `json:"bytes,omitempty"`
+	Reason   string   `json:"reason,omitempty"`
 }
 
 // CompletionSummary is the JSON form of event.CompletionSummaryInfo.
@@ -121,6 +133,7 @@ func ToWire(e event.Event) Event {
 			ParentID: e.Tool.ParentID, AttemptID: e.Tool.AttemptID,
 			Diff: e.Tool.Diff, Added: e.Tool.Added, Removed: e.Tool.Removed,
 		}
+		wt.FileDiff = toWireFileDiff(e.Tool.FileDiff)
 		if e.Tool.Profile != nil {
 			wt.Profile = &Profile{Model: e.Tool.Profile.Model, Effort: e.Tool.Profile.Effort}
 		}
@@ -189,6 +202,7 @@ func ToWire(e event.Event) Event {
 	case event.ExtensionSurface, event.ExtensionStatus:
 		w.Extension = ToWireExtensionSurface(e.Extension)
 	case event.TurnDone:
+		w.Cancelled = e.Cancelled
 		w.Outcome = e.Outcome
 		w.CheckpointTurn = e.CheckpointTurn
 		w.Receipt = completionReceiptWire(e.Receipt)
@@ -230,6 +244,10 @@ func ToWire(e event.Event) Event {
 				GapKinds:           append([]string(nil), c.GapKinds...),
 				ConstraintDegraded: c.ConstraintDegraded,
 			}
+		}
+	case event.KernelCache:
+		if c := e.KernelCache; c != nil {
+			w.KernelCache = &KernelCache{Op: c.Op, Layer: c.Layer, SliceIDs: append([]string(nil), c.SliceIDs...), Bytes: c.Bytes, Reason: c.Reason}
 		}
 	}
 	return w
@@ -384,8 +402,48 @@ type Tool struct {
 	Diff         string          `json:"diff,omitempty" externalizable:"true"`
 	Added        int             `json:"added,omitempty"`
 	Removed      int             `json:"removed,omitempty"`
+	FileDiff     *FileDiff       `json:"fileDiff,omitempty"`
 	Profile      *Profile        `json:"profile,omitempty"`
 	Execution    *ShellExecution `json:"execution,omitempty"`
+}
+
+// FileDiff is the workspace-safe structured form of event.FileDiff. The
+// legacy flat diff/added/removed fields on Tool stay for older clients.
+type FileDiff struct {
+	Path     string     `json:"path"`
+	Status   string     `json:"status"`
+	Language string     `json:"language,omitempty"`
+	Diff     string     `json:"diff,omitempty" externalizable:"true"`
+	Added    int        `json:"added"`
+	Removed  int        `json:"removed"`
+	Binary   bool       `json:"binary,omitempty"`
+	Hunks    int        `json:"hunks,omitempty"`
+	Lines    []DiffLine `json:"lines,omitempty"`
+}
+
+type DiffLine struct {
+	Kind    string `json:"kind"`
+	OldLine int    `json:"oldLine,omitempty"`
+	NewLine int    `json:"newLine,omitempty"`
+	Text    string `json:"text" externalizable:"true"`
+}
+
+func toWireFileDiff(in event.FileDiff) *FileDiff {
+	if in.Path == "" && in.Status == "" && in.Diff == "" && len(in.Lines) == 0 && !in.Binary {
+		return nil
+	}
+	out := &FileDiff{
+		Path: in.Path, Status: in.Status, Language: in.Language,
+		Diff: in.Diff, Added: in.Added, Removed: in.Removed,
+		Binary: in.Binary, Hunks: in.Hunks,
+	}
+	if len(in.Lines) > 0 {
+		out.Lines = make([]DiffLine, len(in.Lines))
+		for i, line := range in.Lines {
+			out.Lines[i] = DiffLine{Kind: line.Kind, OldLine: line.OldLine, NewLine: line.NewLine, Text: line.Text}
+		}
+	}
+	return out
 }
 
 // ShellExecution is the JSON form of event.ShellExecution (local UI metadata).
@@ -622,6 +680,7 @@ var kindNames = map[event.Kind]string{
 	event.WorkspaceChanged:        "workspace_changed",
 	event.TurnPhase:               "turn_phase",
 	event.CompletionSummary:       "completion_summary",
+	event.KernelCache:             "kernel_cache",
 }
 
 // ContextMaintenance is the JSON form of event.ContextMaintenance.

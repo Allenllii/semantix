@@ -223,6 +223,69 @@ func TestApprovedPlanExecutionUsesAutoSemantics(t *testing.T) {
 	}
 }
 
+func TestPlannerPlanApprovalPreservesRevisionFeedback(t *testing.T) {
+	session := agent.NewSession("")
+	ag := agent.New(nil, nil, session, agent.Options{}, event.Discard)
+	var c *Controller
+	c = New(Options{
+		Executor: ag,
+		Sink: event.FuncSink(func(e event.Event) {
+			if e.Kind == event.ApprovalRequest && e.Approval.Tool == planApprovalTool {
+				go func() {
+					_ = c.ResolvePlanDecision(e.Approval.ID, PlanDecisionRevisePlan, "widen the retry window")
+				}()
+			}
+		}),
+	})
+	defer c.Close()
+	c.EnableInteractiveApproval()
+	runCalled := false
+	if err := (plannerPlanApprover{c: c}).RunWithPlannerApproval(t.Context(), "plan", func(context.Context) error {
+		runCalled = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if runCalled {
+		t.Fatal("revision denial must not execute the plan")
+	}
+	history := session.Snapshot()
+	if len(history) == 0 || history[len(history)-1].Role != provider.RoleUser ||
+		!strings.Contains(history[len(history)-1].Content, "widen the retry window") {
+		t.Fatalf("planner revision feedback was not preserved: %+v", history)
+	}
+}
+
+func TestPlannerPlanApprovalLeavesEmptyDenialMarkerToCoordinator(t *testing.T) {
+	session := agent.NewSession("")
+	ag := agent.New(nil, nil, session, agent.Options{}, event.Discard)
+	var c *Controller
+	c = New(Options{
+		Executor: ag,
+		Sink: event.FuncSink(func(e event.Event) {
+			if e.Kind == event.ApprovalRequest && e.Approval.Tool == planApprovalTool {
+				go func() {
+					_ = c.ResolvePlanDecision(e.Approval.ID, PlanDecisionRevisePlan, "")
+				}()
+			}
+		}),
+	})
+	defer c.Close()
+	c.EnableInteractiveApproval()
+	if err := (plannerPlanApprover{c: c}).RunWithPlannerApproval(t.Context(), "plan", func(context.Context) error {
+		t.Fatal("empty denial must not execute the plan")
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	history := session.Snapshot()
+	for _, message := range history {
+		if message.Content == planNotApprovedNote {
+			t.Fatalf("adapter must not duplicate coordinator-owned empty-denial marker: %+v", history)
+		}
+	}
+}
+
 // TestApprovalTimeoutDeniesWhenUnanswered verifies a positive ApprovalTimeout
 // turns an unanswered prompt into a denial (error) instead of blocking forever
 // (#4626, #4402). Ask shares the same wait context as tool-approval prompts.

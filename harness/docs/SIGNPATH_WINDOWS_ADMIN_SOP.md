@@ -1,7 +1,7 @@
-# Reasonix Windows SignPath 配置与验收 SOP
+# Semantix Windows SignPath 配置与验收 SOP
 
 本文供 SignPath 管理员、GitHub 仓库管理员和 Release Maintainer 配置并验收
-Reasonix Windows Authenticode 两阶段签名链路。
+Semantix Windows Authenticode 两阶段签名链路。
 
 关联变更：
 
@@ -139,12 +139,12 @@ GitHub `upload-artifact` 提交给 SignPath 的产物是 ZIP，因此配置根�
 
 该配置需要给以下 6 个 EXE 执行 `authenticode-sign`：
 
-- `reasonix-desktop.exe`
-- `reasonix-guard.exe`
-- `reasonix-launcher.exe`
-- `reasonix-update-helper.exe`
-- `reasonix-cli.exe`
-- `reasonix-uninstall.exe`
+- `semantix-agent-desktop.exe`
+- `semantix-agent-guard.exe`
+- `semantix-agent-launcher.exe`
+- `semantix-agent-update-helper.exe`
+- `semantix-agent-cli.exe`
+- `semantix-uninstall.exe`
 
 参考：
 
@@ -449,7 +449,7 @@ Status = Valid
 在干净的 Windows 11 AMD64 和 ARM64 环境中检查安装目录：
 
 ```powershell
-Get-ChildItem "<Reasonix安装目录>" -Recurse -Filter *.exe |
+Get-ChildItem "<Semantix安装目录>" -Recurse -Filter *.exe |
   ForEach-Object {
     $signature = Get-AuthenticodeSignature $_.FullName
     [PSCustomObject]@{
@@ -528,4 +528,4 @@ gh variable set SIGNPATH_RELEASE_SIGNING_ATTESTATION \
 - [SignPath Projects](https://docs.signpath.io/projects)
 - [SignPath Users and Permissions](https://docs.signpath.io/users/)
 - [SignPath GitHub Trusted Build System](https://docs.signpath.io/trusted-build-systems/github)
-- [Reasonix PR #6904](https://github.com/esengine/DeepSeek-Reasonix/pull/6904)
+- [Semantix PR #6904](https://github.com/esengine/DeepSeek-Reasonix/pull/6904)

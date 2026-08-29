@@ -1,7 +1,7 @@
 # Issue #178 验收报告 — U39: 原生功能保留回归（沙箱 / bot / 既有交互）
 
 > 状态：验收通过（2026-08-17，含豁免）。对应 Issue：`#178 U39: 原生功能保留回归（沙箱 / bot / 既有交互）`。
-> 目标仓库：`Gnosil/DeepSeek-Reasonix`（fork 侧，模块 `reasonix`）。H4 改造 = 该仓 `main` + PR #3（U33 CLI 复用面板）+ PR #2（U34 桌面复用面板）。
+> 目标仓库：`Gnosil/DeepSeek-Reasonix`（fork 侧，模块 `semantix-agent`）。H4 改造 = 该仓 `main` + PR #3（U33 CLI 复用面板）+ PR #2（U34 桌面复用面板）。
 > 验收方式：全仓 `go build ./...` + `go test -race ./...`（主 module 与 desktop 嵌套 module 各一次）+ 回归清单逐项核对 + baseline 对比归因（纯 `main` 无 H4 改动跑同一套测试）。
 
 ## 1. 验收对象（H4 改造后状态）
@@ -27,25 +27,25 @@
 
 | 回归项 | 对应包 | 结果 | 证据 |
 |---|---|---|---|
-| 沙箱执行 | `internal/sandbox` | ✅ PASS | `ok reasonix/internal/sandbox 6.506s`（escape/prepare/seatbelt 全套，含 darwin/windows 平台分支测试） |
+| 沙箱执行 | `internal/sandbox` | ✅ PASS | `ok semantix/internal/sandbox 6.506s`（escape/prepare/seatbelt 全套，含 darwin/windows 平台分支测试） |
 | bot 会话 | `internal/bot` `internal/botruntime` `internal/bot/feishu` `internal/bot/qq` `internal/bot/weixin` | ✅ PASS | 全部 `ok`（gateway/connloop/desktop/pairing/session/render 等 100+ 用例） |
-| 权限门控 | `internal/permission` | ✅ PASS | `ok reasonix/internal/permission 1.960s`（bash 分解/审批/只读/重定向/破坏性 git 全套） |
+| 权限门控 | `internal/permission` | ✅ PASS | `ok semantix/internal/permission 1.960s`（bash 分解/审批/只读/重定向/破坏性 git 全套） |
 | 会话管理 | `internal/sessioncatalog` `internal/sessioninbox` `internal/sessiontemp` `internal/tool/sessiontool` | ✅ PASS | `ok`（catalog 11.992s / inbox 5.216s / temp 4.895s；lineage/visibility/reconcile/recovery/idempotency 全套） |
-| /commands | `internal/command` | ✅ PASS | `ok reasonix/internal/command 2.752s`（command/inspect/slashtool/symlink 全套） |
+| /commands | `internal/command` | ✅ PASS | `ok semantix/internal/command 2.752s`（command/inspect/slashtool/symlink 全套） |
 | 桌面端既有面板 | `desktop` 嵌套 module + `desktop/frontend` | ✅ PASS | Go 侧 `go build` ✅ + `go test -race` 重跑全绿；前端组件测试（§4.3）reuse-panel 15/15 PASS + 全量回归 |
 
 交互主干兜底（H4 涉及 agent/event，一并核对）：`internal/agent`（除 §5 既有失败外全绿）、`internal/event`、`internal/control` 31.494s、`internal/serve` 63.187s、`internal/acp` 7.390s、`internal/capability`——全部 `ok`。
 
 ## 4. 验证命令记录（2026-08-17，go1.26.5 darwin/arm64）
 
-### 4.1 主 module（reasonix，H4 状态 = main + PR#3 + PR#2）
+### 4.1 主 module（semantix，H4 状态 = main + PR#3 + PR#2）
 
 ```
 go build ./...                    → 全绿（BUILD_EXIT=0）
 go test -race -count=1 ./...      → 121 包 ok / 5 FAIL（归因见 §5）
 ```
 
-### 4.2 desktop 嵌套 module（reasonix/desktop，独立 go.mod，Wails v2 + CGO）
+### 4.2 desktop 嵌套 module（semantix/desktop，独立 go.mod，Wails v2 + CGO）
 
 ```
 go build ./...                    → 全绿（DESKTOP_BUILD_EXIT=0）

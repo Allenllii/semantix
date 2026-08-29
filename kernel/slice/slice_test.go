@@ -1,6 +1,7 @@
 package slice
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -312,5 +313,68 @@ func TestExtractorProjectsClosedLoopEventsForSearch(t *testing.T) {
 		if !strings.Contains(joined, phrase) {
 			t.Fatalf("missing %q in %q", phrase, joined)
 		}
+	}
+}
+
+// --- Issue #279: Origin provenance/trust tags ---
+
+func TestOriginLevelMapping(t *testing.T) {
+	cases := []struct {
+		o    Origin
+		want int
+	}{
+		{"", 1},                // unlabelled (legacy) — lowest, fail-closed
+		{OriginImport, 1},      // most open channel — lowest
+		{OriginSessionAuto, 2}, // automatic extraction
+		{OriginPrefetch, 2},    // speculative prefetch
+		{OriginUserCurated, 3}, // user-curated — highest
+		{"made-up", 1},         // unknown tag → lowest (fail-closed)
+	}
+	for _, c := range cases {
+		if got := c.o.Level(); got != c.want {
+			t.Errorf("Origin(%q).Level() = %d, want %d", c.o, got, c.want)
+		}
+	}
+}
+
+func TestOriginValid(t *testing.T) {
+	for _, o := range []Origin{OriginSessionAuto, OriginPrefetch, OriginImport, OriginUserCurated} {
+		if !o.Valid() {
+			t.Errorf("Origin(%q).Valid() = false, want true", o)
+		}
+	}
+	for _, o := range []Origin{"", "made-up"} {
+		if o.Valid() {
+			t.Errorf("Origin(%q).Valid() = true, want false", o)
+		}
+	}
+}
+
+// TestOriginJSONRoundTrip: the tag survives the wire; an unlabelled
+// (legacy) line unmarshals to the empty origin — the fail-closed case.
+func TestOriginJSONRoundTrip(t *testing.T) {
+	sl := &Slice{ID: "s1", Type: Prompt, Scope: Project, Content: []byte("x"),
+		Meta: SliceMeta{SourceSession: "s", Origin: OriginImport}}
+	b, err := json.Marshal(sl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(b, []byte(`"origin":"import"`)) {
+		t.Fatalf("wire = %s, want origin field", b)
+	}
+	var back Slice
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Meta.Origin != OriginImport {
+		t.Fatalf("round-trip origin = %q, want import", back.Meta.Origin)
+	}
+	// Legacy line without the field reads as empty origin (level 1).
+	var legacy Slice
+	if err := json.Unmarshal([]byte(`{"id":"s2","meta":{"source_session":"x"}}`), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Meta.Origin != "" || legacy.Meta.Origin.Level() != 1 {
+		t.Fatalf("legacy origin = %q level %d, want empty/1", legacy.Meta.Origin, legacy.Meta.Origin.Level())
 	}
 }

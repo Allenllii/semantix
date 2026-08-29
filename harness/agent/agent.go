@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -400,6 +401,18 @@ type Agent struct {
 	// update subsequent turns without rebuilding the agent.
 	agentPreset atomic.Value // string light|balanced|delivery
 
+	// sessionEffort is the session-scoped reasoning depth. Atomic for the same
+	// reason as agentPreset: subsequent rounds pick it up without a rebuild.
+	//
+	// It holds a *string, not a string, because three states behave
+	// differently and the third would otherwise be unreachable: unset (the
+	// governor may drive the slot), explicitly auto (the configured depth, and
+	// the governor stands down), and a depth. config.NormalizeEffort maps auto
+	// to "", so a bare string cannot tell "auto" from "never set" — and a user
+	// who could not express auto could never take the dial back once the
+	// governor experiment was on.
+	sessionEffort atomic.Value // *string; a typed-nil pointer means "unset"
+
 	// turn is the state of the Run currently executing; beginRunTurn replaces
 	// it wholesale. See turnruntime.go.
 	turn turnRuntime
@@ -553,7 +566,7 @@ func (a *Agent) SetSandboxEscapeApprover(g sandbox.EscapeApprover) {
 }
 
 // SetConfigWriteApprover installs the optional per-write approval path used by
-// the file tools when a target is a Reasonix-managed config file outside the
+// the file tools when a target is a Semantix-managed config file outside the
 // workspace write roots.
 func (a *Agent) SetConfigWriteApprover(g tool.ConfigWriteApprover) {
 	if nilutil.IsNil(g) {
@@ -634,7 +647,7 @@ func (a *Agent) Session() *Session {
 }
 
 // SetSession replaces the agent's conversation wholesale. Used by
-// `reasonix --resume` to load a saved JSONL transcript before the first turn,
+// `semantix-agent --resume` to load a saved JSONL transcript before the first turn,
 // so the model picks up exactly where it left off. Callers serialise it against a
 // running turn (it only fires while idle); sessMu guards the pointer swap itself.
 func (a *Agent) SetSession(s *Session) {
@@ -941,7 +954,7 @@ type Options struct {
 	// enforced OS sandbox fails. nil keeps fail-closed behavior.
 	SandboxEscapeApprover sandbox.EscapeApprover
 
-	// ConfigWriteApprover confirms file-tool writes to Reasonix-managed config
+	// ConfigWriteApprover confirms file-tool writes to Semantix-managed config
 	// files outside the workspace roots. nil keeps fail-closed behavior.
 	ConfigWriteApprover tool.ConfigWriteApprover
 
@@ -1215,6 +1228,69 @@ func (a *Agent) SetAgentPreset(preset string) {
 		// Light may still elevate per-turn; baseline stays non-delivery.
 		a.deliveryProfile = false
 	}
+}
+
+// SetSessionEffort sets or clears the session-scoped reasoning depth used by
+// subsequent model rounds. Like SetAgentPreset it rebuilds nothing; unlike it,
+// the value reaches the wire per round rather than per turn — see
+// effectiveEffortOverride for when it bites.
+//
+// A nil level clears the override. A non-nil pointer to "" is an explicit
+// auto: use the provider's configured depth, and stand the governor down.
+func (a *Agent) SetSessionEffort(level *string) {
+	if a == nil {
+		return
+	}
+	if level == nil {
+		a.sessionEffort.Store((*string)(nil))
+		return
+	}
+	// Copy: the caller keeps its pointer and must not be able to mutate the
+	// session's level out from under a round that is being built.
+	stored := *level
+	a.sessionEffort.Store(&stored)
+}
+
+// SessionEffort returns the session-scoped depth and whether one is set. The
+// bool is the whole point: ("", true) is an explicit auto, ("", false) is an
+// untouched dial, and they resolve differently against the governor.
+func (a *Agent) SessionEffort() (string, bool) {
+	if a == nil {
+		return "", false
+	}
+	level, _ := a.sessionEffort.Load().(*string)
+	if level == nil {
+		return "", false
+	}
+	return *level, true
+}
+
+// effectiveEffortOverride resolves the single Request.EffortOverride slot
+// (provider.Request.EffortOverride) that the reasoning governor and the session
+// dial both want to write.
+//
+// The rule: an explicit session level wins whenever one is set — including an
+// explicit auto, which asks for the configured depth and therefore also stands
+// the governor down. The governor applies only when the user has never touched
+// the dial, which is the overwhelming majority of sessions.
+//
+// Why that direction: the governor is an experiment gated off by default
+// (SEMANTIX_EXPERIMENT_GOVERNOR), not a shipped safety invariant, and an
+// experiment silently beating an explicit user action is the wrong default.
+// Cost containment does not rest here either — the scheduler's budget path
+// degrades the tier or stops the round outright, so reasoning depth is not the
+// last line of defence.
+//
+// Timing: the value is read while a round's request is being built, and that
+// request is then frozen and replayed verbatim on every stream retry. A level
+// chosen mid-turn therefore engages at the next round, never mid-round; a turn
+// that answers with no tool calls has no next round, so its level lands on the
+// following turn.
+func (a *Agent) effectiveEffortOverride() string {
+	if level, ok := a.SessionEffort(); ok {
+		return level
+	}
+	return a.governorOverride()
 }
 
 // AgentPreset returns the current session role setting (never empty).
@@ -2215,10 +2291,15 @@ func (a *Agent) emitFullToolDispatch(ctx context.Context, c provider.ToolCall, r
 	t, _, ambiguous := a.svc.tools.ResolveCall(c.Name)
 	ok := t != nil && len(ambiguous) == 0
 	ev := event.Tool{ID: c.ID, Name: c.Name, Args: c.Arguments, ReadOnly: ok && t.ReadOnly(), Refreshed: refreshed}
-	ev.FileDiff = event.FileDiff{Diff: c.Diff, Added: c.Added, Removed: c.Removed}
-	if ok && ev.Diff == "" && ev.Added == 0 && ev.Removed == 0 {
-		if ch, ok := tool.PreviewChange(ctx, t, json.RawMessage(c.Arguments)); ok {
-			ev.FileDiff = event.FileDiff{Diff: ch.Diff, Added: ch.Added, Removed: ch.Removed}
+	ev.FileDiff = fileDiffFromToolCall(c)
+	if ok && !t.ReadOnly() {
+		// Re-run the same preview used by execution. Besides retaining the
+		// existing diff, this supplies backend-owned path/status/line metadata
+		// to workspace clients without making them inspect tool arguments.
+		if pv, previewable := t.(tool.Previewer); previewable {
+			if ch, err := pv.Preview(ctx, json.RawMessage(c.Arguments)); err == nil {
+				ev.FileDiff = fileDiffFromChange(ch, toolPathFromArgs(c.Arguments))
+			}
 		}
 	}
 	if ok {
@@ -2229,6 +2310,68 @@ func (a *Agent) emitFullToolDispatch(ctx context.Context, c provider.ToolCall, r
 		}
 	}
 	a.svc.sink.Emit(event.Event{Kind: event.ToolDispatch, Tool: ev})
+}
+
+func fileDiffFromChange(ch diff.Change, requestedPath string) event.FileDiff {
+	path := strings.TrimSpace(requestedPath)
+	if path == "" {
+		path = ch.Path
+	}
+	status := "modified"
+	switch ch.Kind {
+	case diff.Create:
+		status = "added"
+	case diff.Delete:
+		status = "deleted"
+	}
+	out := event.FileDiff{
+		Path: path, Status: status, Language: languageForPath(path),
+		Diff: ch.Diff, Added: ch.Added, Removed: ch.Removed,
+		Binary: ch.Binary, Hunks: ch.Hunks,
+	}
+	for _, line := range diff.ParseUnified(ch.Diff) {
+		out.Lines = append(out.Lines, event.DiffLine{
+			Kind: string(line.Kind), OldLine: line.OldLine,
+			NewLine: line.NewLine, Text: line.Text,
+		})
+	}
+	return out
+}
+
+func fileDiffFromToolCall(c provider.ToolCall) event.FileDiff {
+	if c.Diff == "" && c.Added == 0 && c.Removed == 0 {
+		return event.FileDiff{}
+	}
+	path := toolPathFromArgs(c.Arguments)
+	out := event.FileDiff{
+		Path: path, Status: "modified", Language: languageForPath(path),
+		Diff: c.Diff, Added: c.Added, Removed: c.Removed,
+	}
+	for _, line := range diff.ParseUnified(c.Diff) {
+		out.Lines = append(out.Lines, event.DiffLine{
+			Kind: string(line.Kind), OldLine: line.OldLine,
+			NewLine: line.NewLine, Text: line.Text,
+		})
+	}
+	return out
+}
+
+func toolPathFromArgs(args string) string {
+	var input struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal([]byte(args), &input); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(input.Path)
+}
+
+func languageForPath(path string) string {
+	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), ".")
+	if ext == "" {
+		return "text"
+	}
+	return ext
 }
 
 // emitResolvedToolDispatch upserts the real target classification of a stable
@@ -2961,6 +3104,7 @@ func (a *Agent) startInjectWarm(ctx context.Context) {
 	if input == "" {
 		return
 	}
+	probeTargets := a.prefetchProbeTargets()
 	go func() {
 		// Detach from the stream context so cancellation of the current
 		// request does not cancel the warm-up; Inject applies its own 3s cap.
@@ -2974,7 +3118,7 @@ func (a *Agent) startInjectWarm(ctx context.Context) {
 			a.prefetchTaskMS.Store(elapsed)
 		}()
 		if result := a.semantix.InjectDetailed(warmCtx, input); result.Text != "" {
-			a.storePrefetch(&prefetchedInjectResult{Text: result.Text, Targets: result.Targets, Turn: a.semantixTurn.Load()})
+			a.storePrefetch(&prefetchedInjectResult{Text: result.Text, Targets: result.Targets, Turn: a.semantixTurn.Load(), WarmAt: time.Now(), ProbeTargets: probeTargets})
 		}
 	}()
 }

@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	defaultModelTestConfiguredEnv = "REASONIX_CLI_TEST_CONFIGURED_KEY"
-	defaultModelTestKeylessEnv    = "REASONIX_CLI_TEST_KEYLESS_KEY"
+	defaultModelTestConfiguredEnv = "SEMANTIX_CLI_TEST_CONFIGURED_KEY"
+	defaultModelTestKeylessEnv    = "SEMANTIX_CLI_TEST_KEYLESS_KEY"
 )
 
 func newDefaultModelTestConfig() *config.Config {
@@ -183,7 +183,7 @@ func TestResolveServeModelUsesGlobalChatFallback(t *testing.T) {
 	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("reasonix.toml", []byte(`
+	if err := os.WriteFile("semantix-agent.toml", []byte(`
 default_model = "project/project-chat"
 
 [[providers]]
@@ -228,7 +228,7 @@ func TestNewChatTUIKeepsExplicitKeylessControllerModel(t *testing.T) {
 	}
 }
 
-// setCredential writes a "configured" sentinel key into Reasonix's user
+// setCredential writes a "configured" sentinel key into Semantix's user
 // credentials store, or clears it. ProviderEntry.Configured() resolves keys
 // only from that store (not from process env), so this is the only way to
 // flip a test provider between configured and keyless.

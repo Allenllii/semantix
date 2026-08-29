@@ -1,4 +1,4 @@
-// Package semantix bridges the reasonix harness to the semantix kernel:
+// Package semantix bridges the semantix harness to the semantix kernel:
 // session events are mirrored to kernel-compatible session JSONL, and kernel
 // retrieval (lookup/inject) is exposed to the agent via subprocess calls.
 package semantix
@@ -66,6 +66,7 @@ type Bridge struct {
 
 	mu    sync.Mutex
 	hs    *HarnessSink // lazily created once a session label is known
+	sink  event.Sink   // live harness sink for frontend cache observations
 	dir   string       // resolved sessions dir ("" = not yet)
 	label string       // controller session label (first real session id)
 	// lastSavings is the last observed cumulative usage savings, used to
@@ -130,6 +131,9 @@ func (b *Bridge) Sink(inner event.Sink) event.Sink {
 	if !b.Enabled() {
 		return inner
 	}
+	b.mu.Lock()
+	b.sink = inner
+	b.mu.Unlock()
 	return &mirrorSink{bridge: b, inner: inner}
 }
 
@@ -178,6 +182,7 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 	}
 	store, idx, err := b.kernelIndex()
 	if err != nil {
+		b.emitKernelCache("miss", "L2", nil, 0, "slice store unavailable")
 		return InjectResult{}
 	}
 	closeSliceStore(store)
@@ -190,7 +195,20 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 		Zones:     &z,
 		AllowGrey: b.cfg.GreyMode == "audit",
 	}).Build(query)
-	if err != nil || inj == nil || len(inj.Slices) == 0 {
+	if err != nil {
+		op := "miss"
+		if budget < b.cfg.Budget {
+			op = "degraded"
+		}
+		b.emitKernelCache(op, "L2", nil, 0, err.Error())
+		return InjectResult{}
+	}
+	if inj == nil || len(inj.Slices) == 0 {
+		op := "miss"
+		if budget < b.cfg.Budget {
+			op = "degraded"
+		}
+		b.emitKernelCache(op, "L2", nil, 0, "no matching slices")
 		return InjectResult{}
 	}
 	targets := make([]string, 0, len(inj.Slices))
@@ -201,7 +219,32 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 	}
 	sort.Strings(targets)
 	b.recordInjection(targets, inj.Bytes)
+	op := "inject"
+	if budget < b.cfg.Budget {
+		op = "degraded"
+	}
+	b.emitKernelCache(op, "L2", targets, inj.Bytes, "")
 	return InjectResult{Text: inj.Text, Targets: targets}
+}
+
+// emitKernelCache forwards an observed kernel cache operation to the live
+// harness sink. The kernel bus remains the source of truth for its own JSONL
+// mirror; this small projection is only for the workspace SSE/UI and is
+// fail-open when no frontend sink is attached.
+func (b *Bridge) emitKernelCache(op, layer string, ids []string, bytes int, reason string) {
+	if b == nil || !b.Enabled() {
+		return
+	}
+	ids = append([]string(nil), ids...)
+	b.mu.Lock()
+	sink := b.sink
+	label := b.label
+	b.mu.Unlock()
+	if sink == nil {
+		return
+	}
+	sink.Emit(event.Event{Kind: event.KernelCache, Text: op, Source: label,
+		KernelCache: &event.KernelCachePayload{Op: op, Layer: layer, SliceIDs: ids, Bytes: bytes, Reason: reason}})
 }
 
 func (b *Bridge) recordInjection(ids []string, bytes int) {
@@ -239,18 +282,23 @@ func (b *Bridge) recordInjection(ids []string, bytes int) {
 	}()
 }
 
-// RecordPrefetch emits one terminal outcome for a warmed result.
-func (b *Bridge) RecordPrefetch(hit bool, targets []string, turn int) {
+// RecordPrefetch emits one terminal outcome for a warmed result. lead is
+// the time between warm-up completion and the outcome decision: positive
+// for hits (completed before consumption — Markov timeliness, Issue #272);
+// for wastes it carries the survival time, not a consumption lead.
+func (b *Bridge) RecordPrefetch(hit bool, targets, probeTargets []string, turn int, lead time.Duration) {
 	if b == nil || !b.Enabled() || len(targets) == 0 {
 		return
 	}
 	targets = append([]string(nil), targets...)
 	sort.Strings(targets)
+	probeTargets = canonicalPrefetchTargets(probeTargets)
 	kind := kernelevent.PrefetchWaste
-	var payload any = kernelevent.PrefetchWastePayload{Targets: targets}
+	leadMs := int64(lead / time.Millisecond)
+	var payload any = kernelevent.PrefetchWastePayload{Targets: targets, ProbeTargets: probeTargets, LeadMs: leadMs}
 	if hit {
 		kind = kernelevent.PrefetchHit
-		payload = kernelevent.PrefetchHitPayload{Targets: targets}
+		payload = kernelevent.PrefetchHitPayload{Targets: targets, ProbeTargets: probeTargets, LeadMs: leadMs}
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -260,6 +308,21 @@ func (b *Bridge) RecordPrefetch(hit bool, targets []string, turn int) {
 	session := b.label
 	b.mu.Unlock()
 	b.events.Emit(kernelevent.Event{Kind: kind, SessionID: session, Turn: turn, At: time.Now().UTC(), Data: data})
+}
+
+func canonicalPrefetchTargets(targets []string) []string {
+	if len(targets) == 0 {
+		return nil
+	}
+	targets = append([]string(nil), targets...)
+	sort.Strings(targets)
+	out := targets[:0]
+	for _, target := range targets {
+		if target != "" && (len(out) == 0 || out[len(out)-1] != target) {
+			out = append(out, target)
+		}
+	}
+	return out
 }
 
 // Reuse gathers the per-turn reuse panel data (U33/H4a) in-process: the
@@ -280,11 +343,24 @@ func (b *Bridge) Reuse(ctx context.Context, query string) ReuseSummary {
 	if err != nil {
 		return ReuseSummary{}
 	}
+	ids := make([]string, 0, len(hits))
 	sessions := make([]string, 0, len(hits))
 	for _, h := range hits {
 		if h.Slice != nil {
+			ids = append(ids, h.Slice.ID)
 			sessions = append(sessions, h.Slice.Meta.SourceSession)
 		}
+	}
+	if len(ids) > 0 {
+		sort.Strings(ids)
+		data, marshalErr := json.Marshal(kernelevent.SliceHitPayload{Layer: "L2", SliceIDs: ids})
+		if marshalErr == nil {
+			b.mu.Lock()
+			session := b.label
+			b.mu.Unlock()
+			b.events.Emit(kernelevent.Event{Kind: kernelevent.SliceHit, SessionID: session, At: time.Now().UTC(), Data: data})
+		}
+		b.emitKernelCache("hit", "L2", ids, 0, "")
 	}
 	sum := ReuseSummary{Hits: len(hits), Sources: topSources(sessions)}
 	if s, err := usage.Summarize(b.usagePath(), b.costMiss(), b.costHit()); err == nil {
@@ -416,6 +492,18 @@ func (b *Bridge) sessionSink() *HarnessSink {
 	return hs
 }
 
+// EndTurn flushes and closes the mirror's open turn. The agent calls this on
+// every Run return path because synchronous runs never emit TurnDone and a
+// headless process can exit without running Close.
+func (b *Bridge) EndTurn() {
+	if b == nil || !b.Enabled() {
+		return
+	}
+	if hs := b.sessionSink(); hs != nil {
+		hs.EndTurn()
+	}
+}
+
 // Close flushes and closes the mirror sink, if created.
 func (b *Bridge) Close() error {
 	b.mu.Lock()
@@ -428,6 +516,7 @@ func (b *Bridge) Close() error {
 	b.mu.Lock()
 	hs := b.hs
 	b.hs = nil
+	b.sink = nil
 	b.mu.Unlock()
 	if hs == nil {
 		return nil

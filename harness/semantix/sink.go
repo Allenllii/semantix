@@ -1,4 +1,4 @@
-// Package semantix bridges the reasonix harness to the semantix kernel:
+// Package semantix bridges the semantix harness to the semantix kernel:
 // session events are mirrored to kernel-compatible session JSONL, and kernel
 // retrieval (lookup/inject) is exposed to the agent via subprocess calls.
 package semantix
@@ -50,19 +50,19 @@ type toolCallLine struct {
 	Arguments json.RawMessage `json:"arguments,omitempty"`
 }
 
-// HarnessSink mirrors reasonix events into kernel-compatible session JSONL.
+// HarnessSink mirrors semantix events into kernel-compatible session JSONL.
 // It depends only on the stable event subset (TurnStarted/Reasoning/Text/
 // Message/ToolDispatch/ToolResult/TurnDone) so upstream interface changes
 // stay contained here. Failures are non-fatal: a write error drops the turn
 // and is surfaced on the next success instead of breaking the agent.
 type HarnessSink struct {
-	mu     sync.Mutex
-	path   string // .semantix/sessions/<sessionID>.jsonl
-	file   *os.File
-	turn   bool   // a turn is currently open
-	first  string // user text of the current turn
-	text   string // assistant text buffer
-	reason string // reasoning buffer
+	mu      sync.Mutex
+	path    string // .semantix/sessions/<sessionID>.jsonl
+	file    *os.File
+	turn    bool   // a turn is currently open
+	first   string // user text of the current turn
+	text    string // assistant text buffer
+	reason  string // reasoning buffer
 	tools   []toolCallLine
 	outputs map[string]string // tool output keyed by tool call ID (filled by ToolResult)
 	err     error
@@ -105,6 +105,12 @@ func (s *HarnessSink) Emit(e event.Event) {
 		s.flushLocked()
 		s.turn = true
 		s.text, s.reason, s.tools = "", "", nil
+		// The harness sends the turn's user text on TurnStarted; without it
+		// the mirrored transcript has no user lines and the kernel extractor
+		// can never produce Prompt slices from these sessions.
+		if e.Text != "" {
+			s.first = e.Text
+		}
 	case event.Reasoning:
 		s.reason += e.Text
 	case event.Text:
@@ -173,6 +179,19 @@ func (s *HarnessSink) flushLocked() {
 	if s.err == nil {
 		s.err = s.file.Sync()
 	}
+}
+
+// EndTurn flushes the open turn and closes it. Synchronous controller runs
+// deliberately never emit TurnDone into the event stream (see stats.Recorder),
+// and a headless single-turn process can exit without reaching Close — so the
+// harness calls this at the end of each Run. Without it, `run -p` sessions
+// leave a permanently empty mirror and the kernel extractor has no input.
+func (s *HarnessSink) EndTurn() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.flushLocked()
+	s.turn = false
+	s.text, s.reason, s.tools = "", "", nil
 }
 
 // Close flushes and closes the underlying file.

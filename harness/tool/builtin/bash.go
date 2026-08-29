@@ -75,7 +75,7 @@ func cachedBashShellPATH(ctx context.Context) string {
 // empty uses the process cwd. timeout optionally caps foreground commands;
 // zero or negative means no tool-local cap, while parent context cancellation
 // still kills the process tree. guard appends a warning to the output of
-// commands that reference Reasonix's own session stores (see SessionDataGuard).
+// commands that reference Semantix's own session stores (see SessionDataGuard).
 // sessionTemp, when non-nil, supplies the logical-session private temporary
 // directory shared across Bash calls (see package sessiontemp). A Manager on
 // the execution context overrides this for sub-agent isolation.
@@ -701,7 +701,7 @@ func defaultBashShellPATH(ctx context.Context) string {
 	if shell == "" {
 		return ""
 	}
-	const marker = "__REASONIX_BASH_PATH__="
+	const marker = "__SEMANTIX_BASH_PATH__="
 	script := "printf '\\n" + marker + "%s\\n' \"$PATH\""
 	for _, args := range [][]string{
 		{"-l", "-i", "-c", script},

@@ -4,6 +4,7 @@
 # Go build artifacts
 /bin/
 /dist/
+/dist-protected/
 *.test
 *.out
 
@@ -19,6 +20,7 @@ site/.wrangler/
 *.db
 *.db-journal
 /semantix
+/semantix-agent
 
 # Secrets and local deployment state (never commit)
 .env
@@ -27,4 +29,3 @@ site/.wrangler/
 /deploy/data/
 /deploy/semantix-gateway.toml
 /tmp/
-.reasonix/

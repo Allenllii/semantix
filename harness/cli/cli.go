@@ -1,4 +1,4 @@
-// Package cli implements reasonix's command-line entry: subcommand routing, flag
+// Package cli implements semantix's command-line entry: subcommand routing, flag
 // parsing, assembly from config, and exit codes. The core is config-driven —
 // providers and tools are resolved from configuration, not hardcoded.
 package cli
@@ -61,7 +61,7 @@ func Run(args []string, version string) int {
 }
 
 // RunWithBuildInfo is the full CLI entry with optional build metadata for
-// `reasonix version --verbose` / `--json`.
+// `semantix-agent version --verbose` / `--json`.
 func RunWithBuildInfo(args []string, info BuildInfo) int {
 	info = info.withDefaults()
 	version := info.Version
@@ -80,10 +80,10 @@ func RunWithBuildInfo(args []string, info BuildInfo) int {
 	if cmd == "--acp" {
 		cmd = "acp"
 	}
-	// -p/--print is one-shot print mode. reasonix has no interactive -p, so a
-	// print flag anywhere in a leading flag run (no explicit subcommand) routes
-	// the whole set to `run --print` — `reasonix --model X -p "task"` works, not
-	// only `reasonix -p ...`.
+	// -p/--print is one-shot print mode. semantix-agent has no interactive -p,
+	// so a print flag anywhere in a leading flag run (no explicit subcommand)
+	// routes the whole set to `run --print` — `semantix-agent --model X -p "task"`
+	// works, not only `semantix-agent -p ...`.
 	if cmd == "-p" || cmd == "--print" || (isDefaultInteractiveFlag(cmd) && hasLeadingPrintFlag(args)) {
 		args = append([]string{"run", "--print"}, stripLeadingPrintFlag(args)...)
 		cmd = "run"
@@ -134,7 +134,7 @@ func RunWithBuildInfo(args []string, info BuildInfo) int {
 	case "init":
 		// Project memory (AGENTS.md) is model-generated in-session — `/init` runs
 		// the codebase analysis. This CLI entry just points there (and to `setup`
-		// for config), so `reasonix init` isn't a dead end.
+		// for config), so `semantix-agent init` isn't a dead end.
 		configureCLIThemeFromConfig()
 		return initHint()
 	case "acp":
@@ -494,7 +494,7 @@ func runAgent(args []string, version string) int {
 	showThinking := fs.Bool("show-thinking", false, "show thinking text instead of the collapsed thinking marker")
 	metricsPath := fs.String("metrics", "", "write a JSON token/cache/cost summary of the run to this path")
 	trajectoryPath := fs.String("trajectory", "", "append a timestamped JSONL trajectory of the run's full event stream (tool calls, reasoning, decisions) to this path")
-	ablateFlag := fs.String("ablate", "", "benchmark arm: comma-separated subsystems to switch off (evidence, planner, subagent, retrieval, compaction; none|all)")
+	ablateFlag := fs.String("ablate", "", "benchmark arm: comma-separated subsystems to switch off (evidence, planner, subagent, retrieval, compaction, kernel; none|all)")
 	dir := fs.String("dir", "", "change to this directory first (project root); config, sandbox and file tools resolve from here")
 	cont := registerContinueFlag(fs)
 	resume := fs.String("resume", "", "resume by session file path, session ID, or machine session ID (takes precedence over --continue)")
@@ -679,7 +679,7 @@ func runAgent(args []string, version string) int {
 	if strings.TrimSpace(*effort) != "" {
 		effortOverride = effort
 	}
-	// `reasonix run` is headless: there is no key loop to answer approval or ask
+	// `semantix-agent run` is headless: there is no key loop to answer approval or ask
 	// prompts, and the approval timeout defaults to infinite. Installing the
 	// interactive approver/asker here would let an Ask rule, the `ask` tool, or a
 	// sandbox/config approval wedge the run forever. Map the mode onto a
@@ -868,8 +868,8 @@ func runServeWithOptions(args []string, opts serveRunOptions) int {
 
 	// Build serve config, merging CLI flags over config file.
 	serveCfg := serveConfigWithCommandDefaults(opts.command, authExplicit, cfg.Serve)
-	// `reasonix web` is a local browser entry point and defaults to a freshly
-	// generated token. `reasonix serve` keeps its existing config-driven default,
+	// `semantix-agent web` is a local browser entry point and defaults to a freshly
+	// generated token. `semantix-agent serve` keeps its existing config-driven default,
 	// and an explicit --auth always wins for both commands.
 	if *auth != "" {
 		serveCfg.AuthMode = *auth
@@ -1038,7 +1038,7 @@ func chatREPL(args []string, version string) int {
 	// Bubble Tea owns the terminal from the resume picker through controller
 	// shutdown. Start diagnostics before config/controller work so hangs leave a
 	// non-zero log with milestones (#7435, #7507).
-	diagnostics := startTUIDiagnostics(config.ReasonixHomeDir())
+	diagnostics := startTUIDiagnostics(config.SemantixHomeDir())
 	defer diagnostics.Close()
 	diagnostics.Milestone("config_load_begin")
 	cfg, err := config.Load()
@@ -1237,6 +1237,16 @@ func chatREPL(args []string, version string) int {
 	// model (carrying the conversation). It must NOT touch the running model —
 	// runModelSubcommand performs the swap on the live copy. The same stable sink
 	// feeds the new controller, so events keep flowing to this TUI.
+	// /effort support: the captured override must follow an in-session switch,
+	// or the --effort launch flag would out-vote /effort on the next /reload.
+	m.effortApplied = func(level string) {
+		if level == "" || level == "auto" {
+			overrides.Effort = nil
+			return
+		}
+		stored := level
+		overrides.Effort = &stored
+	}
 	m.buildController = func(spec controllerBuildSpec, carry []provider.Message, resumePath string, oldCtrl control.SessionAPI) (*control.Controller, error) {
 		effectiveOverrides := overrides
 		if spec.EffortOverride != nil {
@@ -1301,7 +1311,7 @@ func chatREPL(args []string, version string) int {
 			p.Send(tuiShutdownMsg{})
 		}
 	}()
-	final, runErr := p.Run()
+	final, runErr := runTUIProgram(p, os.Stdout)
 	signal.Stop(hangup)
 	diagnostics.Milestone("terminal_released")
 	// Close the active controller plus any retired ones from /model switches.
@@ -1355,6 +1365,25 @@ func chatREPL(args []string, version string) int {
 	return 0
 }
 
+// tuiProgramRunner is the lifecycle surface runTUIProgram needs. Keeping it
+// narrow makes the terminal reset invariant testable without a real TTY.
+type tuiProgramRunner interface {
+	Run() (tea.Model, error)
+}
+
+// runTUIProgram adds an application-owned final mouse reset around Bubble
+// Tea's renderer cleanup. DEC private-mode resets are idempotent, so this is a
+// harmless duplicate on ordinary exits and a necessary fallback on Run errors
+// and panic unwinding.
+func runTUIProgram(p tuiProgramRunner, out io.Writer) (tea.Model, error) {
+	defer func() {
+		if out != nil {
+			_, _ = io.WriteString(out, resetMouseTracking)
+		}
+	}()
+	return p.Run()
+}
+
 // adoptCarriedHistoryPreservingProfileAndGrants resumes c on the carried
 // conversation the way buildController's callers expect: the freshly built
 // c already has its own leading system message for the target profile (see
@@ -1403,7 +1432,7 @@ func reserveNativeScrollbackFrame(w io.Writer, rows int) {
 }
 
 // setupTargets is where the wizard writes: the TOML config and the credential
-// store. Keys always go to Reasonix's global .env so they
+// store. Keys always go to Semantix's global .env so they
 // never land in a project's own .env; only the config location is project-local
 // under --local.
 type setupTargets struct {
@@ -1412,29 +1441,29 @@ type setupTargets struct {
 }
 
 // defaultConfigTarget is the user-global config file, falling back to a
-// project-local reasonix.toml only when the user config dir can't be resolved.
+// project-local semantix-agent.toml only when the user config dir can't be resolved.
 func defaultConfigTarget() string {
 	if p := config.UserConfigPath(); p != "" {
 		return p
 	}
-	return "reasonix.toml"
+	return "semantix-agent.toml"
 }
 
-// defaultEnvTarget is the display target for the reasonix-owned global
-// Reasonix global .env.
+// defaultEnvTarget is the display target for the semantix-owned global
+// Semantix global .env.
 func defaultEnvTarget() string {
 	return config.CredentialsTargetDescription()
 }
 
-// resolveSetupTargets picks where `reasonix setup` writes. Keys always go to the
-// global env. The config goes to the user-global dir by default, to ./reasonix.toml
+// resolveSetupTargets picks where `semantix-agent setup` writes. Keys always go to the
+// global env. The config goes to the user-global dir by default, to ./semantix-agent.toml
 // under --local, or to an explicit path argument when given.
 func resolveSetupTargets(args []string) setupTargets {
 	t := setupTargets{config: defaultConfigTarget(), env: defaultEnvTarget()}
 	for _, a := range args {
 		switch a {
 		case "--local", "-l":
-			t.config = "reasonix.toml"
+			t.config = "semantix-agent.toml"
 		default:
 			t.config = a
 		}
@@ -1450,9 +1479,9 @@ func displayPath(p string) string {
 	return p
 }
 
-// setupConfig runs the configuration wizard (the `reasonix setup` command),
-// writing config.toml to the user-global dir (or ./reasonix.toml under --local)
-// and API keys to Reasonix's global .env — never a project's own .env.
+// setupConfig runs the configuration wizard (the `semantix-agent setup` command),
+// writing config.toml to the user-global dir (or ./semantix-agent.toml under --local)
+// and API keys to Semantix's global .env — never a project's own .env.
 // Project memory is a separate concern — the in-session `/init` skill generates
 // AGENTS.md (see initHint).
 func setupConfig(args []string) int {
@@ -1508,10 +1537,10 @@ func writeDefaultConfig(path string) int {
 	return 0
 }
 
-// initHint handles `reasonix init`. Unlike a config scaffold, project memory is
+// initHint handles `semantix-agent init`. Unlike a config scaffold, project memory is
 // model-generated by analyzing the codebase, so it lives as the in-session
 // `/init` skill rather than a CLI command. This entry just points the user there
-// (and to `reasonix setup` for config) so the verb isn't a dead end.
+// (and to `semantix-agent setup` for config) so the verb isn't a dead end.
 func initHint() int {
 	fmt.Println(i18n.M.InitHint)
 	return 0
@@ -1739,12 +1768,12 @@ func containsString(xs []string, v string) bool {
 
 // filterStaleCustomEntries drops the wizard's own magic-name entries
 // (Name="custom" with Kind="openai" or Name="anthropic" with Kind="anthropic")
-// that older versions of the wizard wrote into reasonix.toml. They collide
+// that older versions of the wizard wrote into semantix-agent.toml. They collide
 // with the wizard's "custom" / "anthropic" menu items on re-run, showing up
 // as duplicate broken entries. The new wizard writes host-derived slugs
 // (e.g. "custom-token-sensenova-cn") so a hit on the magic name is
 // unambiguously stale. The returned slice is the dropped set so the caller
-// can warn the user to clean up reasonix.toml by hand.
+// can warn the user to clean up semantix-agent.toml by hand.
 func filterStaleCustomEntries(providers []config.ProviderEntry) (kept, dropped []config.ProviderEntry) {
 	for _, p := range providers {
 		if p.Name == "custom" && p.Kind == "openai" {
@@ -1765,9 +1794,9 @@ func filterStaleCustomEntries(providers []config.ProviderEntry) (kept, dropped [
 // "custom-token-sensenova-cn" or "anthropic-api-anthropic-com". We can't
 // reuse the wizard's menu-item labels ("custom" / "anthropic") because
 // those would collide with the menu item itself and end up rendered as
-// duplicate provider entries on subsequent re-runs of `reasonix setup`.
+// duplicate provider entries on subsequent re-runs of `semantix-agent setup`.
 // The host-based slug also gives users a meaningful name to grep for in
-// reasonix.toml. Falls back to a short sha1 of the raw URL when the URL
+// semantix-agent.toml. Falls back to a short sha1 of the raw URL when the URL
 // doesn't parse, so even malformed input still produces a unique name.
 func providerSlug(kind, baseURL string) string {
 	var host string
@@ -1862,7 +1891,7 @@ func fnv1a32Hex(s string) string {
 }
 
 // providerFamily is a wizard-only grouping of provider SKUs by vendor; it does
-// not exist in config because users editing reasonix.toml deal with SKU names
+// not exist in config because users editing semantix-agent.toml deal with SKU names
 // directly.
 type providerFamily struct {
 	key  string
@@ -1916,7 +1945,7 @@ func promptCustomProviderManual() (providerPromptResult, error) {
 // Pre-filled values (baseURL, keyEnv, apiKey) are reused as-is when non-empty
 // so the URL-fetch flow can fall through to manual entry without re-asking
 // the user for information they've already typed. An empty apiKey is allowed
-// — the key step happens later in the wizard and Reasonix's global .env is updated then.
+// — the key step happens later in the wizard and Semantix's global .env is updated then.
 func promptCustomProviderManualWith(in *bufio.Scanner, baseURL, keyEnv, apiKey string) (providerPromptResult, error) {
 	fmt.Println()
 	if baseURL == "" {
@@ -2186,7 +2215,7 @@ func providersWithMissingKeys(cfg *config.Config) []config.ProviderEntry {
 // setup asks whether to re-enter it; Enter keeps and re-pins the existing value.
 // Otherwise the user is asked once per env var (deduped across providers that
 // share one, e.g. both DeepSeek models). Returns KEY=value lines for the
-// Reasonix global .env. Re-pinning keeps hand-edited or previously saved values
+// Semantix global .env. Re-pinning keeps hand-edited or previously saved values
 // aligned with the user's latest setup choice.
 func configureKeys(selected []config.ProviderEntry, r io.Reader, w io.Writer) []string {
 	in := bufio.NewScanner(r)
@@ -2249,7 +2278,7 @@ func isTTY(f *os.File) bool {
 
 // appendEnv merges KEY=value lines into a .env file. Existing assignments of
 // any key that's about to be written are dropped first, then the new values
-// are appended — so re-running `reasonix setup` with a corrected key replaces the
+// are appended — so re-running `semantix-agent setup` with a corrected key replaces the
 // stale one instead of stacking duplicates. The new values are also
 // pinned into the current process env so a chat session started right after
 // init picks up the fresh keys without a restart.
@@ -2452,7 +2481,7 @@ func configTelemetryCommand(args []string) int {
 		return 1
 	}
 	if cfg.CLITelemetryMode() == "off" {
-		if err := cleanupCLITelemetry(config.ReasonixHomeDir()); err != nil {
+		if err := cleanupCLITelemetry(config.SemantixHomeDir()); err != nil {
 			fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, "telemetry disabled, but pending metrics could not be deleted:", err)
 			return 1
 		}
@@ -2494,7 +2523,7 @@ func configAutoPlanCompatibilityCommand(args []string) int {
 
 func configReasoningLanguageCommand(args []string) int {
 	fs := flag.NewFlagSet("config reasoning-language", flag.ContinueOnError)
-	local := fs.Bool("local", false, "write ./reasonix.toml instead of the user config")
+	local := fs.Bool("local", false, "write ./semantix-agent.toml instead of the user config")
 	if code, ok := parseCommandFlags(fs, args); !ok {
 		return code
 	}
@@ -2519,7 +2548,7 @@ func configReasoningLanguageCommand(args []string) int {
 	}
 	path := config.UserConfigPath()
 	if *local {
-		path = "reasonix.toml"
+		path = "semantix-agent.toml"
 	}
 	if path == "" {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, "cannot resolve config path")
@@ -2564,7 +2593,7 @@ func configReasoningLanguageCommand(args []string) int {
 
 func configCompactRatioCommand(args []string) int {
 	fs := flag.NewFlagSet("config compact-ratio", flag.ContinueOnError)
-	local := fs.Bool("local", false, "write ./reasonix.toml instead of the user config")
+	local := fs.Bool("local", false, "write ./semantix-agent.toml instead of the user config")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -2591,7 +2620,7 @@ func configCompactRatioCommand(args []string) int {
 	path := config.UserConfigPath()
 	scope := "user"
 	if *local {
-		path = "reasonix.toml"
+		path = "semantix-agent.toml"
 		scope = "project"
 	}
 	if path == "" {
@@ -2636,8 +2665,8 @@ func configCompactRatioCommand(args []string) int {
 }
 
 func compactRatioSource() string {
-	if config.ConfigFileDefinesCompactRatio("reasonix.toml") {
-		return "project: " + displayPath("reasonix.toml")
+	if config.ConfigFileDefinesCompactRatio("semantix-agent.toml") {
+		return "project: " + displayPath("semantix-agent.toml")
 	}
 	if path := config.UserConfigPath(); path != "" && config.ConfigFileDefinesCompactRatio(path) {
 		return "user: " + displayPath(path)
@@ -2652,22 +2681,22 @@ func formatCompactRatioPercent(ratio float64) string {
 
 func configUsage() {
 	fmt.Print(`Usage:
-  reasonix config reasoning-language [--local] [auto|zh|en]
-  reasonix config compact-ratio [--local] [65..85]
-  reasonix config currency [auto|CNY|USD]
-  reasonix config telemetry [auto|on|off]
+  semantix-agent config reasoning-language [--local] [auto|zh|en]
+  semantix-agent config compact-ratio [--local] [65..85]
+  semantix-agent config currency [auto|CNY|USD]
+  semantix-agent config telemetry [auto|on|off]
 `)
 }
 
 func configTelemetryUsage() {
 	fmt.Print(`Usage:
-  reasonix config telemetry [auto|on|off]
+  semantix-agent config telemetry [auto|on|off]
 `)
 }
 
 func configCompactRatioUsage() {
 	fmt.Print(`Usage:
-  reasonix config compact-ratio [--local] [65..85]
+  semantix-agent config compact-ratio [--local] [65..85]
 `)
 }
 
@@ -2680,7 +2709,7 @@ func startCLITelemetryWithIO(cfg *config.Config, opts telemetry.Options, in io.R
 		cfg = config.Default()
 	}
 	opts.Mode = cfg.CLITelemetryMode()
-	opts.HomeDir = config.ReasonixHomeDir()
+	opts.HomeDir = config.SemantixHomeDir()
 	opts.Proxy = cfg.NetworkProxySpec()
 	opts.Language = cfg.Language
 
@@ -2733,18 +2762,18 @@ func cliTelemetrySessionMode(cont, resume, copySession bool) string {
 
 func configAutoPlanCompatibilityUsage() {
 	fmt.Print(`Usage:
-  reasonix config auto-plan [off]
+  semantix-agent config auto-plan [off]
 `)
 }
 
 func configReasoningLanguageUsage() {
 	fmt.Print(`Usage:
-  reasonix config reasoning-language [--local] [auto|zh|en]
+  semantix-agent config reasoning-language [--local] [auto|zh|en]
 `)
 }
 
 func configCurrencyUsage() {
 	fmt.Print(`Usage:
-  reasonix config currency [auto|CNY|USD]
+  semantix-agent config currency [auto|CNY|USD]
 `)
 }

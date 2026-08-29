@@ -1,6 +1,6 @@
 // Package event defines the kernel event contract: kinds, payloads, wire format
 // and the in-process bus. It is the single source of truth for what the kernel
-// observes and emits; adapters (Reasonix sink bridge, MCP) translate external
+// observes and emits; adapters (Semantix sink bridge, MCP) translate external
 // harness events into this contract.
 package event
 
@@ -117,19 +117,33 @@ type SliceRejectPayload struct {
 
 // PrefetchHitPayload reports a prefetch that was used.
 type PrefetchHitPayload struct {
-	Targets []string `json:"targets"`
+	Targets      []string `json:"targets"`
+	ProbeTargets []string `json:"probe_targets,omitempty"`
+	// LeadMs is consume − warm-up-completion in milliseconds; positive means
+	// the prefetch finished in time (Markov timeliness, Issue #272).
+	LeadMs int64 `json:"lead_ms,omitempty"`
 }
 
 // PrefetchWastePayload reports a prefetch that was not used.
 type PrefetchWastePayload struct {
-	Targets []string `json:"targets"`
+	Targets      []string `json:"targets"`
+	ProbeTargets []string `json:"probe_targets,omitempty"`
+	// LeadMs is the survival time (outcome decision − warm-up completion),
+	// not a consumption lead: wastes were never consumed. Consumers of the
+	// timeliness metric aggregate hits only (Issue #272).
+	LeadMs int64 `json:"lead_ms,omitempty"`
 }
 
-// CompactPayload reports a context compaction. Trigger is "snip"|"prune"|"summary".
+// CompactPayload reports a context compaction. Trigger is "snip"|"prune"|"summary"
+// (session compaction) or "evict" (slice-library eviction, Issue #277).
 type CompactPayload struct {
 	Trigger string `json:"trigger"`
 	Before  int    `json:"before_tokens"`
 	After   int    `json:"after_tokens"`
+	// EvictedByType counts the slices evicted per type wire name; set only
+	// when Trigger is "evict". For "evict", Before/After carry slice counts
+	// rather than tokens (field names stay wire-stable).
+	EvictedByType map[string]int `json:"evicted_by_type,omitempty"`
 }
 
 // EvolutionTickPayload carries the evolution parameter snapshot.

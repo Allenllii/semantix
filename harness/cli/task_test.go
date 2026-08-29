@@ -484,7 +484,7 @@ func TestTaskCommand_UnknownSubcommand(t *testing.T) {
 // taskStore so the CLI uses the production FileStore path.
 func writeTaskData(t *testing.T, dir string) {
 	t.Helper()
-	taskDir := filepath.Join(dir, ".reasonix", "tasks", "task-1")
+	taskDir := filepath.Join(dir, ".semantix", "tasks", "task-1")
 	if err := os.MkdirAll(taskDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

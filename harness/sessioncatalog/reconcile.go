@@ -28,6 +28,7 @@ func (c *Catalog) ReconcileDirectory(ctx context.Context, target DirectoryTarget
 		return nil
 	}
 	lock := c.directoryLock(target.Path)
+	defer lock.release()
 	lock.Lock()
 	defer lock.Unlock()
 	target.Scope, target.WorkspaceRoot = normalizeScope(target.Scope, target.WorkspaceRoot)
@@ -166,15 +167,51 @@ func (c *Catalog) directoryScanCanSkip(ctx context.Context, path, signature stri
 	return missing == 0, nil
 }
 
-func (c *Catalog) directoryLock(path string) *sync.Mutex {
-	c.directoryLocksMu.Lock()
-	defer c.directoryLocksMu.Unlock()
-	lock := c.directoryLocks[path]
-	if lock == nil {
-		lock = &sync.Mutex{}
-		c.directoryLocks[path] = lock
+// dirLockEntry is a per-directory serialization lock plus a reference count so
+// the lock map can be bounded: an entry is evicted once no handle references it
+// (Issue #364). refs is guarded by Catalog.directoryLocksMu.
+type dirLockEntry struct {
+	mu   sync.Mutex
+	refs int
+}
+
+// dirHandle is a borrowed reference to a directory lock. Callers Lock/Unlock via
+// the handle and MUST call release() (typically deferred) on every path so the
+// reference count drops and the entry can be evicted when idle.
+type dirHandle struct {
+	c     *Catalog
+	path  string
+	entry *dirLockEntry
+}
+
+func (h *dirHandle) Lock()         { h.entry.mu.Lock() }
+func (h *dirHandle) Unlock()       { h.entry.mu.Unlock() }
+func (h *dirHandle) TryLock() bool { return h.entry.mu.TryLock() }
+
+// release drops this handle's reference and evicts the entry when it reaches
+// zero. Because acquire (directoryLock) and release both mutate refs under
+// directoryLocksMu, an entry is never evicted while any goroutine holds or is
+// about to take its mutex — so a fresh entry is never created for a path another
+// goroutine is still serializing on.
+func (h *dirHandle) release() {
+	h.c.directoryLocksMu.Lock()
+	h.entry.refs--
+	if h.entry.refs <= 0 {
+		delete(h.c.directoryLocks, h.path)
 	}
-	return lock
+	h.c.directoryLocksMu.Unlock()
+}
+
+func (c *Catalog) directoryLock(path string) *dirHandle {
+	c.directoryLocksMu.Lock()
+	entry := c.directoryLocks[path]
+	if entry == nil {
+		entry = &dirLockEntry{}
+		c.directoryLocks[path] = entry
+	}
+	entry.refs++
+	c.directoryLocksMu.Unlock()
+	return &dirHandle{c: c, path: path, entry: entry}
 }
 
 // RequestReconcile coalesces external writes by directory. The channel is
@@ -302,6 +339,7 @@ func (c *Catalog) IndexSessionPath(ctx context.Context, target DirectoryTarget, 
 	}
 	// Hold the directory lock so a concurrent scan cannot mark this row missing.
 	lock := c.directoryLock(target.Path)
+	defer lock.release()
 	lock.Lock()
 	defer lock.Unlock()
 	info, err := os.Stat(path)
@@ -733,7 +771,7 @@ func Rebuild(ctx context.Context, path string, targets []DirectoryTarget) (Statu
 			db:             db,
 			opts:           Options{Path: path, DisableRepair: true, Now: time.Now, MissingGrace: defaultMissingGrace},
 			writeQueued:    map[string]SessionRecord{},
-			directoryLocks: map[string]*sync.Mutex{},
+			directoryLocks: map[string]*dirLockEntry{},
 			stop:           make(chan struct{}),
 			status:         Status{State: StateReady, Mode: ModeDisk, Path: path},
 		}
@@ -762,7 +800,7 @@ func Rebuild(ctx context.Context, path string, targets []DirectoryTarget) (Statu
 }
 
 // Inspect is read-only. It never migrates, repairs, quarantines, or rewrites a
-// catalog, making it suitable for `reasonix doctor sessions`.
+// catalog, making it suitable for `semantix-agent doctor sessions`.
 func Inspect(ctx context.Context, path string) (Status, error) {
 	if strings.TrimSpace(path) == "" {
 		path = DefaultPath()

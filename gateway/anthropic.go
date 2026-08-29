@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"semantix/kernel/cache"
 	"semantix/kernel/inject"
 	"semantix/kernel/usage"
 )
@@ -854,7 +855,7 @@ func (c *anthropicSSEConverter) writeDone() {
 // OpenAI SSE (the events must be translated — Anthropic frames differ from
 // OpenAI's). Sidecar/usage accounting matches the OpenAI streaming path:
 // request turns only, assistant content extraction is deferred debt.
-func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector) {
+func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Response, sessionID string, req *chatRequest, ctxHash string, query string, injectedTokens int64, sliceHits int, up UpstreamConfig, jc *judgeCollector, l3Obs cache.Obs, l3FalseHit bool) {
 	if resp.StatusCode >= 400 {
 		out, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes))
 		writeAPIError(w, resp.StatusCode, "upstream_error",
@@ -880,7 +881,7 @@ func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Respo
 	}
 	conv.finish() // no-op when message_stop already seen
 	g.recordSession(sessionID, ctxHash, req.Model, turns(req, ""))
-	ev := usage.Event{
+	ev := g.withL3Obs(usage.Event{
 		SessionID:      sessionID,
 		Provider:       up.Name,
 		Vendor:         up.Vendor,
@@ -890,7 +891,7 @@ func (g *Gateway) streamThroughAnthropic(w http.ResponseWriter, resp *http.Respo
 		SliceHits:      sliceHits,
 		JudgeDecisions: jc.drain(),
 		At:             g.now().Unix(),
-	}
+	}, l3Obs, l3FalseHit)
 	// message_start/message_delta carried real provider accounting: prefer
 	// it over the bytes/4 estimate (GLM-P0-3 / #291).
 	if nu, ok := conv.usage(); ok {

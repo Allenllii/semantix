@@ -683,7 +683,7 @@ func TestStartAvailableKeepsGoodServers(t *testing.T) {
 		Args:    []string{"-test.run=TestHelperProcess", "--"},
 		Env:     map[string]string{"GO_WANT_HELPER_PROCESS": "1"},
 	}
-	bad := Spec{Name: "bad", Command: "reasonix-missing-mcp-binary"}
+	bad := Spec{Name: "bad", Command: "semantix-missing-mcp-binary"}
 
 	host, tools := StartAvailable(ctx, []Spec{bad, good})
 	defer host.Close()
@@ -733,7 +733,7 @@ func TestStartAllAllOrNothingOnFailure(t *testing.T) {
 		Args:    []string{"-test.run=TestHelperProcess", "--"},
 		Env:     map[string]string{"GO_WANT_HELPER_PROCESS": "1"},
 	}
-	bad := Spec{Name: "bad", Command: "reasonix-missing-mcp-binary"}
+	bad := Spec{Name: "bad", Command: "semantix-missing-mcp-binary"}
 
 	for _, tc := range []struct {
 		name  string
@@ -964,7 +964,7 @@ func TestStdioCommandNotFoundSuggestsPATHFix(t *testing.T) {
 	stdioShellPATH = func(context.Context) string { return "" }
 	t.Cleanup(func() { stdioShellPATH = old })
 
-	host, _ := StartAvailable(ctx, []Spec{{Name: "missing", Command: "reasonix-missing-mcp-binary"}})
+	host, _ := StartAvailable(ctx, []Spec{{Name: "missing", Command: "semantix-missing-mcp-binary"}})
 	defer host.Close()
 
 	failures := host.Failures()
@@ -973,7 +973,7 @@ func TestStdioCommandNotFoundSuggestsPATHFix(t *testing.T) {
 	}
 	msg := failures[0].Error
 	for _, want := range []string{
-		`command "reasonix-missing-mcp-binary" not found on PATH`,
+		`command "semantix-missing-mcp-binary" not found on PATH`,
 		"absolute command path",
 		"MCP server env",
 	} {
@@ -1692,8 +1692,8 @@ func TestReaderIntentRefusesDispatchAfterSafetyDrift(t *testing.T) {
 	// bytes land in the next session rather than interrupting this call.
 	rt.client.toolsMu.Lock()
 	rt.readOnly = true
-	rt.client.toolsMu.Unlock()
 	rt.schema = json.RawMessage(`{"type":"object","properties":{"msg":{"type":"number"}}}`)
+	rt.client.toolsMu.Unlock()
 	if _, _, err := rt.ExecuteWithImages(readerCtx, json.RawMessage(`{"msg":"schema-changed","z":"ok"}`)); err != nil {
 		t.Fatalf("schema-only reader change should execute: %v", err)
 	}

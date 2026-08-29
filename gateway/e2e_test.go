@@ -104,6 +104,12 @@ func seed(t *testing.T, g *Gateway, s *slice.Slice) {
 	if s.CreatedAt == 0 {
 		s.CreatedAt = time.Now().Unix()
 	}
+	if s.Meta.Origin == "" {
+		// Test fixtures model gateway-ingested slices; the default
+		// [slice] min_inject_origin=session-auto floor requires the tag
+		// (Issue #279).
+		s.Meta.Origin = slice.OriginSessionAuto
+	}
 	if err := g.store.Put(s); err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +206,7 @@ func TestE2EL3HitZeroUpstreamCalls(t *testing.T) {
 	seed(t, g, &slice.Slice{
 		ID: "l3-a", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("hello world hello world cached answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	})
 
 	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "hello world", false))
@@ -230,7 +236,7 @@ func TestE2EL3UnknownCreatedAtFailsClosed(t *testing.T) {
 	s := &slice.Slice{
 		ID: "l3-legacy", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("hello world legacy cached answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	}
 	// Bypass seed: it intentionally backfills CreatedAt for ordinary tests.
 	if err := g.store.Put(s); err != nil {
@@ -394,7 +400,7 @@ func TestE2EL3StreamingReplay(t *testing.T) {
 	seed(t, g, &slice.Slice{
 		ID: "l3-s", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("widgets cached widgets cached stream answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	})
 
 	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "widgets cached", true))
@@ -1130,7 +1136,7 @@ func TestE2EL3StreamingReplayHasUsage(t *testing.T) {
 	seed(t, g, &slice.Slice{
 		ID: "l3-gw7", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("widgets cached widgets cached stream answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	})
 
 	resp, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "widgets cached", true))
@@ -1158,7 +1164,7 @@ func TestE2EL3HitSyntheticUsageEstimator(t *testing.T) {
 	seed(t, g, &slice.Slice{
 		ID: "l3-gw7b", Type: slice.Result, Scope: slice.Project,
 		Content: []byte("hello world hello world cached answer"),
-		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat"},
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
 	})
 
 	_, out := postChat(t, srv, "test-key", chatBody("deepseek-chat", "hello world", false))
@@ -1335,5 +1341,65 @@ func TestE2EHealthProbeDisabled(t *testing.T) {
 	}
 	if n := up.callCount(); n != 0 {
 		t.Errorf("upstream calls = %d, want 0 (probe disabled must not touch upstream)", n)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// L3 suspected false hit (Issue #262 §3.3): a same-session retry of a
+// served query bypasses L3, reaches upstream, and is recorded in usage.
+
+func TestE2EFalseHitRetryBypassesL3(t *testing.T) {
+	up := &testUpstream{plain: `{"choices":[{"message":{"role":"assistant","content":"fresh upstream answer"}}]}`}
+	upSrv := httptest.NewServer(up.handler())
+	defer upSrv.Close()
+	g := newTestGateway(t, upSrv.URL)
+	srv := httptest.NewServer(g)
+	defer srv.Close()
+
+	chash, _ := contextHash([]chatMessage{msg("user", "hello world")})
+	seed(t, g, &slice.Slice{
+		ID: "l3-a", Type: slice.Result, Scope: slice.Project,
+		Content: []byte("hello world hello world cached answer"),
+		Meta:    slice.SliceMeta{L3Safe: true, ContextHash: chash, Model: "deepseek-chat", Origin: slice.OriginSessionAuto},
+	})
+
+	hdr := map[string]string{"x-semantix-session": "fh-sess-1"}
+	// First request: L3 hit, zero upstream calls.
+	resp, out := postChatWithHeaders(t, srv, "test-key", hdr, chatBody("deepseek-chat", "hello world", false))
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first status = %d, body %s", resp.StatusCode, out)
+	}
+	if resp.Header.Get("x-semantix-cache") != "hit" {
+		t.Fatalf("first x-semantix-cache = %q, want hit", resp.Header.Get("x-semantix-cache"))
+	}
+	if n := up.callCount(); n != 0 {
+		t.Fatalf("upstream calls after first request = %d, want 0", n)
+	}
+
+	// Same-session near-identical retry: L3 must be bypassed → upstream.
+	resp2, out2 := postChatWithHeaders(t, srv, "test-key", hdr, chatBody("deepseek-chat", "hello world", false))
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("retry status = %d, body %s", resp2.StatusCode, out2)
+	}
+	if resp2.Header.Get("x-semantix-cache") != "miss" {
+		t.Fatalf("retry x-semantix-cache = %q, want miss (bypass)", resp2.Header.Get("x-semantix-cache"))
+	}
+	if got := respContent(t, out2); got != "fresh upstream answer" {
+		t.Fatalf("retry content = %q, want fresh upstream answer", got)
+	}
+	if n := up.callCount(); n != 1 {
+		t.Fatalf("upstream calls after retry = %d, want 1", n)
+	}
+
+	// The negative signal lands in the usage log as a suspected false hit.
+	summary, err := usage.Summarize(g.cfg.Ingest.UsageLog, usage.DefaultCostMissPerMTok, usage.DefaultCostHitPerMTok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.L3Reuses != 1 {
+		t.Fatalf("usage l3 reuses = %d, want 1", summary.L3Reuses)
+	}
+	if summary.L3FalseHits != 1 {
+		t.Fatalf("usage false hits = %d, want 1", summary.L3FalseHits)
 	}
 }

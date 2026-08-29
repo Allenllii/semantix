@@ -1,4 +1,4 @@
-// Package ablation switches individual Reasonix subsystems off so a benchmark
+// Package ablation switches individual Semantix subsystems off so a benchmark
 // can attribute a change in solve rate to one of them.
 package ablation
 
@@ -16,14 +16,14 @@ const (
 	Subagent   Module = "subagent"
 	Retrieval  Module = "retrieval"
 	Compaction Module = "compaction"
-	// FullFold off means a fold reads the previous projection instead of
-	// re-deriving its digest from the canonical transcript.
-	FullFold Module = "full-fold"
+	// Kernel off forces the memory-kernel bridge disabled for this process —
+	// the in-process twin of the runner's --semantix-memory off arm.
+	Kernel Module = "kernel"
 )
 
 // Modules returns every switchable module in the order arm names use.
 func Modules() []Module {
-	return []Module{Evidence, Planner, Subagent, Retrieval, Compaction, FullFold}
+	return []Module{Evidence, Planner, Subagent, Retrieval, Compaction, Kernel}
 }
 
 // Set is the group of modules disabled for a run. The zero value is the

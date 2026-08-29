@@ -477,7 +477,7 @@ data: {"type":"content_block_stop","index":0}
 
 // LongCat's Anthropic-compatible SSE stream can omit message_start.usage and
 // report the complete usage object in message_delta. Those input/cache counters
-// must not disappear from Reasonix metrics and billing estimates.
+// must not disappear from Semantix metrics and billing estimates.
 func TestReadStreamUsageFromMessageDelta(t *testing.T) {
 	sse := `event: message_start
 data: {"type":"message_start","message":{"id":"msg_1"}}
@@ -648,6 +648,14 @@ func TestBuildRequestThinkingEnabledGateway(t *testing.T) {
 			t.Fatalf("enabled/disabled gateway must not replay Anthropic signed thinking blocks: %+v", r.Messages[1])
 		}
 	}
+	// An EffortOverride must not invent output_config on this path either.
+	r = c.buildRequest(context.Background(), provider.Request{
+		Messages:       []provider.Message{{Role: provider.RoleUser, Content: "hi"}},
+		EffortOverride: "max",
+	})
+	if r.OutputConfig != nil {
+		t.Fatalf("enabled/disabled gateway thinking must omit output_config with an override: %+v", r.OutputConfig)
+	}
 }
 
 func TestBuildRequestDeepSeekThinking(t *testing.T) {
@@ -772,6 +780,13 @@ func TestBuildRequestDeepSeekThinkingModes(t *testing.T) {
 		r := (&client{model: "deepseek-v4-flash", deepseek: true}).buildRequest(context.Background(), provider.Request{})
 		if r.Thinking == nil || r.Thinking.Type != "enabled" || r.OutputConfig != nil {
 			t.Fatalf("default DeepSeek thinking = %+v / %+v, want enabled/provider-default effort", r.Thinking, r.OutputConfig)
+		}
+	})
+	t.Run("override keeps output_config", func(t *testing.T) {
+		c := newTestClient(t, "https://api.deepseek.com", "deepseek-v4", map[string]any{"effort": "low"})
+		r := c.buildRequest(context.Background(), provider.Request{EffortOverride: "high"})
+		if r.Thinking == nil || r.Thinking.Type != "enabled" || r.OutputConfig == nil || r.OutputConfig.Effort != "high" {
+			t.Fatalf("DeepSeek path with override = %+v / %+v, want enabled/high", r.Thinking, r.OutputConfig)
 		}
 	})
 
@@ -994,7 +1009,7 @@ data: {"type":"message_stop"}
 		Extra: map[string]any{
 			"auth_header": true,
 			"headers": map[string]string{
-				"User-Agent":        "Reasonix",
+				"User-Agent":        "Semantix",
 				"Authorization":     "Bearer wrong",
 				"x-api-key":         "wrong",
 				"anthropic-version": "bad",
@@ -1026,8 +1041,8 @@ data: {"type":"message_stop"}
 	if gotVersion != anthropicVersion {
 		t.Fatalf("anthropic-version = %q, want %q", gotVersion, anthropicVersion)
 	}
-	if gotUserAgent != "Reasonix" {
-		t.Fatalf("User-Agent = %q, want Reasonix", gotUserAgent)
+	if gotUserAgent != "Semantix" {
+		t.Fatalf("User-Agent = %q, want Semantix", gotUserAgent)
 	}
 	if usage == nil || usage.RequestCount != 1 {
 		t.Fatalf("usage request count = %+v, want 1", usage)

@@ -47,6 +47,47 @@ func (t SliceType) String() string {
 	return "unknown"
 }
 
+// TypeFromString resolves a wire name back to a SliceType (Issue #259
+// 阶段 2 per-type configuration); ok=false for unknown names so config
+// layers can fail closed instead of silently accepting a typo.
+func TypeFromString(s string) (SliceType, bool) {
+	switch s {
+	case "prompt":
+		return Prompt, true
+	case "context":
+		return Context, true
+	case "tool_pattern":
+		return ToolPattern, true
+	case "result":
+		return Result, true
+	case "memory":
+		return Memory, true
+	}
+	return 0, false
+}
+
+// EvictPriorityOf returns the type's eviction priority: lower values are
+// evicted first when the library cap overflows. The v1 table is fixed and
+// deterministic (Issue #277 typed context eviction): result/tool_pattern go
+// stale fastest, prompt/context are project knowledge worth keeping, memory
+// sits in between, and unknown types take the most conservative slot so a
+// future type is never prioritized for removal.
+func EvictPriorityOf(t SliceType) int {
+	switch t {
+	case Result:
+		return 0
+	case ToolPattern:
+		return 1
+	case Memory:
+		return 2
+	case Prompt:
+		return 3
+	case Context:
+		return 4
+	}
+	return 5
+}
+
 // String returns the stable wire name of a Scope.
 func (s Scope) String() string {
 	switch s {
@@ -62,10 +103,10 @@ func (s Scope) String() string {
 
 // SliceStats tracks usage feedback used by the evolution engine.
 type SliceStats struct {
-	Hits        uint64
-	Misses      uint64
-	Injected    uint64
-	Rejected    uint64
+	Hits         uint64
+	Misses       uint64
+	Injected     uint64
+	Rejected     uint64
 	UserFeedback float64 // +1 keep / -1 reject / 0 none
 	// LastUsed is the unix-seconds time this slice last served a hit or an
 	// injection. 0 = never used (or legacy line without the field). Unlike
@@ -94,6 +135,27 @@ type SliceMeta struct {
 	TaskType      string
 	Language      string
 	ProjectSlug   string
+	// Origin is the provenance/trust tag (Issue #279): writing channels
+	// stamp it, injection and the L3 gate check its integrity level.
+	// Empty means unlabelled (legacy) — treated as the lowest level
+	// (fail-closed: no injection, no L3 Hit pass-through). trust upgrades
+	// it; see Origin.Level.
+	Origin Origin `json:"origin,omitempty"`
+	// CompressionVersion identifies the deterministic extraction rules applied
+	// before Content and its hash-derived ID were produced. Empty means a
+	// legacy or generated slice that did not pass through source compression.
+	CompressionVersion string `json:"compression_version,omitempty"`
+	// SanitizeVersion records the kernel/sanitize rule revision applied to
+	// Content at ingestion (Issue #278): every extracted slice passes the
+	// deterministic sanitization pipeline (escape stripping + injection
+	// feature removal + sensitive redaction) before its ID is derived.
+	// Empty means a legacy slice that predates the write-side pipeline —
+	// the inject side re-sanitizes idempotently as a backstop.
+	SanitizeVersion string `json:"sanitize_version,omitempty"`
+	// OriginalBytes and StoredBytes make extraction compression observable
+	// without mixing non-LLM work into the model usage ledger.
+	OriginalBytes int `json:"original_bytes,omitempty"`
+	StoredBytes   int `json:"stored_bytes,omitempty"`
 	// Deps captures the dependency fingerprint at slice time (path -> sha256,
 	// Issue #8): reuse is gated on these files not having changed.
 	Deps fingerprint.Deps `json:"deps,omitempty"`
@@ -126,17 +188,17 @@ type SliceMeta struct {
 
 // Slice is the core semantic slice value.
 type Slice struct {
-	ID        string      // stable UUID; content hash (sha256) is the version field
-	Type      SliceType
-	Scope     Scope
-	Content   []byte      // normalized text (Prompt/Context/Result/Memory) or tool sequence (ToolPattern)
+	ID      string // stable UUID; content hash (sha256) is the version field
+	Type    SliceType
+	Scope   Scope
+	Content []byte // normalized text (Prompt/Context/Result/Memory) or tool sequence (ToolPattern)
 	// Embedding is persisted only for model-produced vectors (hash vectors
 	// are recomputable from Content and are not stored). Store reads return
 	// nil by contract — nothing in the repo consumes persisted vectors; the
 	// raw bytes still round-trip through Export and compaction.
 	Embedding []float32 `json:",omitempty"`
 	Stats     SliceStats
-	Weight    float64     // value weight, updated by the evolution engine
+	Weight    float64 // value weight, updated by the evolution engine
 	Meta      SliceMeta
 	// CreatedAt is the unix-seconds creation time (maintenance gc retention
 	// basis). Zero means unknown (legacy/imported lines without the field):
@@ -158,4 +220,49 @@ type Hit struct {
 	// third-party Index implementations are never blocked by default.
 	Lexical      float64 `json:"lexical,omitempty"`
 	LexicalValid bool    `json:"-"`
+}
+
+// Origin is the provenance/trust tag of a slice (Issue #279): writing
+// channels stamp it, and injection / the L3 gate check its integrity
+// level. The empty string means unlabelled (legacy) and is treated as
+// the lowest level — fail-closed (never injected, never passed through
+// the L3 Hit gate) unless explicitly trusted.
+type Origin string
+
+const (
+	// OriginSessionAuto: automatically extracted from a session transcript
+	// (ingest pipeline, gateway ingestion).
+	OriginSessionAuto Origin = "session-auto"
+	// OriginPrefetch: produced speculatively by the prefetch runner.
+	OriginPrefetch Origin = "prefetch"
+	// OriginImport: loaded from an external file — the most open channel,
+	// never trusted by default.
+	OriginImport Origin = "import"
+	// OriginUserCurated: explicitly curated by the user (extract CLI,
+	// trust upgrade, import --trust).
+	OriginUserCurated Origin = "user-curated"
+)
+
+// Level maps an Origin to its integrity level (Issue #279 §3.1):
+// import and unlabelled (legacy) → 1, session-auto and prefetch → 2,
+// user-curated → 3. A configured floor above a slice's level excludes it
+// from injection and downgrades its L3 Hit to judge-gated Grey.
+func (o Origin) Level() int {
+	switch o {
+	case OriginUserCurated:
+		return 3
+	case OriginSessionAuto, OriginPrefetch:
+		return 2
+	default: // "" (legacy) and OriginImport
+		return 1
+	}
+}
+
+// Valid reports whether o is a known non-empty origin tag.
+func (o Origin) Valid() bool {
+	switch o {
+	case OriginSessionAuto, OriginPrefetch, OriginImport, OriginUserCurated:
+		return true
+	}
+	return false
 }

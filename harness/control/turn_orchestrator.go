@@ -17,6 +17,26 @@ import (
 	"semantix/harness/tool"
 )
 
+const (
+	planNotApprovedNote  = "(The user did not approve this plan; execution was not started.)"
+	planRevisionPreamble = "[Plan revision requested by the user]"
+)
+
+func planRevisionMessage(feedback string) string {
+	feedback = strings.TrimSpace(feedback)
+	if feedback == "" {
+		return ""
+	}
+	return planRevisionPreamble + "\n\n" + feedback
+}
+
+func (c *Controller) appendPlanHistory(role provider.Role, content string) {
+	if c == nil || c.executor == nil || strings.TrimSpace(content) == "" {
+		return
+	}
+	c.executor.Session().Add(provider.Message{Role: role, Content: content})
+}
+
 // turnOrchestrator owns foreground turn execution while Controller keeps the
 // public ports, run-state guard, and session-scoped dependencies.
 type turnOrchestrator struct {
@@ -334,13 +354,19 @@ func (o *turnOrchestrator) runOrchestratedTurn(ctx context.Context, turn orchest
 	}
 	// The plan is already visible as the assistant's answer, so the request
 	// carries no subject — it's purely the gate.
-	allow, _, err := c.requestApproval(ctx, planApprovalTool, "", nil)
+	reply, err := c.requestFreshApprovalDecision(ctx, planApprovalTool, "", nil, "")
 	if err != nil {
 		return err
 	}
-	if !allow {
-		// The host decides whether denial means "revise and keep planning" or
-		// "exit without executing" by leaving plan mode on or switching it off.
+	if !reply.allow {
+		// A revision is a complete orchestrated frame, not a direct runner call:
+		// it owns fresh message/hook boundaries and gates the revised plan again.
+		if revision := planRevisionMessage(reply.feedback); reply.planAction == PlanDecisionRevisePlan && revision != "" && c.PlanMode() {
+			return o.runOrchestratedTurn(ctx, orchestratedTurn{
+				input: revision, raw: revision, synthetic: true,
+			})
+		}
+		c.appendPlanHistory(provider.RoleAssistant, planNotApprovedNote)
 		return nil
 	}
 	c.SetPlanMode(false)

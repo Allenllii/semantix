@@ -20,6 +20,10 @@ type PrefetchTask struct {
 	Kind string // "slice-assembly" | "embedding" | "file" (low priority)
 	Key  string // identifying key (e.g. slice id, file path)
 	Cost int    // estimated token/IO cost for budgeting
+	// Probe marks work admitted only to explore an otherwise excluded
+	// candidate. Its outcome updates local learning but not global evolve
+	// confidence (Issue #302).
+	Probe bool
 	// Locality declares the task execution boundary; empty is treated as
 	// LocalityEgress by the Runner (fail-closed, matching the empty-whitelist
 	// semantics).

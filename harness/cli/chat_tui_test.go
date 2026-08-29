@@ -41,9 +41,9 @@ type stubbornTurnRunner struct {
 const tinyPNGBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 
 const (
-	middleClickPasteHelperFlag = "GO_WANT_REASONIX_MIDDLE_CLICK_PASTE_HELPER"
-	middleClickPasteHelperMode = "REASONIX_MIDDLE_CLICK_PASTE_HELPER_MODE"
-	middleClickPasteTestValue  = "REASONIX_MIDDLE_CLICK_TEST_VALUE"
+	middleClickPasteHelperFlag = "GO_WANT_SEMANTIX_MIDDLE_CLICK_PASTE_HELPER"
+	middleClickPasteHelperMode = "SEMANTIX_MIDDLE_CLICK_PASTE_HELPER_MODE"
+	middleClickPasteTestValue  = "SEMANTIX_MIDDLE_CLICK_TEST_VALUE"
 )
 
 func TestMiddleClickPasteCommandHelper(t *testing.T) {
@@ -75,7 +75,7 @@ func TestMain(m *testing.M) {
 
 	// Pin the UI language for the whole cli test binary. Production code
 	// (cli.Run) calls i18n.DetectLanguage("") which resolves the host locale from
-	// the environment (REASONIX_LANG/LC_ALL/LC_MESSAGES/LANG) and installs it as
+	// the environment (SEMANTIX_LANG/LC_ALL/LC_MESSAGES/LANG) and installs it as
 	// the global i18n.M. On a non-English dev machine that flips M to e.g.
 	// Chinese, and tests that exercise the CLI entry point (acp_test.go,
 	// cli_test.go) don't restore it — so later tests asserting English UI strings
@@ -83,7 +83,7 @@ func TestMain(m *testing.M) {
 	// deterministic English environment keeps the suite independent of the host
 	// locale (matching CI). Tests that need another language still set it
 	// explicitly via i18n.DetectLanguage(lang) with their own cleanup.
-	os.Unsetenv("REASONIX_LANG")
+	os.Unsetenv("SEMANTIX_LANG")
 	os.Unsetenv("LC_ALL")
 	os.Unsetenv("LC_MESSAGES")
 	os.Setenv("LANG", "en_US.UTF-8")
@@ -142,7 +142,7 @@ func writeTUIImageCapabilityConfig(t *testing.T, root string) {
 		Models:       []string{"text-only", "vision-pro"},
 		VisionModels: []string{"vision-pro"},
 	}}
-	if err := cfg.SaveTo(filepath.Join(root, "reasonix.toml")); err != nil {
+	if err := cfg.SaveTo(filepath.Join(root, "semantix-agent.toml")); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
 }
@@ -822,14 +822,14 @@ func TestMainManagerFollowsTranscriptWithoutTopPadding(t *testing.T) {
 	m := newChatTUI(ctrl, "", make(chan event.Event, 1), 80)
 	m0, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	m = m0.(chatTUI)
-	m.wrappedLines = []string{"reasonix", "› /mcp"}
+	m.wrappedLines = []string{"semantix", "› /mcp"}
 
 	out := ansi.Strip(m.renderTranscriptWithMainManager("Manage MCP servers\n1 servers"))
 	lines := strings.Split(out, "\n")
 	if len(lines) < 4 {
 		t.Fatalf("rendered manager area too short:\n%s", out)
 	}
-	if !strings.Contains(lines[0], "reasonix") || !strings.Contains(lines[1], "/mcp") {
+	if !strings.Contains(lines[0], "semantix") || !strings.Contains(lines[1], "/mcp") {
 		t.Fatalf("transcript lines should stay above manager:\n%s", out)
 	}
 	if strings.TrimSpace(lines[2]) != "" {
@@ -1029,7 +1029,7 @@ func TestApprovalChoicesPreserveDecisionSemantics(t *testing.T) {
 		{
 			name: "plan decision",
 			tool: planApprovalTool,
-			want: []approvalChoice{{allow: true}, {}, {exitPlan: true}},
+			want: []approvalChoice{{allow: true}, {promptsForText: true}, {exitPlan: true}},
 		},
 	}
 	for _, tt := range tests {
@@ -1050,7 +1050,9 @@ func TestApprovalChoicesPreserveDecisionSemantics(t *testing.T) {
 	grantable := approvalChoices(&event.Approval{
 		Kind: "recovery", Recovery: &event.RecoveryApproval{CanGrantTask: true},
 	})
-	wantGrantable := []approvalChoice{{allow: true}, {allow: true, allowForSession: true}, {}}
+	wantGrantable := []approvalChoice{
+		{allow: true}, {allow: true, allowForSession: true}, {promptsForText: true},
+	}
 	if len(grantable) != len(wantGrantable) {
 		t.Fatalf("grantable recovery choices = %d, want %d", len(grantable), len(wantGrantable))
 	}
@@ -1074,7 +1076,7 @@ func TestApprovalChoicesPreserveDecisionSemantics(t *testing.T) {
 	}
 	planApprovalLabels := approvalChoiceLabels(&event.Approval{Tool: planApprovalTool})
 	if len(planApprovalLabels) != 3 || planApprovalLabels[0] != "Start execution" ||
-		planApprovalLabels[1] != "Revise plan (keep planning)" || planApprovalLabels[2] != "Exit without executing" {
+		planApprovalLabels[1] != "Revise plan (keep planning; note optional)" || planApprovalLabels[2] != "Exit without executing" {
 		t.Fatalf("plan approval labels = %v", planApprovalLabels)
 	}
 }
@@ -1084,9 +1086,12 @@ func TestPlanApprovalActionsSynchronizeTUIAndControllerMode(t *testing.T) {
 		name     string
 		key      tea.KeyPressMsg
 		wantPlan bool
+		// wantNote marks the row that collects a revision note before deciding:
+		// it holds the card open instead of resolving on the keystroke.
+		wantNote bool
 	}{
 		{name: "start execution", key: tea.KeyPressMsg{Code: '1'}},
-		{name: "revise plan", key: tea.KeyPressMsg{Code: '2'}, wantPlan: true},
+		{name: "revise plan", key: tea.KeyPressMsg{Code: '2'}, wantPlan: true, wantNote: true},
 		{name: "exit without executing", key: tea.KeyPressMsg{Code: '3'}},
 		{name: "legacy n keeps planning", key: tea.KeyPressMsg{Code: 'n'}, wantPlan: true},
 		{name: "escape keeps planning", key: tea.KeyPressMsg{Code: tea.KeyEscape}, wantPlan: true},
@@ -1103,7 +1108,18 @@ func TestPlanApprovalActionsSynchronizeTUIAndControllerMode(t *testing.T) {
 
 			next, _ := m.handleApprovalKey(tt.key)
 			m = next.(chatTUI)
-			if m.pendingApproval != nil {
+			switch {
+			case tt.wantNote:
+				if m.pendingApproval == nil {
+					t.Fatal("revise cleared the card before collecting its note")
+				}
+				if !m.approvalTyping {
+					t.Fatal("revise did not open the note field")
+				}
+				if m.hideComposer() {
+					t.Fatal("composer hidden while the note is being typed")
+				}
+			case m.pendingApproval != nil:
 				t.Fatal("plan approval was not resolved")
 			}
 			if m.planMode != tt.wantPlan || m.ctrl.PlanMode() != tt.wantPlan {
@@ -1118,7 +1134,7 @@ func TestPlanApprovalBannerShowsThreeExplicitActions(t *testing.T) {
 	m.width = 120
 	m.pendingApproval = &event.Approval{ID: "plan", Tool: planApprovalTool}
 	banner := ansi.Strip(m.renderApprovalBanner())
-	for _, want := range []string{"Start execution", "Revise plan (keep planning)", "Exit without executing"} {
+	for _, want := range []string{"Start execution", "Revise plan (keep planning; note optional)", "Exit without executing"} {
 		if !strings.Contains(banner, want) {
 			t.Fatalf("plan approval banner missing %q:\n%s", want, banner)
 		}
@@ -2359,11 +2375,33 @@ func TestEchoLocalCommandAddsTranscriptMarker(t *testing.T) {
 	}
 }
 
+func TestMouseReenableIsSuppressedAfterShutdownStarts(t *testing.T) {
+	m := newTestChatTUI()
+	m.shuttingDown, m.mouseReenablePending, m.mouseReenableTimerArmed = true, true, true
+	if cmd := m.maybeReenableMouse(); cmd != nil {
+		t.Fatal("shutdown must suppress mouse re-enable")
+	}
+	if m.mouseReenablePending || m.mouseReenableTimerArmed {
+		t.Fatal("shutdown must clear delayed mouse state")
+	}
+}
+
+func TestShutdownMessageMakesMouseLifecycleIrreversible(t *testing.T) {
+	m := newTestChatTUI()
+	next, cmd := m.Update(tuiShutdownMsg{})
+	if !next.(chatTUI).shuttingDown {
+		t.Fatal("shutdown must mark TUI")
+	}
+	if cmd == nil {
+		t.Fatal("shutdown must request quit")
+	}
+}
+
 func isolateUserConfig(t *testing.T) {
 	t.Helper()
 	root := t.TempDir()
 	t.Setenv("HOME", root)
-	t.Setenv("REASONIX_CREDENTIALS_STORE", "file")
+	t.Setenv("SEMANTIX_CREDENTIALS_STORE", "file")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("AppData", filepath.Join(root, "AppData")) // os.UserConfigDir reads AppData on Windows
 	t.Chdir(root)
@@ -2375,13 +2413,24 @@ func TestEffortCommandWritesCurrentDeepSeekProvider(t *testing.T) {
 	m := newTestChatTUI()
 	m.ctrl = control.New(control.Options{Label: "deepseek-flash"})
 	m.modelRef = "deepseek-flash/deepseek-v4-flash"
+	builds := 0
 	m.buildController = func(_ controllerBuildSpec, _ []provider.Message, _ string, _ control.SessionAPI) (*control.Controller, error) {
+		builds++
 		return control.New(control.Options{Label: "deepseek-flash"}), nil
 	}
 
 	cmd := m.runEffortCommand("/effort max")
-	if cmd == nil {
-		t.Fatal("/effort max should return a rebuild command")
+	if cmd != nil {
+		t.Fatal("/effort max must switch in place, not queue a rebuild")
+	}
+	if m.modelSwitchPending || m.pendingModelSwitch != nil {
+		t.Fatal("/effort must not arm a pending model switch")
+	}
+	if builds != 0 {
+		t.Fatalf("/effort triggered %d controller rebuilds, want 0", builds)
+	}
+	if got := m.ctrl.SessionEffort(); got != "max" {
+		t.Fatalf("live controller SessionEffort = %q, want max", got)
 	}
 
 	configPath := config.UserConfigPath()
@@ -2405,7 +2454,10 @@ func TestEffortCommandRejectsUnsupportedProvider(t *testing.T) {
 	}
 
 	if cmd := m.runEffortCommand("/effort max"); cmd != nil {
-		t.Fatal("unsupported provider should not rebuild")
+		t.Fatal("unsupported provider must not rebuild")
+	}
+	if got := m.ctrl.SessionEffort(); got != "" {
+		t.Fatalf("unsupported provider must not change the session effort, got %q", got)
 	}
 	if _, err := os.Stat(config.UserConfigPath()); !os.IsNotExist(err) {
 		t.Fatalf("unsupported provider should not write config, stat err=%v", err)
@@ -2422,14 +2474,17 @@ func TestEffortCommandAutoClearsProviderEffort(t *testing.T) {
 		return control.New(control.Options{Label: "deepseek-flash"}), nil
 	}
 
-	cmd := m.runEffortCommand("/effort max")
-	if cmd == nil {
-		t.Fatal("/effort max should return a rebuild command")
+	if cmd := m.runEffortCommand("/effort max"); cmd != nil {
+		t.Fatal("/effort max must switch in place, not queue a rebuild")
 	}
-	next, _ := m.Update(cmd())
-	m = next.(chatTUI)
-	if cmd := m.runEffortCommand("/effort auto"); cmd == nil {
-		t.Fatal("/effort auto should return a rebuild command")
+	if got := m.ctrl.SessionEffort(); got != "max" {
+		t.Fatalf("live controller SessionEffort = %q, want max", got)
+	}
+	if cmd := m.runEffortCommand("/effort auto"); cmd != nil {
+		t.Fatal("/effort auto must switch in place, not queue a rebuild")
+	}
+	if got := m.ctrl.SessionEffort(); got != "auto" {
+		t.Fatalf("live controller SessionEffort = %q, want auto", got)
 	}
 	body, err := os.ReadFile(config.UserConfigPath())
 	if err != nil {
@@ -2438,6 +2493,28 @@ func TestEffortCommandAutoClearsProviderEffort(t *testing.T) {
 	section := providerSection(string(body), "deepseek-flash")
 	if strings.Contains(section, `effort      = "`) {
 		t.Fatalf("auto should clear saved deepseek-flash effort:\n%s", section)
+	}
+}
+
+// TestEffortCommandNotifiesLaunchWiring: the in-session switch must update the
+// captured build override so a later /reload keeps the chosen level even when
+// the session launched with an explicit --effort flag.
+func TestEffortCommandNotifiesLaunchWiring(t *testing.T) {
+	isolateUserConfig(t)
+
+	m := newTestChatTUI()
+	m.ctrl = control.New(control.Options{Label: "deepseek-flash"})
+	m.modelRef = "deepseek-flash/deepseek-v4-flash"
+	var applied []string
+	m.effortApplied = func(level string) { applied = append(applied, level) }
+
+	m.runEffortCommand("/effort max")
+	if len(applied) != 1 || applied[0] != "max" {
+		t.Fatalf("effortApplied = %v, want [max]", applied)
+	}
+	m.runEffortCommand("/effort auto")
+	if len(applied) != 2 || applied[1] != "auto" {
+		t.Fatalf("effortApplied = %v, want [max auto]", applied)
 	}
 }
 
@@ -2465,7 +2542,7 @@ func TestReasoningLanguageCommandPersistsAndUpdatesController(t *testing.T) {
 
 func TestReasoningLanguageCommandWritesUserConfigNotProjectConfig(t *testing.T) {
 	isolateUserConfig(t)
-	projectPath := filepath.Join(mustGetwd(t), "reasonix.toml")
+	projectPath := filepath.Join(mustGetwd(t), "semantix-agent.toml")
 	if err := os.WriteFile(projectPath, []byte("[agent]\nreasoning_language = \"en\"\n"), 0o644); err != nil {
 		t.Fatalf("write project config: %v", err)
 	}
@@ -2627,7 +2704,7 @@ func TestLanguageCommandAutoClearsPinnedLanguage(t *testing.T) {
 
 func TestLanguageCommandAutoClearsLowerPriorityUserOverride(t *testing.T) {
 	isolateUserConfig(t)
-	t.Setenv("REASONIX_LANG", "")
+	t.Setenv("SEMANTIX_LANG", "")
 	t.Setenv("LC_ALL", "")
 	t.Setenv("LC_MESSAGES", "")
 	t.Setenv("LANG", "")
@@ -2643,7 +2720,7 @@ func TestLanguageCommandAutoClearsLowerPriorityUserOverride(t *testing.T) {
 		t.Fatalf("save user config: %v", err)
 	}
 	projectCfg := config.Default()
-	if err := projectCfg.SaveTo("reasonix.toml"); err != nil {
+	if err := projectCfg.SaveTo("semantix-agent.toml"); err != nil {
 		t.Fatalf("save project config: %v", err)
 	}
 
@@ -3287,6 +3364,42 @@ func TestChooserFreeTextWideInputChangeRequestsClearScreen(t *testing.T) {
 	}
 }
 
+// TestChooserMultiSelectNumberKeyTogglesInsteadOfSubmitting guards against a
+// regression where a number-key press on a multi-select ask() question
+// bypassed the toggle and submitted the question with no selection (#360).
+func TestChooserMultiSelectNumberKeyTogglesInsteadOfSubmitting(t *testing.T) {
+	m := newTestChatTUI()
+	m.chooser = newChooser(event.Ask{
+		ID: "ask-1",
+		Questions: []event.AskQuestion{{
+			ID:     "q1",
+			Prompt: "Pick any",
+			Multi:  true,
+			Options: []event.AskOption{
+				{Label: "Option A"},
+				{Label: "Option B"},
+			},
+		}},
+	})
+
+	next, _ := m.update(tea.KeyPressMsg{Code: '2'})
+	got := next.(chatTUI)
+
+	if got.chooser == nil {
+		t.Fatal("number key on a multi-select question must not submit/dismiss the chooser")
+	}
+	if !got.chooser.sel[0][1] {
+		t.Fatal("number key on a multi-select question should toggle the picked option, like space does")
+	}
+
+	// Pressing the same key again toggles it back off, exactly like space.
+	next, _ = got.update(tea.KeyPressMsg{Code: '2'})
+	got = next.(chatTUI)
+	if got.chooser.sel[0][1] {
+		t.Fatal("a second number-key press should toggle the option back off")
+	}
+}
+
 func TestReplayActiveBranchClearsPlanModeAndMarksSessionSwitch(t *testing.T) {
 	m := newTestChatTUI()
 	m.ctrl = control.New(control.Options{})
@@ -3587,14 +3700,14 @@ func TestQualifiedSlashDocsBypassesConflictingCustomCommand(t *testing.T) {
 	m.ctrl = ctrl
 	m.commands = commands
 
-	if cmd := m.runSlashCommand("/reasonix:docs"); cmd != nil {
-		t.Fatal("bare /reasonix:docs should complete locally")
+	if cmd := m.runSlashCommand("/semantix:docs"); cmd != nil {
+		t.Fatal("bare /semantix:docs should complete locally")
 	}
 	if len(r.inputs) != 0 {
-		t.Fatalf("bare /reasonix:docs should not start a model turn, inputs=%q", r.inputs)
+		t.Fatalf("bare /semantix:docs should not start a model turn, inputs=%q", r.inputs)
 	}
 	transcript := strings.Join(m.transcript, "\n")
-	if !strings.Contains(transcript, "digest=sha256:") || !strings.Contains(transcript, "Usage: /reasonix:docs <question>") || strings.Contains(transcript, "legacy docs") {
+	if !strings.Contains(transcript, "digest=sha256:") || !strings.Contains(transcript, "Usage: /semantix:docs <question>") || strings.Contains(transcript, "legacy docs") {
 		t.Fatalf("qualified built-in docs was shadowed:\n%s", transcript)
 	}
 }
@@ -3718,7 +3831,7 @@ func TestDynamicMCPFreshApprovalHidesRememberedChoices(t *testing.T) {
 }
 
 func TestDynamicBashApprovalChoicesUseExactLiteralRules(t *testing.T) {
-	const command = "git status $(touch /tmp/reasonix-dynamic-approval)"
+	const command = "git status $(touch /tmp/semantix-dynamic-approval)"
 	approval := &event.Approval{Tool: "bash", Subject: command}
 	choices := approvalChoices(approval)
 	if len(choices) != 4 {

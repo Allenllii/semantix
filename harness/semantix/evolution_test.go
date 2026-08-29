@@ -16,6 +16,19 @@ func (c *captureTuner) ApplyEvolution(v float64) error {
 	return nil
 }
 
+type capturePrefetchFeedback struct {
+	captureTuner
+	hits, wastes []string
+}
+
+func (c *capturePrefetchFeedback) ObserveHit(target string) {
+	c.hits = append(c.hits, target)
+}
+
+func (c *capturePrefetchFeedback) ObserveWaste(target string) {
+	c.wastes = append(c.wastes, target)
+}
+
 func TestEvolutionLoopAppliesChangedSnapshotAndEmitsTick(t *testing.T) {
 	bus := kernelevent.NewSyncBus()
 	engine := evolve.New(evolve.Config{MinSamples: 2, FreezeEpochs: 1})
@@ -64,6 +77,58 @@ func TestEvolutionLoopDoesNotTickWithoutParameterChange(t *testing.T) {
 	}
 }
 
+func TestEvolutionLoopProbeWasteIsLocalOnly(t *testing.T) {
+	bus := kernelevent.NewSyncBus()
+	engine := evolve.New(evolve.Config{MinSamples: 2, FreezeEpochs: 1})
+	prefetcher := &capturePrefetchFeedback{}
+	loop := NewEvolutionLoop(bus, engine)
+	loop.Attach(nil, prefetcher)
+	defer loop.Close()
+	ticks := 0
+	bus.Subscribe(func(e kernelevent.Event) {
+		if e.Kind == kernelevent.EvolutionTick {
+			ticks++
+		}
+	})
+	before := engine.Params()
+	payload, _ := json.Marshal(kernelevent.PrefetchWastePayload{
+		Targets: []string{"slice-a"}, ProbeTargets: []string{"read_file"},
+	})
+	for turn := 1; turn <= 2; turn++ {
+		bus.Emit(kernelevent.Event{Kind: kernelevent.PrefetchWaste, Turn: turn, Data: payload})
+	}
+	if got := engine.Params(); got != before {
+		t.Fatalf("probe waste changed global params: before=%+v after=%+v", before, got)
+	}
+	if ticks != 0 || len(prefetcher.values) != 0 {
+		t.Fatalf("probe waste drove global evolution: ticks=%d applies=%v", ticks, prefetcher.values)
+	}
+	if len(prefetcher.wastes) != 2 || prefetcher.wastes[0] != "read_file" || prefetcher.wastes[1] != "read_file" {
+		t.Fatalf("local waste feedback=%v, want [read_file read_file]", prefetcher.wastes)
+	}
+}
+
+func TestEvolutionLoopRealWasteStillEvolves(t *testing.T) {
+	bus := kernelevent.NewSyncBus()
+	engine := evolve.New(evolve.Config{MinSamples: 2, FreezeEpochs: 1})
+	prefetcher := &capturePrefetchFeedback{}
+	loop := NewEvolutionLoop(bus, engine)
+	loop.Attach(nil, prefetcher)
+	defer loop.Close()
+	before := engine.Params()
+	payload, _ := json.Marshal(kernelevent.PrefetchWastePayload{Targets: []string{"slice-a"}})
+	for turn := 1; turn <= 2; turn++ {
+		bus.Emit(kernelevent.Event{Kind: kernelevent.PrefetchWaste, Turn: turn, Data: payload})
+	}
+	after := engine.Params()
+	if after.PrefetchConf <= before.PrefetchConf {
+		t.Fatalf("real waste did not tighten global confidence: before=%v after=%v", before.PrefetchConf, after.PrefetchConf)
+	}
+	if len(prefetcher.values) != 1 || len(prefetcher.wastes) != 2 {
+		t.Fatalf("real waste applies=%v local=%v", prefetcher.values, prefetcher.wastes)
+	}
+}
+
 // TestEvolveSchedulerReceivesSuccessFloor verifies the decoupling (PR #228,
 // Issue #254): after a parameter change the scheduler tuner is driven by the
 // engine's SuccessFloor default, not by TauL2 (injection confidence).
@@ -90,6 +155,7 @@ func TestEvolveSchedulerReceivesSuccessFloor(t *testing.T) {
 			got, evolve.DefaultSuccessFloor, evolve.DefaultTauL2)
 	}
 }
+
 // TestEvolutionLoopSliceRejectFeedsPollution (Issue #267 step 3): a
 // SliceReject event is folded into the engine as an inject_pollution
 // signal — the last empty signal source after PR #228 wired prefetch_*.

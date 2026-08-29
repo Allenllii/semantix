@@ -21,8 +21,8 @@ const (
 	ScopeLocal    Scope = "local"
 )
 
-var DocumentNames = []string{"REASONIX.md", "AGENTS.md", "CLAUDE.md"}
-var LocalDocumentNames = []string{"REASONIX.local.md", "AGENTS.local.md", "CLAUDE.local.md"}
+var DocumentNames = []string{"SEMANTIX.md", "AGENTS.md", "CLAUDE.md"}
+var LocalDocumentNames = []string{"SEMANTIX.local.md", "AGENTS.local.md", "CLAUDE.local.md"}
 
 const MaxImportDepth = 5
 
@@ -321,7 +321,7 @@ func importBoundaryForPath(path string, boundaries []string) string {
 func userInstructionImportRoots(userDir string) []string {
 	roots := []string{absolutePath(userDir)}
 	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
-		for _, name := range []string{".reasonix", ".agents", ".agent", ".claude"} {
+		for _, name := range []string{".semantix", ".agents", ".agent", ".claude"} {
 			roots = append(roots, absolutePath(filepath.Join(home, name)))
 		}
 	}

@@ -78,6 +78,24 @@ func TestToWireContextMaintenanceJSON(t *testing.T) {
 	}
 }
 
+func TestToWireKernelCacheJSON(t *testing.T) {
+	w := ToWire(event.Event{Kind: event.KernelCache, KernelCache: &event.KernelCachePayload{
+		Op: "degraded", Layer: "L2", SliceIDs: []string{"b", "a"}, Bytes: 128, Reason: "budget",
+	}})
+	if w.Kind != "kernel_cache" || w.KernelCache == nil {
+		t.Fatalf("kernel cache wire = %+v", w)
+	}
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"kind":"kernel_cache"`, `"op":"degraded"`, `"layer":"L2"`, `"sliceIds":["b","a"]`, `"reason":"budget"`} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("kernel cache JSON = %s, missing %s", b, want)
+		}
+	}
+}
+
 func TestToWireNoticeCarriesCode(t *testing.T) {
 	w := ToWire(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: event.NoticeCodeFinalReadiness, Text: "readiness copy"})
 	b, err := json.Marshal(w)
@@ -134,8 +152,6 @@ func TestKindNamesComplete(t *testing.T) {
 		}
 	}
 }
-
-
 
 func TestToWireNoticeDetail(t *testing.T) {
 	w := ToWire(event.Event{Kind: event.Notice, Level: event.LevelWarn, Text: "short", Detail: "diagnostics"})
@@ -216,6 +232,20 @@ func TestToWireTurnOutcomeIsOptionalAndMachineReadable(t *testing.T) {
 	}
 }
 
+func TestToWireTurnDoneCarriesCancellation(t *testing.T) {
+	w := ToWire(event.Event{Kind: event.TurnDone, Cancelled: true})
+	if !w.Cancelled {
+		t.Fatal("cancelled TurnDone lost its cancellation flag")
+	}
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatalf("marshal cancelled turn: %v", err)
+	}
+	if !strings.Contains(string(b), `"cancelled":true`) {
+		t.Fatalf("cancelled TurnDone JSON = %s, want cancellation flag", b)
+	}
+}
+
 func TestToWireTurnDoneCheckpointTurnPreservesZeroAndOmitsNil(t *testing.T) {
 	turn := 0
 	withCheckpoint, err := json.Marshal(ToWire(event.Event{Kind: event.TurnDone, CheckpointTurn: &turn}))
@@ -244,7 +274,7 @@ func TestToWireMessageMemoryCitations(t *testing.T) {
 			Source:    "MEMORY.md",
 			LineStart: 116,
 			LineEnd:   123,
-			Note:      "reasonix workflow",
+			Note:      "semantix workflow",
 			Kind:      "memory_reference",
 		}},
 	})
@@ -252,7 +282,7 @@ func TestToWireMessageMemoryCitations(t *testing.T) {
 		t.Fatalf("memory citations = %+v, want one citation", w.MemoryCitations)
 	}
 	got := w.MemoryCitations[0]
-	if got.Source != "MEMORY.md" || got.LineStart != 116 || got.LineEnd != 123 || got.Note != "reasonix workflow" {
+	if got.Source != "MEMORY.md" || got.LineStart != 116 || got.LineEnd != 123 || got.Note != "semantix workflow" {
 		t.Fatalf("citation = %+v, want source/line/note preserved", got)
 	}
 	b, err := json.Marshal(w)
@@ -263,7 +293,6 @@ func TestToWireMessageMemoryCitations(t *testing.T) {
 		t.Fatalf("wire JSON missing memoryCitations: %s", string(b))
 	}
 }
-
 
 func TestToWireToolPayloadJSON(t *testing.T) {
 	w := ToWire(event.Event{Kind: event.ToolDispatch, Tool: event.Tool{
@@ -289,6 +318,33 @@ func TestToWireToolPayloadJSON(t *testing.T) {
 	} {
 		if !strings.Contains(s, want) {
 			t.Fatalf("tool JSON = %s, want it to contain %s", s, want)
+		}
+	}
+}
+
+func TestToWireToolStructuredFileDiff(t *testing.T) {
+	w := ToWire(event.Event{Kind: event.ToolDispatch, Tool: event.Tool{
+		ID: "c1", Name: "edit_file", FileDiff: event.FileDiff{
+			Path: "internal/cache.go", Status: "modified", Language: "go",
+			Diff:  "--- a/internal/cache.go\n+++ b/internal/cache.go\n@@ -1 +1 @@\n-old\n+new\n",
+			Added: 1, Removed: 1, Hunks: 1,
+			Lines: []event.DiffLine{{Kind: "hunk", Text: "@@ -1 +1 @@"}, {Kind: "deleted", OldLine: 1, Text: "old"}, {Kind: "added", NewLine: 1, Text: "new"}},
+		},
+	}})
+	if w.Tool == nil || w.Tool.FileDiff == nil {
+		t.Fatalf("structured file diff missing: %+v", w.Tool)
+	}
+	fd := w.Tool.FileDiff
+	if fd.Path != "internal/cache.go" || fd.Status != "modified" || fd.Language != "go" || fd.Added != 1 || fd.Removed != 1 || len(fd.Lines) != 3 {
+		t.Fatalf("structured file diff = %+v", fd)
+	}
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"fileDiff"`, `"status":"modified"`, `"oldLine":1`, `"newLine":1`} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("tool JSON = %s, want %s", b, want)
 		}
 	}
 }

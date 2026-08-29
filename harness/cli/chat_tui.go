@@ -72,10 +72,14 @@ type chatTUI struct {
 	// mouseCaptureOff releases mouse ownership back to the terminal (View() sets
 	// tea.MouseModeNone instead of MouseModeCellMotion) so its native
 	// click-drag selection and right-click context menu work again. Toggled by
-	// "/mouse" or REASONIX_DISABLE_MOUSE at startup; trades away in-app
+	// "/mouse" or SEMANTIX_DISABLE_MOUSE at startup; trades away in-app
 	// drag-select, the transcript scrollbar, and wheel-scroll while it's on,
-	// since the terminal no longer forwards those events to Reasonix.
+	// since the terminal no longer forwards those events to Semantix.
 	mouseCaptureOff bool
+	// shuttingDown is irreversible once tuiShutdownMsg is received. It prevents
+	// focus/resize/settle events and already-armed timers from re-enabling mouse
+	// tracking while Bubble Tea restores the parent shell.
+	shuttingDown bool
 
 	input       textarea.Model
 	composerSel composerSelection
@@ -297,6 +301,17 @@ type chatTUI struct {
 	// awaiting ctrl.Approve and key input is captured to answer it.
 	pendingApproval   *event.Approval
 	approvalSelection int
+	// approvalTyping is set while a revise row is collecting its note. The card
+	// stays up but stops owning the keyboard: the composer does, exactly as it
+	// does for the chooser's free-text mode. approvalTypingChoice remembers
+	// which row is being annotated, because the note is committed from Update
+	// rather than from the keymap that picked the row.
+	approvalTyping       bool
+	approvalTypingChoice approvalChoice
+	// approvalNoteDraft parks whatever the user had half-written in the
+	// composer when the card took it over. Approval cards arrive
+	// asynchronously, so answering one must not eat an unrelated draft.
+	approvalNoteDraft string
 
 	// chooser holds the `ask` tool's question card (nil when none). While set, the
 	// run goroutine is blocked awaiting ctrl.AnswerQuestion and keys drive the card.
@@ -340,7 +355,7 @@ type chatTUI struct {
 	// (/mcp) from it.
 	host *plugin.Host
 
-	// commands are custom slash commands loaded from .reasonix/commands; each renders
+	// commands are custom slash commands loaded from .semantix/commands; each renders
 	// its template with the typed args and sends the result as a turn.
 	commands []command.Command
 
@@ -382,6 +397,11 @@ type chatTUI struct {
 	modelRef       string
 	runtimeProfile string
 	effortLevel    string // "" when the current provider/model has no configurable effort
+	// effortApplied notifies the launch wiring that an in-session /effort
+	// switch changed the level, so the captured build overrides stay in sync
+	// for a later /reload (a session launched with --effort would otherwise
+	// let the launch flag out-vote the in-session choice on rebuild).
+	effortApplied func(level string)
 
 	// leases owns the session lease guarding the TUI's active session file (set
 	// by chatREPL; nil in tests and when persistence is disabled). Every in-TUI
@@ -694,7 +714,7 @@ func transcriptContentWidth(termW int, nativeScrollback bool) int {
 // menu and click-drag selection matter more than the scrollbar and
 // wheel-scroll) without having to type "/mouse" each session.
 func mouseCaptureOffByDefault() bool {
-	v := strings.TrimSpace(os.Getenv("REASONIX_DISABLE_MOUSE"))
+	v := strings.TrimSpace(os.Getenv("SEMANTIX_DISABLE_MOUSE"))
 	return v != "" && v != "0"
 }
 
@@ -739,11 +759,14 @@ func configureChatTextarea(ti *textarea.Model) {
 }
 
 func (m *chatTUI) refreshInputPlaceholder() {
-	if m.chooserTyping() {
+	switch {
+	case m.chooserTyping():
 		m.input.Placeholder = i18n.M.AskTypeSomething
-		return
+	case m.approvalTyping:
+		m.input.Placeholder = i18n.M.ApprovalNoteHint
+	default:
+		m.input.Placeholder = ""
 	}
-	m.input.Placeholder = ""
 }
 
 func isTermuxTerminal() bool {
@@ -1111,7 +1134,7 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.MouseClickMsg:
-		// Match the complete terminal right-click convention while Reasonix owns
+		// Match the complete terminal right-click convention while Semantix owns
 		// the mouse: copy an active selection, otherwise paste clipboard text into
 		// the visible composer. Left-press begins a selection unless it lands on
 		// the transcript scrollbar or a shell-output hint line.
@@ -1233,7 +1256,7 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.composerSel = composerSelection{}
 				return m, nil
 			}
-			// The terminal cannot see Reasonix's application-owned highlight, and
+			// The terminal cannot see Semantix's application-owned highlight, and
 			// macOS commonly consumes Cmd+C before it reaches the TUI. Copy on drag
 			// release just like transcript selection so the visible selection always
 			// has a usable clipboard result.
@@ -1427,6 +1450,35 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.skillPick != nil {
 			return m.handleSkillPickerKey(msg)
 		}
+		// A revise row collecting its note is input-owned, like the chooser's
+		// free-text mode above: Enter commits the note with the decision, Esc
+		// returns to the rows, everything else is text. This sits ahead of the
+		// approval arm on purpose — it is what makes every resolving shortcut
+		// in handleApprovalKey unreachable while the user is typing, rather
+		// than each of them having to remember to check.
+		if m.approvalTyping && m.pendingApproval != nil {
+			switch msg.String() {
+			case "enter":
+				next, cmd := m.resolveApproval(m.approvalTypingChoice, strings.TrimSpace(m.input.Value()))
+				m = next.(chatTUI)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+				return m, finalize(m, cmds)
+			case "esc":
+				m.endApprovalNote()
+				return m, finalize(m, cmds)
+			}
+			beforeInput := m.input.Value()
+			var ic tea.Cmd
+			m.input, ic = m.input.Update(msg)
+			cmds = append(cmds, ic)
+			m.growInputToFit()
+			if shouldClearWideInputChange(beforeInput, m.input.Value()) {
+				cmds = append(cmds, tea.ClearScreen)
+			}
+			return m, finalize(m, cmds)
+		}
 		// A pending tool approval is modal: keystrokes answer it (y/a/n, Enter,
 		// Esc) rather than reaching the input.
 		if m.pendingApproval != nil {
@@ -1606,7 +1658,7 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Terminal-convention copy without Ctrl+C's destructive side
 			// effects: copy an active selection if there is one, otherwise do
 			// nothing (no clear-input, no cancel, no quit). The selection lives
-			// in-app because Reasonix owns the mouse, so the terminal's own
+			// in-app because Semantix owns the mouse, so the terminal's own
 			// Ctrl+Insert (which copies the terminal selection) would see an
 			// empty one.
 			if sel.active && !sel.empty() {
@@ -1950,6 +2002,9 @@ func (m chatTUI) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tuiShutdownMsg:
+		m.shuttingDown = true
+		m.mouseReenablePending = false
+		m.mouseReenableTimerArmed = false
 		if m.ctrl != nil {
 			_ = m.ctrl.Snapshot()
 			m.followSessionLease()
@@ -2319,8 +2374,14 @@ func (m chatTUI) bottomRows() int {
 // reserve rows for a composer that cannot receive input, leaving a confusing
 // blank/bordered area at the bottom of the TUI.
 func (m chatTUI) hideComposer() bool {
-	if m.mcp != nil || m.clearConfirm != nil || m.mcpImport != nil || m.skillPick != nil || m.resumePick != nil || m.quickPick != nil || m.copyPick != nil || m.rewind != nil || m.pendingApproval != nil {
+	if m.mcp != nil || m.clearConfirm != nil || m.mcpImport != nil || m.skillPick != nil || m.resumePick != nil || m.quickPick != nil || m.copyPick != nil || m.rewind != nil {
 		return true
+	}
+	// A revise row collecting its note is input-owned, the same exception the
+	// chooser's free-text mode gets below: the textarea is the active control,
+	// so hiding it would leave the user typing into nothing.
+	if m.pendingApproval != nil {
+		return !m.approvalTyping
 	}
 	return m.chooser != nil && !m.chooser.typing
 }
@@ -3190,6 +3251,11 @@ type approvalChoice struct {
 	allowForSession bool
 	persistToConfig bool
 	exitPlan        bool
+	// promptsForText opens the composer for a note instead of resolving on the
+	// keystroke. Only revise rows set it: "revise" is the one decision whose
+	// meaning is incomplete without the user saying what to change, and both
+	// its transports (ResolvePlanDecision, ResolveRecovery) carry the text.
+	promptsForText bool
 }
 
 func approvalChoices(a *event.Approval) []approvalChoice {
@@ -3203,12 +3269,14 @@ func approvalChoices(a *event.Approval) []approvalChoice {
 		if a.Recovery != nil && a.Recovery.CanGrantTask {
 			// allowForSession is reused only as a local UI marker. The recovery
 			// handler maps it to a task-scoped semantic grant, never a session rule.
-			decisions = []approvalChoice{{allow: true}, {allow: true, allowForSession: true}, {}}
+			decisions = []approvalChoice{
+				{allow: true}, {allow: true, allowForSession: true}, {promptsForText: true},
+			}
 		} else {
-			decisions = []approvalChoice{{allow: true}, {}}
+			decisions = []approvalChoice{{allow: true}, {promptsForText: true}}
 		}
 	case a.Tool == planApprovalTool:
-		decisions = []approvalChoice{{allow: true}, {}, {exitPlan: true}}
+		decisions = []approvalChoice{{allow: true}, {promptsForText: true}, {exitPlan: true}}
 	case fresh && freshApprovalAllowsSession(a.Tool):
 		decisions = []approvalChoice{{allow: true}, {allow: true, allowForSession: true}, {}}
 	case fresh:
@@ -3278,6 +3346,81 @@ func approvalChoiceLabels(a *event.Approval) []string {
 	return labels
 }
 
+// beginApprovalNote hands the keyboard to the composer so a revise row can say
+// what to revise. The card stays up; only its keymap steps aside.
+func (m *chatTUI) beginApprovalNote(choice approvalChoice) {
+	m.approvalTyping = true
+	m.approvalTypingChoice = choice
+	m.approvalNoteDraft = m.input.Value()
+	m.input.Reset()
+	m.input.SetHeight(1)
+	m.refreshInputPlaceholder()
+}
+
+// endApprovalNote gives the keyboard back to the rows and restores whatever the
+// user was writing before the card claimed the composer. It is a no-op when no
+// note was being collected, so the ordinary "answer on the keystroke" path
+// never touches the composer at all.
+func (m *chatTUI) endApprovalNote() {
+	if !m.approvalTyping {
+		return
+	}
+	m.approvalTyping = false
+	m.approvalTypingChoice = approvalChoice{}
+	m.input.SetValue(m.approvalNoteDraft)
+	m.approvalNoteDraft = ""
+	m.refreshInputPlaceholder()
+}
+
+// resolveApproval answers the pending approval with choice, attaching note to
+// the transports that carry one. Both entry points converge here: the row
+// keymap, which never has a note, and the composer's Enter once a revise row
+// has collected one.
+func (m chatTUI) resolveApproval(choice approvalChoice, note string) (tea.Model, tea.Cmd) {
+	if m.pendingApproval == nil {
+		return m, nil
+	}
+	allow, session, persist := choice.allow, choice.allowForSession, choice.persistToConfig
+	// Give the composer back before resolving: note is already in hand, and a
+	// deferred cleanup could not reach the returned model — this receiver is a
+	// value and the results are unnamed.
+	m.endApprovalNote()
+	if isRecoveryApprovalEvent(m.pendingApproval) {
+		action := agent.RecoveryActionRevise
+		if allow {
+			action = agent.RecoveryActionContinue
+			if session {
+				action = agent.RecoveryActionContinueTask
+			}
+		}
+		_ = m.ctrl.ResolveRecovery(m.pendingApproval.ID, action, note)
+		m.pendingApproval = nil
+		return m, nil
+	}
+	if m.pendingApproval.Tool == planApprovalTool {
+		// Approve infers the plan outcome from the boolean alone, which
+		// collapses "exit without executing" into revise_plan in the durable
+		// receipt. Name the action instead — the row already knows it.
+		action := control.PlanDecisionRevisePlan
+		switch {
+		case allow:
+			action = control.PlanDecisionStartExecution
+		case choice.exitPlan:
+			action = control.PlanDecisionExitPlan
+		}
+		if action != control.PlanDecisionRevisePlan {
+			m.planMode = false
+			m.ctrl.SetPlanMode(false)
+		}
+		_ = m.ctrl.ResolvePlanDecision(m.pendingApproval.ID, action, note)
+		m.pendingApproval = nil
+		return m, nil
+	}
+	m.ctrl.Approve(m.pendingApproval.ID, allow, session, persist)
+	m.pendingApproval = nil
+	return m, nil
+}
+
 // handleApprovalKey resolves a pending approval from a keystroke and re-arms the
 // listener. 1/y/Enter allows once, 2/a allows for the rest of the session,
 // 3/p writes an "always allow" rule to the config file for ordinary tool
@@ -3288,28 +3431,20 @@ func approvalChoiceLabels(a *event.Approval) []string {
 // (planApprovalTool), starting execution or explicitly exiting without execution
 // drops the local [plan] tag and turns plan mode off on the controller.
 func (m chatTUI) handleApprovalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Update hands keys to the composer while a note is being typed, so this
+	// function is unreachable then. The guard is the invariant that protects
+	// that arrangement: without it, reordering the routing would silently turn
+	// a "1" typed inside a half-written note back into "start execution".
+	if m.approvalTyping {
+		return m, nil
+	}
 	choices := approvalChoices(m.pendingApproval)
 	answer := func(choice approvalChoice) (tea.Model, tea.Cmd) {
-		allow, session, persist := choice.allow, choice.allowForSession, choice.persistToConfig
-		if isRecoveryApprovalEvent(m.pendingApproval) {
-			action := agent.RecoveryActionRevise
-			if allow {
-				action = agent.RecoveryActionContinue
-				if session {
-					action = agent.RecoveryActionContinueTask
-				}
-			}
-			_ = m.ctrl.ResolveRecovery(m.pendingApproval.ID, action, "")
-			m.pendingApproval = nil
+		if choice.promptsForText {
+			m.beginApprovalNote(choice)
 			return m, nil
 		}
-		if m.pendingApproval.Tool == planApprovalTool && (allow || choice.exitPlan) {
-			m.planMode = false
-			m.ctrl.SetPlanMode(false)
-		}
-		m.ctrl.Approve(m.pendingApproval.ID, allow, session, persist)
-		m.pendingApproval = nil
-		return m, nil
+		return m.resolveApproval(choice, "")
 	}
 	switch msg.String() {
 	case "ctrl+c":
@@ -3901,6 +4036,13 @@ func (m chatTUI) renderApprovalBanner() string {
 	for i, choice := range approvalChoices(m.pendingApproval) {
 		b.WriteString(rowLine(i == m.approvalSelection, i+1, "", choice.label, false) + "\n")
 	}
+	if m.approvalTyping {
+		// The rows are inert while the composer holds the keyboard, so stop
+		// advertising their shortcuts. The typed text is not echoed here: the
+		// composer is visible in this mode and already shows it.
+		b.WriteString(dim(i18n.M.ApprovalNoteHint))
+		return choicePanelStyle.Width(w).Render(b.String())
+	}
 	b.WriteString(dim("↑/↓ navigate · Enter select · y/a/p/n shortcuts"))
 	return choicePanelStyle.Width(w).Render(b.String())
 }
@@ -4307,7 +4449,7 @@ func (m *chatTUI) toggleVerboseReasoning(notify bool) {
 		_ = m.cfg.SetShowReasoning(m.showReasoning)
 		path := config.SourcePath()
 		if path == "" {
-			path = "reasonix.toml"
+			path = "semantix-agent.toml"
 		}
 		saveErr = config.EditConfigFile(path, func(cfg *config.Config) error {
 			return cfg.SetShowReasoning(m.showReasoning)
@@ -4327,7 +4469,7 @@ func (m *chatTUI) toggleVerboseReasoning(notify bool) {
 	}
 }
 
-// toggleMouseCapture flips whether Reasonix owns the mouse. It's session-only
+// toggleMouseCapture flips whether Semantix owns the mouse. It's session-only
 // (unlike /verbose, this accommodates the terminal/multiplexer at hand rather
 // than recording a lasting preference) — mirrors nativeScrollback, which is
 // likewise never persisted to config. Clears any in-app selection/scrollbar
@@ -5045,7 +5187,7 @@ func (m *chatTUI) showStatusDetails() {
 	m.commitLine(strings.Join(lines, "\n"))
 }
 
-// activeConfigTag names the config file actually in effect. A ./reasonix.toml
+// activeConfigTag names the config file actually in effect. A ./semantix-agent.toml
 // outranks the user-global file, so a session started in a directory holding
 // one silently ignores global edits unless the source is visible (#3317).
 func activeConfigTag() string {
@@ -5193,7 +5335,7 @@ func (m *chatTUI) runExportCommand(input string) {
 	}
 
 	var b strings.Builder
-	b.WriteString("# reasonix session\n\n")
+	b.WriteString("# semantix-agent session\n\n")
 	lastRole := provider.Role("")
 	exportedMessages := 0
 	for _, msg := range msgs {
@@ -5406,8 +5548,8 @@ func (m *chatTUI) notice(note string) {
 }
 
 // showRemoteHosts renders a read-only summary of configured remote hosts. The
-// remote session lives in a `reasonix serve` on the remote host, so connecting
-// happens from a terminal (`reasonix remote connect`), not inside this chat.
+// remote session lives in a `semantix-agent serve` on the remote host, so connecting
+// happens from a terminal (`semantix-agent remote connect`), not inside this chat.
 func (m *chatTUI) showRemoteHosts() {
 	cfg, err := config.Load()
 	if err != nil {
@@ -5429,7 +5571,7 @@ func (m *chatTUI) showRemoteHosts() {
 		}
 		fmt.Fprintf(&b, "  · %s  %s\n", h.Name, target)
 	}
-	fmt.Fprintf(&b, "  run `reasonix remote connect <name>` in a terminal to open the remote workspace")
+	fmt.Fprintf(&b, "  run `semantix-agent remote connect <name>` in a terminal to open the remote workspace")
 	m.commitLine(dim(b.String()))
 }
 
@@ -5558,7 +5700,7 @@ func renderUserBubble(line string, width int, planMode bool) string {
 	return "  " + accent(prefix+line)
 }
 
-var cliImageRefRe = regexp.MustCompile(`(?:^|\s)@\.reasonix/attachments/clipboard-\d{8}-\d{6}\.\d+(?:-(?:\d{6}|[a-f0-9]{8}))?\.(?:png|jpg|jpeg|gif|webp)`)
+var cliImageRefRe = regexp.MustCompile(`(?:^|\s)@\.semantix/attachments/clipboard-\d{8}-\d{6}\.\d+(?:-(?:\d{6}|[a-f0-9]{8}))?\.(?:png|jpg|jpeg|gif|webp)`)
 
 func displayLineForImageRefs(line string) string {
 	idx := 0

@@ -17,7 +17,7 @@ import (
 	"semantix/harness/filelock"
 )
 
-const activationLockName = ".reasonix-activate.lock"
+const activationLockName = ".semantix-activate.lock"
 
 // Member is one file to publish into a version directory.
 type Member struct {

@@ -160,7 +160,7 @@ func fmtHash(hash []byte) string {
 
 // ensureRecordBoundary separates a torn trailing JSON object from the next
 // append. The caller holds the cross-process append lock, so checking the last
-// byte and repairing it cannot race another Reasonix writer.
+// byte and repairing it cannot race another Semantix writer.
 func ensureRecordBoundary(f *os.File) error {
 	st, err := f.Stat()
 	if err != nil || st.Size() == 0 {

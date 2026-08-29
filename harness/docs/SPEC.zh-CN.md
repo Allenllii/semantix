@@ -1,8 +1,8 @@
-# Reasonix 工程规格
+# Semantix 工程规格
 
 <a href="./SPEC.md">English</a>
 
-> Reasonix 是一个 coding agent：由极薄的 harness 驱动多个模型，所有能力都由配置和插件提供。本文是工程契约，代码应遵循它；需要改变行为时，应先更新契约，再修改代码。
+> Semantix 是一个 coding agent：由极薄的 harness 驱动多个模型，所有能力都由配置和插件提供。本文是工程契约，代码应遵循它；需要改变行为时，应先更新契约，再修改代码。
 
 英文原文是规范性版本；本文按相同章节提供中文说明，代码标识符、配置键和协议名保持原样。
 
@@ -20,14 +20,14 @@
 ## 2. 目录与依赖方向
 
 ```text
-reasonix/
+semantix/
 ├── go.mod / go.sum
 ├── Makefile
 ├── README.md / README.zh-CN.md
-├── reasonix.example.toml
+├── semantix.example.toml
 ├── docs/SPEC.md / docs/SPEC.zh-CN.md
-├── cmd/reasonix/main.go
-├── cmd/reasonix-plugin-example/
+├── cmd/semantix/main.go
+├── cmd/semantix-plugin-example/
 └── internal/
     ├── cli/
     ├── config/
@@ -97,7 +97,7 @@ type Tool interface {
 外部插件是配置中声明的 MCP server。协议统一为 JSON-RPC 2.0，传输由 `transport` 接口抽象：
 
 - `stdio`：本地持久子进程，每行一条 JSON 消息。
-- `http` / `streamable-http`：向远程 `url` POST，支持 `application/json` 和 SSE 响应，并复用 `Mcp-Session-Id`。未配置静态 `Authorization` header 时，用户可发起 OAuth：客户端按 Protected Resource Metadata / Authorization Server Metadata 发现端点，使用动态客户端注册、PKCE S256、loopback callback、resource indicator 与 refresh token 轮换。客户端凭据和 token 以 `0600` 权限保存在工作区之外的 Reasonix 私有 MCP 状态目录，并绑定到配置的 resource URL；URL 改变后不会复用旧 token。OAuth 发现、注册和 token 请求遵守 Reasonix 解析后的网络代理设置。删除声明时会清理该状态；若之后生效的 fallback 使用同一 OAuth resource，则保留该状态。
+- `http` / `streamable-http`：向远程 `url` POST，支持 `application/json` 和 SSE 响应，并复用 `Mcp-Session-Id`。未配置静态 `Authorization` header 时，用户可发起 OAuth：客户端按 Protected Resource Metadata / Authorization Server Metadata 发现端点，使用动态客户端注册、PKCE S256、loopback callback、resource indicator 与 refresh token 轮换。客户端凭据和 token 以 `0600` 权限保存在工作区之外的 Semantix 私有 MCP 状态目录，并绑定到配置的 resource URL；URL 改变后不会复用旧 token。OAuth 发现、注册和 token 请求遵守 Semantix 解析后的网络代理设置。删除声明时会清理该状态；若之后生效的 fallback 使用同一 OAuth resource，则保留该状态。
 - `sse`：兼容旧版 2024-11-05 HTTP+SSE；持久 GET 接收 server 公布的相对 POST endpoint、JSON-RPC 响应与 server 消息。为避免静态 header 泄漏，会拒绝跨域 endpoint。
 
 `${VAR}` 与 `${VAR:-default}` 可用于 `command`、`args`、`env`、`url` 和 `headers`，使 secret 留在环境中。生命周期为 `initialize` → `notifications/initialized` → `tools/list`，调用使用 `tools/call`。
@@ -142,7 +142,7 @@ type Tool interface {
 
 ### 3.6 上下文管理
 
-Reasonix 通过低频 compaction 保持 cache-first：
+Semantix 通过低频 compaction 保持 cache-first：
 
 - 低于 `agent.tool_result_snip_ratio` 时不改写历史；
 - 达到 snip ratio 后，归档并缩短较旧 tool result；
@@ -150,7 +150,7 @@ Reasonix 通过低频 compaction 保持 cache-first：
 - 达到 `agent.compact_force_ratio` 后，可执行强制折叠；
 - `context_window = 0` 会关闭该实例的 compaction。
 
-用户可用 `reasonix config compact-ratio [--local] [VALUE]` 查看或修改 65–85% 的自动
+用户可用 `semantix-agent config compact-ratio [--local] [VALUE]` 查看或修改 65–85% 的自动
 压缩阈值，内置默认值为 80%。项目级设置优先于桌面端与新 CLI 会话共用的用户全局配置。
 
 tool result 的 snip/prune 不删除消息，确保 assistant `tool_calls` 与 tool result 配对。
@@ -161,7 +161,7 @@ tool result 的 snip/prune 不删除消息，确保 assistant `tool_calls` 与 t
 
 `agent.context_editing` 默认为 `"local"`。显式设为 `"native"` 时，只有官方 Anthropic
 端点启用原生 tool-use clearing；DeepSeek 与其他 Anthropic 兼容网关仍使用本地维护。
-原生工具清理不会替代 Reasonix 的摘要折叠，也不会修改 canonical history。
+原生工具清理不会替代 Semantix 的摘要折叠，也不会修改 canonical history。
 
 摘要折叠时，固定前缀与近期 tail 之间的区间被划分为三部分：开头若干条小体量用户回合原样提升到
 digest 之前，keep policy 保护的消息原样保留，其余全部——assistant/tool 工作、后续用户回合、以及
@@ -181,10 +181,10 @@ keep policy 保护的消息，以及近期 tail。其余均为尽力而为——
 两个性质限制了这种损失：每次折叠都从 canonical transcript 重新生成 digest，而不是在上一条 digest
 之上再摘要，因此 digest 不会形成链条，反复压缩也不会累积摘要漂移；同时 compaction 只写 projection，
 canonical transcript 保留全部原文，被折叠的细节仍可通过 `history` tool 与归档
-（`reasonix/archive/<timestamp>.jsonl`）取回。
+（`semantix/archive/<timestamp>.jsonl`）取回。
 
 `history` tool 支持对 session 与归档进行 BM25 搜索；`memory` tool 用于检索自动记忆，
-`remember` 与 `forget` 负责写入和归档。每个真实用户回合前，Reasonix 会用原始用户消息执行
+`remember` 与 `forget` 负责写入和归档。每个真实用户回合前，Semantix 会用原始用户消息执行
 有预算的 BM25 自动召回，把命中作为低权限 user-turn 后缀追加；泛化请求会被抑制，等价事实优先
 项目级版本，stale 内容会降权。这不会修改稳定 system prompt 或工具 schema。
 
@@ -210,19 +210,19 @@ func (p Policy) Decide(toolName string, readOnly bool, args json.RawMessage) Dec
 - rule 可以是 `Tool` 或 `Tool(specifier)`，例如 `Bash(go test:*)`、`Edit(docs/**)`；`Bash=<literal>` 是整条 Bash 命令的精确授权格式，其中 glob 与 Shell 元字符都按普通字符匹配。
 - 优先级为 `deny > ask > allow > fallback`；只读工具 fallback 为 Allow，写工具 fallback 使用 `Mode`。
 - 交互模式中的 Ask 由用户选择单次允许、session scope 允许、持久允许或拒绝；显式 Deny 在所有模式下都不可绕过。
-- 非交互 `reasonix run` 与无头子智能体没有审批界面：默认 Ask/manual 对普通 writer fallback 与显式 ask 规则失败关闭；Auto 只放行普通 writer fallback，显式 ask 仍拒绝；YOLO 可越过普通 Ask，但不能越过 deny、Sandbox 或强制新鲜人工审批。无人值守自动化需要普通 writer 自主执行时，使用现有的 `--auto` / `-y`。
+- 非交互 `semantix-agent run` 与无头子智能体没有审批界面：默认 Ask/manual 对普通 writer fallback 与显式 ask 规则失败关闭；Auto 只放行普通 writer fallback，显式 ask 仍拒绝；YOLO 可越过普通 Ask，但不能越过 deny、Sandbox 或强制新鲜人工审批。无人值守自动化需要普通 writer 自主执行时，使用现有的 `--auto` / `-y`。
 - 动态 Bash 分两级：参数/算术展开、赋值、不含嵌套执行的 heredoc、普通文件重定向与 Shell glob 不能复用裸 `Bash`、前缀或 glob Allow，保存时只生成 `Bash=<literal>`，但仍遵循普通 fallback，因此 Auto 与获批计划窗口可无提示执行。命令/进程替换、动态命令名、无法解析结构，以及 `eval`、`source`、Shell `-c`、PowerShell/cmd 命令字符串、运行时内联代码参数属于嵌套/间接执行；默认情况下交互 Ask/Auto 必须人工批准，Guardian 与 hook allow 不能代替，无头 Ask/Auto/DontAsk 直接拒绝，只有完全相同的 literal 或 YOLO 可以绕过。高级用户可设置 `[permissions] allow_dynamic_bash = true`，让 Allow fallback（包括 Auto）覆盖这类动态命令；显式 `ask` 与 `deny` 规则仍然优先。
-- 安装 MCP server 即授权其全部工具，不再有 server、raw tool、writer 或 destructive 的第二套审批策略；项目 `reasonix.toml` 与 `.mcp.json` 声明同样默认可信，不需要额外启动确认，显式全局 `deny` 仍然优先。全局安装写入用户 `config.toml`，项目声明保留在原项目文件；同名时项目覆盖全局，项目内部 `reasonix.toml` 高于 `.mcp.json`。编辑写回当前生效来源，删除高优先级声明后露出下一层。`readOnlyHint` 与 `destructiveHint` 仅用于调度、Plan/严格只读边界及缓存到实时安全分类复核，不会新增逐调用审批。严格只读子智能体 registry 仍仅暴露已授权且 `readOnlyHint: true`、无 `destructiveHint` 的 MCP；双模型 Planner 通过固定 `use_capability` 代理（从不暴露直接 `mcp__*` schema）调用已授权、非 destructive 的 MCP，不再要求 `readOnlyHint`，destructive 工具留给 Executor。Balanced 双模型的 Executor 使用独立 frontend 复用同一稳定代理，因此 Planner 发现的 capability ID 可在 handoff 后直接执行，同时保持两侧 ledger/audit 隔离。分发前代理会再次复核当前 controller 的 enable、授权和完整运行时连接身份；共享 Host 中仅 server 同名不构成复用权限。
+- 安装 MCP server 即授权其全部工具，不再有 server、raw tool、writer 或 destructive 的第二套审批策略；项目 `semantix-agent.toml` 与 `.mcp.json` 声明同样默认可信，不需要额外启动确认，显式全局 `deny` 仍然优先。全局安装写入用户 `config.toml`，项目声明保留在原项目文件；同名时项目覆盖全局，项目内部 `semantix-agent.toml` 高于 `.mcp.json`。编辑写回当前生效来源，删除高优先级声明后露出下一层。`readOnlyHint` 与 `destructiveHint` 仅用于调度、Plan/严格只读边界及缓存到实时安全分类复核，不会新增逐调用审批。严格只读子智能体 registry 仍仅暴露已授权且 `readOnlyHint: true`、无 `destructiveHint` 的 MCP；双模型 Planner 通过固定 `use_capability` 代理（从不暴露直接 `mcp__*` schema）调用已授权、非 destructive 的 MCP，不再要求 `readOnlyHint`，destructive 工具留给 Executor。Balanced 双模型的 Executor 使用独立 frontend 复用同一稳定代理，因此 Planner 发现的 capability ID 可在 handoff 后直接执行，同时保持两侧 ledger/audit 隔离。分发前代理会再次复核当前 controller 的 enable、授权和完整运行时连接身份；共享 Host 中仅 server 同名不构成复用权限。
 - Plan 是协作流程，不等于全工具只读。普通 built-in 与 Bash 仍走 Ask/Auto/YOLO 和 Sandbox；独立双模型 Planner 允许已授权、非 destructive 的 MCP（即使没有 `readOnlyHint`），但在规划阶段持续阻止 destructive 与未授权目标；没有独立 Planner 的单模型 Plan 仍阻止 MCP writer/destructive。
 - Plan 只能由用户显式选择进入，与当前工具审批姿态相互独立；普通聊天不会自动切换到 Plan。Auto/YOLO 不会回答 `ask`，也不会替用户批准 `exit_plan_mode`，获批计划的短期自动执行窗口也不会自动批准后续计划或嵌套/间接 Bash。
-- 桌面端协作模式分为 `normal`、`plan` 和 `goal`。Goal 会持续推进目标，直到完成、阻塞、用户停止或达到轮次/无进展安全边界，并按目标自动选择简单（10）、写入（20）或研究（40）轮预算。三类预算共用同一个 Goal FSM、宿主 receipt、Delivery readiness 和有界 evaluator，不再存在第二套研究协议或可写 sidecar。普通聊天不会隐式切换协作模式；旧 `.reasonix/autoresearch/.../` 目录只读，显式旧路径可恢复为普通 Goal。
+- 桌面端协作模式分为 `normal`、`plan` 和 `goal`。Goal 会持续推进目标，直到完成、阻塞、用户停止或达到轮次/无进展安全边界，并按目标自动选择简单（10）、写入（20）或研究（40）轮预算。三类预算共用同一个 Goal FSM、宿主 receipt、Delivery readiness 和有界 evaluator，不再存在第二套研究协议或可写 sidecar。普通聊天不会隐式切换协作模式；旧 `.semantix/autoresearch/.../` 目录只读，显式旧路径可恢复为普通 Goal。
 
 ### 3.8 Slash command
 
 Slash command 分为三类：
 
 - built-in action：`/compact`、`/new`、`/clear`、`/effort`、`/mcp`、`/help`；
-- `.reasonix/commands/*.md` 与用户配置目录中的自定义命令；
+- `.semantix/commands/*.md` 与用户配置目录中的自定义命令；
 - MCP prompt：`/mcp__<server>__<prompt>`。
 
 自定义命令支持简单 frontmatter、`$ARGUMENTS`、`$1…$N` 和 `$$`。加载失败的单个命令会被跳过，不应使应用整体退出。
@@ -241,7 +241,7 @@ Bubble Tea TUI 的 modal overlay 必须隐藏 composer；slash/`@` autocomplete 
 
 子智能体 Profile 是带 `runAs: subagent` 的 Skill。桌面端和 CLI 只允许修改简单、手动调用的 project/global profile；包含 `references/`、`scripts/` 或非托管 frontmatter 的丰富 Skill 不会被编辑器扁平化覆盖。
 
-`reasonix subagent try` 使用只读 Skill runner；`reasonix subagent run` 使用常规权限与 Sandbox。`task` 支持 `profile`、`model`、`effort` 和 `write_paths`；`fleet` 在 session scheduler 上并发调度多个任务。详见[子智能体 Profile](./SUBAGENT_PROFILES.zh-CN.md)。
+`semantix-agent subagent try` 使用只读 Skill runner；`semantix-agent subagent run` 使用常规权限与 Sandbox。`task` 支持 `profile`、`model`、`effort` 和 `write_paths`；`fleet` 在 session scheduler 上并发调度多个任务。详见[子智能体 Profile](./SUBAGENT_PROFILES.zh-CN.md)。
 
 Profile 描述的是 worker，不是一次运行。委派由五个彼此独立的概念构成：profile 说明这个 worker 怎么思考，`TaskSpec` 说明本次要什么，`CapabilityGrant` 说明本次能碰什么，`ContextCapsule` 说明从什么上下文起步，`SchedulerPolicy` 说明何时以及怎么运行。字段归属于**决定其取值**的那一方，因此 profile 可以携带能力**上界**（`allowed-tools`、`read-only`），但绝不能携带 `max_turns`、`write_paths`、重试或验证策略这类按次取值——它们由任务或调度决定。Skill frontmatter 可以继续变胖；`agent.ProfileFromSkill` 是唯一的收窄点，路由元数据（triggers、auto-use、cost、freshness）到此为止，因为它决定的是**何时**选中一个 worker，而不是它怎么思考。`internal/agent/profile_boundary_test.go` 会在任何一次拓宽时失败。
 
@@ -282,7 +282,7 @@ Profile 描述的是 worker，不是一次运行。委派由五个彼此独立�
 | plan-mode 标记、推理/回复语言 | 运行选项（设置时） |
 | 既有 transcript | 仅通过 `continue_from` / `fork_from` |
 
-按设计**不继承**：`REASONIX.md`、`AGENTS.md`、`CLAUDE.md`、项目与全局记忆（memory queue 被关闭，子智能体也无法写入记忆）、父对话、当前 Goal、planner 输出、同级子智能体的结果。今天要让一条约束抵达子智能体，只能写进它的 profile body 或任务文本——不存在环境通道。
+按设计**不继承**：`SEMANTIX.md`、`AGENTS.md`、`CLAUDE.md`、项目与全局记忆（memory queue 被关闭，子智能体也无法写入记忆）、父对话、当前 Goal、planner 输出、同级子智能体的结果。今天要让一条约束抵达子智能体，只能写进它的 profile body 或任务文本——不存在环境通道。
 
 每次运行都会在其 transcript sidecar 中记录一份 `ContextCapsule`：workspace、系统提示来源与哈希、解析后的工具范围与 schema 哈希、model 与 effort、父会话与父工具调用 id、续接的 transcript，以及一个所有字段均为 false 的 `inherited` 块。`capsuleHash` 是它的稳定标识，因此"为什么这个 reviewer 没看到那条约束"可以从记录回答，两次行为不同的运行也可以直接比对而不是猜。capsule 只保存引用与摘要——绝不复制父上下文，这正是委派保持低成本、子前缀保持可缓存的原因。
 
@@ -305,7 +305,7 @@ id 默认取 1 起的序号。重复 id、指向不存在任务的 id、自环�
 
 ### 3.15 只有一个子智能体构造原语
 
-对外能派生子智能体的 API 很多——`task`、`read_only_task`、`fleet`、`parallel_tasks`、`run_skill`、`/<profile>`、`reasonix subagent run|try`、桌面端预览。它们背后的执行原语必须只有一个：每个入口把请求编译成 `ProfileExecSpec`，交给 `TaskTool.RunProfileSpec`——那是唯一解析深度、工具范围、权限、sandbox、写声明、调度槽位、MCP 前端、transcript 与 capsule、evidence ledger 以及完成契约的地方。
+对外能派生子智能体的 API 很多——`task`、`read_only_task`、`fleet`、`parallel_tasks`、`run_skill`、`/<profile>`、`semantix-agent subagent run|try`、桌面端预览。它们背后的执行原语必须只有一个：每个入口把请求编译成 `ProfileExecSpec`，交给 `TaskTool.RunProfileSpec`——那是唯一解析深度、工具范围、权限、sandbox、写声明、调度槽位、MCP 前端、transcript 与 capsule、evidence ledger 以及完成契约的地方。
 
 这不是风格偏好。散落在多条构造路径上的安全边界，只要被漏掉一次就够了：此前预览路径构造出未受约束的文件工具、profile 编辑器保存时丢掉 `read-only`，都是某一个入口少套了一层。
 
@@ -335,7 +335,7 @@ concurrency = "serial"   # parallel（默认）| serial
 
 编排容易加、难证明：agent 越多 token 一定越多，而多烧的 token 本身就可能看起来像"变好了"。因此对比实验臂必须**固定模型**并读取 host 记录的事实，而不是散文。
 
-`reasonix run --json` 在既有的 token / cache / 成本 / 耗时之外，额外输出每次运行的委派计数：
+`semantix-agent run --json` 在既有的 token / cache / 成本 / 耗时之外，额外输出每次运行的委派计数：
 
 | 计数 | 回答什么 |
 | --- | --- |
@@ -377,10 +377,10 @@ provider 层的核心类型包括 `Role`、`Message`、`ToolCall`、`ToolSchema`
 配置优先级：
 
 ```text
-flag > ./reasonix.toml > 用户 config.toml > 内置默认值
+flag > ./semantix-agent.toml > 用户 config.toml > 内置默认值
 ```
 
-从 v1.8.1 起，用户配置位于 macOS/Linux 的 `~/.reasonix/config.toml` 或 Windows 的 `%AppData%\reasonix\config.toml`。provider key 保存在 Reasonix home 的 `.env`；项目 `.env` 只用于 workspace 范围的非 provider 变量展开。完整路径见[配置路径](./CONFIG_PATHS.zh-CN.md)。
+从 v1.8.1 起，用户配置位于 macOS/Linux 的 `~/.semantix/config.toml` 或 Windows 的 `%AppData%\semantix\config.toml`。provider key 保存在 Semantix home 的 `.env`；项目 `.env` 只用于 workspace 范围的非 provider 变量展开。完整路径见[配置路径](./CONFIG_PATHS.zh-CN.md)。
 
 ```toml
 default_model = "deepseek"
@@ -423,11 +423,11 @@ auth_mode = "none"
 原生 CLI 更新器始终安装最新的严格 `vX.Y.Z` 正式版。1.x 期间仍解析旧渠道配置与
 参数，但统一指向正式版，并在后续保存配置时省略这些字段。
 
-`[sandbox]` 是权限策略之下的强制执行层。file writer 默认限制在 workspace root、Reasonix 用户配置目录和 `allow_write`；`forbid_read` 可阻止读取敏感路径。macOS 使用 Seatbelt，Linux 使用 bubblewrap；若声明 enforce 但平台 backend 不可用，Bash 应拒绝执行而不是静默降级。Windows 当前没有 OS 级 Bash sandbox，file tool 的路径限制仍然生效。
+`[sandbox]` 是权限策略之下的强制执行层。file writer 默认限制在 workspace root、Semantix 用户配置目录和 `allow_write`；`forbid_read` 可阻止读取敏感路径。macOS 使用 Seatbelt，Linux 使用 bubblewrap；若声明 enforce 但平台 backend 不可用，Bash 应拒绝执行而不是静默降级。Windows 当前没有 OS 级 Bash sandbox，file tool 的路径限制仍然生效。
 
-`[serve]` 控制 `reasonix serve` 的 browser frontend。默认 `auth_mode = "none"` 仅适合 loopback；暴露到其他机器时必须使用 token 或 password。只有位于可信 reverse proxy 后方时才能启用 `behind_proxy`。
+`[serve]` 控制 `semantix-agent serve` 的 browser frontend。默认 `auth_mode = "none"` 仅适合 loopback；暴露到其他机器时必须使用 token 或 password。只有位于可信 reverse proxy 后方时才能启用 `behind_proxy`。
 
-项目根目录的 `.mcp.json` 可使用 Claude Code 的 `mcpServers` schema；与 `reasonix.toml` 同名时，以后者为准。
+项目根目录的 `.mcp.json` 可使用 Claude Code 的 `mcpServers` schema；与 `semantix-agent.toml` 同名时，以后者为准。
 
 MCP 启动与单次工具调用使用不同生命周期。调用方只短暂等待冷启动，而共享的进程启动、授权、
 `initialize`、`tools/list` 可在后台继续，最长由 `mcp_startup_timeout_seconds`（默认 `30`）
@@ -449,7 +449,7 @@ MCP 启动与单次工具调用使用不同生命周期。调用方只短暂等�
 
 ## 8. 分发
 
-- 构建：`CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$(VERSION)" -o reasonix ./cmd/reasonix`
+- 构建：`CGO_ENABLED=0 go build -ldflags "-s -w -X main.version=$(VERSION)" -o semantix ./cmd/semantix`
 - 目标矩阵：`darwin|linux|windows × amd64|arm64`
 - 版本通过 ldflags 注入，来源为 `git describe --tags --always`
 - 支持预编译二进制、`go install` 与 Homebrew。
@@ -459,4 +459,4 @@ MCP 启动与单次工具调用使用不同生命周期。调用方只短暂等�
 - 完成 Sandbox Phase 1 的 escape prompt：检测 sandbox 不可用或拒绝时，提供一次明确、受权限控制的非 sandbox 重试。
 - MCP long tail：`headersHelper`、更多 `.mcp.json` scope、tool-search 延迟加载、`list_changed`、channel、elicitation、root，以及可提供 provider 的插件。
 - 增加 Anthropic-native provider kind，用于验证 registry 不依赖单一 wire format，并支持原生 prompt cache control。
-- 把“始终允许”规则持久化到项目配置，以及为 `reasonix run` 提供 session 级权限覆盖。
+- 把“始终允许”规则持久化到项目配置，以及为 `semantix-agent run` 提供 session 级权限覆盖。

@@ -21,6 +21,7 @@ import (
 	"strings"
 	"unicode"
 
+	"semantix/kernel/sanitize"
 	"semantix/kernel/slice"
 	"semantix/kernel/zone"
 )
@@ -71,8 +72,8 @@ const DefaultBudget = 4096
 
 // Injector retrieves and assembles reuse slices for one user turn.
 type Injector struct {
-	Index  slice.Index
-	Store  slice.Store // optional; used to re-read full slices when the index
+	Index slice.Index
+	Store slice.Store // optional; used to re-read full slices when the index
 	// returns them anyway — kept for symmetry with future lazy indexes.
 	Scope slice.Scope
 	K     int // top-k slices to consider (default 5)
@@ -84,6 +85,11 @@ type Injector struct {
 	// reusable slices (zone.Hit) enter the block; grey/miss candidates are
 	// skipped (Krites §3.1 — the grey zone must be verified, not injected).
 	Zones *zone.Zones
+	// MinOrigin is the lowest provenance level admitted to the injection
+	// block (Issue #279). The zero value (empty origin, level 1) admits
+	// everything — embedding callers opt in explicitly; production paths
+	// configure session-auto so import/legacy slices never inject.
+	MinOrigin slice.Origin
 	// AllowGrey switches the grey policy from drop (default, fail-closed)
 	// to audit: grey-zone slices enter the block under a distinct
 	// "(grey, unverified)" header — clearly separated from verified hits so
@@ -91,7 +97,8 @@ type Injector struct {
 	// measured 8 of 10 repeated tasks landing in grey, so a hard drop
 	// silently forfeits most of the reuse value; the audit mode keeps the
 	// grey signal measurable (Injection.GreyIncluded) and injectable while
-	// preserving the verified/grey boundary inside the block.
+	// preserving the verified/grey boundary inside the block. Grey slices
+	// share the exact-byte budget bound — audit mode is not a bypass.
 	AllowGrey bool
 }
 
@@ -134,17 +141,31 @@ func (in *Injector) Build(query string) (*Injection, error) {
 	}
 
 	var kept []*slice.Slice
-	var grey []*slice.Slice
-	var greyKept []*slice.Slice
 	var dropped int
-	var buf bytes.Buffer
-	buf.WriteString(blockOpen)
+	// Single-pass assembly (Issue #283): candidates are filtered and
+	// sized with the EXACT on-disk format before any bytes are written,
+	// so the budget judgment and the final block share one口径 — the
+	// block can never exceed Budget. (The old two-pass shape carried a
+	// redundant pre-escape budget check from the #279 merge plus a dead
+	// "(score=%.2f)" header that never reached the output.)
+	type candidate struct {
+		sl      *slice.Slice
+		content string // sanitized + marker-escaped, == the bytes written
+		grey    bool   // audit-mode admission under the unverified header
+	}
+	var cands []candidate
+	size := len(blockOpen)
 	for _, h := range hits {
 		if in.MinScore > 0 && h.Score < in.MinScore {
 			continue
 		}
+		isGrey := false
 		if in.Zones != nil {
-			switch in.Zones.Classify(h.Score, top1) {
+			z := *in.Zones
+			if h.Slice != nil {
+				z = z.ForType(h.Slice.Type.String()) // Issue #259 阶段 2
+			}
+			switch z.Classify(h.Score, top1) {
 			case zone.Hit:
 				// verified: admitted below
 			case zone.Grey:
@@ -152,53 +173,78 @@ func (in *Injector) Build(query string) (*Injection, error) {
 					dropped++
 					continue
 				}
-				grey = append(grey, h.Slice)
-				continue
+				isGrey = true // admitted below under the unverified header
 			default: // miss
 				dropped++
 				continue
 			}
 		}
-		if buf.Len()+len(h.Slice.Content)+len(blockClose)+64 > budget && len(kept) > 0 {
+		// Inject-side sanitization (Issue #278, Security §3.1): the block
+		// carries the deterministically cleaned content — escape stripping,
+		// injection-feature removal, sensitive redaction — then the block
+		// markers are escaped. Idempotent for write-side-sanitized slices
+		// (zero change → L1 prefix cache unaffected); legacy unsanitized
+		// slices are backstopped here. A payload that sanitizes to empty is
+		// dropped entirely (nothing useful to inject).
+		content := sanitize.Sanitize(string(h.Slice.Content))
+		if content == "" {
 			dropped++
 			continue
 		}
-		fmt.Fprintf(&buf, "--- slice %s (score=%.2f) ---\n%s\n", h.Slice.ID, h.Score, h.Slice.Content)
-		kept = append(kept, h.Slice)
-	}
-
-	// Canonical order: ID-sorted for byte-stable output (never score order).
-	sort.Slice(kept, func(i, j int) bool { return kept[i].ID < kept[j].ID })
-	sort.Slice(grey, func(i, j int) bool { return grey[i].ID < grey[j].ID })
-
-	// Rebuild the text in canonical order (the first pass wrote score order).
-	// Grey slices form a visually separate tail section: same block, but the
-	// per-slice header marks them unverified. The budget bound still applies
-	// to grey slices — audit mode must not become a budget bypass.
-	buf.Reset()
-	buf.WriteString(blockOpen)
-	for _, sl := range kept {
-		fmt.Fprintf(&buf, "--- slice %s ---\n%s\n", sl.ID, escapeMarker(string(sl.Content)))
-	}
-	for _, sl := range grey {
-		if buf.Len()+len(sl.Content)+len(blockClose)+64 > budget && len(kept) > 0 {
-			break
+		// Issue #279: low-integrity origins never enter the injection
+		// block — a trusted floor above the candidate's level excludes it
+		// (import and legacy are level 1; session-auto/prefetch 2;
+		// user-curated 3).
+		if h.Slice != nil && in.MinOrigin.Level() > h.Slice.Meta.Origin.Level() {
+			dropped++
+			continue
 		}
-		fmt.Fprintf(&buf, "--- slice %s (grey, unverified) ---\n%s\n", sl.ID, escapeMarker(string(sl.Content)))
-		greyKept = append(greyKept, sl)
+		content = escapeMarker(content)
+		// Budget judged on the EXACT bytes that will be written (escaped
+		// content, canonical header — including the grey audit variant) —
+		// never on a pre-escape length.
+		header := "--- slice %s ---\n%s\n"
+		if isGrey {
+			header = "--- slice %s (grey, unverified) ---\n%s\n"
+		}
+		item := len(fmt.Sprintf(header, h.Slice.ID, content))
+		if size+item+len(blockClose)+64 > budget && len(cands) > 0 {
+			dropped++
+			continue
+		}
+		size += item
+		cands = append(cands, candidate{sl: h.Slice, content: content, grey: isGrey})
+	}
+
+	// Canonical order: verified candidates first, then audit-mode grey,
+	// each ID-sorted for byte-stable output (never score order).
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].grey != cands[j].grey {
+			return !cands[i].grey
+		}
+		return cands[i].sl.ID < cands[j].sl.ID
+	})
+
+	var buf bytes.Buffer
+	buf.Grow(size + len(blockClose))
+	buf.WriteString(blockOpen)
+	greyIncluded := 0
+	for _, c := range cands {
+		header := "--- slice %s ---\n%s\n"
+		if c.grey {
+			header = "--- slice %s (grey, unverified) ---\n%s\n"
+			greyIncluded++
+		}
+		fmt.Fprintf(&buf, header, c.sl.ID, c.content)
+		kept = append(kept, c.sl)
 	}
 	buf.WriteString(blockClose)
 
-	// Canonical order: the union is ID-sorted (byte-stable injection
-	// invariant); the grey tail in Text is a display-layer distinction.
-	admitted := append(kept, greyKept...)
-	sort.Slice(admitted, func(i, j int) bool { return admitted[i].ID < admitted[j].ID })
-
 	return &Injection{
-		Slices:       admitted,
+		Slices:       kept,
 		Text:         buf.String(),
 		Bytes:        buf.Len(),
 		Dropped:      dropped,
-		GreyIncluded: len(greyKept),
+		GreyIncluded: greyIncluded,
 	}, nil
 }

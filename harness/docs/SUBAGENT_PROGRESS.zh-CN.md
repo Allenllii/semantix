@@ -12,10 +12,10 @@
 
 | 名称 | 载荷 |
 |---|---|
-| `reasonix.subagent.status` | 恰好为 `queued`、`running`、`reasoning`、`responding`、`tool`、`retrying`、`completed`、`failed`、`cancelled` 之一 |
-| `reasonix.subagent.reasoning` | 受限的 UTF-8 文本增量（子任务的思考） |
-| `reasonix.subagent.text` | 受限的 UTF-8 文本增量（子任务的回答预览） |
-| `reasonix.subagent.notice` | 受限的 UTF-8 文本增量（子任务的提示） |
+| `semantix.subagent.status` | 恰好为 `queued`、`running`、`reasoning`、`responding`、`tool`、`retrying`、`completed`、`failed`、`cancelled` 之一 |
+| `semantix.subagent.reasoning` | 受限的 UTF-8 文本增量（子任务的思考） |
+| `semantix.subagent.text` | 受限的 UTF-8 文本增量（子任务的回答预览） |
+| `semantix.subagent.notice` | 受限的 UTF-8 文本增量（子任务的提示） |
 
 字段约定：
 
@@ -65,4 +65,4 @@
 
 ## 合同稳定性
 
-前端按 `reasonix.subagent.` 前缀匹配保留名称，因此较新 agent 新增的频道会被较旧前端忽略（绝不追加进普通工具输出）。
+前端按 `semantix.subagent.` 前缀匹配保留名称，因此较新 agent 新增的频道会被较旧前端忽略（绝不追加进普通工具输出）。

@@ -8,7 +8,7 @@
 &nbsp;·&nbsp;
 <a href="https://agentclientprotocol.com/">ACP 规范</a>
 
-Reasonix 实现了 Agent Client Protocol（ACP）v1，通过标准输入输出提供 NDJSON
+Semantix 实现了 Agent Client Protocol（ACP）v1，通过标准输入输出提供 NDJSON
 JSON-RPC 2.0 agent。编辑器和其他 ACP host 负责启动进程、打开一个或多个工作区会话，
 并接收流式消息、工具活动、计划、权限请求和配置更新。
 
@@ -17,21 +17,21 @@ JSON-RPC 2.0 agent。编辑器和其他 ACP host 负责启动进程、打开一�
 ACP host 应启动以下命令之一：
 
 ```sh
-reasonix acp
-reasonix acp --model deepseek-pro
-reasonix acp --profile delivery
+semantix-agent acp
+semantix-agent acp --model deepseek-pro
+semantix-agent acp --profile delivery
 ```
 
 客户端未覆盖模型时，`--model` 用于选择启动模型；`--profile` 把启动工作模式设为
 `economy`、`balanced` 或 `delivery`。初始化后，两者仍可按会话切换。
 
-标准输出专用于 ACP 消息，Reasonix 会把诊断写入标准错误，因此 host 不应合并这两个
-流。尚未配置 provider 时先运行 `reasonix setup`；initialize 响应也会声明一个启动
-`reasonix setup` 的 terminal authentication method。
+标准输出专用于 ACP 消息，Semantix 会把诊断写入标准错误，因此 host 不应合并这两个
+流。尚未配置 provider 时先运行 `semantix-agent setup`；initialize 响应也会声明一个启动
+`semantix-agent setup` 的 terminal authentication method。
 
 ## 初始化与能力协商
 
-客户端应在打开会话前调用 `initialize`。Reasonix 会声明以下能力结构（省略无关字段）：
+客户端应在打开会话前调用 `initialize`。Semantix 会声明以下能力结构（省略无关字段）：
 
 ```json
 {
@@ -54,9 +54,9 @@ reasonix acp --profile delivery
       "sse": false
     },
     "_meta": {
-      "reasonix.io": {
+      "semantix.io": {
         "sessionSteer": {
-          "method": "_reasonix.io/session/steer"
+          "method": "_semantix.io/session/steer"
         }
       }
     }
@@ -64,16 +64,16 @@ reasonix acp --profile delivery
 }
 ```
 
-客户端声明 `fs.readTextFile`、`fs.writeTextFile` 或 `terminal` 后，Reasonix 会让
+客户端声明 `fs.readTextFile`、`fs.writeTextFile` 或 `terminal` 后，Semantix 会让
 适用的文件操作经过编辑器的未保存 buffer，并让适用的前台命令在客户端持有的 terminal
 中运行。读取、编辑、写入等全部文件工具都参与其中，因此一次编辑作用于编辑器当前显示
 的内容，而不是磁盘上最后保存的副本。非 UTF-8 文件不适用：ACP 的文件方法只处理文本，
 这类文件会留在本地的编码保持路径上，原有字符集不变。客户端没有声明这些能力时，常规
-工作区工具会在 Reasonix 进程内本地运行。
+工作区工具会在 Semantix 进程内本地运行。
 
 ## 会话生命周期
 
-每个 ACP 会话都拥有独立的 Reasonix Controller、工作区根目录、模型、工作模式、协作
+每个 ACP 会话都拥有独立的 Semantix Controller、工作区根目录、模型、工作模式、协作
 模式、审批模式、MCP 集合和持久化 transcript，会话之间不会泄漏状态。
 
 | 方法 | 行为 |
@@ -88,13 +88,13 @@ reasonix acp --profile delivery
 | `session/delete` | 停止会话并删除其持久化 ACP 历史。 |
 
 `session/new`、`session/load` 和 `session/resume` 可以携带 `mcpServers`。
-Reasonix 支持 stdio、Streamable HTTP 和 legacy SSE server。
+Semantix 支持 stdio、Streamable HTTP 和 legacy SSE server。
 stdio `env` 和 HTTP `headers` 支持 ACP 官方的
 `[{"name":"...","value":"..."}]` 结构，同时继续接受旧版 object-map 结构。
 
 ## 会话控制
 
-Reasonix 把互不相关的选择拆成独立控制轴，而不是混在一个 mode selector 中：
+Semantix 把互不相关的选择拆成独立控制轴，而不是混在一个 mode selector 中：
 
 | 控制项 | 可选值 | 协议入口 |
 | --- | --- | --- |
@@ -134,7 +134,7 @@ Reasonix 把互不相关的选择拆成独立控制轴，而不是混在一个 m
 ## Prompt、更新与审批
 
 `session/prompt` 支持文本 block 和内嵌文本 resource，不声明图片或音频能力。执行回合
-期间，Reasonix 可能发送：
+期间，Semantix 可能发送：
 
 - agent 消息和思考内容 chunk；
 - pending 和 completed 工具调用更新；
@@ -143,12 +143,12 @@ Reasonix 把互不相关的选择拆成独立控制轴，而不是混在一个 m
 - 当前 mode 和配置项更新；
 - 针对受权限控制工具及用户问题的 `session/request_permission` 请求。
 
-Host 应让 `session/prompt` 请求保持打开，直到 Reasonix 返回停止原因；期间仍需同时处理
+Host 应让 `session/prompt` 请求保持打开，直到 Semantix 返回停止原因；期间仍需同时处理
 双向 request 和 notification。
 
 ## 回合中引导扩展
 
-Reasonix 通过 ACP v1 厂商扩展提供回合中引导。它不是 ACP 核心方法，也不是仍未发布的
+Semantix 通过 ACP v1 厂商扩展提供回合中引导。它不是 ACP 核心方法，也不是仍未发布的
 ACP v2 `session/inject` 提案。
 
 ### 发现能力
@@ -156,7 +156,7 @@ ACP v2 `session/inject` 提案。
 从以下位置读取方法名：
 
 ```text
-agentCapabilities._meta["reasonix.io"].sessionSteer.method
+agentCapabilities._meta["semantix.io"].sessionSteer.method
 ```
 
 不要假设该扩展一定存在，也不要调用无命名空间的 `session/steer`。ACP 为核心协议保留
@@ -170,7 +170,7 @@ agentCapabilities._meta["reasonix.io"].sessionSteer.method
 {
   "jsonrpc": "2.0",
   "id": 2,
-  "method": "_reasonix.io/session/steer",
+  "method": "_semantix.io/session/steer",
   "params": {
     "sessionId": "session-id",
     "prompt": [
@@ -180,9 +180,9 @@ agentCapabilities._meta["reasonix.io"].sessionSteer.method
 }
 ```
 
-成功返回 `{}` 表示活动回合已接受引导。Reasonix 会在下一个安全的模型调用边界前把它
+成功返回 `{}` 表示活动回合已接受引导。Semantix 会在下一个安全的模型调用边界前把它
 作为 user message 加入上下文，不会取消回合，也不会额外消耗工具步骤预算。该消息会进入
-正常历史；回放 transcript 时显示用户原文，不显示 Reasonix 内部 steer marker。
+正常历史；回放 transcript 时显示用户原文，不显示 Semantix 内部 steer marker。
 
 | 条件 | JSON-RPC 结果 |
 | --- | --- |
@@ -196,17 +196,17 @@ agentCapabilities._meta["reasonix.io"].sessionSteer.method
 
 ## 运行时重载与扩展表面
 
-Reasonix 还在 `agentCapabilities._meta["reasonix.io"]` 中通告两个扩展点：
+Semantix 还在 `agentCapabilities._meta["semantix.io"]` 中通告两个扩展点：
 
 - `sessionReloadExtensions`——vendor method
-  `_reasonix.io/session/reloadExtensions`。调用后按与 CLI `/reload`
+  `_semantix.io/session/reloadExtensions`。调用后按与 CLI `/reload`
   相同的失败原子语义重载该会话的 agent 运行时（扩展、工具、skills、
   commands、hooks、providers）：回合或重建进行中只排队一次
   （`{"queued": true}`），空闲后执行；否则原子重建并交换，重建失败时
-  保留旧运行时。重载成功后 Reasonix 会推送新的
+  保留旧运行时。重载成功后 Semantix 会推送新的
   `available_commands_update`。
 - `extensionSurface`——结构化扩展 UI 能力。在 initialize `_meta` 中
-  同样声明了 `reasonix.io.extensionSurface` 的客户端会收到结构化的
+  同样声明了 `semantix.io.extensionSurface` 的客户端会收到结构化的
   扩展表面载荷；未声明的客户端收到等价文本 fallback（card/status 退
   化为 `agent_message_chunk`，扩展表单退化为权限请求），因此客户端
   不做任何处理也能保持兼容。
@@ -216,7 +216,7 @@ Reasonix 还在 `agentCapabilities._meta["reasonix.io"]` 中通告两个扩展�
 
 ## 兼容性与缓存行为
 
-| 表面 | 旧版或非 Reasonix 客户端的行为 | 结论 |
+| 表面 | 旧版或非 Semantix 客户端的行为 | 结论 |
 | --- | --- | --- |
 | 现有 ACP v1 方法 | 方法名和响应结构不变。 | 兼容 |
 | Capability `_meta` | 可以忽略未知 metadata。 | 兼容 |
@@ -229,11 +229,11 @@ Steer 只会把用户请求的消息追加到正常会话历史，不改变 syst
 
 ## 客户端接入检查清单
 
-1. 启动 `reasonix acp`，分离 stdin、stdout 和 stderr。
+1. 启动 `semantix-agent acp`，分离 stdin、stdout 和 stderr。
 2. 调用 `initialize`，同时遵守标准 capability 和 `_meta` capability。
 3. 使用绝对工作区路径打开会话，并隔离保存各 session id。
 4. Prompt 运行期间继续处理 agent 发往客户端的文件、terminal 和权限请求。
-5. 只有在 Reasonix 声明 capability 且 prompt 活动时才显示 steer UI。
+5. 只有在 Semantix 声明 capability 且 prompt 活动时才显示 steer UI。
 6. 把成功的 steer 响应理解为“引导已入队”，而不是“模型已立即完成处理”。
 7. 用 `session/close` 释放资源；只有用户明确要删除持久化历史时才调用
    `session/delete`。

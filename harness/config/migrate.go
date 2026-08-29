@@ -18,7 +18,7 @@ import (
 
 // legacyConfig is the subset of the v0.x (~/.reasonix/config.json) schema this
 // import carries forward. Fields absent here are dropped on purpose: desktop tab
-// state is frontend-owned, and skills already live in the shared ~/.reasonix/skills
+// state is frontend-owned, and skills already live in the shared ~/.semantix/skills
 // root that v1+ also scans, so they need no migration.
 type legacyConfig struct {
 	APIKey      string                       `json:"apiKey"`
@@ -76,7 +76,7 @@ func (r *MigrationResult) Notice() string {
 		fmt.Fprintf(&b, " (%d MCP server(s))", r.Plugins)
 	}
 	if r.KeyToEnv {
-		b.WriteString("; API key saved to reasonix's credentials store")
+		b.WriteString("; API key saved to semantix's credentials store")
 	}
 	b.WriteString(". The old files were left untouched.")
 	for _, w := range r.Warnings {
@@ -160,7 +160,7 @@ func MigrateLegacyIfNeededForRoot(root string) (*MigrationResult, error) {
 	}
 	if qqSecret := strings.TrimSpace(legacy.QQ.AppSecret); qqSecret != "" {
 		envLines = append(envLines, "QQ_BOT_APP_SECRET="+qqSecret)
-		res.Warnings = append(res.Warnings, "your previous QQ Bot App Secret was saved to reasonix's credentials store")
+		res.Warnings = append(res.Warnings, "your previous QQ Bot App Secret was saved to semantix's credentials store")
 	}
 	migrateLegacyQQConfig(cfg, legacy.QQ)
 
@@ -267,7 +267,7 @@ func migrateMCPToUserConfig(projectRoots []string) (*MCPGlobalMigrationResult, e
 		addEntries(loadPluginEntriesFromTOML(path))
 	}
 	for _, root := range normalizedMCPMigrationRoots(projectRoots) {
-		addEntries(loadPluginEntriesFromTOML(filepath.Join(root, "reasonix.toml")))
+		addEntries(loadPluginEntriesFromTOML(filepath.Join(root, "semantix-agent.toml")))
 		if entries, err := loadMCPJSON(filepath.Join(root, mcpJSONFile)); err == nil {
 			addEntries(entries)
 		}
@@ -435,7 +435,7 @@ func migrateLegacyCredentialsIfNeededForRoot(root string) error {
 }
 
 func legacyKeyringMigrationMarkerPath(key string) string {
-	home := ReasonixHomeDir()
+	home := SemantixHomeDir()
 	key = strings.TrimSpace(key)
 	if strings.TrimSpace(home) == "" || key == "" {
 		return ""
@@ -570,11 +570,11 @@ func legacyTOMLPaths(dest, home string) []string {
 	}
 	for _, legacy := range legacyXDGConfigPaths() {
 		add(legacy)
-		add(filepath.Join(filepath.Dir(legacy), "reasonix.toml"))
+		add(filepath.Join(filepath.Dir(legacy), "semantix-agent.toml"))
 	}
-	add(filepath.Join(filepath.Dir(dest), "reasonix.toml"))
+	add(filepath.Join(filepath.Dir(dest), "semantix-agent.toml"))
 	if home != "" {
-		add(filepath.Join(home, ".reasonix", "reasonix.toml"))
+		add(filepath.Join(home, ".semantix", "semantix-agent.toml"))
 	}
 	return paths
 }
@@ -696,9 +696,9 @@ func mergeEnv(base, overlay map[string]string) map[string]string {
 	return out
 }
 
-// writeCredentialsEnv merges lines into Reasonix's global .env
+// writeCredentialsEnv merges lines into Semantix's global .env
 // and pins them into the current process env so the just-built session resolves
-// the key without a restart. Falls back to ~/.env only when Reasonix home can't
+// the key without a restart. Falls back to ~/.env only when Semantix home can't
 // be resolved — never a project .env, so a migration keeps secrets out of the
 // user's project tree.
 func writeCredentialsEnv(home string, lines []string) error {
@@ -728,10 +728,16 @@ func migrateSupportData(legacyDir, newDir string) []string {
 		}
 		dst := filepath.Join(newDir, item)
 		if fi.IsDir() {
-			if err := copyDir(src, dst); err != nil {
+			skipped, err := copyDir(src, dst)
+			if err != nil {
 				warnings = append(warnings, fmt.Sprintf("failed to migrate directory %s: %v", item, err))
 			} else {
 				warnings = append(warnings, fmt.Sprintf("successfully migrated directory %s", item))
+			}
+			// Surface any destination files kept-not-overwritten so the "don't
+			// clobber newer user data" behavior is visible, not silent (#356).
+			for _, sp := range skipped {
+				warnings = append(warnings, fmt.Sprintf("kept existing file %s (not overwritten)", sp))
 			}
 		} else {
 			if _, err := os.Stat(dst); err == nil {
@@ -741,7 +747,11 @@ func migrateSupportData(legacyDir, newDir string) []string {
 				continue
 			}
 			if err := copyFile(src, dst); err != nil {
-				warnings = append(warnings, fmt.Sprintf("failed to migrate file %s: %v", item, err))
+				if errors.Is(err, errDestExists) {
+					warnings = append(warnings, fmt.Sprintf("kept existing file %s", item))
+				} else {
+					warnings = append(warnings, fmt.Sprintf("failed to migrate file %s: %v", item, err))
+				}
 			} else {
 				warnings = append(warnings, fmt.Sprintf("successfully migrated file %s", item))
 			}
@@ -749,6 +759,10 @@ func migrateSupportData(legacyDir, newDir string) []string {
 	}
 	return warnings
 }
+
+// errDestExists signals copyFile refused to overwrite an existing destination.
+// Migration keeps the existing (newer) file rather than clobbering it (#356).
+var errDestExists = errors.New("destination already exists")
 
 func copyFile(src, dst string) error {
 	info, err := os.Stat(src)
@@ -773,8 +787,14 @@ func copyFile(src, dst string) error {
 	if perm == 0 {
 		perm = 0o600
 	}
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+	// O_EXCL, never O_TRUNC: migration must never overwrite an existing
+	// destination — newer user data must win over the older legacy copy
+	// (Issue #356). Callers treat errDestExists as "kept existing", not failure.
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_EXCL, perm)
 	if err != nil {
+		if os.IsExist(err) {
+			return errDestExists
+		}
 		return err
 	}
 	defer out.Close()
@@ -788,14 +808,18 @@ func copyFile(src, dst string) error {
 	return os.Chmod(dst, perm)
 }
 
-func copyDir(src, dst string) error {
+// copyDir recursively copies src into dst, skipping (never overwriting) any
+// destination file that already exists. It returns the destination paths it
+// kept-not-overwrote so the caller can surface them — silent data loss during
+// migration is exactly the failure mode we must avoid (Issue #356).
+func copyDir(src, dst string) (skipped []string, err error) {
 	info, err := os.Stat(src)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	entries, err := os.ReadDir(src)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	perm := info.Mode().Perm()
@@ -803,10 +827,10 @@ func copyDir(src, dst string) error {
 		perm = 0o700
 	}
 	if err := os.MkdirAll(dst, perm); err != nil {
-		return err
+		return skipped, err
 	}
 	if err := os.Chmod(dst, perm); err != nil {
-		return err
+		return skipped, err
 	}
 
 	for _, entry := range entries {
@@ -814,14 +838,20 @@ func copyDir(src, dst string) error {
 		dstPath := filepath.Join(dst, entry.Name())
 
 		if entry.IsDir() {
-			if err := copyDir(srcPath, dstPath); err != nil {
-				return err
+			sub, err := copyDir(srcPath, dstPath)
+			skipped = append(skipped, sub...)
+			if err != nil {
+				return skipped, err
 			}
 		} else {
 			if err := copyFile(srcPath, dstPath); err != nil {
-				return err
+				if errors.Is(err, errDestExists) {
+					skipped = append(skipped, dstPath)
+					continue
+				}
+				return skipped, err
 			}
 		}
 	}
-	return nil
+	return skipped, nil
 }

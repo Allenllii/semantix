@@ -59,7 +59,24 @@ type Event struct {
 	// triggered (Issue #242 gap 1). Empty on every turn that never entered
 	// the grey zone, and on every deployment without a judge configured.
 	JudgeDecisions []JudgeDecision `json:"judge,omitempty"`
-	At             int64           `json:"at"` // unix seconds
+	// L3 negative observability (Issue #262): per-turn L3 decision detail.
+	// All fields are additive — older logs without them read as zero.
+	L3GreyCandidates    int  `json:"l3_grey_candidates,omitempty"`
+	L3JudgeReject       int  `json:"l3_judge_reject,omitempty"`
+	// L3JudgeError counts judge calls that FAILED (transport/timeout/parse) —
+	// the judge was unavailable, which is not a verdict (Issue #245). The same
+	// physical incident is also recorded on the Issue #242 channel as a
+	// JudgeDecision with Verdict=="fail_closed"; the two must never be summed.
+	L3JudgeError        int  `json:"l3_judge_error,omitempty"`
+	L3JudgeApproved     int  `json:"l3_judge_approved,omitempty"`
+	L3RulesReject       int  `json:"l3_rules_reject,omitempty"`
+	L3FingerprintReject int  `json:"l3_fingerprint_reject,omitempty"`
+	L3IsolatedReject    int  `json:"l3_isolated_reject,omitempty"`
+	// L3FalseHit marks a suspected false hit: the user retried a query that
+	// was just served from L3 within the same session (gateway heuristic,
+	// Issue #262 §2.2). The request bypassed L3 and went upstream.
+	L3FalseHit bool `json:"l3_false_hit,omitempty"`
+	At         int64 `json:"at"` // unix seconds
 }
 
 // JudgeDecision is one grey-zone judge verification, as recorded on the
@@ -161,6 +178,19 @@ type Summary struct {
 	JudgePromptTokens int64 // byte/4 estimate of tokens sent to the judge
 	JudgeLatencyMs    int64 // total time spent in judge calls
 
+	// L3 negative observability (Issue #262): sums of the per-turn fields.
+	L3GreyCandidates    int
+	L3JudgeReject       int
+	// L3JudgeError counts judge unavailability (Issue #245). NOTE: this and
+	// JudgeFailClosed (Issue #242) count the same events through different
+	// channels — report them separately, never add them together.
+	L3JudgeError        int
+	L3JudgeApproved     int
+	L3RulesReject       int
+	L3FingerprintReject int
+	L3IsolatedReject    int
+	L3FalseHits         int // turns marked as suspected false hits
+
 	// ByProvider groups per-endpoint L1 telemetry (GLM-P0-3 / #291). The key
 	// is Event.Provider; events from pre-#291 logs land under "". Hit-rate
 	// calibration must use ExactEvents-backed figures — estimated events
@@ -220,6 +250,7 @@ func Summarize(path string, costMiss, costHit float64) (*Summary, error) {
 	s := &Summary{ByProvider: map[string]*ProviderStats{}}
 	var l3In, l3Out int64 // tokens of L3-reused turns (not billed)
 	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024) // tolerate entries up to 8 MiB
 	for sc.Scan() {
 		line := sc.Bytes()
 		if len(line) == 0 {
@@ -277,6 +308,18 @@ func Summarize(path string, costMiss, costHit float64) (*Summary, error) {
 			case "skipped":
 				s.JudgeSkipped++
 			}
+		}
+		// L3 negative observability (Issue #262): sum the per-turn detail;
+		// older logs read as zero via the additive fields.
+		s.L3GreyCandidates += e.L3GreyCandidates
+		s.L3JudgeReject += e.L3JudgeReject
+		s.L3JudgeError += e.L3JudgeError
+		s.L3JudgeApproved += e.L3JudgeApproved
+		s.L3RulesReject += e.L3RulesReject
+		s.L3FingerprintReject += e.L3FingerprintReject
+		s.L3IsolatedReject += e.L3IsolatedReject
+		if e.L3FalseHit {
+			s.L3FalseHits++
 		}
 	}
 	if err := sc.Err(); err != nil {

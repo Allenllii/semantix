@@ -30,6 +30,14 @@ judge_api_key = ""                        # 可选：grey 区 LLM judge（GW6 #1
 judge_base_url = ""                       # 例：https://api.deepseek.com/v1
 judge_model = ""                          # 例：deepseek-chat
 # lexical_floor = 0.05                      # Issue #260：L3 Hit 词面支持下限（0 = 关闭词面门）
+# promote_db = "/data/promote.jsonl"       # Issue #280：提升条目库（空 = 不接线 promote）。
+#                                          # 灰区 judge 批准经「双措辞共识」后写入；同
+#                                          # (query,slice,version) 后续命中免 judge。
+#                                          # 失败教训存同目录 rejections.jsonl（独立命名
+#                                          # 空间，不进注入/检索；反复被拒进黑名单）。
+# promote_ttl_seconds = 604800             # 提升条目有效期（0 = 默认 7 天；已验证不免除 TTL）
+# promote_consensus = 2                    # 提升门：2 = 双措辞共识（默认）；1 = 单判定基线
+# reject_limit = 2                         # 同 (query,slice) 拒绝达此数进黑名单（-1 禁用）
 
 [ingest]
 sessions_dir = "/data/sessions"           # 会话旁路落盘目录（0600）
@@ -44,6 +52,21 @@ l3_safe_default = false                   # 无 deps 的网关结果默认不进
 # attribution_markers = []                # 自定义标记行前缀，与内置合并（内置：x-anthropic-billing-header）
 # sort_tools = true                       # tools 数组按工具名固定序（默认 true；语义中性——
                                           # 工具按名寻址，顺序只影响缓存字节）
+
+[billing]                                 # 客户免费额度闸门（gateway/quota.go）
+enabled = false                           # true 后：前 free_tokens 个 token 免费，用完 402 引导充值
+free_tokens = 10000000                    # 免费额度（前 1000 万 token）；0 = 用默认 1000 万
+# recharge_url 在 enabled = true 时必填：平台充值页（402 报错与
+# x-semantix-quota-recharge-url 头均携带）。注意 ${VAR} 展开不分段落是否启用，
+# 未设置的环境变量会直接启动失败，所以此处默认留空而不是占位 ${VAR}。
+recharge_url = ""                         # 例："https://platform.example.com/topup" 或 "${SEMANTIX_RECHARGE_URL}"
+# state_file = "/data/quota-state.json"   # 计数持久化位置；默认落在 store.db 同目录
+# 可选：平台钱包探测（DeepSeek GET /user/balance 兼容 schema）。配置后客户在
+# 平台充值到账 → is_available=true → 网关自动解锁付费模式，无需人工操作。
+# balance_url 与 balance_key 必须同时设置。
+# balance_url = "https://your-platform.example.com/user/balance"
+# balance_key = "${SEMANTIX_PLATFORM_KEY}"
+# balance_cache_seconds = 300             # 钱包探测结果缓存（秒）；0 = 用默认 300
 
 [[upstreams]]                             # 每个 New API 渠道模型对应一段
 name = "deepseek"

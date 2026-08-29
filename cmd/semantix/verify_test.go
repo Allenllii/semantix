@@ -206,3 +206,141 @@ func TestClassifyTop1(t *testing.T) {
 		}
 	}
 }
+
+// --- Issue #262: verify calibration report (per-bin hit/miss distribution
+// + three-region drift vs default thresholds) ---
+
+// calibSessions writes the standard 3-session calibration fixture: the
+// replay stream (s3) re-asks a trained query and one unrelated query.
+func calibSessions(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeSession(t, dir, "s1.jsonl", []string{"修复 go 测试失败", "加 CI 配置"})
+	writeSession(t, dir, "s2.jsonl", []string{"修复 go 测试失败", "优化查询性能"})
+	writeSession(t, dir, "s3.jsonl", []string{"修复 go 测试失败", "部署到服务器"})
+	return dir
+}
+
+func TestVerifyCalibrateReportStructure(t *testing.T) {
+	dir := calibSessions(t)
+	var out bytes.Buffer
+	db := filepath.Join(t.TempDir(), "v.db")
+	code := runVerify([]string{"--session", dir, "--db", db, "--holdout", "0.33", "--calibrate"}, &out, productionDependencies())
+	if code != 0 {
+		t.Fatalf("runVerify code = %d, want 0; out:\n%s", code, out.String())
+	}
+	s := out.String()
+	for _, want := range []string{
+		"# calibration: 分桶命中分布",
+		"#   bin        n   hit grey miss  hit%   top1_avg",
+		"# drift vs default thresholds (tau_high=0.80 tau_low=0.55 abs_high=0.70 abs_low=0.45)",
+	} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("calibration report missing %q:\n%s", want, s)
+		}
+	}
+	// With default thresholds the current and baseline distributions are
+	// identical — the drift block must show zero deltas.
+	for _, want := range []string{"#   hit       50.0%    50.0%   +0.0pt", "#   grey       0.0%     0.0%   +0.0pt"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("default-threshold run must show zero drift, missing %q:\n%s", want, s)
+		}
+	}
+	// Per-type block (Issue #259 阶段 2): the replay stream's top-1
+	// candidates are typed, so the by_type report must name at least one
+	// real slice type and sum its counts.
+	if !strings.Contains(s, "# by_type:") {
+		t.Fatalf("calibration report missing per-type block:\n%s", s)
+	}
+	if !strings.Contains(s, "#   type          n   hit grey miss  hit%  default_hit") {
+		t.Fatalf("calibration report missing by_type header:\n%s", s)
+	}
+	// The report is a tail block: the replay table must precede it.
+	if strings.Index(s, "session\tturn\tscore") > strings.Index(s, "# calibration:") {
+		t.Fatalf("calibration block must follow the replay table:\n%s", s)
+	}
+}
+
+func TestVerifyCalibrateDetectsMistunedThreshold(t *testing.T) {
+	// Issue #262 acceptance: "人为调坏 TauHigh 后校准报告能显示失配".
+	// --abs-high 7 pushes the reuse floor above every actual top-1 score
+	// (BM25 ~6.26 for the replayed query), so the current distribution
+	// must drift away from the default baseline in the report.
+	dir := calibSessions(t)
+	var out bytes.Buffer
+	db := filepath.Join(t.TempDir(), "v.db")
+	code := runVerify([]string{"--session", dir, "--db", db, "--holdout", "0.33", "--calibrate", "--abs-high", "7"}, &out, productionDependencies())
+	if code != 0 {
+		t.Fatalf("runVerify code = %d, want 0; out:\n%s", code, out.String())
+	}
+	s := out.String()
+	// The replayed hit becomes grey: hit share collapses, grey rises.
+	for _, want := range []string{"#   grey      50.0%     0.0%  +50.0pt", "#   hit        0.0%    50.0%  -50.0pt"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("mistuned threshold must be visible in the drift block, missing %q:\n%s", want, s)
+		}
+	}
+}
+
+func TestVerifyCalibrateLabelsPrecision(t *testing.T) {
+	dir := calibSessions(t)
+	labels := filepath.Join(t.TempDir(), "labels.tsv")
+	// Oracle: the replayed hit is NOT relevant (false hit), the miss is.
+	if err := os.WriteFile(labels, []byte("s3.jsonl\t1\t0\ns3.jsonl\t2\t1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	db := filepath.Join(t.TempDir(), "v.db")
+	code := runVerify([]string{"--session", dir, "--db", db, "--holdout", "0.33", "--labels", labels}, &out, productionDependencies())
+	if code != 0 {
+		t.Fatalf("runVerify code = %d, want 0; out:\n%s", code, out.String())
+	}
+	s := out.String()
+	// --labels implies the calibration report and adds fp/precision columns.
+	if !strings.Contains(s, "fp  precision") {
+		t.Fatalf("labeled report must add fp/precision columns:\n%s", s)
+	}
+	// The replayed hit (oracle 0) is a false positive: fp=1, precision 0%.
+	found := false
+	for _, l := range strings.Split(s, "\n") {
+		if strings.HasPrefix(l, "#   [0.00,0.10)") && strings.Contains(l, "    1    0.0%") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("labeled fp/precision missing (want fp=1 precision=0.0%%):\n%s", s)
+	}
+}
+
+func TestVerifyCalibrateJSONEnvelope(t *testing.T) {
+	dir := calibSessions(t)
+	var out bytes.Buffer
+	db := filepath.Join(t.TempDir(), "v.db")
+	code := runVerify([]string{"--session", dir, "--db", db, "--holdout", "0.33", "--calibrate", "--json"}, &out, productionDependencies())
+	if code != 0 {
+		t.Fatalf("runVerify code = %d, want 0; out:\n%s", code, out.String())
+	}
+	if !strings.Contains(out.String(), `"calibration"`) {
+		t.Fatalf("--json --calibrate must carry the calibration object:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), `"bins"`) || !strings.Contains(out.String(), `"current"`) ||
+		!strings.Contains(out.String(), `"default"`) || !strings.Contains(out.String(), `"labeled"`) {
+		t.Fatalf("calibration object must expose bins/current/default/labeled:\n%s", out.String())
+	}
+}
+
+func TestReadVerifyLabelsMalformed(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "bad.tsv")
+	if err := os.WriteFile(p, []byte("s1\tx\t1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readVerifyLabels(p); err == nil {
+		t.Fatal("malformed turn must error")
+	}
+	if err := os.WriteFile(p, []byte("s1\t1\tyes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readVerifyLabels(p); err == nil {
+		t.Fatal("malformed relevance must error")
+	}
+}

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 
@@ -23,6 +22,28 @@ type EffortCapability struct {
 	Supported bool
 	Levels    []string
 	Default   string
+}
+
+// UnsupportedEffortError reports a /effort level the provider/model does not
+// accept. Levels carries the full legal vocabulary (including "auto") so
+// callers outside this package can render a localized usage hint instead of
+// relying on the English Error() text.
+type UnsupportedEffortError struct {
+	Levels []string
+}
+
+func (e *UnsupportedEffortError) Error() string {
+	return "usage: /effort " + strings.Join(e.Levels, "|")
+}
+
+// EffortNotConfigurableError reports a provider/model that exposes no /effort
+// knob. Provider names the entry, or "this model" when none is known.
+type EffortNotConfigurableError struct {
+	Provider string
+}
+
+func (e *EffortNotConfigurableError) Error() string {
+	return "effort is not configurable for " + e.Provider
 }
 
 type modelReasoningCapability struct {
@@ -130,12 +151,27 @@ func EffortCapabilityForEntry(e *ProviderEntry) EffortCapability {
 	}
 }
 
+// DepthEffortLevels returns the subset of an entry's advertised /effort levels
+// that a per-request override can actually carry.
+//
+// EffortCapabilityForEntry is the right vocabulary for a config write, but the
+// wrong one for a runtime override: it advertises thinking on/off tokens
+// (adaptive, enabled, none) alongside real depths, and an override adjusts
+// depth only. Validating a session-scoped level against Levels alone would
+// accept, say, adaptive for MiniMax and then have the transport drop it with no
+// error anywhere. The rule itself lives in provider/openai so the two layers
+// stay in lockstep — see openai.DepthEffortLevels, and isDeepSeekEntry below
+// for the same delegation shape.
+func DepthEffortLevels(e *ProviderEntry) []string {
+	return openai.DepthEffortLevels(EffortCapabilityForEntry(e).Levels)
+}
+
 // NormalizeEffort maps a user-supplied /effort level into the value stored in
 // config. Empty means auto/provider default.
 func NormalizeEffort(e *ProviderEntry, raw string) (string, error) {
 	level := normalizeEffortLevel(raw)
 	if level == "" {
-		return "", fmt.Errorf("usage: /effort auto|<level>")
+		return "", &UnsupportedEffortError{Levels: []string{"auto", "<level>"}}
 	}
 	if level == "auto" {
 		return "", nil
@@ -152,7 +188,7 @@ func NormalizeEffort(e *ProviderEntry, raw string) (string, error) {
 		if containsString(supported, level) {
 			return level, nil
 		}
-		return "", fmt.Errorf("usage: /effort auto|%s", strings.Join(supported, "|"))
+		return "", &UnsupportedEffortError{Levels: append([]string{"auto"}, supported...)}
 	}
 	// V4 Flash 0731 added a real low depth. Keep this model-scoped: Pro and
 	// generic DeepSeek-compatible endpoints still normalize low to high unless
@@ -182,7 +218,7 @@ func NormalizeEffort(e *ProviderEntry, raw string) (string, error) {
 		case "xhigh":
 			return "max", nil
 		default:
-			return "", fmt.Errorf("usage: /effort auto|disabled|high|max")
+			return "", &UnsupportedEffortError{Levels: []string{"auto", "disabled", "high", "max"}}
 		}
 	case ReasoningProtocolOpenAI:
 		return normalizeOpenAIReasoningEffort(e, level)
@@ -208,7 +244,7 @@ func NormalizeEffort(e *ProviderEntry, raw string) (string, error) {
 		case "xhigh", "max":
 			return "disabled", nil
 		default:
-			return "", fmt.Errorf("usage: /effort auto|adaptive|disabled")
+			return "", &UnsupportedEffortError{Levels: []string{"auto", "adaptive", "disabled"}}
 		}
 	case isZhipuEntry(e):
 		// GLM's knob is binary (enabled|disabled); map Anthropic / OpenAI-style
@@ -227,7 +263,7 @@ func NormalizeEffort(e *ProviderEntry, raw string) (string, error) {
 		case "low", "medium", "high", "xhigh", "max":
 			return "enabled", nil
 		default:
-			return "", fmt.Errorf("usage: /effort auto|enabled|disabled")
+			return "", &UnsupportedEffortError{Levels: []string{"auto", "enabled", "disabled"}}
 		}
 	case isOllamaCloudEntry(e):
 		switch level {
@@ -238,14 +274,14 @@ func NormalizeEffort(e *ProviderEntry, raw string) (string, error) {
 		case "xhigh":
 			return "max", nil
 		default:
-			return "", fmt.Errorf("usage: /effort auto|none|low|medium|high|max")
+			return "", &UnsupportedEffortError{Levels: []string{"auto", "none", "low", "medium", "high", "max"}}
 		}
 	case e != nil && e.Kind == "anthropic":
 		switch level {
 		case "low", "medium", "high", "xhigh", "max":
 			return level, nil
 		default:
-			return "", fmt.Errorf("usage: /effort auto|low|medium|high|xhigh|max")
+			return "", &UnsupportedEffortError{Levels: []string{"auto", "low", "medium", "high", "xhigh", "max"}}
 		}
 	default:
 		return "", effortNotConfigurableError(e)
@@ -479,7 +515,7 @@ func normalizeGLMEffort(level string) (string, error) {
 	case "low", "medium", "high", "xhigh", "max":
 		return "enabled", nil
 	default:
-		return "", fmt.Errorf("usage: /effort auto|enabled|disabled")
+		return "", &UnsupportedEffortError{Levels: []string{"auto", "enabled", "disabled"}}
 	}
 }
 
@@ -491,7 +527,7 @@ func effortNotConfigurableError(e *ProviderEntry) error {
 	if name == "" {
 		name = "this model"
 	}
-	return fmt.Errorf("effort is not configurable for %s", name)
+	return &EffortNotConfigurableError{Provider: name}
 }
 
 func containsString(haystack []string, needle string) bool {

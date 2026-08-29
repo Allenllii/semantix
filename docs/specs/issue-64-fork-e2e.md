@@ -1,6 +1,6 @@
 # Spec：fork 端到端闭环验证（Issue 64 / M1-U13b）
 
-> 对应 Issue：`#64 M1-U13b: fork 端到端闭环验证（Reasonix fork 挂载后真实会话跑注入）`
+> 对应 Issue：`#64 M1-U13b: fork 端到端闭环验证（Semantix fork 挂载后真实会话跑注入）`
 > 真源约束：挂载设计以 `docs/reports/h1-mount-design.md` 为准；fork 侧挂载点
 > （U7 `internal/semantix/sink.go` HarnessSink、U8a `systemPrompt()` 注入 hook、
 > U8b `internal/tool/semantix.go` semantix_lookup）已合入 fork（Gnosil/DeepSeek-Reasonix @ main），
@@ -10,7 +10,7 @@
 
 ## 1. 目标与范围
 
-**核心目标**：用 fork 的 reasonix 二进制跑真实开发会话（配 `[semantix]` 配置段），
+**核心目标**：用 fork 的 semantix 二进制跑真实开发会话（配 `[semantix]` 配置段），
 验证 H1 挂载的端到端闭环：**会话 → HarnessSink JSONL → `semantix extract` → 库；
 新会话 → `semantix lookup` 命中 → 注入块出现在 system prompt 前缀**。
 

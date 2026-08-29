@@ -161,8 +161,10 @@ func (s *frontendEventSink) Emit(ev event.Event) {
 			payload = before
 		}
 	}
-	// Observers see exactly what the frontend is about to receive.
-	s.d.Event(extension.PointFrontendEvent, payload)
+	// Observers see exactly what the frontend is about to receive. Use the
+	// dispatcher captured under warnMu above, not s.d directly: setDispatcher
+	// can swap s.d concurrently from a hot-reload goroutine (#357).
+	d.Event(extension.PointFrontendEvent, payload)
 	ev.Text, ev.Detail = payload.Text, payload.Detail
 	s.inner.Emit(ev)
 }

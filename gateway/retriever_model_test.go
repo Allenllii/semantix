@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"semantix/kernel/fuse"
 	"semantix/kernel/slice"
 )
 
@@ -61,13 +62,7 @@ func TestModelBackendBatchesStartupEmbeds(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		slices = append(slices, projectSlice("s"+string(rune('a'+i)), "deploy golang service number "+string(rune('a'+i))))
 	}
-	idx := newRetriever(RetrieverSettings{
-		Kind:         "hybrid",
-		Dim:          8,
-		EmbedBackend: "model",
-		EmbedBaseURL: srv.URL,
-		EmbedModel:   "test-embed",
-	})
+	idx := newRetriever("hybrid", 8, fuse.Config{}, EmbedSettings{Backend: "model", BaseURL: srv.URL, Model: "test-embed"})
 	bi, ok := idx.(BatchInserter)
 	if !ok {
 		t.Fatal("model-backed index must implement BatchInserter")
@@ -92,13 +87,7 @@ func TestModelBackendBatchesStartupEmbeds(t *testing.T) {
 // gateway unusable.
 func TestModelBackendWithoutKeyDegradesToHash(t *testing.T) {
 	t.Setenv("SEMANTIX_EMBED_API_KEY", "")
-	idx := newRetriever(RetrieverSettings{
-		Kind:         "vector",
-		Dim:          8,
-		EmbedBackend: "model",
-		EmbedBaseURL: "http://127.0.0.1:1",
-		EmbedModel:   "test-embed",
-	})
+	idx := newRetriever("vector", 8, fuse.Config{}, EmbedSettings{Backend: "model", BaseURL: "http://127.0.0.1:1", Model: "test-embed"})
 	seedRetriever(t, idx, projectSlice("a", "deploy golang binary"))
 	got, err := idx.Search("deploy golang", 3, slice.Project)
 	if err != nil {
@@ -127,13 +116,7 @@ func TestModelBackendFailSoftMidFlight(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	idx := newRetriever(RetrieverSettings{
-		Kind:         "vector",
-		Dim:          8,
-		EmbedBackend: "model",
-		EmbedBaseURL: srv.URL,
-		EmbedModel:   "test-embed",
-	})
+	idx := newRetriever("vector", 8, fuse.Config{}, EmbedSettings{Backend: "model", BaseURL: srv.URL, Model: "test-embed"})
 	seedRetriever(t, idx, projectSlice("a", "deploy golang binary"))
 	up.Store(false)
 	// Search embeds the query; the dead endpoint forces hash fallback.

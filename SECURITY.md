@@ -12,10 +12,11 @@ Semantix 是架设在 agent harness 与资源之间的**自进化 Agent Kernel �
 
 | 版本 | 状态 | 安全支持 |
 |---|---|---|
-| `main`（设计/原型阶段） | 活跃开发 | ✅ 修复直接合入 main |
-| 首个稳定发布（尚未发布） | — | 发布后：最新稳定标签 + 前一个次版本 |
+| latest release（[v0.7.x](https://github.com/Gnosil/semantix/releases) 及之后） | 活跃维护 | ✅ 安全修复以 patch release 发布 |
+| `main` | 活跃开发 | ✅ 修复优先合入 main，随下一个版本发布 |
+| 更早的 release 标签 | — | ❌ 请升级到最新版本 |
 
-> 项目当前处于设计阶段（架构文档 v2 完成，P0 未开工）。安全修复将优先合入 `main`，随下一个版本发布。
+> 项目处于快速迭代期（当前 v0.7.x）。安全修复将优先合入 `main`，并随下一个 patch/minor release 发布；涉及已发布版本的修复会在 Release Notes 中标注。
 
 ---
 

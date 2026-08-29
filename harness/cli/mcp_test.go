@@ -224,7 +224,7 @@ func TestMCPGetMissingServerFails(t *testing.T) {
 func TestMCPDisablePersistsProjectWorkspaceActivation(t *testing.T) {
 	isolateCLIConfigHome(t)
 	workspace := mcpCLIWorkspaceRoot()
-	if err := os.WriteFile(filepath.Join(workspace, "reasonix.toml"), []byte(`
+	if err := os.WriteFile(filepath.Join(workspace, "semantix-agent.toml"), []byte(`
 [[plugins]]
 name = "project-mcp"
 command = "project-mcp"
@@ -260,7 +260,7 @@ command = "project-mcp"
 func TestPersistCLIInstalledMCPAlwaysWritesGlobalConfig(t *testing.T) {
 	isolateCLIConfigHome(t)
 	workspace := mcpCLIWorkspaceRoot()
-	projectPath := filepath.Join(workspace, "reasonix.toml")
+	projectPath := filepath.Join(workspace, "semantix-agent.toml")
 	if err := os.WriteFile(projectPath, []byte(`
 [[plugins]]
 name = "project-mcp"
@@ -596,7 +596,7 @@ func TestBuildMCPSnapshotUsesControllerWorkspaceAndPerServerConfigPaths(t *testi
 	if err := userCfg.SaveTo(userPath); err != nil {
 		t.Fatal(err)
 	}
-	projectPath := filepath.Join(workspace, "reasonix.toml")
+	projectPath := filepath.Join(workspace, "semantix-agent.toml")
 	if err := os.WriteFile(projectPath, []byte(`
 [[plugins]]
 name = "project-only"
@@ -663,7 +663,7 @@ func TestRenderMCPManagerAuthFailureActions(t *testing.T) {
 		stage: mcpStageDetail,
 		name:  "figma",
 		snapshot: mcpSnapshot{
-			configPath: "reasonix.toml",
+			configPath: "semantix-agent.toml",
 			servers: []mcpServerView{{
 				Name: "figma", Transport: "http", Status: "failed", Configured: true,
 				Tier: "background", URL: "https://mcp.figma.com", Error: "connect: 401 unauthorized",
@@ -695,7 +695,7 @@ func TestRenderMCPManagerProjectServerIsReadyWithoutInstallAction(t *testing.T) 
 		stage: mcpStageDetail,
 		name:  "project-docs",
 		snapshot: mcpSnapshot{
-			configPath: "reasonix.toml",
+			configPath: "semantix-agent.toml",
 			servers: []mcpServerView{{
 				Name: "project-docs", Transport: "http", Status: "connected", Configured: true,
 				Source: config.MCPSourceProjectConfig, URL: "https://example.test/mcp",
@@ -706,7 +706,7 @@ func TestRenderMCPManagerProjectServerIsReadyWithoutInstallAction(t *testing.T) 
 	got := p.renderDetail(120)
 	for _, want := range []string{
 		"connected",
-		"current project reasonix.toml",
+		"current project semantix-agent.toml",
 		"View tools",
 		"Disable for this session",
 	} {
@@ -751,7 +751,7 @@ func TestRenderMCPManagerRemoteDeferredAuthHint(t *testing.T) {
 		stage: mcpStageDetail,
 		name:  "dida",
 		snapshot: mcpSnapshot{
-			configPath: "reasonix.toml",
+			configPath: "semantix-agent.toml",
 			servers: []mcpServerView{{
 				Name: "dida", Transport: "http", Status: "deferred", Configured: true,
 				Tier: "background", URL: "https://mcp.dida365.com",
@@ -782,7 +782,7 @@ func TestRenderMCPManagerDetailCompactsConfigPath(t *testing.T) {
 		stage: mcpStageDetail,
 		name:  "github",
 		snapshot: mcpSnapshot{
-			configPath: "/Users/example/Library/Application Support/reasonix/config.toml",
+			configPath: "/Users/example/Library/Application Support/semantix/config.toml",
 			servers: []mcpServerView{{
 				Name: "github", Transport: "stdio", Status: "deferred", Configured: true,
 				Tier: "background", Command: "npx", Args: []string{"-y", "@modelcontextprotocol/server-github"},
@@ -795,7 +795,7 @@ func TestRenderMCPManagerDetailCompactsConfigPath(t *testing.T) {
 			t.Fatalf("detail line exceeds width 80 (%d): %q\n%s", visibleWidth(line), line, got)
 		}
 	}
-	if strings.Contains(got, "Application Support/reasonix/config.toml") {
+	if strings.Contains(got, "Application Support/semantix/config.toml") {
 		t.Fatalf("long config path should be compacted:\n%s", got)
 	}
 }
@@ -804,7 +804,7 @@ func TestMCPEditConfigLaunchUsesVisualBeforeEditor(t *testing.T) {
 	t.Setenv("VISUAL", "vim")
 	t.Setenv("EDITOR", "nano")
 
-	path := "/tmp/reasonix config.toml"
+	path := "/tmp/semantix config.toml"
 	launch, err := mcpEditConfigLaunchCommand(path, func(string) (string, error) {
 		t.Fatal("lookPath should not be called when VISUAL is set")
 		return "", errors.New("unexpected lookup")
@@ -833,7 +833,7 @@ func TestMCPEditConfigLaunchEditorWithArgs(t *testing.T) {
 	t.Setenv("VISUAL", "code --wait")
 	t.Setenv("EDITOR", "")
 
-	path := "/tmp/reasonix.toml"
+	path := "/tmp/semantix-agent.toml"
 	launch, err := mcpEditConfigLaunchCommand(path, func(string) (string, error) {
 		t.Fatal("lookPath should not be called when VISUAL is set")
 		return "", errors.New("unexpected lookup")
@@ -856,7 +856,7 @@ func TestMCPEditConfigLaunchEditorWithArgs(t *testing.T) {
 }
 
 func TestMCPEditConfigLaunchEditorParsesShellStyleQuotes(t *testing.T) {
-	path := "/tmp/reasonix.toml"
+	path := "/tmp/semantix-agent.toml"
 	cases := []struct {
 		name       string
 		editor     string
@@ -919,7 +919,7 @@ func TestMCPEditConfigLaunchEditorRejectsUnterminatedQuote(t *testing.T) {
 	t.Setenv("VISUAL", `code --wait "unterminated`)
 	t.Setenv("EDITOR", "")
 
-	_, err := mcpEditConfigLaunchCommand("/tmp/reasonix.toml", func(string) (string, error) {
+	_, err := mcpEditConfigLaunchCommand("/tmp/semantix-agent.toml", func(string) (string, error) {
 		t.Fatal("lookPath should not be called when VISUAL is set")
 		return "", errors.New("unexpected lookup")
 	})
@@ -935,7 +935,7 @@ func TestMCPEditConfigLaunchEditorRejectsShellMetachars(t *testing.T) {
 	t.Setenv("VISUAL", "")
 	t.Setenv("EDITOR", "vim; rm -rf /tmp/should-not-exist")
 
-	path := "/tmp/reasonix.toml"
+	path := "/tmp/semantix-agent.toml"
 	_, err := mcpEditConfigLaunchCommand(path, func(string) (string, error) {
 		t.Fatal("lookPath should not be called when EDITOR is set")
 		return "", errors.New("unexpected lookup")
@@ -951,11 +951,11 @@ func TestMCPEditConfigLaunchEditorRejectsShellMetachars(t *testing.T) {
 // EDITOR="$HOME/bin/myeditor" verbatim (rather than relying on the shell
 // to expand at export time).
 func TestMCPEditConfigLaunchEditorExpandsEnvVar(t *testing.T) {
-	t.Setenv("REASONIX_TEST_EDITOR_BIN", "/opt/custom/bin/myed")
-	t.Setenv("VISUAL", "$REASONIX_TEST_EDITOR_BIN --flag")
+	t.Setenv("SEMANTIX_TEST_EDITOR_BIN", "/opt/custom/bin/myed")
+	t.Setenv("VISUAL", "$SEMANTIX_TEST_EDITOR_BIN --flag")
 	t.Setenv("EDITOR", "")
 
-	path := "/tmp/reasonix.toml"
+	path := "/tmp/semantix-agent.toml"
 	launch, err := mcpEditConfigLaunchCommand(path, func(string) (string, error) {
 		t.Fatal("lookPath should not be called when VISUAL is set")
 		return "", errors.New("unexpected lookup")
@@ -993,7 +993,7 @@ func TestMCPEditConfigLaunchEditorExpandsTilde(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("VISUAL", c.editor+" --wait")
 			t.Setenv("EDITOR", "")
-			launch, err := mcpEditConfigLaunchCommand("/tmp/reasonix.toml", func(string) (string, error) {
+			launch, err := mcpEditConfigLaunchCommand("/tmp/semantix-agent.toml", func(string) (string, error) {
 				t.Fatal("lookPath should not be called when VISUAL is set")
 				return "", errors.New("unexpected lookup")
 			})
@@ -1017,7 +1017,7 @@ func TestMCPEditConfigLaunchEditorTildeNotInPayload(t *testing.T) {
 	t.Setenv("VISUAL", "")
 	t.Setenv("EDITOR", "vim; rm -rf ~/should-not-exist")
 
-	_, err := mcpEditConfigLaunchCommand("/tmp/reasonix.toml", func(string) (string, error) {
+	_, err := mcpEditConfigLaunchCommand("/tmp/semantix-agent.toml", func(string) (string, error) {
 		t.Fatal("lookPath should not be called when EDITOR is set")
 		return "", errors.New("unexpected lookup")
 	})
@@ -1030,7 +1030,7 @@ func TestMCPEditConfigLaunchFallsBackToTerminalEditor(t *testing.T) {
 	t.Setenv("VISUAL", "")
 	t.Setenv("EDITOR", "")
 
-	launch, err := mcpEditConfigLaunchCommand("/tmp/reasonix.toml", func(name string) (string, error) {
+	launch, err := mcpEditConfigLaunchCommand("/tmp/semantix-agent.toml", func(name string) (string, error) {
 		if name == "vim" {
 			return "/usr/bin/vim", nil
 		}
@@ -1045,7 +1045,7 @@ func TestMCPEditConfigLaunchFallsBackToTerminalEditor(t *testing.T) {
 	if launch.editor != "vim" {
 		t.Fatalf("editor = %q, want vim", launch.editor)
 	}
-	if len(launch.cmd.Args) != 2 || launch.cmd.Args[0] != "/usr/bin/vim" || launch.cmd.Args[1] != "/tmp/reasonix.toml" {
+	if len(launch.cmd.Args) != 2 || launch.cmd.Args[0] != "/usr/bin/vim" || launch.cmd.Args[1] != "/tmp/semantix-agent.toml" {
 		t.Fatalf("terminal editor args=%v", launch.cmd.Args)
 	}
 }
@@ -1054,7 +1054,7 @@ func TestMCPEditConfigLaunchUsesSystemDefaultLast(t *testing.T) {
 	t.Setenv("VISUAL", "")
 	t.Setenv("EDITOR", "")
 
-	path := "/tmp/reasonix.toml"
+	path := "/tmp/semantix-agent.toml"
 	launch, err := mcpEditConfigLaunchCommand(path, func(string) (string, error) {
 		return "", errors.New("not found")
 	})
@@ -1077,7 +1077,7 @@ func TestApplyMCPModeDropsLegacyTier(t *testing.T) {
 	isolateUserConfig(t)
 	cfg := config.Default()
 	cfg.Plugins = []config.PluginEntry{{Name: "github", Command: "npx", Args: []string{"server"}, Tier: "lazy"}}
-	if err := cfg.SaveTo("reasonix.toml"); err != nil {
+	if err := cfg.SaveTo("semantix-agent.toml"); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
 
@@ -1085,7 +1085,7 @@ func TestApplyMCPModeDropsLegacyTier(t *testing.T) {
 	m.mcp = &mcpManager{
 		stage: mcpStageMode,
 		name:  "github",
-		snapshot: mcpSnapshot{configPath: "reasonix.toml", servers: []mcpServerView{{
+		snapshot: mcpSnapshot{configPath: "semantix-agent.toml", servers: []mcpServerView{{
 			Name: "github", Transport: "stdio", Status: "deferred", Configured: true, Tier: "background",
 		}}},
 	}
@@ -1098,7 +1098,7 @@ func TestApplyMCPModeDropsLegacyTier(t *testing.T) {
 	if len(loaded.Plugins) != 1 || loaded.Plugins[0].Tier != "" {
 		t.Fatalf("tier should be migrated away, plugins=%+v", loaded.Plugins)
 	}
-	raw, err := os.ReadFile("reasonix.toml")
+	raw, err := os.ReadFile("semantix-agent.toml")
 	if err != nil {
 		t.Fatalf("read config: %v", err)
 	}
@@ -1111,8 +1111,8 @@ func TestApplyMCPModeRecordsPluginConnectFailure(t *testing.T) {
 	isolateUserConfig(t)
 	t.Setenv("PATH", "")
 	cfg := config.Default()
-	cfg.Plugins = []config.PluginEntry{{Name: "broken", Command: "definitely-missing-reasonix-mcp", Tier: "background"}}
-	if err := cfg.SaveTo("reasonix.toml"); err != nil {
+	cfg.Plugins = []config.PluginEntry{{Name: "broken", Command: "definitely-missing-semantix-mcp", Tier: "background"}}
+	if err := cfg.SaveTo("semantix-agent.toml"); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
 
@@ -1123,7 +1123,7 @@ func TestApplyMCPModeRecordsPluginConnectFailure(t *testing.T) {
 	m.mcp = &mcpManager{
 		stage: mcpStageMode,
 		name:  "broken",
-		snapshot: mcpSnapshot{configPath: "reasonix.toml", servers: []mcpServerView{{
+		snapshot: mcpSnapshot{configPath: "semantix-agent.toml", servers: []mcpServerView{{
 			Name: "broken", Transport: "stdio", Status: "deferred", Configured: true, Tier: "background",
 		}}},
 	}

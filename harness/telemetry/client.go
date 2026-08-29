@@ -19,7 +19,7 @@ import (
 	"semantix/harness/netclient"
 )
 
-var endpoint = "https://crash.reasonix.io/v1"
+var endpoint = "https://crash.semantix.ensureok.ai/v1"
 
 var uploadSignals = map[string]bool{
 	"finish_reason": true, "empty_final": true, "provider_error": true,

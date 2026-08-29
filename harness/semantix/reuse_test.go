@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"semantix/harness/event"
 	kernelevent "semantix/kernel/event"
 	"semantix/kernel/slice"
 )
@@ -64,7 +65,10 @@ func TestReuseSummaryLineTaskTime(t *testing.T) {
 }
 
 func TestFormatTaskDuration(t *testing.T) {
-	cases := []struct{ in float64; want string }{
+	cases := []struct {
+		in   float64
+		want string
+	}{
 		{42, "42s"},
 		{59.4, "59s"},
 		{60, "1m0s"},
@@ -80,7 +84,10 @@ func TestFormatTaskDuration(t *testing.T) {
 }
 
 func TestFormatUSD(t *testing.T) {
-	cases := []struct{ in float64; want string }{
+	cases := []struct {
+		in   float64
+		want string
+	}{
 		{0.0042, "0.0042"},
 		{0.12, "0.12"},
 		{1.5, "1.5"},
@@ -156,6 +163,23 @@ func TestBridgeReuseHitsAndSources(t *testing.T) {
 	}
 	if sum.SavingsUSD != 0.0054 {
 		t.Errorf("SavingsUSD = %v, want 0.0054 (first cumulative snapshot)", sum.SavingsUSD)
+	}
+}
+
+func TestBridgeReuseForwardsKernelCacheObservation(t *testing.T) {
+	dir := writeKernelDir(t, reuseFixtureSlices(), nil)
+	var events []event.Event
+	b := NewBridge(Config{Enabled: true, ProjectDir: dir})
+	b.SetLabel("reuse-observation")
+	b.Sink(event.FuncSink(func(e event.Event) { events = append(events, e) }))
+	if got := b.Reuse(context.Background(), "修复 go 测试"); got.Hits == 0 {
+		t.Fatal("Reuse returned no hits")
+	}
+	if len(events) != 1 || events[0].Kind != event.KernelCache || events[0].KernelCache == nil {
+		t.Fatalf("forwarded events = %+v, want one kernel cache event", events)
+	}
+	if events[0].KernelCache.Op != "hit" || events[0].KernelCache.Layer != "L2" || len(events[0].KernelCache.SliceIDs) != 3 {
+		t.Fatalf("kernel cache payload = %+v", events[0].KernelCache)
 	}
 }
 
@@ -269,6 +293,7 @@ func TestBridgeReuseEmptySources(t *testing.T) {
 		t.Errorf("Sources = %v, want empty (legacy slices)", sum.Sources)
 	}
 }
+
 // TestBridgeInjectDegradedShrinksBlock (Issue #270 step 2): the
 // degrade_inject tier halves the block budget. The degraded block must
 // never exceed the full-budget one (whole-slice truncation is monotone

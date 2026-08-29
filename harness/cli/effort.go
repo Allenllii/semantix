@@ -1,23 +1,31 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	"semantix/harness/config"
+	"semantix/harness/i18n"
 )
 
+// runEffortCommand persists the level to the user config and then applies it
+// to the live controller in place — the same shape /reasoning-language and
+// /preset use. No Snapshot, no session-lease rebind, no controller rebuild:
+// the setter (control.Settings.SetEffort, #330) updates the session-scoped
+// depth for subsequent model rounds and the per-request EffortOverride
+// channel carries it to every adapter family (#331).
 func (m *chatTUI) runEffortCommand(input string) tea.Cmd {
-	entry, ref, err := m.currentConfigProvider()
+	entry, _, err := m.currentConfigProvider()
 	if err != nil {
-		m.notice("effort: " + err.Error())
+		m.notice(fmt.Sprintf(i18n.M.EffortErrorFmt, err.Error()))
 		return nil
 	}
 	cap := config.EffortCapabilityForEntry(entry)
 	if !cap.Supported {
-		m.notice(fmt.Sprintf("effort is not configurable for %s", entry.Name))
+		m.notice(fmt.Sprintf(i18n.M.EffortNotConfigurableFmt, entry.Name))
 		return nil
 	}
 
@@ -25,38 +33,39 @@ func (m *chatTUI) runEffortCommand(input string) tea.Cmd {
 	if len(args) < 2 {
 		current := config.EffortDisplay(entry)
 		options := strings.Join(cap.Levels, "|")
-		m.notice(fmt.Sprintf("effort for %s: %s (default: %s; options: %s)", entry.Name, current, cap.Default, options))
+		m.notice(fmt.Sprintf(i18n.M.EffortCurrentFmt, entry.Name, current, cap.Default, options))
 		return nil
 	}
 	if len(args) > 2 {
-		m.notice("usage: /effort " + strings.Join(cap.Levels, "|"))
+		m.notice(fmt.Sprintf(i18n.M.EffortUsageFmt, strings.Join(cap.Levels, "|")))
 		return nil
 	}
 	effort, err := config.NormalizeEffort(entry, args[1])
 	if err != nil {
-		m.notice(err.Error())
+		m.notice(localizeEffortError(err))
 		return nil
 	}
-	if m.buildController == nil {
-		m.notice("model switching is unavailable in this session")
-		return nil
-	}
-	if m.runtimeSwitchBusy() {
-		m.notice("finish or cancel active work and stop background jobs before changing effort")
+	if m.ctrl == nil {
+		m.notice(i18n.M.EffortSwitchUnavailable)
 		return nil
 	}
 	if m.modelSwitchPending {
-		m.notice("wait for the current runtime switch to finish")
+		m.notice(i18n.M.EffortSwitchPending)
+		return nil
+	}
+	if m.runtimeSwitchBusy() {
+		m.notice(i18n.M.EffortSwitchBusy)
 		return nil
 	}
 
 	path := config.UserConfigPath()
 	if path == "" {
-		m.notice("effort: cannot resolve user config directory")
+		m.notice(i18n.M.EffortNoConfigDir)
 		return nil
 	}
-	// Lock only the load-modify-save cycle; the snapshot and controller
-	// rebuild below run off-lock.
+	// Lock only the load-modify-save cycle; the in-place session switch below
+	// runs off-lock. The persisted level is what survives a later /model or
+	// /reload rebuild — do not drop this write.
 	if err := func() error {
 		unlock := config.LockUserConfigEdits()
 		defer unlock()
@@ -76,58 +85,47 @@ func (m *chatTUI) runEffortCommand(input string) tea.Cmd {
 		}
 		return edit.SaveTo(path)
 	}(); err != nil {
-		m.notice("effort: " + err.Error())
+		m.notice(fmt.Sprintf(i18n.M.EffortErrorFmt, err.Error()))
 		return nil
 	}
 
+	// In-place switch: the level reaches the live controller immediately.
+	sessionLevel := effort
+	if sessionLevel == "" {
+		// An explicit auto is a choice of the provider's configured depth and
+		// stands the reasoning governor down (control.SetEffort contract).
+		sessionLevel = "auto"
+	}
+	if err := m.ctrl.SetEffort(sessionLevel); err != nil {
+		m.notice(fmt.Sprintf(i18n.M.EffortErrorFmt, err.Error()))
+		return nil
+	}
 	display := effort
 	if display == "" {
 		display = "auto"
 	}
-	m.notice(fmt.Sprintf("setting effort for %s to %s…", entry.Name, display))
-	if err := m.ctrl.Snapshot(); err != nil {
-		m.notice("effort: snapshot: " + err.Error())
+	if m.effortApplied != nil {
+		m.effortApplied(display)
 	}
-	// Capture the resume path and history only after Snapshot: a snapshot
-	// conflict can retarget the controller to a recovery branch (or adopt the
-	// newer disk transcript), and a pre-snapshot capture would bind the rebuilt
-	// controller back to the original file, re-conflicting on every later save.
-	carried := m.ctrl.History()
-	prevPath := m.ctrl.SessionPath()
-	// Move the lease before the rebuilt controller binds prevPath for writing
-	// (AdoptHistory resumes there): after a snapshot retarget the lease still
-	// guards the old path, and the async build must not open an unguarded
-	// writer on the recovery branch.
-	if err := m.rebindSessionLease(prevPath); err != nil {
-		m.notice("effort: " + sessionLeaseHeldNotice(err))
-		return nil
+	m.effortLevel = display
+	m.notice(fmt.Sprintf(i18n.M.EffortSwitchedFmt, entry.Name, display))
+	return nil
+}
+
+// localizeEffortError renders a NormalizeEffort error through the active i18n
+// catalogue. The config layer carries the legal level vocabulary as typed data
+// (UnsupportedEffortError / EffortNotConfigurableError) instead of a
+// pre-rendered English string, so the CLI can honor the session locale (#335).
+func localizeEffortError(err error) string {
+	var usageErr *config.UnsupportedEffortError
+	if errors.As(err, &usageErr) {
+		return fmt.Sprintf(i18n.M.EffortUsageFmt, strings.Join(usageErr.Levels, "|"))
 	}
-	oldCtrl := m.ctrl
-	build := m.buildController
-	m.modelSwitchPending = true
-	m.pendingModelSwitch = func() tea.Msg {
-		c, err := build(controllerBuildSpec{
-			ModelRef:         ref,
-			RuntimeProfile:   m.runtimeProfile,
-			ToolApprovalMode: oldCtrl.ToolApprovalMode(),
-			PlanMode:         oldCtrl.PlanMode(),
-			EffortOverride:   &effort,
-		}, carried, prevPath, oldCtrl)
-		if err != nil {
-			return modelSwitchMsg{ref: ref, err: err}
-		}
-		return modelSwitchMsg{
-			ref:      ref,
-			ctrl:     c,
-			oldCtrl:  oldCtrl,
-			label:    c.Label(),
-			commands: c.Commands(),
-			skills:   c.SlashSkills(),
-			host:     c.Host(),
-		}
+	var notConfigurableErr *config.EffortNotConfigurableError
+	if errors.As(err, &notConfigurableErr) {
+		return fmt.Sprintf(i18n.M.EffortNotConfigurableFmt, notConfigurableErr.Provider)
 	}
-	m.notice(fmt.Sprintf("effort for %s set to %s", entry.Name, display))
-	return m.pendingModelSwitch
+	return fmt.Sprintf(i18n.M.EffortErrorFmt, err.Error())
 }
 
 func (m *chatTUI) currentConfigProvider() (*config.ProviderEntry, string, error) {

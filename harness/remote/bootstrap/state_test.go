@@ -11,8 +11,8 @@ func TestServeStateRoundTrip(t *testing.T) {
 		Addr:      "127.0.0.1:38121",
 		Workspace: "/home/dev/app",
 		Version:   "1.9.0",
-		TokenFile: "/home/dev/.reasonix/remote/serve-x.token",
-		LogFile:   "/home/dev/.reasonix/remote/serve-x.log",
+		TokenFile: "/home/dev/.semantix/remote/serve-x.token",
+		LogFile:   "/home/dev/.semantix/remote/serve-x.log",
 		StartedAt: 1_700_000_000,
 	}
 	data, err := MarshalState(st)
@@ -43,7 +43,7 @@ func TestServeStateBackwardCompat(t *testing.T) {
 
 func TestPathsFor(t *testing.T) {
 	paths := pathsFor("/home/dev", "/home/dev/projects/app")
-	if paths.Dir != "/home/dev/.reasonix/remote" {
+	if paths.Dir != "/home/dev/.semantix/remote" {
 		t.Fatalf("Dir = %q", paths.Dir)
 	}
 	if !strings.HasPrefix(paths.StateJSON, paths.Dir+"/serve-") || !strings.HasSuffix(paths.StateJSON, ".json") {

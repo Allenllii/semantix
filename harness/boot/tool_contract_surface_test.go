@@ -21,7 +21,7 @@ func TestBootToolContractMatchesProviderVisibleSurface(t *testing.T) {
 			isolateConfigHome(t)
 			dir := robustTempDir(t)
 			t.Chdir(dir)
-			writeFile(t, dir, "reasonix.toml", `
+			writeFile(t, dir, "semantix-agent.toml", `
 default_model = "test-model"
 
 [agent]

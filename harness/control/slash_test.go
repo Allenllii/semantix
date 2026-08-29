@@ -407,7 +407,7 @@ func TestManagementMemoryRevisionRestore(t *testing.T) {
 }
 
 func TestManagementMemoryArchiveRecoveryAcceptsQuotedPathWithSpaces(t *testing.T) {
-	userDir := filepath.Join(t.TempDir(), "reasonix home with spaces")
+	userDir := filepath.Join(t.TempDir(), "semantix home with spaces")
 	cwd := filepath.Join(t.TempDir(), "project")
 	store := memory.StoreFor(userDir, cwd)
 	saved, err := store.SaveWithOptions(memory.Memory{
@@ -495,7 +495,7 @@ func TestManagementMigrateEmitsProgress(t *testing.T) {
 
 func TestManagementMigrateFromImportsExplicitSessions(t *testing.T) {
 	home := isolateControlConfigHome(t)
-	legacySessions := filepath.Join(home, "Old Reasonix", "sessions")
+	legacySessions := filepath.Join(home, "Old Semantix", "sessions")
 	if err := os.MkdirAll(legacySessions, 0o755); err != nil {
 		t.Fatal(err)
 	}

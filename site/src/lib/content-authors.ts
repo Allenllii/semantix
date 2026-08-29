@@ -22,7 +22,7 @@ export const contentAuthors: readonly ContentAuthor[] = [
     description: "Repository maintainer working on the Semantix kernel, release packaging, verification, and security boundaries.",
     focus: "Kernel implementation, release decisions, verification gates, and repository maintenance.",
     verifiedContributions: [
-      { title: "Full-product release bundle", summary: "Added cross-platform packaging, installation assets, checksums, and release documentation for the Reasonix and Semantix bundle.", url: "https://github.com/Gnosil/semantix/commit/c65214cf63660c5fae428f910da280aee6b54233", date: "2026-08-12" },
+      { title: "Full-product release bundle", summary: "Added cross-platform packaging, installation assets, checksums, and release documentation for the Semantix and Semantix bundle.", url: "https://github.com/Gnosil/semantix/commit/c65214cf63660c5fae428f910da280aee6b54233", date: "2026-08-12" },
       { title: "Usage and cost reporting", summary: "Implemented the usage recorder, pricing defaults, persisted evolution signal, CLI reporting, and package tests.", url: "https://github.com/Gnosil/semantix/commit/7882571935fcae5e59df58a10ba6d46315cc278f", date: "2026-08-11" },
       { title: "Judge input sanitization", summary: "Connected prompt sanitization to the judge path and added regression coverage for terminal escape sequences.", url: "https://github.com/Gnosil/semantix/commit/f0a01a107c9309a493a34724d1a06a4dd91da728", date: "2026-08-11" },
     ],

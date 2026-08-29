@@ -1,8 +1,8 @@
-# Issue #157 验收报告 — U33 (H4a): Reasonix TUI 每 turn 复用面板（命中切片数 + 节省成本 + 来源会话）
+# Issue #157 验收报告 — U33 (H4a): Semantix TUI 每 turn 复用面板（命中切片数 + 节省成本 + 来源会话）
 
-> 状态：验收通过（2026-08-14）。对应 Issue：`#157 U33 (H4a): Reasonix TUI 每 turn 复用面板（命中切片数 + 节省成本 + 来源会话）`。
+> 状态：验收通过（2026-08-14）。对应 Issue：`#157 U33 (H4a): Semantix TUI 每 turn 复用面板（命中切片数 + 节省成本 + 来源会话）`。
 > 架构真源：`docs/reports/harness-refactor-blueprint.md`（§77 复用可视化 + §5 H4 阶段）。
-> 目标仓库：`Gnosil/DeepSeek-Reasonix`（fork 侧实现，模块 `reasonix`）；数据源依赖 **U30（#154，PR #160 已合入 main）** 提供 `source_session` —— kernel 侧本次零代码改动。
+> 目标仓库：`Gnosil/DeepSeek-Reasonix`（fork 侧实现，模块 `semantix-agent`）；数据源依赖 **U30（#154，PR #160 已合入 main）** 提供 `source_session` —— kernel 侧本次零代码改动。
 
 ## 1. 交付面
 

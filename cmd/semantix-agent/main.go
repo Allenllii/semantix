@@ -18,9 +18,10 @@ import (
 	_ "semantix/harness/tool/builtin"
 )
 
-// Build identity injected via -ldflags (see Makefile). version remains the
-// single-line contract for `semantix-agent --version`; gitCommit/buildTimeUTC feed
-// `semantix-agent version --verbose` / `--json` without embedding config paths.
+// Build identity injected via -ldflags (see scripts/release/build-full.sh).
+// version remains the single-line contract for `semantix-agent --version`;
+// gitCommit/buildTimeUTC feed `semantix-agent version --verbose` / `--json`
+// without embedding config paths.
 var (
 	version      = "dev"
 	gitCommit    = ""
@@ -70,7 +71,7 @@ func shouldPlayIntro(args []string, stdout io.Writer) bool {
 func runWithCrashCapture(args []string, buildVersion string) (exitCode int) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			_ = crashreport.CapturePanic(config.ReasonixHomeDir(), buildVersion, recovered, debug.Stack())
+			_ = crashreport.CapturePanic(config.SemantixHomeDir(), buildVersion, recovered, debug.Stack())
 			panic(recovered)
 		}
 	}()

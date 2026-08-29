@@ -59,7 +59,7 @@ func TestEffectConstraintSurvivesCompactionThroughRealBuild(t *testing.T) {
 	})
 	// 32000 stays under the 64K threshold where the recent tail takes its 32K
 	// floor, which would otherwise swallow the whole transcript and never fold.
-	writeFile(t, dir, "reasonix.toml", `
+	writeFile(t, dir, "semantix-agent.toml", `
 default_model = "test-model"
 
 [agent]

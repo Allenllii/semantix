@@ -1,0 +1,60 @@
+name: Release
+
+# Tag a version (vX.Y.Z) to cut a release: run the proven full-bundle builder
+# (scripts/release/build-full.sh — cross-builds every platform, stamps
+# version/commit/build-time, and self-verifies the asset set before it can
+# publish), then upload every asset to GitHub Releases. Both downstream
+# consumers get exactly the names they hardcode: `semantix-agent upgrade`
+# reads semantix-agent-<plat>.tar.gz + SHA256SUMS, and the one-line installer
+# (agent-skill/scripts/install.sh) reads semantix-agent-<ver>-<plat>.tar.gz +
+# SHA256SUMS.txt.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # create the release and upload assets
+
+jobs:
+  release:
+    name: Build & publish bundles
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history for release notes + commit stamping
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build platform bundles
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # build-full.sh validates the version, cross-builds darwin/linux ×
+          # amd64/arm64, and exits non-zero if any expected asset or checksum
+          # entry is missing — so a broken release fails here, not on a user's
+          # `upgrade`.
+          bash scripts/release/build-full.sh --version "$VERSION"
+          echo "-- dist assets:"; ls -1 dist
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # dist/ holds only publishable files (build-full.sh removes the
+          # per-platform staging dirs): full bundles, flat updater bundles, raw
+          # kernel binaries, and both checksum files.
+          gh release create "$VERSION" \
+            --repo "${{ github.repository }}" \
+            --title "$VERSION" \
+            --generate-notes \
+            dist/*
