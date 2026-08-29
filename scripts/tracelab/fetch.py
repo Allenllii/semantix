@@ -21,12 +21,10 @@ TRACELAB_REPO = "uw-syfi/TraceLab"
 # Published release asset names (from LICENSE-DATASET.md / repo docs).
 ASSET = "syfi_coding_trace.jsonl.gz"
 
-# SHA-256 of ASSET. PLACEHOLDER: fill from the upstream release once the
-# download is verified on a reachable network (see README "限制").
-# Mismatch OR placeholder aborts (unless --allow-unverified) rather than
-# trusting a truncated/corrupt or unverified file.
+# SHA-256 of ASSET. Verified 2026-08-29 from an actual download (see
+# docs/reports/ for the measurement run); replace if upstream re-releases.
 EXPECTED_SHA256 = {
-    ASSET: "PLACEHOLDER-SHA256",
+    ASSET: "11ce51ec0a25e3d1d95b025bca2f7d1647e47571eb7cc968acd5fc64d4b4fb65",
 }
 
 

@@ -35,6 +35,8 @@ func runGC(args []string, stdout, stderr io.Writer, deps dependencies) error {
 	noRescore := flags.Bool("no-rescore", false, "skip recomputing value weights")
 	noArchive := flags.Bool("no-archive", false, "hard-delete evictions instead of archiving")
 	dryRun := flags.Bool("dry-run", false, "report the plan without persisting")
+	consolidateCtx := flags.Bool("consolidate-context", false, "merge near-duplicate Context slices into union cards (runs with GC; library-maintenance-time only)")
+	consolidateThreshold := flags.Float64("consolidate-threshold", 0.6, "token-set Jaccard above which Context slices are near-duplicates")
 	dbOverride := flags.String("db", cfgString(deps.resolved, "store.db", ""), "database path override")
 	jsonOutput := flags.Bool("json", false, "write JSON envelope output")
 	if err := flags.Parse(args); err != nil {
@@ -89,6 +91,22 @@ func runGC(args []string, stdout, stderr io.Writer, deps dependencies) error {
 		}
 		return err
 	}
+	// Context consolidation (W4): fold near-duplicate Context slices into
+	// union cards. Runs inside the GC maintenance window — never mid-flight
+	// (injection byte-stability); DryRun mirrors the GC plan semantics.
+	var cres slice.ConsolidateResult
+	if *consolidateCtx {
+		cres, err = slice.ConsolidateContext(store, slice.ConsolidateOptions{
+			Threshold: *consolidateThreshold,
+			DryRun:    *dryRun,
+		})
+		if err != nil {
+			if *jsonOutput {
+				return failJSON(stdout, "gc", err)
+			}
+			return err
+		}
+	}
 	if *jsonOutput {
 		expired, lowScore, overCap := res.Expired, res.LowScore, res.OverCap
 		if expired == nil {
@@ -112,6 +130,12 @@ func runGC(args []string, stdout, stderr io.Writer, deps dependencies) error {
 			"archived":        res.Archived,
 			"weights_updated": res.RescoredWeights,
 		}
+		if *consolidateCtx {
+			data["context_groups"] = cres.Groups
+			data["context_merged"] = cres.Merged
+			data["context_created"] = cres.Created
+			data["context_removed"] = cres.Removed
+		}
 		return writeEnvelope(stdout, "gc", data)
 	}
 	if *dryRun {
@@ -120,6 +144,12 @@ func runGC(args []string, stdout, stderr io.Writer, deps dependencies) error {
 	} else {
 		fmt.Fprintf(stdout, "gc: checked=%d removed=%d capacity=%d archived=%d weights_updated=%d\n",
 			res.Checked, res.Removed, res.Capacity, res.Archived, res.RescoredWeights)
+	}
+	if *consolidateCtx {
+		fmt.Fprintf(stdout, "gc: context groups=%d merged=%d\n", cres.Groups, cres.Merged)
+		for _, id := range cres.Created {
+			fmt.Fprintf(stdout, "  merged -> %s\n", id)
+		}
 	}
 	if len(res.EvictedByType) > 0 {
 		keys := make([]string, 0, len(res.EvictedByType))

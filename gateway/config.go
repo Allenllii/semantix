@@ -136,6 +136,18 @@ type RetrievalConfig struct {
 	// fuse.DefaultBM25Weight (0.5), explicit 0 = pure vector route. Only
 	// read in weighted mode.
 	BM25Weight *float64 `toml:"bm25_weight"`
+	// EmbedBackend selects the vector-route embedding backend: "" / "hash"
+	// (deterministic, offline) or "model" (remote OpenAI-compatible
+	// embeddings API + HNSW ANN index; key from SEMANTIX_EMBED_API_KEY,
+	// fail-open to hash). W2 of the efficiency research plan.
+	EmbedBackend string `toml:"embed_backend"`
+	EmbedBaseURL string `toml:"embed_base_url"`
+	EmbedModel   string `toml:"embed_model"`
+	// GreyMode: "drop" (default, fail-closed) or "audit" (grey slices enter
+	// the injection block under a separate unverified marker, so grey-zone
+	// hit-rate loss is measurable and recoverable instead of silent — GW4
+	// measured 8 of 10 repeated tasks landing in grey). W3.
+	GreyMode string `toml:"grey_mode"`
 	// Grey-zone thresholds (Issue #259 阶段 1). An explicit tau_*/abs_*
 	// key overrides zone.Default(); unspecified keys fall back to the
 	// tuned defaults. Validation: 0 < tau <= 1, abs >= 0, tau_high >
@@ -189,6 +201,11 @@ type CacheConfig struct {
 	JudgeBaseURL  string           `toml:"judge_base_url"`
 	JudgeModel    string           `toml:"judge_model"`
 	JudgeProtocol string           `toml:"judge_protocol"`
+	// JudgeTimeoutMs bounds one judge HTTP call. The kernel default is 30s,
+	// which on the synchronous L3 path directly delays TTFT; a shorter
+	// window (recommended: 2000-5000) fails closed fast, and the verdict
+	// cache warms the answer in the background for the next occurrence.
+	JudgeTimeoutMs int `toml:"judge_timeout_ms"`
 	// LexicalFloor is the L3 lexical-support floor (Issue #260): a zone-Hit
 	// with less term overlap is downgraded to Grey (judge-gated). nil keeps
 	// the kernel default (0.05); explicit 0 disables the gate.

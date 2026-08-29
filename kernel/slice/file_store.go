@@ -366,6 +366,10 @@ func (s *fileStore) flushLocked() error {
 
 // Put inserts s, replacing any existing slice with the same ID.
 func (s *fileStore) Put(sl *Slice) error {
+	// Scope admission matrix (Issue #268): low-abstraction T/R slices can
+	// never persist in User scope, regardless of the writer. Applied before
+	// journaling so the on-disk state already satisfies the invariant.
+	EnforceAdmission(sl)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e := entryFromSlice(sl)

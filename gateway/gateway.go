@@ -127,7 +127,11 @@ func New(cfg *Config) (*Gateway, error) {
 		log.Printf("gateway: store maintenance: rescored=%d evicted=%d archived=%d capacity=%d",
 			gcRes.RescoredWeights, gcRes.Removed, gcRes.Archived, gcRes.Capacity)
 	}
-	idx := newRetriever(cfg.Retrieval.Retriever, cfg.Retrieval.VectorDim, cfg.fusionConfig())
+	idx := newRetriever(cfg.Retrieval.Retriever, cfg.Retrieval.VectorDim, cfg.fusionConfig(), EmbedSettings{
+		Backend: cfg.Retrieval.EmbedBackend,
+		BaseURL: cfg.Retrieval.EmbedBaseURL,
+		Model:   cfg.Retrieval.EmbedModel,
+	})
 	if err := loadIndex(store, idx); err != nil {
 		_ = closeStore(store)
 		return nil, fmt.Errorf("gateway: rebuild index: %w", err)
@@ -147,12 +151,19 @@ func New(cfg *Config) (*Gateway, error) {
 			BaseURL:  cfg.Cache.JudgeBaseURL,
 			Model:    cfg.Cache.JudgeModel,
 			APIKey:   cfg.Cache.JudgeAPIKey,
+			Timeout:  time.Duration(cfg.Cache.JudgeTimeoutMs) * time.Millisecond,
 		})
 		if err != nil {
 			_ = closeStore(store)
 			return nil, fmt.Errorf("gateway: judge: %w", err)
 		}
-		llmJudge = j
+		// Verdict cache + background warm (W3): the judge sits on the
+		// synchronous L3 path, so every grey candidate would otherwise pay
+		// a full model round-trip per request. The cache serves repeat
+		// verdicts instantly; a timed-out call is re-run in the background
+		// so the NEXT occurrence of the same candidate is instant instead
+		// of the request failing closed every time.
+		llmJudge = &judge.CachedJudge{Inner: j, Warm: true}
 	}
 
 	scope, err := parseScope(cfg.Store.Scope)
@@ -194,12 +205,18 @@ func New(cfg *Config) (*Gateway, error) {
 		decider.LexicalFloor = cfg.Cache.LexicalFloor
 	}
 	g := &Gateway{
-		cfg:      cfg,
-		store:    store,
-		index:    idx,
-		decider:  decider,
+		cfg:     cfg,
+		store:   store,
+		index:   idx,
+		decider: decider,
 		injector: &inject.Injector{Index: idx, Store: store, Scope: scope, K: topK, Budget: budget, Zones: &z,
-			MinOrigin: cfg.minInjectOrigin()},
+			MinOrigin: cfg.minInjectOrigin(),
+			// W3 grey audit mode: grey slices enter the block under an
+			// unverified marker instead of being silently dropped (GW4:
+			// 8/10 repeated tasks landed in grey under the default drop
+			// policy).
+			AllowGrey: cfg.Retrieval.GreyMode == "audit",
+		},
 		usageLog: rec,
 		client:   &http.Client{Timeout: 120 * time.Second},
 		disabled: disableEnv(),
@@ -367,6 +384,11 @@ func loadIndex(store slice.Store, idx slice.Index) error {
 	items, err := store.ListAll()
 	if err != nil {
 		return err
+	}
+	// Batch path first: under the model embed backend one embeddings call
+	// per slice would dominate gateway startup (see BatchInserter).
+	if bi, ok := idx.(BatchInserter); ok {
+		return bi.InsertBatch(items)
 	}
 	for _, s := range items {
 		if err := idx.Insert(s); err != nil {

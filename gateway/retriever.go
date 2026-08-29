@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"log"
+	"os"
 	"strings"
 	"sync"
 
@@ -26,44 +28,163 @@ import (
 
 const defaultVectorDim = 256
 
+// EmbedSettings selects the vector-route embedding backend (W2 of the
+// efficiency research plan). Backend "" / "hash" keeps the deterministic
+// offline HashEmbedder; "model" routes through a remote OpenAI-compatible
+// embeddings API (kernel/embed.ModelEmbedder, key from
+// SEMANTIX_EMBED_API_KEY, fail-open degrading to hash) and implies the
+// HNSW ANN index replacing the O(n) brute-force scan — the bottleneck once
+// the library reaches tens of thousands of slices.
+type EmbedSettings struct {
+	Backend string
+	BaseURL string
+	Model   string
+}
+
+// embedAPIKey reads the embeddings API key from the environment only —
+// never from config files or code (security constraint: no usable
+// credential literals in config).
+func (s EmbedSettings) embedAPIKey() string {
+	return strings.TrimSpace(os.Getenv("SEMANTIX_EMBED_API_KEY"))
+}
+
 // newRetriever builds the retrieval index selected by [retrieval] retriever.
 // Unknown kinds fall back to bm25 (config.validate rejects them before New,
 // so this default is defensive only). dim seeds the HashEmbedder (<=0 → 256).
 // fusion configures the hybrid fusion strategy (Issue #274); it is ignored
-// by the single-route indexes.
-func newRetriever(kind string, dim int, fusion fuse.Config) slice.Index {
+// by the single-route indexes. es selects the embedding backend; the zero
+// value keeps the deterministic hash route with the brute-force vector
+// index (its vectors are recomputable and libraries at ANN scale are rare
+// there).
+func newRetriever(kind string, dim int, fusion fuse.Config, es EmbedSettings) slice.Index {
 	if dim <= 0 {
 		dim = defaultVectorDim
 	}
+	emb, ann := buildEmbedder(es, dim)
 	switch kind {
 	case "vector":
-		return newVectorIndex(dim)
+		return newVectorIndex(dim, emb, ann)
 	case "hybrid":
-		return &hybridIndex{bm: bm25.New(), vec: newVectorIndex(dim), fusion: fusion}
+		return &hybridIndex{bm: bm25.New(), vec: newVectorIndex(dim, emb, ann), fusion: fusion}
 	default:
 		return bm25.New()
 	}
 }
 
-// vectorIndex adapts embed.VectorIndex to slice.Index: slices are embedded
+// NewFusedIndex exposes the retriever construction to external consumers
+// (the CLI probe / offline calibration harnesses) so they measure retrieval
+// exactly as the gateway builds it — one code path, no drift.
+func NewFusedIndex(kind string, dim int, fusion fuse.Config, es EmbedSettings) slice.Index {
+	return newRetriever(kind, dim, fusion, es)
+}
+
+// buildEmbedder resolves the embedding backend and whether to use the ANN
+// index. "model" without a usable config degrades to hash (fail-open).
+func buildEmbedder(es EmbedSettings, dim int) (embed.Embedder, bool) {
+	if es.Backend != "model" {
+		return embed.HashEmbedder{Dim: dim}, false
+	}
+	key := es.embedAPIKey()
+	if key == "" || es.BaseURL == "" || es.Model == "" {
+		log.Printf("gateway: [retrieval] embed_backend=model needs embed_base_url, embed_model and SEMANTIX_EMBED_API_KEY; degrading to hash embedder")
+		return embed.HashEmbedder{Dim: dim}, false
+	}
+	me, err := embed.NewModelEmbedder(embed.ModelEmbedderConfig{
+		BaseURL: es.BaseURL,
+		Model:   es.Model,
+		APIKey:  key,
+		// When [retrieval] vector_dim is set it doubles as the expected
+		// embedding dimension: a mismatch is the mixed-dimension library
+		// failure mode (Issue #63), caught here instead of poisoning the
+		// index. 0 keeps the check disabled.
+		Dim:        dim,
+		OnFallback: func(err error) { log.Printf("gateway: embed fallback: %v", err) },
+	})
+	if err != nil {
+		log.Printf("gateway: model embedder unavailable (%v); degrading to hash embedder", err)
+		return embed.HashEmbedder{Dim: dim}, false
+	}
+	return me, true
+}
+
+// BatchInserter is implemented by indexes that can amortize embedding cost
+// across inserts: the startup index rebuild (loadIndex) embeds thousands of
+// slices, and one HTTP round-trip per slice would dominate gateway startup
+// under the model backend. Consumers type-assert and fall back to Insert.
+type BatchInserter interface {
+	InsertBatch(slices []*slice.Slice) error
+}
+
+// embedBatchSize bounds one embeddings API request (tokens per request stay
+// modest; 64 whole slices keeps payloads well under typical 8k-token limits).
+const embedBatchSize = 64
+
+// vecIndex is the contract shared by the brute-force VectorIndex and the
+// HNSW ANN index.
+type vecIndex interface {
+	Insert(id string, vec []float32)
+	Remove(id string)
+	Len() int
+	Search(query []float32, k int) []embed.Hit
+}
+
+// vectorIndex adapts an embed vector index to slice.Index: slices are embedded
 // on Insert, the query is embedded on Search, and hits are filtered by scope
 // then mapped back to slice.Hit. Cosine similarity is the score.
 type vectorIndex struct {
-	emb  embed.HashEmbedder
-	vec  *embed.VectorIndex
+	emb  embed.Embedder
+	vec  vecIndex
 	mu   sync.RWMutex
 	byID map[string]*slice.Slice
 }
 
-func newVectorIndex(dim int) *vectorIndex {
+func newVectorIndex(dim int, emb embed.Embedder, ann bool) *vectorIndex {
 	if dim <= 0 {
 		dim = defaultVectorDim
 	}
+	if emb == nil {
+		emb = embed.HashEmbedder{Dim: dim}
+	}
+	var vec vecIndex
+	if ann {
+		vec = embed.NewHNSW(embed.DefaultHNSWConfig())
+	} else {
+		vec = embed.NewVectorIndex()
+	}
 	return &vectorIndex{
-		emb:  embed.HashEmbedder{Dim: dim},
-		vec:  embed.NewVectorIndex(),
+		emb:  emb,
+		vec:  vec,
 		byID: map[string]*slice.Slice{},
 	}
+}
+
+// InsertBatch embeds in chunks — one API call per chunk under the model
+// backend, a no-op win under hash.
+func (v *vectorIndex) InsertBatch(slices []*slice.Slice) error {
+	for start := 0; start < len(slices); start += embedBatchSize {
+		end := start + embedBatchSize
+		if end > len(slices) {
+			end = len(slices)
+		}
+		chunk := slices[start:end]
+		texts := make([]string, len(chunk))
+		for i, s := range chunk {
+			texts[i] = string(s.Content)
+		}
+		vecs, err := v.emb.Embed(texts)
+		if err != nil {
+			return err
+		}
+		v.mu.Lock()
+		for i, s := range chunk {
+			if i < len(vecs) && vecs[i] != nil {
+				v.vec.Insert(s.ID, vecs[i])
+			}
+			v.byID[s.ID] = s
+		}
+		v.mu.Unlock()
+	}
+	return nil
 }
 
 func (v *vectorIndex) Insert(s *slice.Slice) error {
@@ -128,6 +249,15 @@ func (h *hybridIndex) Insert(s *slice.Slice) error {
 		return err
 	}
 	return h.vec.Insert(s)
+}
+
+func (h *hybridIndex) InsertBatch(slices []*slice.Slice) error {
+	for _, s := range slices {
+		if err := h.bm.Insert(s); err != nil {
+			return err
+		}
+	}
+	return h.vec.InsertBatch(slices)
 }
 
 func (h *hybridIndex) Remove(id string) error {

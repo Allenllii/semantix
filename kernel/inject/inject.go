@@ -90,6 +90,16 @@ type Injector struct {
 	// everything — embedding callers opt in explicitly; production paths
 	// configure session-auto so import/legacy slices never inject.
 	MinOrigin slice.Origin
+	// AllowGrey switches the grey policy from drop (default, fail-closed)
+	// to audit: grey-zone slices enter the block under a distinct
+	// "(grey, unverified)" header — clearly separated from verified hits so
+	// the model treats them as hints, not ground truth. Rationale: GW4
+	// measured 8 of 10 repeated tasks landing in grey, so a hard drop
+	// silently forfeits most of the reuse value; the audit mode keeps the
+	// grey signal measurable (Injection.GreyIncluded) and injectable while
+	// preserving the verified/grey boundary inside the block. Grey slices
+	// share the exact-byte budget bound — audit mode is not a bypass.
+	AllowGrey bool
 }
 
 // Injection is the assembled, deterministic reuse block.
@@ -98,6 +108,10 @@ type Injection struct {
 	Text    string         // marker-wrapped block to place in the compose step
 	Bytes   int
 	Dropped int // slices dropped by zone filter or budget (whole-slice truncation)
+	// GreyIncluded counts grey-zone slices admitted under AllowGrey (audit
+	// mode). Zero in the default drop mode; a persistent non-zero value is
+	// the signal to recalibrate zone thresholds (W3 of the efficiency plan).
+	GreyIncluded int
 }
 
 const (
@@ -137,6 +151,7 @@ func (in *Injector) Build(query string) (*Injection, error) {
 	type candidate struct {
 		sl      *slice.Slice
 		content string // sanitized + marker-escaped, == the bytes written
+		grey    bool   // audit-mode admission under the unverified header
 	}
 	var cands []candidate
 	size := len(blockOpen)
@@ -144,12 +159,22 @@ func (in *Injector) Build(query string) (*Injection, error) {
 		if in.MinScore > 0 && h.Score < in.MinScore {
 			continue
 		}
+		isGrey := false
 		if in.Zones != nil {
 			z := *in.Zones
 			if h.Slice != nil {
 				z = z.ForType(h.Slice.Type.String()) // Issue #259 阶段 2
 			}
-			if z.Classify(h.Score, top1) != zone.Hit {
+			switch z.Classify(h.Score, top1) {
+			case zone.Hit:
+				// verified: admitted below
+			case zone.Grey:
+				if !in.AllowGrey {
+					dropped++
+					continue
+				}
+				isGrey = true // admitted below under the unverified header
+			default: // miss
 				dropped++
 				continue
 			}
@@ -176,32 +201,50 @@ func (in *Injector) Build(query string) (*Injection, error) {
 		}
 		content = escapeMarker(content)
 		// Budget judged on the EXACT bytes that will be written (escaped
-		// content, canonical header) — never on a pre-escape length.
-		item := len(fmt.Sprintf("--- slice %s ---\n%s\n", h.Slice.ID, content))
+		// content, canonical header — including the grey audit variant) —
+		// never on a pre-escape length.
+		header := "--- slice %s ---\n%s\n"
+		if isGrey {
+			header = "--- slice %s (grey, unverified) ---\n%s\n"
+		}
+		item := len(fmt.Sprintf(header, h.Slice.ID, content))
 		if size+item+len(blockClose)+64 > budget && len(cands) > 0 {
 			dropped++
 			continue
 		}
 		size += item
-		cands = append(cands, candidate{sl: h.Slice, content: content})
+		cands = append(cands, candidate{sl: h.Slice, content: content, grey: isGrey})
 	}
 
-	// Canonical order: ID-sorted for byte-stable output (never score order).
-	sort.Slice(cands, func(i, j int) bool { return cands[i].sl.ID < cands[j].sl.ID })
+	// Canonical order: verified candidates first, then audit-mode grey,
+	// each ID-sorted for byte-stable output (never score order).
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].grey != cands[j].grey {
+			return !cands[i].grey
+		}
+		return cands[i].sl.ID < cands[j].sl.ID
+	})
 
 	var buf bytes.Buffer
 	buf.Grow(size + len(blockClose))
 	buf.WriteString(blockOpen)
+	greyIncluded := 0
 	for _, c := range cands {
-		fmt.Fprintf(&buf, "--- slice %s ---\n%s\n", c.sl.ID, c.content)
+		header := "--- slice %s ---\n%s\n"
+		if c.grey {
+			header = "--- slice %s (grey, unverified) ---\n%s\n"
+			greyIncluded++
+		}
+		fmt.Fprintf(&buf, header, c.sl.ID, c.content)
 		kept = append(kept, c.sl)
 	}
 	buf.WriteString(blockClose)
 
 	return &Injection{
-		Slices:  kept,
-		Text:    buf.String(),
-		Bytes:   buf.Len(),
-		Dropped: dropped,
+		Slices:       kept,
+		Text:         buf.String(),
+		Bytes:        buf.Len(),
+		Dropped:      dropped,
+		GreyIncluded: greyIncluded,
 	}, nil
 }
