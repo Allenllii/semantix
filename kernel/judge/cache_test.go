@@ -1,0 +1,113 @@
+package judge
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+type recordingJudge struct {
+	mu     sync.Mutex
+	calls  int
+	cond   func() (bool, error) // returns (confirm, err) per call
+	callsW sync.WaitGroup
+}
+
+func (r *recordingJudge) Confirm(ctx context.Context, c Candidate) (bool, error) {
+	r.mu.Lock()
+	r.calls++
+	r.mu.Unlock()
+	confirm, err := r.cond()
+	return confirm, err
+}
+
+func (r *recordingJudge) callCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
+}
+
+func TestVerdictCacheHitSkipsInner(t *testing.T) {
+	inner := &recordingJudge{cond: func() (bool, error) { return true, nil }}
+	cj := &CachedJudge{Inner: inner, Cache: NewVerdictCache()}
+	cand := Candidate{Query: "where is auth middleware", SliceID: "s1"}
+	for i := 0; i < 5; i++ {
+		ok, err := cj.Confirm(context.Background(), cand)
+		if err != nil || !ok {
+			t.Fatalf("call %d: ok=%v err=%v", i, ok, err)
+		}
+	}
+	if got := inner.callCount(); got != 1 {
+		t.Fatalf("inner called %d times, want 1 (cache must absorb repeats)", got)
+	}
+}
+
+// TestCacheDoesNotMemoizeErrors: a judge error must stay uncached — a
+// transient outage must not permanently reject a reusable candidate.
+func TestCacheDoesNotMemoizeErrors(t *testing.T) {
+	var fail atomic.Bool
+	fail.Store(true)
+	inner := &recordingJudge{cond: func() (bool, error) {
+		if fail.Load() {
+			return false, errors.New("timeout")
+		}
+		return true, nil
+	}}
+	cj := &CachedJudge{Inner: inner, Cache: NewVerdictCache()}
+	cand := Candidate{Query: "q", SliceID: "s"}
+	for i := 0; i < 3; i++ {
+		if _, err := cj.Confirm(context.Background(), cand); err == nil {
+			t.Fatal("expected error while inner failing")
+		}
+	}
+	fail.Store(false)
+	ok, err := cj.Confirm(context.Background(), cand)
+	if err != nil || !ok {
+		t.Fatalf("after recovery: ok=%v err=%v (error must not be cached)", ok, err)
+	}
+}
+
+// TestWarmPopulatesCacheInBackground: on error with Warm, the background
+// retry must land a verdict so the next Confirm is instant.
+func TestWarmPopulatesCacheInBackground(t *testing.T) {
+	var fail atomic.Bool
+	fail.Store(true)
+	inner := &recordingJudge{cond: func() (bool, error) {
+		if fail.Load() {
+			return false, errors.New("timeout")
+		}
+		return true, nil
+	}}
+	cj := &CachedJudge{Inner: inner, Cache: NewVerdictCache(), Warm: true}
+	cand := Candidate{Query: "q", SliceID: "s"}
+	if _, err := cj.Confirm(context.Background(), cand); err == nil {
+		t.Fatal("expected error while inner failing")
+	}
+	fail.Store(false)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if confirm, ok := cj.Cache.Get(VerdictKey("q", "s")); ok {
+			if !confirm {
+				t.Fatal("warmed verdict should be confirm")
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("background warm did not populate the cache in time")
+}
+
+func TestVerdictKeyStable(t *testing.T) {
+	if VerdictKey("a", "s") != VerdictKey("a", "s") {
+		t.Fatal("key must be deterministic")
+	}
+	if VerdictKey("a", "s") == VerdictKey("a", "s2") {
+		t.Fatal("different slices must map to different keys")
+	}
+	if VerdictKey("a", "s") == VerdictKey("b", "s") {
+		t.Fatal("different queries must map to different keys")
+	}
+}

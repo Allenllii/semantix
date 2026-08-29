@@ -56,8 +56,14 @@ func TestNewWiresJudgeFromConfig(t *testing.T) {
 	if d.Judge == nil {
 		t.Fatal("Judge must be wired when judge_api_key is set")
 	}
-	if _, ok := d.Judge.(*judge.LLMJudge); !ok {
-		t.Fatalf("Judge type = %T, want *judge.LLMJudge", d.Judge)
+	// The gateway wraps the LLM judge in a verdict cache + background warm
+	// (W3), so the decider sees the decorator.
+	cj, ok := d.Judge.(*judge.CachedJudge)
+	if !ok {
+		t.Fatalf("Judge type = %T, want *judge.CachedJudge", d.Judge)
+	}
+	if _, ok := cj.Inner.(*judge.LLMJudge); !ok {
+		t.Fatalf("inner Judge type = %T, want *judge.LLMJudge", cj.Inner)
 	}
 }
 

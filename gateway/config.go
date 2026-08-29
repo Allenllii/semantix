@@ -101,6 +101,18 @@ type RetrievalConfig struct {
 	TopK      int    `toml:"top_k"`
 	Budget    int    `toml:"budget"`
 	VectorDim int    `toml:"vector_dim"` // HashEmbedder dimension (<=0 -> 256)
+	// EmbedBackend selects the vector-route embedding backend: "" / "hash"
+	// (deterministic, offline) or "model" (remote OpenAI-compatible
+	// embeddings API + HNSW ANN index; key from SEMANTIX_EMBED_API_KEY,
+	// fail-soft to hash).
+	EmbedBackend string `toml:"embed_backend"`
+	EmbedBaseURL string `toml:"embed_base_url"`
+	EmbedModel   string `toml:"embed_model"`
+	// GreyMode: "drop" (default, fail-closed) or "audit" (grey slices enter
+	// the injection block under a separate unverified marker, so grey-zone
+	// hit-rate loss is measurable and recoverable instead of silent — GW4
+	// measured 8 of 10 repeated tasks landing in grey).
+	GreyMode string `toml:"grey_mode"`
 }
 
 // CacheConfig holds L3 policy. TTL is resolved by the gateway and passed to
@@ -116,6 +128,11 @@ type CacheConfig struct {
 	JudgeBaseURL  string           `toml:"judge_base_url"`
 	JudgeModel    string           `toml:"judge_model"`
 	JudgeProtocol string           `toml:"judge_protocol"`
+	// JudgeTimeoutMs bounds one judge HTTP call. The kernel default is 30s,
+	// which on the synchronous L3 path directly delays TTFT; a shorter
+	// window (recommended: 2000-5000) fails closed fast, and the verdict
+	// cache warms the answer in the background for the next occurrence.
+	JudgeTimeoutMs int `toml:"judge_timeout_ms"`
 	// LexicalFloor is the L3 lexical-support floor (Issue #260): a zone-Hit
 	// with less term overlap is downgraded to Grey (judge-gated). nil keeps
 	// the kernel default (0.05); explicit 0 disables the gate.
