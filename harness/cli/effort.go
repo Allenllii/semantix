@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -41,7 +42,7 @@ func (m *chatTUI) runEffortCommand(input string) tea.Cmd {
 	}
 	effort, err := config.NormalizeEffort(entry, args[1])
 	if err != nil {
-		m.notice(err.Error())
+		m.notice(localizeEffortError(err))
 		return nil
 	}
 	if m.ctrl == nil {
@@ -109,6 +110,22 @@ func (m *chatTUI) runEffortCommand(input string) tea.Cmd {
 	m.effortLevel = display
 	m.notice(fmt.Sprintf(i18n.M.EffortSwitchedFmt, entry.Name, display))
 	return nil
+}
+
+// localizeEffortError renders a NormalizeEffort error through the active i18n
+// catalogue. The config layer carries the legal level vocabulary as typed data
+// (UnsupportedEffortError / EffortNotConfigurableError) instead of a
+// pre-rendered English string, so the CLI can honor the session locale (#335).
+func localizeEffortError(err error) string {
+	var usageErr *config.UnsupportedEffortError
+	if errors.As(err, &usageErr) {
+		return fmt.Sprintf(i18n.M.EffortUsageFmt, strings.Join(usageErr.Levels, "|"))
+	}
+	var notConfigurableErr *config.EffortNotConfigurableError
+	if errors.As(err, &notConfigurableErr) {
+		return fmt.Sprintf(i18n.M.EffortNotConfigurableFmt, notConfigurableErr.Provider)
+	}
+	return fmt.Sprintf(i18n.M.EffortErrorFmt, err.Error())
 }
 
 func (m *chatTUI) currentConfigProvider() (*config.ProviderEntry, string, error) {
