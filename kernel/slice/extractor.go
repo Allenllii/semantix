@@ -44,11 +44,29 @@ const (
 	maxContextTop = 5    // entries retained per Context summary section
 )
 
-type extractor struct{}
+// ExtractOptions tunes extraction behavior. Zero values preserve the
+// historical (turn-level) behavior.
+type ExtractOptions struct {
+	// TStepSplit splits a turn's tool sequence into subtask-level
+	// ToolPattern slices at verification boundaries (a run of a test
+	// command ends one step and starts the next). Turn-level T-slices mix
+	// several tasks into one long sequence, which dilutes retrieval: a
+	// "locate → edit" query cannot match a 12-call sequence containing
+	// three interleaved cycles. Subtask-level slices are shorter, more
+	// specific, and match the granularity the #58 gate called for.
+	TStepSplit bool
+}
+
+type extractor struct {
+	opts ExtractOptions
+}
 
 // NewExtractor returns the default extractor: turn-boundary segmentation,
 // tool-sequence (T-Slice) extraction and final-result capture.
 func NewExtractor() Extractor { return extractor{} }
+
+// NewExtractorWithOptions returns an extractor with non-default options.
+func NewExtractorWithOptions(opts ExtractOptions) Extractor { return extractor{opts: opts} }
 
 // Extract parses one session JSONL transcript into slices:
 //   - Prompt slice: first user message of each turn (bounded)
@@ -59,7 +77,7 @@ func NewExtractor() Extractor { return extractor{} }
 // Malformed lines are skipped (tolerant). Duplicate content (same ID) is
 // merged. Slice IDs are content hashes (deterministic, dedup-friendly); a
 // stable UUID strategy can replace this in M1 (see Slice.ID doc).
-func (extractor) Extract(sessionJSONL []byte, meta SliceMeta) ([]*Slice, error) {
+func (e extractor) Extract(sessionJSONL []byte, meta SliceMeta) ([]*Slice, error) {
 	lines, perr := parseTranscript(sessionJSONL)
 	var out []*Slice
 	var turn []transcriptLine
@@ -67,8 +85,9 @@ func (extractor) Extract(sessionJSONL []byte, meta SliceMeta) ([]*Slice, error) 
 		if s := promptSlice(turn, meta); s != nil {
 			out = append(out, s)
 		}
-		if s := toolPatternSlice(turn, meta); s != nil {
-			out = append(out, s)
+		if e.opts.TStepSplit {
+			out = append(out, toolPatternSlicesStepSplit(turn, meta)...)
+		} else if s := toolPatternSlice(turn, meta); s != nil {			out = append(out, s)
 		}
 		turn = nil
 	}
@@ -359,6 +378,67 @@ func toolPatternSlice(turn []transcriptLine, meta SliceMeta) *Slice {
 	// Space-joined (not \x1f): keeps the sequence tokenizable by the BM25
 	// whitespace/CJK splitter (kernel/bm25). Tool-name tokens are plain words.
 	return newSlice(ToolPattern, Project, []byte(strings.Join(names, " ")), meta)
+}
+
+// toolCall is one (tool name, decoded args) pair for step splitting.
+type toolCall struct {
+	name string
+	args any
+}
+
+// toolCallsOf extracts the turn's tool calls with decoded args.
+func toolCallsOf(turn []transcriptLine) []toolCall {
+	var out []toolCall
+	for _, l := range turn {
+		for _, tc := range l.ToolCalls {
+			if tc.Name != "" {
+				out = append(out, toolCall{name: tc.Name, args: decodeToolArgs(tc.Arguments)})
+			}
+		}
+	}
+	return out
+}
+
+// verifyBoundary reports whether a tool call ends one subtask and starts the
+// next: running tests is the canonical "step finished, verify it" marker in
+// coding-agent trajectories.
+func verifyBoundary(c toolCall) bool {
+	lower := strings.ToLower(c.name)
+	if strings.Contains(lower, "test") {
+		return true
+	}
+	if !shellToolNames[lower] {
+		return false
+	}
+	head := commandHead(commandValue(c.args))
+	fields := strings.Fields(head)
+	if len(fields) >= 2 && fields[1] == "test" {
+		return true
+	}
+	return head == "pytest"
+}
+
+// toolPatternSlicesStepSplit emits one ToolPattern slice per subtask: the
+// turn's tool sequence is cut after every verification boundary, and each
+// segment of >= minToolSeq calls becomes its own slice.
+func toolPatternSlicesStepSplit(turn []transcriptLine, meta SliceMeta) []*Slice {
+	calls := toolCallsOf(turn)
+	var out []*Slice
+	var seg []string
+	flush := func() {
+		if len(seg) >= minToolSeq {
+			out = append(out, newSlice(ToolPattern, Project, []byte(strings.Join(seg, " ")), meta))
+		}
+		seg = seg[:0]
+	}
+	for _, c := range calls {
+		seg = append(seg, c.name)
+		if verifyBoundary(c) {
+			flush()
+		}
+	}
+	flush()
+	return out
 }
 
 func finalResultSlice(lines []transcriptLine, meta SliceMeta) *Slice {

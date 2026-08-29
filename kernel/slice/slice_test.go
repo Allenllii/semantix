@@ -126,7 +126,9 @@ func TestFileStorePutGetList(t *testing.T) {
 	}
 	t.Cleanup(func() { closeTestStore(st) })
 	a := &Slice{ID: "a", Type: Prompt, Scope: Project, Content: []byte("x")}
-	b := &Slice{ID: "b", Type: Result, Scope: User, Content: []byte("y")}
+	// Prompt keeps User scope; a Result there would be downgraded to
+	// Project by the Issue #268 admission matrix (covered in w4_test.go).
+	b := &Slice{ID: "b", Type: Prompt, Scope: User, Content: []byte("y")}
 	if err := st.Put(a); err != nil {
 		t.Fatal(err)
 	}
