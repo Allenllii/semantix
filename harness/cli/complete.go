@@ -312,6 +312,12 @@ func (m *chatTUI) slashArgData() control.ArgData {
 		data.ConfiguredMCP = m.ctrl.ConfiguredMCPNames()
 		data.DisconnectedMCP = m.ctrl.DisconnectedMCPNames()
 		data.MemoryRefs, data.MemoryArchives = control.MemoryCompletionData(m.ctrl.Memory())
+		// Session-authoritative effort vocabulary (Issue #333): synthetic
+		// extension/plugin entries never resolve against the user config.
+		if cap := m.ctrl.EffortCapability(); cap.Supported {
+			data.EffortLevels = cap.Levels
+			data.EffortCurrent = m.ctrl.SessionEffort()
+		}
 	}
 	if m.host != nil {
 		data.ServerNames = m.host.ServerNames()

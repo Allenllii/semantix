@@ -121,6 +121,9 @@ type Controller struct {
 
 	label        string
 	modelRef     string
+	// effortCapability mirrors Options.EffortCapability: the booted entry's
+	// reasoning-effort vocabulary for the /effort read/list paths (#333).
+	effortCapability config.EffortCapability
 	systemPrompt string
 	sessionDir   string
 	commands     atomic.Pointer[[]command.Command]
@@ -457,6 +460,12 @@ type Options struct {
 	SubagentGate  *SharedHeadlessGate
 	Label         string
 	ModelRef      string
+	// EffortCapability is the reasoning-effort vocabulary of the model entry
+	// the session actually booted with, resolved by boot (including synthetic
+	// extension/plugin entries that are never in the user config). Frontends
+	// read it for /effort completion and listing instead of re-resolving the
+	// ref against the user config, which fails for plugin refs (Issue #333).
+	EffortCapability config.EffortCapability
 	SystemPrompt  string
 	SessionDir    string
 	SessionPath   string
@@ -615,6 +624,7 @@ func New(opts Options) *Controller {
 		subagentGate:                      opts.SubagentGate,
 		label:                             opts.Label,
 		modelRef:                          opts.ModelRef,
+		effortCapability:                  opts.EffortCapability,
 		systemPrompt:                      opts.SystemPrompt,
 		sessionDir:                        opts.SessionDir,
 		sessionPath:                       opts.SessionPath,
@@ -5591,6 +5601,11 @@ func (c *Controller) Label() string { return c.label }
 
 // ModelRef returns the canonical provider/model reference for the session.
 func (c *Controller) ModelRef() string { return c.modelRef }
+
+// EffortCapability returns the reasoning-effort vocabulary of the booted model
+// entry (zero value when boot did not supply one — the frontend then falls
+// back to config resolution).
+func (c *Controller) EffortCapability() config.EffortCapability { return c.effortCapability }
 
 // WorkspaceRoot returns the workspace root for this controller's session
 // (the directory that file-writers and @-references are scoped to).

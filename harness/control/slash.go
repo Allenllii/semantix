@@ -36,6 +36,12 @@ type ArgData struct {
 	DisconnectedMCP []string
 	ModelRefs       []string
 	CurrentModel    string
+	// EffortLevels / EffortCurrent carry the session's own reasoning-effort
+	// vocabulary (from Controller.EffortCapability) so /effort completion is
+	// correct for extension/plugin refs the user config cannot resolve
+	// (Issue #333). Empty falls back to config resolution.
+	EffortLevels    []string
+	EffortCurrent   string
 	ProviderNames   []string
 	CurrentProvider string
 	PluginNames     []string
@@ -201,30 +207,52 @@ func themeArgItems(prior []string) []SlashItem {
 
 func effortArgItems(prior []string, d ArgData) []SlashItem {
 	if len(prior) <= 1 {
-		entry := currentEffortEntry(d)
-		cap := config.EffortCapabilityForEntry(entry)
+		// Session-supplied levels are authoritative: they come from the entry
+		// the session booted with, which sees synthetic extension/plugin
+		// entries the user config cannot resolve (Issue #333). The config
+		// fallback stays for frontends that predate the session data.
+		levels := d.EffortLevels
+		if len(levels) == 0 {
+			levels = config.EffortCapabilityForEntry(currentEffortEntry(d)).Levels
+		}
 		var out []SlashItem
-		for _, level := range cap.Levels {
-			hint := ""
-			switch level {
-			case "auto":
-				hint = i18n.M.ArgEffortAuto
-			case "low":
-				hint = i18n.M.ArgEffortLow
-			case "medium":
-				hint = i18n.M.ArgEffortMedium
-			case "high":
-				hint = i18n.M.ArgEffortHigh
-			case "xhigh":
-				hint = i18n.M.ArgEffortXHigh
-			case "max":
-				hint = i18n.M.ArgEffortMax
-			}
-			out = append(out, SlashItem{Label: level, Insert: level, Hint: hint})
+		for _, level := range levels {
+			out = append(out, SlashItem{Label: level, Insert: level, Hint: EffortLevelHint(level)})
 		}
 		return out
 	}
 	return nil
+}
+
+// EffortLevelHint maps one reasoning-effort level to its localized hint.
+// The vocabulary is open — supported_efforts accepts arbitrary strings from
+// user TOML and extension descriptors — so unknown levels get a generic
+// fallback instead of a blank hint (Issue #333).
+func EffortLevelHint(level string) string {
+	switch level {
+	case "auto":
+		return i18n.M.ArgEffortAuto
+	case "low":
+		return i18n.M.ArgEffortLow
+	case "medium":
+		return i18n.M.ArgEffortMedium
+	case "high":
+		return i18n.M.ArgEffortHigh
+	case "xhigh":
+		return i18n.M.ArgEffortXHigh
+	case "max":
+		return i18n.M.ArgEffortMax
+	case "none":
+		return i18n.M.ArgEffortNone
+	case "disabled":
+		return i18n.M.ArgEffortDisabled
+	case "adaptive":
+		return i18n.M.ArgEffortAdaptive
+	case "enabled":
+		return i18n.M.ArgEffortEnabled
+	default:
+		return i18n.M.ArgEffortGeneric
+	}
 }
 
 func currentEffortEntry(d ArgData) *config.ProviderEntry {

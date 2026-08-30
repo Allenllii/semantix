@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"semantix/harness/config"
+	"semantix/harness/control"
 	"semantix/harness/i18n"
 )
 
@@ -18,22 +19,46 @@ import (
 // depth for subsequent model rounds and the per-request EffortOverride
 // channel carries it to every adapter family (#331).
 func (m *chatTUI) runEffortCommand(input string) tea.Cmd {
-	entry, _, err := m.currentConfigProvider()
-	if err != nil {
-		m.notice(fmt.Sprintf(i18n.M.EffortErrorFmt, err.Error()))
-		return nil
+	entry, _, entryErr := m.currentConfigProvider()
+	var cap config.EffortCapability
+	if entryErr == nil {
+		cap = config.EffortCapabilityForEntry(entry)
+	} else if m.ctrl != nil {
+		// Synthetic extension/plugin refs never resolve against the user
+		// config; the session's own capability still answers the read/list
+		// path (Issue #333). Only persisting a level needs a config entry.
+		cap = m.ctrl.EffortCapability()
 	}
-	cap := config.EffortCapabilityForEntry(entry)
 	if !cap.Supported {
-		m.notice(fmt.Sprintf(i18n.M.EffortNotConfigurableFmt, entry.Name))
+		if entryErr != nil {
+			m.notice(fmt.Sprintf(i18n.M.EffortErrorFmt, entryErr.Error()))
+		} else {
+			m.notice(fmt.Sprintf(i18n.M.EffortNotConfigurableFmt, entry.Name))
+		}
 		return nil
 	}
 
 	args := tokenizeArgs(input)
 	if len(args) < 2 {
-		current := config.EffortDisplay(entry)
-		options := strings.Join(cap.Levels, "|")
-		m.notice(fmt.Sprintf(i18n.M.EffortCurrentFmt, entry.Name, current, cap.Default, options))
+		provider, current := "", ""
+		if entryErr == nil {
+			provider = entry.Name
+			current = config.EffortDisplay(entry)
+		} else if m.ctrl != nil {
+			provider = m.ctrl.ModelRef()
+			current = m.ctrl.SessionEffort()
+			if current == "" {
+				current = "auto"
+			}
+		}
+		m.commitLine(renderEfforts(m.width, provider, current, cap))
+		return nil
+	}
+	if entryErr != nil {
+		// Setting a level persists it in the user config, which a synthetic
+		// entry cannot round-trip; surface the resolution error instead of a
+		// confusing downstream failure.
+		m.notice(fmt.Sprintf(i18n.M.EffortErrorFmt, entryErr.Error()))
 		return nil
 	}
 	if len(args) > 2 {
@@ -110,6 +135,25 @@ func (m *chatTUI) runEffortCommand(input string) tea.Cmd {
 	m.effortLevel = display
 	m.notice(fmt.Sprintf(i18n.M.EffortSwitchedFmt, entry.Name, display))
 	return nil
+}
+
+// renderEfforts renders bare /effort as a described, current-marked list,
+// modelled on renderAgentPresets and reading control.EffortLevelHint so
+// completion and this list cannot drift (Issue #333).
+func renderEfforts(width int, provider, current string, cap config.EffortCapability) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", viewHeader(i18n.M.EffortListHeaderFmt, provider))
+	for _, level := range cap.Levels {
+		status := ""
+		if level == current {
+			status = "  " + viewStatus(i18n.M.ArgModelCurrent)
+		}
+		nameWidth := viewPadWidth(level, 10)
+		desc := viewCompactText(control.EffortLevelHint(level), viewBudget(width, 2+nameWidth+1+visibleWidth(status)))
+		fmt.Fprintf(&b, "  %-*s %s%s\n", nameWidth, level, viewMeta(desc), status)
+	}
+	b.WriteString(viewHint(i18n.M.EffortListHint))
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // localizeEffortError renders a NormalizeEffort error through the active i18n

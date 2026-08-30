@@ -293,6 +293,11 @@ type Messages struct {
 	ArgEffortHigh       string // /effort high
 	ArgEffortXHigh      string // /effort xhigh
 	ArgEffortMax        string // /effort max
+	ArgEffortNone       string // /effort none
+	ArgEffortDisabled   string // /effort disabled
+	ArgEffortEnabled    string // /effort enabled
+	ArgEffortAdaptive   string // /effort adaptive
+	ArgEffortGeneric    string // /effort unknown level fallback
 	ArgThemeCurrent     string // /theme <style> active tag
 	ArgLanguageAuto     string // /language auto
 	ArgLanguageEn       string // /language en
@@ -331,6 +336,8 @@ type Messages struct {
 	EffortErrorFmt               string // %s = error
 	EffortNotConfigurableFmt     string // %s = provider name
 	EffortCurrentFmt             string // %s name, %s current, %s default, %s options
+	EffortListHeaderFmt          string // bare /effort list header (%s provider)
+	EffortListHint               string // bare /effort list footer
 	EffortUsageFmt               string // %s = level list
 	EffortNoConfigDir            string
 	EffortSwitchUnavailable      string
