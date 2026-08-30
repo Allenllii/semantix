@@ -6,10 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync/atomic"
 
+	"semantix/kernel/embed"
 	"semantix/kernel/slice"
 )
 
@@ -38,14 +41,27 @@ type Runner struct {
 	// BlockedEgress counts tasks rejected for crossing a process boundary
 	// (Issue #273): egress or undeclared-locality tasks are never executed.
 	BlockedEgress atomic.Int64
+
+	// WarmKinds lists task kinds whose execution warms a real resource
+	// (remote embedder connection, filesystem page cache) but whose output
+	// must NOT be persisted as a Result slice — a warmed embedding or a
+	// read file has no reuse content of its own (research plan W5:
+	// prefetch 从「拼注入块」升级为真实资源预热). Nil defaults to
+	// {embedding, file}; the slice-assembly kind persists as before.
+	WarmKinds map[string]bool
 }
 
 // Run executes tasks in order and stores each successful result. It returns
 // the stored slice IDs; one failing task does not abort the rest, and any
-// failures are joined into the returned error.
+// failures are joined into the returned error. Warm-only kinds execute but
+// persist nothing (and contribute no IDs).
 func (r *Runner) Run(ctx context.Context, tasks []PrefetchTask) ([]string, error) {
 	if r.Store == nil || r.Executor == nil {
 		return nil, errors.New("prefetch: Runner requires Store and Executor")
+	}
+	warm := r.WarmKinds
+	if warm == nil {
+		warm = map[string]bool{"embedding": true, "file": true}
 	}
 	scope := r.Scope
 	if scope == 0 {
@@ -66,6 +82,9 @@ func (r *Runner) Run(ctx context.Context, tasks []PrefetchTask) ([]string, error
 		if err != nil {
 			errs = append(errs, fmt.Errorf("prefetch: execute %s %q: %w", t.Kind, t.Key, err))
 			continue
+		}
+		if warm[t.Kind] {
+			continue // warm-only: the resource is primed; nothing to store
 		}
 		sl := &slice.Slice{
 			Type:    slice.Result,
@@ -132,4 +151,55 @@ func resultSliceID(content []byte, scope slice.Scope) string {
 	h.Write([]byte{byte(slice.Result), byte(scope)})
 	h.Write(content)
 	return hex.EncodeToString(h.Sum(nil)[:8])
+}
+
+// EmbeddingWarmer executes Kind="embedding" tasks (research plan W5: real
+// resource warm-up): it pushes the predicted next query through the embedder
+// ahead of the tool round, so the search path pays neither the remote
+// round-trip (ModelEmbedder's HTTP/TLS session is kept alive by the call)
+// nor cold-start latency. The vectors themselves are discarded — the Runner
+// persists nothing for warm kinds.
+type EmbeddingWarmer struct {
+	// Embedder is the same embedder the retrieval path uses (required).
+	Embedder embed.Embedder
+}
+
+// Execute warms the embedder with the task key and discards the vectors.
+func (w EmbeddingWarmer) Execute(ctx context.Context, t PrefetchTask) ([]byte, error) {
+	if w.Embedder == nil {
+		return nil, errors.New("prefetch: EmbeddingWarmer requires Embedder")
+	}
+	if _, err := w.Embedder.Embed([]string{t.Key}); err != nil {
+		return nil, fmt.Errorf("embedding-warm %q: %w", t.Key, err)
+	}
+	return nil, nil
+}
+
+// FileWarmer executes Kind="file" tasks (research plan W5: real resource
+// warm-up): it reads the predicted next file so its bytes are resident in
+// the page cache when the agent's real readFile runs. Content is discarded.
+type FileWarmer struct {
+	// Root is the only readable directory: keys escaping it are rejected
+	// before any I/O (same boundary discipline as the fingerprint gate).
+	Root string
+}
+
+// Execute reads one file under Root and discards the content (page-cache
+// warm). Path traversal out of Root is rejected fail-closed.
+func (w FileWarmer) Execute(ctx context.Context, t PrefetchTask) ([]byte, error) {
+	root, err := filepath.Abs(w.Root)
+	if err != nil {
+		return nil, fmt.Errorf("file-warm: root: %w", err)
+	}
+	path, err := filepath.Abs(filepath.Join(root, t.Key))
+	if err != nil {
+		return nil, fmt.Errorf("file-warm %q: %w", t.Key, err)
+	}
+	if path != root && !strings.HasPrefix(path, root+string(filepath.Separator)) {
+		return nil, fmt.Errorf("file-warm %q: escapes root %s", t.Key, root)
+	}
+	if _, err := os.ReadFile(path); err != nil {
+		return nil, fmt.Errorf("file-warm %q: %w", t.Key, err)
+	}
+	return nil, nil
 }

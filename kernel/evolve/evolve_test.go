@@ -304,3 +304,48 @@ func TestParamsSnapshotIsCopy(t *testing.T) {
 		t.Fatal("mutating the returned snapshot must not affect the engine")
 	}
 }
+
+// Research plan W5 "缩短冻结窗口的评估": PrefetchConf gates only speculative
+// warm-up admission — it never rewrites a live conversation's injected set —
+// so it keeps adjusting inside the freeze window, and a prefetch-only step
+// must not reopen (prolong) TauL2's byte-cache freeze.
+func TestPrefetchConfAdjustsInsideFreezeWithoutReopeningIt(t *testing.T) {
+	e := New(Config{MinSamples: 2, FreezeEpochs: 1})
+	// Open a long freeze from the current epoch: TauL2 must not move inside
+	// it. The documented Apply override (FreezeEpochs=0) gets us there.
+	p := e.Params()
+	p.FreezeEpochs = 0
+	if err := e.Apply(p); err != nil {
+		t.Fatal(err)
+	}
+	p2 := e.Params()
+	p2.FreezeEpochs = 1000
+	if err := e.Apply(p2); err != nil {
+		t.Fatal(err)
+	}
+	frozenTau := e.Params().TauL2
+
+	if err := e.RecordSignal(Signal{Name: "prefetch_waste", Value: 1, Epoch: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.RecordSignal(Signal{Name: "prefetch_waste", Value: 1, Epoch: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.Params().PrefetchConf; got <= 0.5 {
+		t.Fatalf("prefetch confidence = %v, want raised inside the freeze window", got)
+	}
+	if got := e.Params().TauL2; got != frozenTau {
+		t.Fatalf("TauL2 moved inside the freeze: %v, want %v", got, frozenTau)
+	}
+	// The prefetch-only adjustment must not have reset the freeze clock:
+	// TauL2 stays frozen below the opened window.
+	if err := e.RecordSignal(Signal{Name: "cache_hit", Value: 1, Epoch: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.RecordSignal(Signal{Name: "cache_hit", Value: 1, Epoch: 4}); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.Params().TauL2; got != frozenTau {
+		t.Fatalf("TauL2 unfrozen early: %v at epoch 4, want %v", got, frozenTau)
+	}
+}

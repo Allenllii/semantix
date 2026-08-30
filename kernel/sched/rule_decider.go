@@ -99,6 +99,10 @@ type Config struct {
 	ProTier string
 	// InjectMax caps the InjectIDs list length (default 8).
 	InjectMax int
+	// TierMinSamples is the complex-shape sample count the tier learner
+	// needs per tier before the learned policy may override the hard
+	// complexity rule (default 10; research plan W5).
+	TierMinSamples int
 	// SerialTools adds extra tool names that never parallelize, on top of
 	// the built-in SerialToolNames set.
 	SerialTools []string
@@ -107,13 +111,14 @@ type Config struct {
 // Defaults returns the built-in configuration.
 func Defaults() Config {
 	return Config{
-		MaxParallel:  8,
-		MinSamples:   5,
-		SuccessFloor: 0.7,
-		ComplexTools: 3,
-		DefaultTier:  "flash",
-		ProTier:      "pro",
-		InjectMax:    8,
+		MaxParallel:    8,
+		MinSamples:     5,
+		SuccessFloor:   0.7,
+		ComplexTools:   3,
+		DefaultTier:    "flash",
+		ProTier:        "pro",
+		InjectMax:      8,
+		TierMinSamples: 10,
 	}
 }
 
@@ -143,6 +148,7 @@ type RuleDecider struct {
 	stats          map[string]*toolStat
 	prefetchFn     PrefetchPlanFunc
 	loadPrefetchFn LoadAwarePrefetchPlanFunc
+	tierLearn      *tierLearner
 }
 
 // NewRuleDecider builds a RuleDecider with cfg (zero values → Defaults).
@@ -169,10 +175,30 @@ func NewRuleDecider(cfg Config) *RuleDecider {
 	if cfg.InjectMax <= 0 {
 		cfg.InjectMax = def.InjectMax
 	}
-	return &RuleDecider{
-		cfg:   cfg,
-		stats: make(map[string]*toolStat),
+	if cfg.TierMinSamples <= 0 {
+		cfg.TierMinSamples = def.TierMinSamples
 	}
+	return &RuleDecider{
+		cfg:       cfg,
+		stats:     make(map[string]*toolStat),
+		tierLearn: newTierLearner(cfg.TierMinSamples),
+	}
+}
+
+// ObserveTier feeds one executed round's outcome into the tier learner
+// (research plan W5). Tier, success and measured tokens come from the harness
+// after the round's model call completes; evidence only influences the
+// complexity rule, never the intent/writer safety floors.
+func (d *RuleDecider) ObserveTier(o TierObservation) {
+	if o.Tier == "" {
+		return
+	}
+	d.tierLearn.observe(o)
+}
+
+// TierLearnedStats snapshots the tier learner (observability).
+func (d *RuleDecider) TierLearnedStats() TierLearnedStats {
+	return d.tierLearn.stats()
 }
 
 // SetPrefetchPlanFunc wires the optional prefetch planner (nil disables).
@@ -199,6 +225,16 @@ func (d *RuleDecider) DecideRound(ctx context.Context, in RoundInput) (RoundPlan
 	active := withoutSuspended(in.ToolCalls, suspended)
 	action := decideBudgetAction(in.Budget)
 	tier, tierReason := decideTier(in.Intent, active, d.cfg)
+	if tierReason == "default" || strings.HasPrefix(tierReason, "complex:") {
+		// W5 learned overlay: only the complexity rule is negotiable, and
+		// only once per-tier evidence exists. The hard rule's verdict is the
+		// fallback in every insufficient-evidence case.
+		if isComplexShape(in.Intent, active, d.cfg) {
+			if dec := d.tierLearn.decideComplex(d.cfg); dec.ok {
+				tier, tierReason = dec.tier, dec.reason
+			}
+		}
+	}
 	groups := d.partition(active)
 	plan := RoundPlan{
 		ParallelGroups: groups,

@@ -218,6 +218,15 @@ func (e *ewmaEngine) Apply(p Params) error {
 //   - pollution high → tighten (injected content is hurting)
 //   - hits high and pollution low → relax (reuse is safe, be more generous)
 //   - otherwise stay put
+//
+// Freeze semantics are split by what a parameter can invalidate (research
+// plan W5 "缩短冻结窗口的评估"):
+//   - TauL2 changes zone classification → changes the injected set → the
+//     vendor byte-prefix cache is invalidated → it waits for the freeze
+//     window exactly as before;
+//   - PrefetchConf only gates *speculative* warm-up admission; it never
+//     rewrites the injected set of a live conversation, so it keeps
+//     evaluating inside the freeze window instead of idling for ~60 epochs.
 func (e *ewmaEngine) maybeAdjustLocked() {
 	if e.sampleCount < e.minSamples {
 		return
@@ -225,24 +234,23 @@ func (e *ewmaEngine) maybeAdjustLocked() {
 	if e.epoch < e.firstAdjustAt {
 		return
 	}
-	if e.epoch < e.freezeUntil {
-		return
-	}
 	oldTau := e.params.TauL2
 	oldPrefetch := e.params.PrefetchConf
-	// TauL2 is a relative-confidence floor (zone.TauLow semantics): raising
-	// it admits fewer slices (tighten), lowering it admits more (relax).
-	switch {
-	case e.polEWMA >= PollutionRiseAt:
-		e.params.TauL2 = e.params.TauL2 + TauStep // tighten: raise the floor
-	case e.hitEWMA >= HitTarget && e.polEWMA <= PollutionLow:
-		e.params.TauL2 = e.params.TauL2 - TauStep // relax: admit more reuse
-	}
-	if e.params.TauL2 < e.minTau {
-		e.params.TauL2 = e.minTau
-	}
-	if e.params.TauL2 > e.maxTau {
-		e.params.TauL2 = e.maxTau
+	if e.epoch >= e.freezeUntil {
+		// TauL2 is a relative-confidence floor (zone.TauLow semantics): raising
+		// it admits fewer slices (tighten), lowering it admits more (relax).
+		switch {
+		case e.polEWMA >= PollutionRiseAt:
+			e.params.TauL2 = e.params.TauL2 + TauStep // tighten: raise the floor
+		case e.hitEWMA >= HitTarget && e.polEWMA <= PollutionLow:
+			e.params.TauL2 = e.params.TauL2 - TauStep // relax: admit more reuse
+		}
+		if e.params.TauL2 < e.minTau {
+			e.params.TauL2 = e.minTau
+		}
+		if e.params.TauL2 > e.maxTau {
+			e.params.TauL2 = e.maxTau
+		}
 	}
 	if e.prefetchWasteEWMA > e.prefetchHitEWMA {
 		e.params.PrefetchConf += PrefetchStep
@@ -257,8 +265,11 @@ func (e *ewmaEngine) maybeAdjustLocked() {
 	}
 	if e.params.TauL2 != oldTau || e.params.PrefetchConf != oldPrefetch {
 		e.adjustments++
-		// Freeze after every real change: protects the byte cache AND gives
-		// the new threshold a full window to accumulate evidence.
+	}
+	if e.params.TauL2 != oldTau {
+		// Only an injection-affecting change reopens the byte-cache freeze;
+		// a prefetch-confidence step must not prolong TauL2's frozen window
+		// (W5 evaluation-cadence split).
 		e.freezeUntil = e.epoch + e.params.FreezeEpochs
 	}
 }
