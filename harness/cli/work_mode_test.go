@@ -66,13 +66,16 @@ func TestParseWorkModeKeepsBalancedAsFullInternally(t *testing.T) {
 func TestWorkModeCompletionPublishesPrimaryCommandAndAliasArguments(t *testing.T) {
 	m := newTestChatTUI()
 	m.runtimeProfile = boot.TokenModeFull
-	if !hasLabel(m.slashItems(), "/preset") {
-		t.Fatal("slash completion missing /preset")
+	if !hasLabel(m.slashItems(), "/work") {
+		t.Fatal("slash completion missing /work (Issue #334 promoted it to the primary name)")
+	}
+	if hasLabel(m.slashItems(), "/preset") {
+		t.Fatal("legacy /preset alias should not duplicate the primary command in the slash menu")
 	}
 	if hasLabel(m.slashItems(), "/profile") {
 		t.Fatal("technical /profile alias should not duplicate the primary command in the slash menu")
 	}
-	for _, input := range []string{"/preset ", "/work-mode ", "/profile "} {
+	for _, input := range []string{"/work ", "/preset ", "/work-mode ", "/profile "} {
 		items, _, ok := m.slashArgItems(input)
 		if !ok {
 			t.Fatalf("%q did not activate preset argument completion", input)
@@ -86,8 +89,8 @@ func TestWorkModeCompletionPublishesPrimaryCommandAndAliasArguments(t *testing.T
 }
 
 func TestWorkModeHelpAndStatusUseUserFacingName(t *testing.T) {
-	if !hasLabel(builtinHelpItems(), "/preset") {
-		t.Fatal("built-in help missing /preset")
+	if !hasLabel(builtinHelpItems(), "/work") {
+		t.Fatal("built-in help missing /work (Issue #334 promoted it to the primary name)")
 	}
 	if hasLabel(builtinHelpItems(), "/profile") {
 		t.Fatal("built-in help should not duplicate the technical /profile alias")

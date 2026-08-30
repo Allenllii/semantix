@@ -143,7 +143,7 @@ func (m *chatTUI) workModeArgItems(val string) ([]compItem, int, bool) {
 		return nil, 0, false
 	}
 	cmd := val[:cmdEnd]
-	if cmd != "/work-mode" && cmd != "/profile" && cmd != "/preset" {
+	if cmd != "/work" && cmd != "/work-mode" && cmd != "/profile" && cmd != "/preset" {
 		return nil, 0, false
 	}
 	from := strings.LastIndexAny(val, " \t") + 1

@@ -4962,7 +4962,7 @@ func (m *chatTUI) runSlashCommand(input string) tea.Cmd {
 		m.showSandboxStatus()
 	case "/effort":
 		return m.runEffortCommand(input)
-	case "/preset", "/work-mode", "/profile":
+	case "/work", "/preset", "/work-mode", "/profile":
 		m.echoLocalCommand(input)
 		return m.runPresetCommand(input)
 	case "/reasoning-language":

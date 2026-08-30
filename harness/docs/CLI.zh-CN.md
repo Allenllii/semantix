@@ -370,7 +370,7 @@ SSH 下远端进程无法读取本机剪贴板，请使用终端粘贴快捷键�
 | `/provider` | 选择 provider，再选择该 provider 下的模型。 |
 | `/resume` | 搜索最近会话并切换。 |
 | `/status` | 显示模型、effort、cache、Git、后台任务，以及工作模式或余额信息。 |
-| `/work-mode [economy\|balanced\|delivery]` | 查看或切换运行时工作模式；`/profile` 是别名。 |
+| `/work [light\|balanced\|delivery]` | 查看或切换运行时工作模式；`/preset`、`/work-mode`、`/profile` 是别名。 |
 | `/theme [auto\|light\|dark\|style]` | 查看或切换 CLI 背景模式和强调色。 |
 | `/currency [auto\|CNY\|USD]` | 查看或切换用户全局官方定价货币，并刷新当前运行时。 |
 | `/paste-image` | 读取剪贴板图片并插入可编辑的附件标记。 |

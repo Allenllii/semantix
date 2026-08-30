@@ -425,7 +425,7 @@ the displayed list matches the commands the TUI accepts.
 | `/provider` | Choose a provider, then choose one of its configured models. |
 | `/resume` | Search recent sessions and switch to one. |
 | `/status` | Show model, effort, cache, Git, background jobs, and profile or balance details. |
-| `/work-mode [economy\|balanced\|delivery]` | View or change the runtime profile; `/profile` is an alias. |
+| `/work [light\|balanced\|delivery]` | View or change the runtime profile; `/preset`, `/work-mode` and `/profile` are aliases. |
 | `/theme [auto\|light\|dark\|style]` | View or change the CLI background mode and accent palette. |
 | `/currency [auto\|CNY\|USD]` | View or change the user-global official pricing currency and refresh the runtime. |
 | `/paste-image` | Read a clipboard image and insert an editable attachment token. |
