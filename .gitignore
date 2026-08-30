@@ -29,3 +29,15 @@ site/.wrangler/
 /deploy/data/
 /deploy/semantix-gateway.toml
 /tmp/
+
+# Local agent/tooling session state (never commit)
+.claude/
+.mimosa/
+.v2c/
+.zcode/
+docs/reports/data/.mimosa/
+
+# Personal working files (not project artifacts)
+/PROMPTS.md
+/paper/
+/paper.zip
