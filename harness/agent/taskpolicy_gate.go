@@ -16,8 +16,14 @@ func (a *Agent) taskPolicyToolGate(plan *toolCallPlan, args json.RawMessage) (to
 		if reason == "" {
 			reason = "state mutation whose effects cannot be proven read-only"
 		}
+		// Surface the NL phrase that set the constraint when one did: a
+		// wrongly-frozen turn must be traceable to its trigger (Issue #400).
+		source := "user constraint or plan mode"
+		if t := strings.TrimSpace(a.turn.policy.Constraints.MutationTrigger); t != "" {
+			source = `user constraint "` + t + `"`
+		}
 		return policyBlock(
-			"the current task policy forbids "+reason+" (user constraint or plan mode)",
+			"the current task policy forbids "+reason+" ("+source+")",
 			"task policy forbids "+reason,
 		)
 	}

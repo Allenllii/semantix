@@ -174,6 +174,29 @@ func TestGlobalNoModifyStillBinds(t *testing.T) {
 	}
 }
 
+func TestMutationTriggerSurfacedForDiagnostics(t *testing.T) {
+	// Issue #400 expectation 3: the trigger phrase must be visible in the
+	// execution-policy block so a wrongly-frozen turn can be traced back to
+	// the instruction that caused it.
+	p := Derive(Input{Raw: "review this, do not modify anything", Preset: agentpreset.Balanced})
+	if p.Constraints.MutationTrigger != "do not modify" {
+		t.Fatalf("MutationTrigger = %q, want \"do not modify\"", p.Constraints.MutationTrigger)
+	}
+	block := ExecutionPolicyBlock(p)
+	if !strings.Contains(block, `constraint=no-mutation (trigger: do not modify)`) {
+		t.Fatalf("block missing trigger: %s", block)
+	}
+	// A scoped prohibition leaves both the workspace and the trigger empty.
+	q := Derive(Input{
+		Raw:         "- Do NOT modify existing test files.",
+		Instruction: StripQuotedConstraints("- Do NOT modify existing test files."),
+		Preset:      agentpreset.Balanced,
+	})
+	if !q.AllowsMutation() || q.Constraints.MutationTrigger != "" {
+		t.Fatalf("scoped prohibition must not freeze or set a trigger: %+v", q.Constraints)
+	}
+}
+
 func TestUnbalancedInlineCodeDoesNotSwallowLaterLines(t *testing.T) {
 	// A stray backtick on one line used to flip inline-code state for the rest
 	// of the input, silently dropping every later constraint line.

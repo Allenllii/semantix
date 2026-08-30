@@ -70,6 +70,11 @@ type Constraints struct {
 	RequireFullVerification bool
 	// PlanModeReadOnly is the explicit plan-mode read-only boundary.
 	PlanModeReadOnly bool
+	// MutationTrigger, when non-empty, is the instruction phrase that set
+	// ForbidMutation. It is surfaced in the execution-policy block and in
+	// gate-blocked messages so a wrongly-frozen turn can be traced back to
+	// the phrase that caused it (Issue #400).
+	MutationTrigger string
 	// Notes records structured reasons for diagnostics (never user-facing).
 	Notes []string
 }
@@ -334,16 +339,21 @@ func parseConstraints(instruction string) Constraints {
 	// Analysis-only / no modifications. Bare phrases bind globally; a
 	// prohibition verb followed by a specific object ("do not modify existing
 	// test files") scopes to that object and must not freeze the workspace.
-	if matchesAny(lower, []string{
+	if trigger := findMatch(lower, []string{
 		"只分析", "只读", "仅分析", "只看不改",
 		"analyze only", "analysis only", "no changes", "read only", "read-only",
 		"without changes",
-	}) || prohibitsAllMutation(lower, []string{
+	}); trigger != "" {
+		c.ForbidMutation = true
+		c.MutationTrigger = trigger
+		c.Notes = append(c.Notes, "user_forbid_mutation")
+	} else if trigger := prohibitsMutationTrigger(lower, []string{
 		"不要修改", "别改", "不要改",
 		"don't modify", "do not modify", "don't change", "do not change",
 		"without modifying", "don't edit", "do not edit",
-	}) {
+	}); trigger != "" {
 		c.ForbidMutation = true
+		c.MutationTrigger = trigger
 		c.Notes = append(c.Notes, "user_forbid_mutation")
 	}
 	// Reproduce but don't fix
@@ -352,6 +362,9 @@ func parseConstraints(instruction string) Constraints {
 		"reproduce only", "don't fix", "do not fix", "no fix",
 	}) {
 		c.ForbidMutation = true
+		if c.MutationTrigger == "" {
+			c.MutationTrigger = "reproduce only"
+		}
 		c.Notes = append(c.Notes, "user_reproduce_only")
 	}
 	// No tests
@@ -403,24 +416,31 @@ func parseAllowedChecks(instruction string) []string {
 	return out
 }
 
-func matchesAny(lower string, needles []string) bool {
+// findMatch returns the first needle contained in the pre-lowered input, or
+// "" when none matches — matchesAny's phrase-reporting counterpart.
+func findMatch(lower string, needles []string) string {
 	for _, n := range needles {
 		if n == "" {
 			continue
 		}
 		if strings.Contains(lower, strings.ToLower(n)) {
-			return true
+			return n
 		}
 	}
-	return false
+	return ""
 }
 
-// prohibitsAllMutation reports whether any prohibition verb phrase is used
+func matchesAny(lower string, needles []string) bool {
+	return findMatch(lower, needles) != ""
+}
+
+// prohibitsMutationTrigger reports the prohibition verb phrase that is used
 // globally: bare ("do not modify."), or followed by an all-of-workspace
 // object ("don't change anything", "不要改代码"). A specific object after the
 // verb ("do not modify existing test files") is a scoped instruction the
 // model follows in-context; it must not become a workspace-wide write freeze.
-func prohibitsAllMutation(lower string, verbs []string) bool {
+// The returned phrase is empty when no global prohibition matches.
+func prohibitsMutationTrigger(lower string, verbs []string) string {
 	globalObjects := []string{
 		"anything", "any file", "any code", "code", "the code", "the codebase",
 		"任何", "代码", "文件", "东西",
@@ -438,17 +458,17 @@ func prohibitsAllMutation(lower string, verbs []string) bool {
 			}
 			tail = strings.TrimSpace(strings.Trim(tail, ",，:："))
 			if tail == "" {
-				return true
+				return v
 			}
 			for _, o := range globalObjects {
 				if strings.HasPrefix(tail, o) {
-					return true
+					return v
 				}
 			}
 			rest = rest[idx+len(v):]
 		}
 	}
-	return false
+	return ""
 }
 
 func isSecurityClass(instruction string) bool {
@@ -602,6 +622,11 @@ func ExecutionPolicyBlock(p TaskPolicy) string {
 	b.WriteString(reviewName(p.Review))
 	if p.Constraints.ForbidMutation {
 		b.WriteString("\nconstraint=no-mutation")
+		if t := p.Constraints.MutationTrigger; t != "" {
+			b.WriteString(" (trigger: ")
+			b.WriteString(t)
+			b.WriteString(")")
+		}
 	}
 	if p.Constraints.ForbidTests {
 		b.WriteString("\nconstraint=no-tests")
