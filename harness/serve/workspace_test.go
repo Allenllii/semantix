@@ -192,6 +192,7 @@ func TestServeWorkspaceWorkflowContract(t *testing.T) {
 		`function cleanVisibleText`,
 		`isProviderAuthError`,
 		`if (!workflow.active && isProviderAuthError(statusText))`,
+		`if (s.failure) row.title +=`,
 		`textContent`,
 	} {
 		if !strings.Contains(js, want) {

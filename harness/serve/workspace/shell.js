@@ -1325,6 +1325,7 @@
         row.title = "切换到该任务（会话内容保留）";
         row.addEventListener("click", function () { switchTask(s); });
       }
+      if (s.failure) row.title += "；恢复提示：" + s.failure;
       el.taskList.appendChild(li);
     });
   }
@@ -1436,7 +1437,6 @@
         // #405 acceptance: an explicit, visible unavailable-model signal.
         setValue(el.modelName, "模型不可用");
         setState(el.model, "empty");
-      if (s.failure) row.title += "；恢复提示：" + s.failure;
         el.model.title = "没有任何已配置的可用模型；请在 provider 设置中添加后刷新";
         fillList(el.modelMenu, [{ label: "模型不可用：未配置任何模型", disabled: true }]);
         showNotice("模型不可用：未发现已配置的聊天模型，请检查 provider 配置。", "warn");
