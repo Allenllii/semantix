@@ -189,6 +189,8 @@ func TestServeWorkspaceWorkflowContract(t *testing.T) {
 		`MAX_INLINE_CHARS`,
 		`MAX_RENDER_CHARS`,
 		`details.addEventListener("toggle"`,
+		`function cleanVisibleText`,
+		`isProviderAuthError`,
 		`textContent`,
 	} {
 		if !strings.Contains(js, want) {
@@ -197,6 +199,9 @@ func TestServeWorkspaceWorkflowContract(t *testing.T) {
 	}
 	if strings.Contains(js, `innerHTML`) {
 		t.Error("workflow renderer must not inject event content through innerHTML")
+	}
+	if !strings.Contains(js, `data-ws-demo`) || !strings.Contains(js, `workflow.active`) {
+		t.Error("workflow renderer must preserve the static preview until real work begins")
 	}
 }
 
