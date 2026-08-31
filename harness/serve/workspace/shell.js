@@ -1428,19 +1428,6 @@
     fillList(el.effortMenu, rows, pickEffort);
   }
 
-  function loadModels() {
-    setState(el.model, "loading");
-    return getJSON("/models").then(function (data) {
-      renderEffort(String(data.effort || "").toLowerCase(), !!data.current);
-      var models = Array.isArray(data.models) ? data.models : [];
-      if (!models.length) {
-        // #405 acceptance: an explicit, visible unavailable-model signal.
-        setValue(el.modelName, "模型不可用");
-        setState(el.model, "empty");
-        el.model.title = "没有任何已配置的可用模型；请在 provider 设置中添加后刷新";
-        fillList(el.modelMenu, [{ label: "模型不可用：未配置任何模型", disabled: true }]);
-        showNotice("模型不可用：未发现已配置的聊天模型，请检查 provider 配置。", "warn");
-        return;
   function initSessionFilters() {
     [el.sessionSearch, el.sessionProject, el.sessionStatus].forEach(function (control) {
       if (!control) return;
@@ -1454,6 +1441,19 @@
     });
   }
 
+  function loadModels() {
+    setState(el.model, "loading");
+    return getJSON("/models").then(function (data) {
+      renderEffort(String(data.effort || "").toLowerCase(), !!data.current);
+      var models = Array.isArray(data.models) ? data.models : [];
+      if (!models.length) {
+        // #405 acceptance: an explicit, visible unavailable-model signal.
+        setValue(el.modelName, "模型不可用");
+        setState(el.model, "empty");
+        el.model.title = "没有任何已配置的可用模型；请在 provider 设置中添加后刷新";
+        fillList(el.modelMenu, [{ label: "模型不可用：未配置任何模型", disabled: true }]);
+        showNotice("模型不可用：未发现已配置的聊天模型，请检查 provider 配置。", "warn");
+        return;
       }
       var activeRef = null;
       fillList(el.modelMenu, models.map(function (m) {
@@ -1518,6 +1518,7 @@
 
   initContextTabs();
   initComposer();
+  initSessionFilters();
   initSelectors();
   connectWorkspaceEvents();
 
@@ -1548,4 +1549,3 @@
   window.addEventListener("resize", function () { setSideOpen(document.body.classList.contains("ws-side-open")); });
   setSideOpen(false);
 })();
-  initSessionFilters();
