@@ -191,6 +191,7 @@ func TestServeWorkspaceWorkflowContract(t *testing.T) {
 		`details.addEventListener("toggle"`,
 		`function cleanVisibleText`,
 		`isProviderAuthError`,
+		`if (!workflow.active && isProviderAuthError(statusText))`,
 		`textContent`,
 	} {
 		if !strings.Contains(js, want) {

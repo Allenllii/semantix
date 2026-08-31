@@ -928,9 +928,14 @@
       return;
     }
     if (kind === "plan") { renderPlan(parsePlan(data.plan || data.text || data.detail)); return; }
+    var statusText = cleanVisibleText(data.text || data.detail || data.phase || data.outcome || "");
+    if (!workflow.active && isProviderAuthError(statusText)) {
+      showNotice("Provider 尚未通过鉴权，已保留工作流预览。", "warn");
+      return;
+    }
     card = makeEvent(kind === "retry" ? "retry" : "status", kind === "retry" ? "重试" : "任务状态", kind === "retry" ? "↻" : "•");
     if (!card) return;
-    var text = cleanVisibleText(data.text || data.detail || data.phase || data.outcome || "");
+    var text = statusText;
     if (kind === "retry") text = "第 " + (data.retryAttempt || "?") + " / " + (data.retryMax || "?") + " 次重试" + (data.retryScope ? " · " + data.retryScope : "");
     if (text) card.body.textContent = String(text);
     setStatus(card, kind === "retry" ? "等待中" : "已记录", kind === "retry" ? "running" : "done");
