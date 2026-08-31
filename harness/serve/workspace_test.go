@@ -419,4 +419,16 @@ func TestServeWorkspaceDesignTokens(t *testing.T) {
 			}
 		}
 	}
+	css := string(workspaceTokensCSS)
+	for _, want := range []string{"--sx-side-w: 296px", "--sx-context-w: 548px"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("workspace geometry token missing %q", want)
+		}
+	}
+	layout := string(workspaceLayoutCSS)
+	for _, want := range []string{"grid-template-rows: minmax(0, 1fr) auto", "grid-column: 1 / -1", "data-ws-state=\"empty\""} {
+		if !strings.Contains(layout, want) {
+			t.Errorf("workspace layout contract missing %q", want)
+		}
+	}
 }

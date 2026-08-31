@@ -408,6 +408,7 @@ body.ws-right-collapsed .ws-context { display: none; }
 
 /* Chip lifecycle states: loading → ok / error (#405 states requirement). */
 .ws-chip[data-ws-state="loading"] { color: var(--sx-text-3); pointer-events: none; }
+.ws-chip[data-ws-state="empty"] { border-color: var(--sx-border-strong); color: var(--sx-text-2); }
 .ws-chip[data-ws-state="error"] { border-color: rgba(244, 114, 114, .45); color: var(--sx-del); }
 .ws-chip[data-ws-state="error"] > * { color: inherit; }
 
