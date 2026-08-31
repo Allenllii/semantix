@@ -183,6 +183,7 @@ body.ws-right-collapsed .ws-context { display: none; }
 .ws-event--error { border-color: var(--sx-del); border-left: 3px solid var(--sx-del); }
 .ws-event--status { border-left: 3px solid var(--sx-text-3); }
 .ws-event--cache { border-left: 3px solid var(--sx-green-border); }
+.ws-event--ask { border-left: 3px solid var(--sx-green); }
 .ws-event__icon { width: 15px; height: 15px; flex: none; color: var(--sx-text-3); }
 .ws-event--assistant .ws-event__icon,
 .ws-event--plan .ws-event__icon { color: var(--sx-green-strong); }
@@ -206,6 +207,29 @@ body.ws-right-collapsed .ws-context { display: none; }
   font: 600 12px/1.4 var(--sx-font-sans);
 }
 .ws-event__toggle:hover { text-decoration: underline; }
+.ws-ask__question + .ws-ask__question { margin-top: 14px; }
+.ws-ask__prompt { margin-bottom: 8px; color: var(--sx-text); font-weight: 600; }
+.ws-ask__options { display: grid; gap: 7px; }
+.ws-ask__option {
+  display: grid; gap: 2px; width: 100%; padding: 8px 10px;
+  border: 1px solid var(--sx-border-strong); border-radius: 7px;
+  background: var(--sx-chip); color: var(--sx-text); cursor: pointer;
+  text-align: left; font: 400 12.5px/1.4 var(--sx-font-sans);
+}
+.ws-ask__option:hover { border-color: var(--sx-green-border); background: var(--sx-hover); }
+.ws-ask__option.is-selected { border-color: var(--sx-green); background: var(--sx-green-dim); }
+.ws-ask__option:disabled { cursor: default; opacity: .78; }
+.ws-ask__option-label { font-weight: 600; }
+.ws-ask__option-description { color: var(--sx-text-3); }
+.ws-ask__empty { margin: 0; color: var(--sx-text-3); }
+.ws-ask__submit {
+  width: 100%; margin-top: 12px; padding: 8px 10px;
+  border: 1px solid var(--sx-green-border); border-radius: 7px;
+  background: var(--sx-green-dim); color: var(--sx-green-strong); cursor: pointer;
+  font: 600 12px/1.3 var(--sx-font-sans);
+}
+.ws-ask__submit:hover:not(:disabled) { background: var(--sx-green); color: var(--sx-bg-canvas); }
+.ws-ask__submit:disabled { cursor: default; opacity: .55; }
 .ws-plan { margin: 0; padding: 0 14px 13px 34px; display: grid; gap: 6px; }
 .ws-plan li { color: var(--sx-text-2); font-size: 13px; line-height: 1.5; }
 .ws-plan li.is-done { color: var(--sx-text-3); text-decoration: line-through; }
