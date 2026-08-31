@@ -48,4 +48,7 @@ func TestServeStatusUsesWorkspaceRoot(t *testing.T) {
 	if got["cwd"] != root || got["workspaceRoot"] != root {
 		t.Fatalf("status workspace identity = %#v, want %q", got, root)
 	}
+	if _, ok := got["branch"].(string); !ok {
+		t.Fatalf("status branch = %#v, want string", got["branch"])
+	}
 }
