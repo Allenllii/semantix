@@ -280,6 +280,35 @@ func TestServeWorkspaceWorkbenchContract(t *testing.T) {
 	}
 }
 
+// TestServeWorkspaceInteractivePromptContract pins the live decision boundary:
+// structured ask requests render as choices in the timeline and are answered
+// through the existing /answer route, while approval requests remain separate.
+func TestServeWorkspaceInteractivePromptContract(t *testing.T) {
+	js := string(workspaceShellJS)
+	for _, want := range []string{
+		`workflow.asks`, `function renderAskRequest`, `function renderAskCard`,
+		`data.kind === "ask_request"`, `postJSON("/answer"`,
+		`ws-ask__option`, `aria-pressed`, `record.status === "cancelled"`,
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("workspace interactive prompt behavior missing %q", want)
+		}
+	}
+	if strings.Contains(js, `var approval = data.approval || data.ask || {};`) {
+		t.Error("workspace permission handling must not treat ask payloads as approvals")
+	}
+	if strings.HasSuffix(strings.TrimSpace(js), "initSessionFilters();") {
+		t.Error("workspace session filter initialization must stay inside the shell IIFE")
+	}
+
+	css := string(workspaceLayoutCSS)
+	for _, want := range []string{`.ws-event--ask`, `.ws-ask__options`, `.ws-ask__option.is-selected`, `.ws-ask__submit`} {
+		if !strings.Contains(css, want) {
+			t.Errorf("workspace interactive prompt styles missing %q", want)
+		}
+	}
+}
+
 // TestServeWorkspaceComposerContract pins GUI-8's composer boundary: browser
 // actions use the existing HTTP routes and never alter permission mode locally.
 func TestServeWorkspaceComposerContract(t *testing.T) {
