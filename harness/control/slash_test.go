@@ -522,3 +522,41 @@ func TestManagementMigrateFromImportsExplicitSessions(t *testing.T) {
 		}
 	}
 }
+
+// Issue #333: the session-supplied effort vocabulary must reach completion
+// even when the ref cannot resolve against the user config (synthetic
+// extension/plugin entries are never in cfg.Providers) — and every returned
+// item carries a hint, including invented supported_efforts levels.
+func TestEffortCompletionUsesSessionLevelsForUnresolvableRef(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SEMANTIX_CREDENTIALS_STORE", "file")
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AppData", filepath.Join(home, "AppData"))
+
+	data := ArgData{
+		CurrentModel: "plugin/acme/session-model",
+		EffortLevels: []string{"auto", "disabled", "enabled", "turbo"},
+	}
+	items, _ := SlashArgItems("/effort ", data)
+	if len(items) != 4 {
+		t.Fatalf("session levels should reach completion unfiltered; got %v", labelsOf(items))
+	}
+	for _, it := range items {
+		if it.Hint == "" {
+			t.Errorf("level %q has a blank hint; open vocabularies need the generic fallback", it.Label)
+		}
+	}
+}
+
+func TestEffortLevelHintCoversKnownAndUnknownLevels(t *testing.T) {
+	for _, level := range []string{"auto", "low", "medium", "high", "xhigh", "max", "none", "disabled", "enabled", "adaptive"} {
+		if EffortLevelHint(level) == "" {
+			t.Errorf("known level %q has a blank hint", level)
+		}
+	}
+	if EffortLevelHint("totally-made-up") == "" {
+		t.Error("unknown levels must fall back to the generic hint, not a blank one")
+	}
+}

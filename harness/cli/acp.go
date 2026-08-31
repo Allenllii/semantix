@@ -484,7 +484,9 @@ func hasModelOption(options []acp.SessionConfigSelectOption, ref string) bool {
 func acpEffortOptions(levels []string) []acp.SessionConfigSelectOption {
 	out := make([]acp.SessionConfigSelectOption, 0, len(levels))
 	for _, level := range levels {
-		out = append(out, acp.SessionConfigSelectOption{Value: level, Name: effortOptionName(level)})
+		// Same hint source as TUI completion and bare /effort so the three
+		// surfaces cannot drift (Issue #333).
+		out = append(out, acp.SessionConfigSelectOption{Value: level, Name: effortOptionName(level), Description: control.EffortLevelHint(level)})
 	}
 	return out
 }

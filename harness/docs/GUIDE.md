@@ -617,7 +617,7 @@ rate, context use, compaction headroom, jobs, and balance. `ready` is the idle
 composer state, not a model-health check. Pickers, approvals, image paste, shell
 mode, and other active interactions replace it. Narrow terminals move, wrap, or
 compact whole groups; labels and displayed work-mode values follow `/language`,
-while `/work-mode` command arguments remain the stable English identifiers.
+while `/work` command arguments remain the stable English identifiers.
 
 Chat and transcript shortcuts:
 
@@ -649,7 +649,7 @@ Mode and display shortcuts:
 | `Shift+Tab` | Cycles Ask → Auto → Plan → Ask | YOLO remains outside this composer-mode cycle; the footer shows the active mode. |
 | `Ctrl+Y` | Toggles YOLO on/off | Turning YOLO off restores the previous Ask/Auto base when known. Terminals that forward Command/Super may also send `Cmd+Y`, but `Ctrl+Y` is the reliable terminal shortcut. |
 | `--yolo`, `--dangerously-skip-permissions` | Starts chat in YOLO | Same runtime mode as `Ctrl+Y`. |
-| `/work-mode [economy|balanced|delivery]` | Shows or switches the current session's work mode | `/profile` is a compatibility alias. Switching rebuilds the runtime atomically, preserves the conversation and approval posture, and is blocked while work is active. |
+| `/work [light|balanced|delivery]` | Shows or switches the current session's work mode | `/preset`, `/work-mode` and `/profile` are compatibility aliases. Switching happens in place — no controller rebuild — preserves the conversation and approval posture, and is blocked while work is active. |
 | `/theme [auto|light|dark|style]` | Shows or switches the CLI theme | Bare `/theme` lists background modes and named accent palettes. The choice is saved to the user config; `SEMANTIX_THEME` and `SEMANTIX_THEME_STYLE` can override it for one run. |
 | `Ctrl+O` | Toggles verbose reasoning display | Also available through `/verbose`. |
 | `Ctrl+B` | Expands or collapses long shell output | Long shell-output hint lines can also be clicked in the transcript; text selection is handled in-app while the full-screen TUI has mouse reporting enabled. |
@@ -962,7 +962,7 @@ convenient.
 ## Slash commands
 
 In an interactive `semantix-agent` session, built-in commands (`/compact`, `/context`, `/new`, `/clear`, `/rewind`,
-`/tree`, `/branch`, `/switch`, `/todo`, `/model`, `/work-mode`, `/mcp`, `/skills`, `/hooks`,
+`/tree`, `/branch`, `/switch`, `/todo`, `/model`, `/work`, `/mcp`, `/skills`, `/hooks`,
 `/memory`, `/goal`, `/output-style`, `/sandbox`, `/language`,
 `/reasoning-language`, `/help`) run
 locally — `/help` lists them all. Built-in **skills** such as `/init`,
@@ -1349,12 +1349,12 @@ require structured review (and security review when high). Meta tools such as
 `task`, `run_skill`, and `review` are not counted as mutations by themselves —
 only real child writes are. Read-only analysis remains available without
 forcing a write.
-Inside an interactive TUI session, use `/work-mode` to inspect the current
-choice or `/work-mode economy|balanced|delivery` to switch it. `/profile` is a
-compatibility alias. The switch atomically rebuilds the controller while
-preserving history, the session path, leases, and the Ask/Auto/YOLO posture; it
-is rejected while a turn, approval/question, background job, or another runtime
-switch is active. A failed build leaves the previous controller usable. This
+Inside an interactive TUI session, use `/work` to inspect the current
+choice or `/work light|balanced|delivery` to switch it. `/preset`, `/work-mode`
+and `/profile` are compatibility aliases. The switch happens in place — no
+controller rebuild — preserving history, the session path, leases, and the
+Ask/Auto/YOLO posture; it is rejected while a turn, approval/question, background
+job, or another runtime switch is active. This
 command changes only the current session and does not persist a new global
 default. Crossing profiles creates one new provider cache prefix. Within
 Balanced and Delivery the system contract and tool schema then stay stable; in

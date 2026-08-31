@@ -40,6 +40,12 @@ type Lifecycle interface {
 	SessionDir() string
 	Label() string
 	ModelRef() string
+	// EffortCapability is the reasoning-effort vocabulary of the model entry
+	// the session booted with (Issue #333): frontends complete and list /effort
+	// from it instead of re-resolving the ref against the user config, which
+	// cannot see synthetic extension/plugin entries. Zero value when boot did
+	// not supply one.
+	EffortCapability() config.EffortCapability
 	WorkspaceRoot() string
 	Close()
 }

@@ -1811,6 +1811,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		SubagentGate:                   headlessGate,
 		Label:                          label,
 		ModelRef:                       modelRef,
+		// The booted entry's effort vocabulary, so frontends complete and list
+		// /effort from the session's own model instead of re-resolving the ref
+		// against the user config (synthetic extension/plugin entries are not
+		// there) — Issue #333.
+		EffortCapability:               config.EffortCapabilityForEntry(entry),
 		SystemPrompt:                   sysPrompt,
 		SessionDir:                     sessionDir,
 		Host:                           pluginHost,

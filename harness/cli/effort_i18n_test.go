@@ -61,3 +61,58 @@ func TestEffortCommandUsageErrorCarriesLevels(t *testing.T) {
 		t.Fatalf("UnsupportedEffortError.Levels = %q, want auto|adaptive|disabled", got)
 	}
 }
+
+// Issue #333: bare /effort renders one described row per level with the
+// active level marked — not the single dense line it used to be.
+func TestRenderEffortsListsEveryLevelWithHintAndCurrentMarker(t *testing.T) {
+	out := renderEfforts(100, "plugin/acme/session-model", "enabled", config.EffortCapability{
+		Supported: true,
+		Levels:    []string{"auto", "enabled", "disabled"},
+	})
+	lines := strings.Split(ansi.Strip(out), "\n")
+	if len(lines) != 5 { // header + 3 levels + hint
+		t.Fatalf("expected 5 lines, got %d:\n%s", len(lines), out)
+	}
+	for _, level := range []string{"auto", "enabled", "disabled"} {
+		if !strings.Contains(out, level) {
+			t.Fatalf("level %q missing from list:\n%s", level, out)
+		}
+	}
+	if !strings.Contains(out, control.EffortLevelHint("enabled")) {
+		t.Fatalf("descriptions missing from list:\n%s", out)
+	}
+	// The current level's row carries the active tag.
+	if !strings.Contains(out, i18n.M.ArgModelCurrent) {
+		t.Fatalf("current marker missing from list:\n%s", out)
+	}
+}
+
+// Issue #333 defect 1/1b: an extension/plugin ref never resolves against the
+// user config, but bare /effort must still list — from the session's own
+// capability — instead of erroring with "unknown model".
+func TestEffortCommandBarePathUsesSessionCapabilityForPluginRef(t *testing.T) {
+	isolateUserConfig(t)
+
+	m := newTestChatTUI()
+	m.ctrl = control.New(control.Options{
+		Label: "plugin-session",
+		EffortCapability: config.EffortCapability{
+			Supported: true,
+			Levels:    []string{"auto", "enabled", "disabled"},
+		},
+	})
+	m.modelRef = "plugin/acme/session-model"
+
+	if cmd := m.runEffortCommand("/effort"); cmd != nil {
+		t.Fatal("bare /effort must not queue a rebuild")
+	}
+	joined := ansi.Strip(strings.Join(m.transcript, "\n"))
+	for _, level := range []string{"auto", "enabled", "disabled"} {
+		if !strings.Contains(joined, level) {
+			t.Fatalf("bare /effort on an unresolvable ref should list %q, got:\n%s", level, joined)
+		}
+	}
+	if strings.Contains(joined, "unknown model") {
+		t.Fatalf("bare /effort on an unresolvable ref must not error, got:\n%s", joined)
+	}
+}

@@ -419,6 +419,8 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 	a.applyBatchGuards(ctx, cancelled, calls, outcomes, results, receiptMark)
 	images := make([][]string, len(calls))
 	executions := make([]*tool.ShellExecution, len(calls))
+	writers := 0
+	success := true
 	for i := range outcomes {
 		images[i] = outcomes[i].images
 		executions[i] = outcomes[i].execution
@@ -427,6 +429,32 @@ func (a *Agent) executeBatch(ctx context.Context, turn *turnRuntime, calls []pro
 			if outcomes[i].recoveryStopReason != "" {
 				recoveryStopReason = outcomes[i].recoveryStopReason
 			}
+		}
+	}
+	for _, c := range calls {
+		if t, _, ambiguous := a.svc.tools.ResolveCall(c.Name); t != nil && len(ambiguous) == 0 && !t.ReadOnly() {
+			writers++
+		}
+	}
+	for _, o := range outcomes {
+		if o.errMsg != "" || o.blocked {
+			success = false
+			break
+		}
+	}
+	// Tier learner evidence (research plan W5): the executed round reports its
+	// tier and outcome back to the scheduler. Token cost attribution lands on
+	// the usage path, not here — 0 means success-only evidence. Type-asserted
+	// like observeSched: the frozen Decider interface stays untouched.
+	if plan.Tier != "" {
+		if tierObserver, ok := a.sched.(interface{ ObserveTier(sched.TierObservation) }); ok {
+			tierObserver.ObserveTier(sched.TierObservation{
+				Tier:    plan.Tier,
+				Intent:  intentName(turn.policy.Intent),
+				Writers: writers,
+				Calls:   len(calls),
+				Success: success,
+			})
 		}
 	}
 	return batchExecution{

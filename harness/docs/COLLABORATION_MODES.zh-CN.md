@@ -112,7 +112,7 @@ Delivery 使用与 Balanced 相同的完整工具面，额外增加稳定的能�
 - 桌面端点击输入框左下角菜单，在“运行模式”下选择“轻量 · 节省 Token”“均衡 · 默认”或“交付优先 · 完整验证”。
 - 轻量和交付优先模式会在输入框下方显示“轻量”或“交付优先”标签；点击标签可回到均衡模式。
 - CLI 启动时使用 `semantix-agent --profile economy|balanced|delivery`，非交互运行使用 `semantix-agent run --profile ...`。
-- TUI 会话内使用 `/work-mode economy|balanced|delivery` 热切换；不带参数的 `/work-mode` 会列出三档并标记当前项。`/profile` 保留为技术兼容别名，但帮助和补全以 `/work-mode` 为主。
+- TUI 会话内使用 `/work light|balanced|delivery` 热切换；不带参数的 `/work` 会列出三档并标记当前项。`/preset`、`/work-mode`、`/profile` 保留为兼容别名，帮助和补全以 `/work` 为主。
 - 会话内切换会在保留 history、session 路径、审批/Yolo 状态的前提下原子重建 Controller。当前 turn、审批/询问或后台任务仍在运行时不能切换；构建失败时旧运行时继续可用。
 - `/work-mode` 只修改当前会话，不写入全局默认值。跨 Profile 切换会形成一次新的 provider 缓存前缀；均衡与交付优先模式内 system contract 与工具 Schema 保持稳定，轻量模式内每次成功连接工具来源都会形成一次新前缀，之后在工具面再次变化前保持稳定。
 

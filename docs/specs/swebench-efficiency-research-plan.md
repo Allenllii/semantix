@@ -1,6 +1,7 @@
 # SWE-bench Verified「等效最省」研究计划
 
-> 状态：提案（draft v1, 2026-08-29）。目标读者：加入本研究的协作者。
+> 状态：执行中（draft v2, 2026-08-31）。目标读者：加入本研究的协作者。
+> 进度：W0–W4 已落地（代码 + 离线实测，见 [`docs/reports/w0-w4-efficiency-experiments.md`](../reports/w0-w4-efficiency-experiments.md)）；W5 代码落地（学习策略待 W1 真实流量积累证据）；W6 离线消融完成（见 [`docs/reports/w5-w6-ablation.md`](../reports/w5-w6-ablation.md)）——**剩余缺口：W1 全量双臂管线（pass@1 非劣 / token / 墙钟 / 污染率）需要真实 SWE-bench 运行预算**。
 > 目标定义：**固定模型 + 固定 harness，在已饱和的 pass-rate 基准（SWE-bench Verified）上做到等效最省** —— pass@1 非劣的前提下，语义缓存命中率更高、总 token 更少、墙钟时间更快。
 
 ---
@@ -70,14 +71,15 @@ SWE-bench Verified 的结构对本方案异常友好，这是核心机会：
 - C-slice 升级为「repo 概览卡」：构建命令、测试命令、目录结构、高频路径，作为注入主力。
 - R-slice 负迁移守卫：跨实例默认不 promote。
 
-### W5 · 调度与进化实化（1 人，~2–3 周，可后置到 M2）
-- tier 规则学习化：用实测 token 成本 + 质量反馈替代三个硬编码 if。
-- evolve 信号语义化：value 恒为 1 改为带幅度信号，扩事件类型，缩短冻结窗口的评估。
-- prefetch 从「拼注入块」升级为真实资源预热（embedding 查询、repo 索引、文件 mmap），沿用 hit/waste 反馈框架。
+### W5 · 调度与进化实化（1 人，~2–3 周，可后置到 M2）✅ 代码落地（2026-08-31，见 W5-W6 报告 §1）
+- ✅ tier 规则学习化：`ObserveTier` 反馈驱动复杂度规则（per-tier 成功率/成本 EWMA，`learned:*` 理由），intent/writer 安全 floor 保留；token 成本证据待 W1 管线接 usage 关联。
+- ✅ evolve 信号语义化：prefetch_hit 按 LeadMs 带幅度；Usage 事件 → cache_hit 真幅度信号（扩事件类型）；冻结窗口按「参数能否破坏注入字节稳定」分治——TauL2 守窗，PrefetchConf 窗内继续评估。
+- ✅ prefetch 真实资源预热：EmbeddingWarmer / FileWarmer（WarmKinds 不持久化），沿用 hit/waste 反馈框架。
 
-### W6 · 结果与消融（全员，M3）
-- 消融矩阵：vanilla / +L2 / +L2+L3 / +L2+L3+prefetch / 课程式 vs 随机顺序。
-- 报告发布到 `docs/reports/`，区分设计目标与实测结果（沿用仓库现有纪律）。
+### W6 · 结果与消融（全员，M3）✅ 离线消融完成（2026-08-31，见 W5-W6 报告 §2）；全量双臂依赖 W1 预算
+- ✅ 离线消融矩阵：bm25 / +hybrid / +真实嵌入 × 课程式 vs 随机序 × T-slice 准入/粒度（TraceLab，39 项目 / 4000 turn）；发现冷启动小库 zone 伪影（生产含义：污染率监控在库早期最关键）。
+- ⬜ 全量消融：vanilla / +L2 / +L2+L3 / +L2+L3+prefetch / 课程式 vs 随机顺序的真实 SWE-bench 双臂（pass@1 非劣 + token/墙钟 + 污染率 ≤5%）——需 W1 管线与预算。
+- ✅ 离线报告发布到 `docs/reports/w5-w6-ablation.md`，区分设计目标与实测结果。
 
 ## 4. 里程碑
 
