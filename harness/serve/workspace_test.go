@@ -189,6 +189,10 @@ func TestServeWorkspaceWorkflowContract(t *testing.T) {
 		`MAX_INLINE_CHARS`,
 		`MAX_RENDER_CHARS`,
 		`details.addEventListener("toggle"`,
+		`function cleanVisibleText`,
+		`isProviderAuthError`,
+		`if (!workflow.active && isProviderAuthError(statusText))`,
+		`if (s.failure) row.title +=`,
 		`textContent`,
 	} {
 		if !strings.Contains(js, want) {
@@ -197,6 +201,9 @@ func TestServeWorkspaceWorkflowContract(t *testing.T) {
 	}
 	if strings.Contains(js, `innerHTML`) {
 		t.Error("workflow renderer must not inject event content through innerHTML")
+	}
+	if !strings.Contains(js, `data-ws-demo`) || !strings.Contains(js, `workflow.active`) {
+		t.Error("workflow renderer must preserve the static preview until real work begins")
 	}
 }
 
@@ -412,6 +419,18 @@ func TestServeWorkspaceDesignTokens(t *testing.T) {
 			if !strings.Contains(asset, want) {
 				t.Errorf("workspace asset missing %q", want)
 			}
+		}
+	}
+	css := string(workspaceTokensCSS)
+	for _, want := range []string{"--sx-side-w: 296px", "--sx-context-w: 548px"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("workspace geometry token missing %q", want)
+		}
+	}
+	layout := string(workspaceLayoutCSS)
+	for _, want := range []string{"grid-template-rows: minmax(0, 1fr) auto", "grid-column: 1 / -1", "data-ws-state=\"empty\""} {
+		if !strings.Contains(layout, want) {
+			t.Errorf("workspace layout contract missing %q", want)
 		}
 	}
 }

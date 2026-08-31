@@ -1288,7 +1288,11 @@ func (s *Server) branches(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	tree := s.ctl().BranchTreeText()
-	writeJSON(w, map[string]any{"branches": branches, "tree": tree})
+	writeJSON(w, map[string]any{
+		"branches":  branches,
+		"tree":      tree,
+		"gitBranch": currentWorkspaceBranch(context.Background(), s.ctl().WorkspaceRoot()),
+	})
 }
 
 // models lists configured chat models for the browser model picker.
@@ -1428,7 +1432,9 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		"toolApprovalMode": s.ctl().ToolApprovalMode(),
 		"goal":             s.ctl().Goal(),
 		"goalStatus":       s.ctl().GoalStatus(),
-		"cwd":              s.ctl().SessionDir(),
+		"cwd":              s.ctl().WorkspaceRoot(),
+		"workspaceRoot":    s.ctl().WorkspaceRoot(),
+		"branch":           currentWorkspaceBranch(r.Context(), s.ctl().WorkspaceRoot()),
 		"used":             used,
 		"window":           window,
 		"cacheHit":         hit,

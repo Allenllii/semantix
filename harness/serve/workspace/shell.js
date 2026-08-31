@@ -148,7 +148,7 @@
     parts.push("L1 prefix：" + (cacheView.l1Hit === null ? "暂无数据" : "命中 " + cacheView.l1Hit + " · 未命中 " + cacheView.l1Miss));
     parts.push("L2 语义切片：" + (cacheView.l2Hits === null ? "暂无数据" : "复用 " + cacheView.l2Hits + " slices"));
     parts.push("L3 安全复用：" + (cacheView.l3Observed === null ? "暂无数据" : (cacheView.l3Observed ? "已观测" : "未命中")));
-    if (cacheView.reason) parts.push("原因：" + cacheView.reason);
+    if (cacheView.reason) parts.push("原因：" + cleanVisibleText(cacheView.reason));
     el.cacheStatusText.textContent = parts.join("  ·  ");
     if (el.cacheStatus) {
       var observed = cacheView.l1Hit !== null || cacheView.l2Hits !== null || cacheView.l3Observed !== null;
@@ -291,7 +291,10 @@
 
   function makeEvent(kind, label, icon) {
     if (!el.timeline) return null;
-    activateWorkflow();
+    // Status, cache, and provider-error frames can arrive during reconnects
+    // before a turn has produced user-visible work. Keep the useful preview
+    // in place until a real workflow card arrives.
+    if (["status", "error", "cache"].indexOf(kind) === -1) activateWorkflow();
     var article = document.createElement("article");
     article.className = "ws-event ws-event--" + kind;
     article.setAttribute("data-ws-event-kind", kind);
@@ -324,9 +327,17 @@
     if (state === "failed") card.article.classList.add("ws-event--error");
   }
 
+  function cleanVisibleText(value) {
+    var text = String(value == null ? "" : value);
+    return text
+      .replace(/<reasoning-language\b[^>]*>[\s\S]*?<\/reasoning-language\s*>/gi, "")
+      .replace(/<\/?(?:reasoning-language|response-language|display-language)\b[^>]*>/gi, "")
+      .trim();
+  }
+
   function appendExpandable(parent, value, label, className) {
     if (!parent || value === undefined || value === null) return;
-    var text = String(value);
+    var text = cleanVisibleText(value);
     if (!text) return;
     var bounded = text.length > MAX_RENDER_CHARS ? text.slice(0, MAX_RENDER_CHARS) + "\n…（输出已限制为 200000 字符）" : text;
     if (bounded.length <= MAX_INLINE_CHARS) {
@@ -781,7 +792,7 @@
     list.className = "ws-plan";
     items.forEach(function (item) {
       var li = document.createElement("li");
-      li.textContent = item.content;
+      li.textContent = cleanVisibleText(item.content);
       if (item.status === "completed" || item.status === "done") li.className = "is-done";
       list.appendChild(li);
     });
@@ -794,8 +805,8 @@
     if (!workflow.assistant) workflow.assistant = makeEvent("assistant", "semantix", "✦");
     if (!workflow.assistant) return;
     if (kind === "message") {
-      workflow.assistant.text = String(data.text || "");
-      workflow.assistant.reasoning = String(data.reasoning || "");
+      workflow.assistant.text = cleanVisibleText(data.text || "");
+      workflow.assistant.reasoning = cleanVisibleText(data.reasoning || "");
       workflow.assistant.finalized = true;
       clearNode(workflow.assistant.body);
       workflow.assistant.textEl = null;
@@ -807,7 +818,7 @@
       // instead of appending it a second time to the visible answer.
       return;
     } else if (kind === "reasoning") {
-      var reasoningDelta = String(data.reasoning || data.text || "");
+      var reasoningDelta = cleanVisibleText(data.reasoning || data.text || "");
       workflow.assistant.reasoning = (workflow.assistant.reasoning || "") + reasoningDelta;
       if (!workflow.assistant.reasoningEl) {
         workflow.assistant.reasoningEl = document.createElement("pre");
@@ -816,7 +827,7 @@
       }
       workflow.assistant.reasoningEl.appendChild(document.createTextNode(reasoningDelta));
     } else {
-      var textDelta = String(data.text || "");
+      var textDelta = cleanVisibleText(data.text || "");
       workflow.assistant.text = (workflow.assistant.text || "") + textDelta;
       if (!workflow.assistant.textEl) {
         workflow.assistant.textEl = document.createElement("div");
@@ -894,8 +905,13 @@
   function renderStatus(kind, data) {
     var card;
     if (kind === "error") {
+      var errorText = cleanVisibleText(data.err || data.text || data.detail);
+      if (!workflow.active && isProviderAuthError(errorText)) {
+        showNotice("Provider 尚未通过鉴权，已保留工作流预览。", "warn");
+        return;
+      }
       card = makeEvent("error", "执行失败", "!");
-      if (card) { appendExpandable(card.body, data.err || data.text || data.detail, "查看错误"); setStatus(card, "失败", "failed"); }
+      if (card) { appendExpandable(card.body, errorText, "查看错误"); setStatus(card, "失败", "failed"); }
       return;
     }
     if (kind === "cache_status") {
@@ -912,12 +928,21 @@
       return;
     }
     if (kind === "plan") { renderPlan(parsePlan(data.plan || data.text || data.detail)); return; }
+    var statusText = cleanVisibleText(data.text || data.detail || data.phase || data.outcome || "");
+    if (!workflow.active && isProviderAuthError(statusText)) {
+      showNotice("Provider 尚未通过鉴权，已保留工作流预览。", "warn");
+      return;
+    }
     card = makeEvent(kind === "retry" ? "retry" : "status", kind === "retry" ? "重试" : "任务状态", kind === "retry" ? "↻" : "•");
     if (!card) return;
-    var text = data.text || data.detail || data.phase || data.outcome || "";
+    var text = statusText;
     if (kind === "retry") text = "第 " + (data.retryAttempt || "?") + " / " + (data.retryMax || "?") + " 次重试" + (data.retryScope ? " · " + data.retryScope : "");
     if (text) card.body.textContent = String(text);
     setStatus(card, kind === "retry" ? "等待中" : "已记录", kind === "retry" ? "running" : "done");
+  }
+
+  function isProviderAuthError(text) {
+    return /(authentication|unauthori[sz]ed|invalid api key|api key|http\s*401|令牌|鉴权|密钥)/i.test(String(text || ""));
   }
 
   // ── tiny view helpers ──
@@ -1097,7 +1122,7 @@
           break;
         }
         var user = makeEvent("user", "用户", "›");
-        if (user) { user.body.textContent = String(data.text || ""); setStatus(user, "已发送", "done"); }
+        if (user) { user.body.textContent = cleanVisibleText(data.text || ""); setStatus(user, "已发送", "done"); }
         break;
       case "assistant_message":
         renderAssistant(data);
@@ -1154,7 +1179,7 @@
         }
         var permission = makeEvent("status", "需要确认", "?");
         if (permission) {
-          permission.body.textContent = String(approval.subject || approval.reason || approval.tool || "等待用户确认");
+          permission.body.textContent = cleanVisibleText(approval.subject || approval.reason || approval.tool || "等待用户确认");
           setStatus(permission, "等待中", "running");
         }
         break;
@@ -1300,6 +1325,7 @@
         row.title = "切换到该任务（会话内容保留）";
         row.addEventListener("click", function () { switchTask(s); });
       }
+      if (s.failure) row.title += "；恢复提示：" + s.failure;
       el.taskList.appendChild(li);
     });
   }
@@ -1313,6 +1339,40 @@
   function loadBranches() {
     setState(el.branch, "loading");
     return getJSON("/branches").then(function (data) {
+      var branches = Array.isArray(data.branches) ? data.branches : [];
+      // Session branches are informational for the shell: read-only display
+      // keeps fork/resume flows in the sessions picker where they belong.
+      fillList(el.branchMenu, branches.map(function (b, i) {
+        return {
+          label: b.name || b.id || "(未命名分支)",
+          hint: i === 0 ? "当前" : "",
+          disabled: true,
+          active: i === 0
+        };
+      }));
+      setState(el.branch, "ok");
+      var gitBranch = String(data.gitBranch || "").trim();
+      if (gitBranch) {
+        setValue(el.branchName, gitBranch);
+        el.branch.title = "当前工作区分支：" + gitBranch + "（只读展示）";
+        return;
+      }
+      if (!branches.length) {
+        setValue(el.branchName, "无分支");
+        el.branch.title = "当前会话没有分支记录（只读展示）";
+        setState(el.branch, "empty");
+        return;
+      }
+      var current = branches[0];
+      var label = current.name || current.id;
+      setValue(el.branchName, label);
+      el.branch.title = "当前会话分支：" + label + "（只读展示）";
+    }).catch(function () {
+      setValue(el.branchName, "不可用");
+      setState(el.branch, "error");
+    });
+  }
+
   function sessionStatus(s) {
     var status = String(s && s.status || "").toLowerCase();
     return SESSION_STATUS_LABELS[status] ? status : deriveTaskState(s);
@@ -1352,33 +1412,6 @@
     });
   }
 
-      var branches = Array.isArray(data.branches) ? data.branches : [];
-      // Session branches are informational for the shell: read-only display
-      // keeps fork/resume flows in the sessions picker where they belong.
-      fillList(el.branchMenu, branches.map(function (b, i) {
-        return {
-          label: b.name || b.id || "(未命名分支)",
-          hint: i === 0 ? "当前" : "",
-          disabled: true,
-          active: i === 0
-        };
-      }));
-      setState(el.branch, "ok");
-      if (!branches.length) {
-        setValue(el.branchName, "无分支");
-        el.branch.title = "当前会话没有分支记录（只读展示）";
-        return;
-      }
-      var current = branches[0];
-      var label = current.name || current.id;
-      setValue(el.branchName, label);
-      el.branch.title = "当前会话分支：" + label + "（只读展示）";
-    }).catch(function () {
-      setValue(el.branchName, "不可用");
-      setState(el.branch, "error");
-    });
-  }
-
   function renderEffort(level, hasModel) {
     var label = level ? (EFFORT_LABELS[level] || level) : hasModel ? "默认" : "—";
     setValue(el.effortValue, label);
@@ -1403,8 +1436,7 @@
       if (!models.length) {
         // #405 acceptance: an explicit, visible unavailable-model signal.
         setValue(el.modelName, "模型不可用");
-        setState(el.model, "error");
-      if (s.failure) row.title += "；恢复提示：" + s.failure;
+        setState(el.model, "empty");
         el.model.title = "没有任何已配置的可用模型；请在 provider 设置中添加后刷新";
         fillList(el.modelMenu, [{ label: "模型不可用：未配置任何模型", disabled: true }]);
         showNotice("模型不可用：未发现已配置的聊天模型，请检查 provider 配置。", "warn");

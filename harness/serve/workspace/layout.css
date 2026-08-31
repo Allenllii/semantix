@@ -84,7 +84,7 @@ kbd {
 
 .ws-topbar {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; padding: 14px 22px;
+  gap: 12px; padding: 18px 22px;
   border-bottom: 1px solid var(--sx-border);
 }
 .ws-chips { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -107,10 +107,17 @@ kbd {
 
 /* ---------- Body: center + context ---------- */
 
-.ws-body { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) var(--sx-context-w); min-height: 0; }
+.ws-body {
+  flex: 1; display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--sx-context-w);
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+}
 
+.ws-center { grid-column: 1; grid-row: 1; }
 body.ws-right-collapsed .ws-body { grid-template-columns: minmax(0, 1fr); }
 body.ws-right-collapsed .ws-context { display: none; }
+.ws-context { grid-column: 2; grid-row: 1; }
 
 .ws-center {
   min-width: 0; overflow-y: auto; padding: 26px 30px 18px;
@@ -306,9 +313,12 @@ body.ws-right-collapsed .ws-context { display: none; }
 .ws-statusbar .chev { margin-left: auto; color: var(--sx-text-3); }
 
 .composer {
-  margin-top: auto; background: var(--sx-surface);
+  grid-column: 1 / -1; grid-row: 2;
+  margin: 0 30px 16px; background: var(--sx-surface);
   border: 1px solid var(--sx-border-strong); border-radius: var(--sx-radius-l);
-  padding: 14px 16px 12px; display: grid; gap: 12px;
+  padding: 14px 16px 12px; display: grid; gap: 12px; min-width: 0;
+  position: relative; z-index: 3;
+  box-shadow: 0 -10px 24px rgba(0, 0, 0, .12);
 }
 .composer textarea {
   resize: none; border: 0; outline: 0; background: none; color: var(--sx-text);
@@ -398,6 +408,7 @@ body.ws-right-collapsed .ws-context { display: none; }
 
 /* Chip lifecycle states: loading → ok / error (#405 states requirement). */
 .ws-chip[data-ws-state="loading"] { color: var(--sx-text-3); pointer-events: none; }
+.ws-chip[data-ws-state="empty"] { border-color: var(--sx-border-strong); color: var(--sx-text-2); }
 .ws-chip[data-ws-state="error"] { border-color: rgba(244, 114, 114, .45); color: var(--sx-del); }
 .ws-chip[data-ws-state="error"] > * { color: inherit; }
 
@@ -444,4 +455,5 @@ body.ws-right-collapsed .ws-context { display: none; }
   body.ws-side-open .ws-side { transform: none; box-shadow: 24px 0 48px rgba(0, 0, 0, .45); }
   body.ws-side-open .ws-side-scrim { display: block; position: fixed; inset: 0; z-index: 20; border: 0; background: rgba(0, 0, 0, .48); cursor: pointer; }
   .ws-tree, .ws-center { padding-inline: 16px; }
+  .composer { margin-inline: 16px; margin-bottom: 12px; }
 }
