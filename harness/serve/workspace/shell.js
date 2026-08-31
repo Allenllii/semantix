@@ -1313,6 +1313,39 @@
   function loadBranches() {
     setState(el.branch, "loading");
     return getJSON("/branches").then(function (data) {
+      var branches = Array.isArray(data.branches) ? data.branches : [];
+      // Session branches are informational for the shell: read-only display
+      // keeps fork/resume flows in the sessions picker where they belong.
+      fillList(el.branchMenu, branches.map(function (b, i) {
+        return {
+          label: b.name || b.id || "(未命名分支)",
+          hint: i === 0 ? "当前" : "",
+          disabled: true,
+          active: i === 0
+        };
+      }));
+      setState(el.branch, "ok");
+      var gitBranch = String(data.gitBranch || "").trim();
+      if (gitBranch) {
+        setValue(el.branchName, gitBranch);
+        el.branch.title = "当前工作区分支：" + gitBranch + "（只读展示）";
+        return;
+      }
+      if (!branches.length) {
+        setValue(el.branchName, "无分支");
+        el.branch.title = "当前会话没有分支记录（只读展示）";
+        return;
+      }
+      var current = branches[0];
+      var label = current.name || current.id;
+      setValue(el.branchName, label);
+      el.branch.title = "当前会话分支：" + label + "（只读展示）";
+    }).catch(function () {
+      setValue(el.branchName, "不可用");
+      setState(el.branch, "error");
+    });
+  }
+
   function sessionStatus(s) {
     var status = String(s && s.status || "").toLowerCase();
     return SESSION_STATUS_LABELS[status] ? status : deriveTaskState(s);
@@ -1349,33 +1382,6 @@
     return sessionRows.filter(function (s) {
       var haystack = [s.name, s.title, s.failure, s.project].join(" ").toLowerCase();
       return (!keyword || haystack.indexOf(keyword) !== -1) && (!project || s.project === project) && (!status || sessionStatus(s) === status);
-    });
-  }
-
-      var branches = Array.isArray(data.branches) ? data.branches : [];
-      // Session branches are informational for the shell: read-only display
-      // keeps fork/resume flows in the sessions picker where they belong.
-      fillList(el.branchMenu, branches.map(function (b, i) {
-        return {
-          label: b.name || b.id || "(未命名分支)",
-          hint: i === 0 ? "当前" : "",
-          disabled: true,
-          active: i === 0
-        };
-      }));
-      setState(el.branch, "ok");
-      if (!branches.length) {
-        setValue(el.branchName, "无分支");
-        el.branch.title = "当前会话没有分支记录（只读展示）";
-        return;
-      }
-      var current = branches[0];
-      var label = current.name || current.id;
-      setValue(el.branchName, label);
-      el.branch.title = "当前会话分支：" + label + "（只读展示）";
-    }).catch(function () {
-      setValue(el.branchName, "不可用");
-      setState(el.branch, "error");
     });
   }
 
