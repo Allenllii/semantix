@@ -225,6 +225,7 @@
     tools: Object.create(null),
     diffs: Object.create(null),
     approvals: Object.create(null),
+    asks: Object.create(null),
     localUser: null,
     active: false
   };
@@ -245,6 +246,7 @@
     workflow.tools = Object.create(null);
     workflow.diffs = Object.create(null);
     workflow.approvals = Object.create(null);
+    workflow.asks = Object.create(null);
     workflow.localUser = null;
     workflow.active = false;
     clearNode(el.timeline);
@@ -651,6 +653,133 @@
       renderReviewList();
       showNotice("Review 决策未提交：" + err.message, "error");
     });
+  }
+
+  function askSelection(record, questionID) {
+    if (!record.selected[questionID]) record.selected[questionID] = [];
+    return record.selected[questionID];
+  }
+
+  function askReady(record) {
+    var questions = record && record.ask && Array.isArray(record.ask.questions) ? record.ask.questions : [];
+    return questions.length > 0 && questions.every(function (question, index) {
+      var id = String(question.id || "question-" + index);
+      return askSelection(record, id).length > 0;
+    });
+  }
+
+  function submitAskAnswer(record) {
+    if (!record || record.status !== "pending" || !askReady(record)) return;
+    var questions = Array.isArray(record.ask.questions) ? record.ask.questions : [];
+    var answers = questions.map(function (question, index) {
+      var id = String(question.id || "question-" + index);
+      var selected = askSelection(record, id);
+      var options = Array.isArray(question.options) ? question.options : [];
+      return {
+        questionId: id,
+        selected: selected.map(function (optionIndex) {
+          return options[optionIndex] && String(options[optionIndex].label || "");
+        }).filter(Boolean)
+      };
+    });
+    record.status = "submitting";
+    renderAskCard(record);
+    postJSON("/answer", { id: String(record.ask.id), answers: answers }).then(function () {
+      record.status = "answered";
+      renderAskCard(record);
+    }).catch(function (err) {
+      record.status = "pending";
+      renderAskCard(record);
+      showNotice("选择未提交：" + err.message, "error");
+    });
+  }
+
+  function renderAskCard(record) {
+    if (!record || !record.card || !record.ask) return;
+    clearNode(record.card.body);
+    var questions = Array.isArray(record.ask.questions) ? record.ask.questions : [];
+    if (!questions.length) {
+      record.card.body.textContent = "服务端未提供可选问题。";
+      setStatus(record.card, "无选项", "failed");
+      return;
+    }
+    questions.forEach(function (question, questionIndex) {
+      var questionID = String(question.id || "question-" + questionIndex);
+      var block = document.createElement("section");
+      block.className = "ws-ask__question";
+      var prompt = document.createElement("div");
+      prompt.className = "ws-ask__prompt";
+      var header = String(question.header || "").trim();
+      prompt.textContent = header ? header + " · " + cleanVisibleText(question.prompt || "") : cleanVisibleText(question.prompt || "");
+      block.appendChild(prompt);
+      var options = document.createElement("div");
+      options.className = "ws-ask__options";
+      var selected = askSelection(record, questionID);
+      var optionList = Array.isArray(question.options) ? question.options : [];
+      optionList.forEach(function (option, optionIndex) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "ws-ask__option";
+        button.disabled = record.status !== "pending";
+        button.setAttribute("aria-pressed", String(selected.indexOf(optionIndex) !== -1));
+        if (selected.indexOf(optionIndex) !== -1) button.classList.add("is-selected");
+        var label = document.createElement("strong");
+        label.className = "ws-ask__option-label";
+        label.textContent = String(option && option.label || "选项 " + (optionIndex + 1));
+        button.appendChild(label);
+        if (option && option.description) {
+          var description = document.createElement("span");
+          description.className = "ws-ask__option-description";
+          description.textContent = cleanVisibleText(option.description);
+          button.appendChild(description);
+        }
+        button.addEventListener("click", function () {
+          if (record.status !== "pending") return;
+          var next = selected.slice();
+          var current = next.indexOf(optionIndex);
+          if (question.multi) {
+            if (current === -1) next.push(optionIndex);
+            else next.splice(current, 1);
+          } else {
+            next = [optionIndex];
+          }
+          record.selected[questionID] = next;
+          renderAskCard(record);
+        });
+        options.appendChild(button);
+      });
+      if (!optionList.length) {
+        var noOptions = document.createElement("p");
+        noOptions.className = "ws-ask__empty";
+        noOptions.textContent = "服务端未提供选项。";
+        options.appendChild(noOptions);
+      }
+      block.appendChild(options);
+      record.card.body.appendChild(block);
+    });
+    var submit = document.createElement("button");
+    submit.type = "button";
+    submit.className = "ws-ask__submit";
+    submit.textContent = record.status === "answered" ? "已提交" : record.status === "submitting" ? "提交中…" : record.status === "cancelled" ? "已取消" : "提交选择";
+    submit.disabled = record.status !== "pending" || !askReady(record);
+    submit.addEventListener("click", function () { submitAskAnswer(record); });
+    record.card.body.appendChild(submit);
+    var status = record.status === "answered" ? "已提交" : record.status === "submitting" ? "提交中" : record.status === "cancelled" ? "已取消" : "待选择";
+    var state = record.status === "answered" ? "done" : record.status === "cancelled" ? "cancelled" : "running";
+    setStatus(record.card, status, state);
+  }
+
+  function renderAskRequest(ask) {
+    if (!ask || !ask.id || !Array.isArray(ask.questions)) return;
+    var id = String(ask.id);
+    var record = workflow.asks[id];
+    if (!record) {
+      record = { ask: ask, selected: Object.create(null), status: "pending", card: makeEvent("ask", "需要选择", "?") };
+      workflow.asks[id] = record;
+    } else {
+      record.ask = ask;
+    }
+    renderAskCard(record);
   }
 
   function renderReviewList() {
@@ -1110,6 +1239,7 @@
       workflow.tools = Object.create(null);
       workflow.diffs = Object.create(null);
       workflow.approvals = Object.create(null);
+      workflow.asks = Object.create(null);
       renderDiffList();
       renderTerminalList();
       renderReviewList();
@@ -1160,6 +1290,13 @@
               var record = workflow.approvals[id];
               if (record && (record.status === "pending" || record.status === "submitting")) record.status = "cancelled";
             });
+            Object.keys(workflow.asks).forEach(function (id) {
+              var askRecord = workflow.asks[id];
+              if (askRecord && (askRecord.status === "pending" || askRecord.status === "submitting")) {
+                askRecord.status = "cancelled";
+                renderAskCard(askRecord);
+              }
+            });
             renderReviewList();
           }
         }
@@ -1172,7 +1309,11 @@
         renderStatus("task_status", { text: data.text || data.detail || "收到未识别事件" });
         break;
       case "permission_request":
-        var approval = data.approval || data.ask || {};
+        if (data.kind === "ask_request" && data.ask) {
+          renderAskRequest(data.ask);
+          break;
+        }
+        var approval = data.approval || {};
         if (approval.id) {
           workflow.approvals[String(approval.id)] = { approval: approval, status: "pending" };
           renderReviewList();
@@ -1428,19 +1569,6 @@
     fillList(el.effortMenu, rows, pickEffort);
   }
 
-  function loadModels() {
-    setState(el.model, "loading");
-    return getJSON("/models").then(function (data) {
-      renderEffort(String(data.effort || "").toLowerCase(), !!data.current);
-      var models = Array.isArray(data.models) ? data.models : [];
-      if (!models.length) {
-        // #405 acceptance: an explicit, visible unavailable-model signal.
-        setValue(el.modelName, "模型不可用");
-        setState(el.model, "empty");
-        el.model.title = "没有任何已配置的可用模型；请在 provider 设置中添加后刷新";
-        fillList(el.modelMenu, [{ label: "模型不可用：未配置任何模型", disabled: true }]);
-        showNotice("模型不可用：未发现已配置的聊天模型，请检查 provider 配置。", "warn");
-        return;
   function initSessionFilters() {
     [el.sessionSearch, el.sessionProject, el.sessionStatus].forEach(function (control) {
       if (!control) return;
@@ -1454,6 +1582,19 @@
     });
   }
 
+  function loadModels() {
+    setState(el.model, "loading");
+    return getJSON("/models").then(function (data) {
+      renderEffort(String(data.effort || "").toLowerCase(), !!data.current);
+      var models = Array.isArray(data.models) ? data.models : [];
+      if (!models.length) {
+        // #405 acceptance: an explicit, visible unavailable-model signal.
+        setValue(el.modelName, "模型不可用");
+        setState(el.model, "empty");
+        el.model.title = "没有任何已配置的可用模型；请在 provider 设置中添加后刷新";
+        fillList(el.modelMenu, [{ label: "模型不可用：未配置任何模型", disabled: true }]);
+        showNotice("模型不可用：未发现已配置的聊天模型，请检查 provider 配置。", "warn");
+        return;
       }
       var activeRef = null;
       fillList(el.modelMenu, models.map(function (m) {
@@ -1518,6 +1659,7 @@
 
   initContextTabs();
   initComposer();
+  initSessionFilters();
   initSelectors();
   connectWorkspaceEvents();
 
@@ -1548,4 +1690,3 @@
   window.addEventListener("resize", function () { setSideOpen(document.body.classList.contains("ws-side-open")); });
   setSideOpen(false);
 })();
-  initSessionFilters();
