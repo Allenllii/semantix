@@ -1,6 +1,6 @@
 # Semantix 记忆注入负迁移：多步、意图偏移与重复探索修复方案
 
-> 状态：提案（2026-09-02）
+> 状态：实施中（2026-09-02）
 >
 > 跟踪 Issue：[#447](https://github.com/Gnosil/semantix/issues/447)
 >
@@ -184,7 +184,17 @@ Result 初始为 probation；只有验证命令通过、无回滚，或外部评
 7. 接入成功提升和负迁移熔断；
 8. 最后验证 hybrid/model embedding 的增量收益。
 
-## 9. 相关材料
+## 9. 实施进度
+
+- P0.1 指标归因：已完成，调用来源与重复工具指标已进入逐实例记录；
+- P0.2 Shadow retrieval：已完成，`off | shadow | strict` 及 provider-byte 不变性测试已落地；
+- P0.3 Repo 隔离：PR 已提交，采用真实 repo 独立 store 和 repo 内确定性串行；
+- P0.4 严格准入：已实现 C/M allowlist、小库/来源会话/绝对分/coverage/margin/runner-up 门禁和 query 清洗；
+- 后续：历史正文降权、严格预算、A-D 配对实验、成功提升与负迁移熔断。
+
+P0.4 的具体默认值、reason code、校准和回滚合同见 `docs/specs/semantix-l2-admission-policy.md`。
+
+## 10. 相关材料
 
 - `docs/reports/swe-pilot-two-arm.md`
 - `docs/reports/swebench-harness-comparison.md`
