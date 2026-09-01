@@ -41,7 +41,7 @@ func TestShadowRetrievalKeepsProviderMessagesByteIdenticalToOff(t *testing.T) {
 		if block == "" {
 			return append([]provider.Message(nil), base...)
 		}
-		return prependSystemBlock(base, block)
+		return prependSemantixHistory(base, block)
 	}
 	offJSON, err := json.Marshal(assemble(offResult.Text))
 	if err != nil {
