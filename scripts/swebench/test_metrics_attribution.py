@@ -92,6 +92,8 @@ class SemantixMetricAttributionTest(unittest.TestCase):
         self.assertEqual(metrics.source_call_delta, 7)
         self.assertEqual(metrics.executor_calls, 0)
         self.assertEqual(metrics.other_model_calls, 0)
+        self.assertIsNone(metrics.repeated_tool_calls)
+        self.assertIsNone(metrics.repeated_tool_calls_by_name)
 
     def test_fill_metrics_ignores_malformed_or_negative_counts(self) -> None:
         raw = {
