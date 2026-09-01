@@ -227,6 +227,68 @@ func TestBridgeInjectRecordsStatsAndEvent(t *testing.T) {
 	}
 }
 
+func TestBridgeShadowRetrievalEmitsDiagnosticsWithoutInjection(t *testing.T) {
+	dir := writeKernelDir(t, reuseFixtureSlices(), nil)
+	var events []event.Event
+	b := NewBridge(Config{Enabled: true, Mode: "shadow", Inject: true, ProjectDir: dir, Budget: 4096})
+	b.SetLabel("shadow-observation")
+	b.Sink(event.FuncSink(func(e event.Event) { events = append(events, e) }))
+
+	result := b.InjectDetailed(context.Background(), "修复 go 测试")
+	if result.Text != "" {
+		t.Fatalf("shadow Text = %q, want empty provider-visible injection", result.Text)
+	}
+	if result.Diagnostics == nil || result.Diagnostics.Mode != "shadow" || len(result.Diagnostics.Candidates) == 0 {
+		t.Fatalf("shadow diagnostics = %+v", result.Diagnostics)
+	}
+	if result.Diagnostics.LibrarySize != 3 || result.Diagnostics.QueryBefore.SHA256 == "" || result.Diagnostics.QueryAfter.SHA256 == "" {
+		t.Fatalf("shadow diagnostics missing replay context: %+v", result.Diagnostics)
+	}
+	if result.Diagnostics.Injected || result.Diagnostics.Bytes != 0 || result.Diagnostics.MessageRole != "" {
+		t.Fatalf("shadow reported provider injection: %+v", result.Diagnostics)
+	}
+	if len(events) != 1 || events[0].KernelCache == nil || events[0].KernelCache.Op != "shadow" || events[0].KernelCache.Retrieval == nil {
+		t.Fatalf("shadow events = %+v", events)
+	}
+
+	store, err := slice.NewFileStore(filepath.Join(dir, ".semantix", "project.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeSliceStore(store)
+	for _, candidate := range result.Diagnostics.Candidates {
+		got, err := store.Get(candidate.ID)
+		if err != nil || got == nil {
+			t.Fatalf("Get(%q) = %v, %v", candidate.ID, got, err)
+		}
+		if got.Stats.Injected != 0 {
+			t.Fatalf("shadow mutated injection stats for %q: %+v", candidate.ID, got.Stats)
+		}
+	}
+}
+
+func TestBridgeRetrievalModeCompatibilityAndFailClosed(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  Config
+		want RetrievalMode
+	}{
+		{"legacy strict", Config{Enabled: true, Inject: true}, RetrievalStrict},
+		{"legacy off", Config{Enabled: true}, RetrievalOff},
+		{"explicit shadow", Config{Enabled: true, Inject: true, Mode: "shadow"}, RetrievalShadow},
+		{"explicit strict", Config{Enabled: true, Mode: "strict"}, RetrievalStrict},
+		{"disabled", Config{Enabled: false, Inject: true, Mode: "strict"}, RetrievalOff},
+		{"unknown", Config{Enabled: true, Inject: true, Mode: "typo"}, RetrievalOff},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := NewBridge(tc.cfg).RetrievalMode(); got != tc.want {
+				t.Fatalf("RetrievalMode() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestBridgeReuseSavingsDelta: the usage side attributes only the growth
 // between snapshots; the first snapshot takes the full cumulative value.
 func TestBridgeReuseSavingsDelta(t *testing.T) {

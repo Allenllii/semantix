@@ -21,6 +21,7 @@ import (
 	"strings"
 	"unicode"
 
+	"semantix/kernel/bm25"
 	"semantix/kernel/sanitize"
 	"semantix/kernel/slice"
 	"semantix/kernel/zone"
@@ -112,6 +113,22 @@ type Injection struct {
 	// mode). Zero in the default drop mode; a persistent non-zero value is
 	// the signal to recalibrate zone thresholds (W3 of the efficiency plan).
 	GreyIncluded int
+	// Decisions preserves the score-order admission trace for every retrieved
+	// candidate. It is observation-only: replaying Admitted from Reason must
+	// yield the same slice set that produced Text.
+	Decisions []CandidateDecision
+}
+
+// CandidateDecision is the replayable admission outcome for one retrieved
+// slice. Reason is a stable enum: admitted, below_min_score, zone_grey,
+// zone_miss, sanitized_empty, origin_below_floor, budget, or nil_slice.
+type CandidateDecision struct {
+	ID       string
+	Score    float64
+	Coverage float64
+	Zone     string
+	Admitted bool
+	Reason   string
 }
 
 const (
@@ -126,14 +143,20 @@ func (in *Injector) Build(query string) (*Injection, error) {
 	if k <= 0 {
 		k = 5
 	}
-	budget := in.Budget
-	if budget <= 0 {
-		budget = DefaultBudget
-	}
-
 	hits, err := in.Index.Search(query, k, in.Scope)
 	if err != nil {
 		return nil, fmt.Errorf("inject: search: %w", err)
+	}
+	return in.BuildHits(query, hits)
+}
+
+// BuildHits applies the exact production admission and assembly path to an
+// already-retrieved score-ordered hit list. It lets callers record the same
+// candidates that produced the block without running retrieval twice.
+func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error) {
+	budget := in.Budget
+	if budget <= 0 {
+		budget = DefaultBudget
 	}
 	top1 := 0.0
 	if len(hits) > 0 {
@@ -154,30 +177,48 @@ func (in *Injector) Build(query string) (*Injection, error) {
 		grey    bool   // audit-mode admission under the unverified header
 	}
 	var cands []candidate
+	decisions := make([]CandidateDecision, 0, len(hits))
 	size := len(blockOpen)
 	for _, h := range hits {
+		d := CandidateDecision{Score: h.Score, Zone: zone.Miss.String(), Reason: "nil_slice"}
+		if h.Slice == nil {
+			decisions = append(decisions, d)
+			dropped++
+			continue
+		}
+		d.ID = h.Slice.ID
+		d.Coverage = bm25.QueryCoverage(query, string(h.Slice.Content))
 		if in.MinScore > 0 && h.Score < in.MinScore {
+			d.Reason = "below_min_score"
+			decisions = append(decisions, d)
+			dropped++
 			continue
 		}
 		isGrey := false
 		if in.Zones != nil {
 			z := *in.Zones
-			if h.Slice != nil {
-				z = z.ForType(h.Slice.Type.String()) // Issue #259 阶段 2
-			}
-			switch z.Classify(h.Score, top1) {
+			z = z.ForType(h.Slice.Type.String()) // Issue #259 阶段 2
+			classified := z.Classify(h.Score, top1)
+			d.Zone = classified.String()
+			switch classified {
 			case zone.Hit:
 				// verified: admitted below
 			case zone.Grey:
 				if !in.AllowGrey {
+					d.Reason = "zone_grey"
+					decisions = append(decisions, d)
 					dropped++
 					continue
 				}
 				isGrey = true // admitted below under the unverified header
 			default: // miss
+				d.Reason = "zone_miss"
+				decisions = append(decisions, d)
 				dropped++
 				continue
 			}
+		} else {
+			d.Zone = "unclassified"
 		}
 		// Inject-side sanitization (Issue #278, Security §3.1): the block
 		// carries the deterministically cleaned content — escape stripping,
@@ -188,6 +229,8 @@ func (in *Injector) Build(query string) (*Injection, error) {
 		// dropped entirely (nothing useful to inject).
 		content := sanitize.Sanitize(string(h.Slice.Content))
 		if content == "" {
+			d.Reason = "sanitized_empty"
+			decisions = append(decisions, d)
 			dropped++
 			continue
 		}
@@ -196,6 +239,8 @@ func (in *Injector) Build(query string) (*Injection, error) {
 		// (import and legacy are level 1; session-auto/prefetch 2;
 		// user-curated 3).
 		if h.Slice != nil && in.MinOrigin.Level() > h.Slice.Meta.Origin.Level() {
+			d.Reason = "origin_below_floor"
+			decisions = append(decisions, d)
 			dropped++
 			continue
 		}
@@ -209,10 +254,15 @@ func (in *Injector) Build(query string) (*Injection, error) {
 		}
 		item := len(fmt.Sprintf(header, h.Slice.ID, content))
 		if size+item+len(blockClose)+64 > budget && len(cands) > 0 {
+			d.Reason = "budget"
+			decisions = append(decisions, d)
 			dropped++
 			continue
 		}
 		size += item
+		d.Admitted = true
+		d.Reason = "admitted"
+		decisions = append(decisions, d)
 		cands = append(cands, candidate{sl: h.Slice, content: content, grey: isGrey})
 	}
 
@@ -246,5 +296,6 @@ func (in *Injector) Build(query string) (*Injection, error) {
 		Bytes:        buf.Len(),
 		Dropped:      dropped,
 		GreyIncluded: greyIncluded,
+		Decisions:    decisions,
 	}, nil
 }

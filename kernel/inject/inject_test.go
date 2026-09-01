@@ -183,6 +183,34 @@ func TestInjectorZoneFilterDropsGrey(t *testing.T) {
 	}
 }
 
+func TestInjectorAdmissionTraceReplaysDecision(t *testing.T) {
+	idx := bm25.New()
+	store := newTestStore(t, filepath.Join(t.TempDir(), "db.jsonl"))
+	seed(t, idx, store, "修复 go 测试失败", "修复 go 发布流程")
+
+	hits, err := idx.Search("修复 go 测试失败", 5, slice.Project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	z := zone.Default()
+	in := &Injector{Index: idx, Scope: slice.Project, K: 5, Zones: &z}
+	inj, err := in.BuildHits("修复 go 测试失败", hits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inj.Decisions) != len(hits) {
+		t.Fatalf("decisions = %d, want one per hit (%d)", len(inj.Decisions), len(hits))
+	}
+	for _, d := range inj.Decisions {
+		if d.ID == "" || d.Score <= 0 || d.Coverage <= 0 || d.Zone == "" || d.Reason == "" {
+			t.Fatalf("incomplete decision: %+v", d)
+		}
+		if d.Admitted != (d.Reason == "admitted") {
+			t.Fatalf("decision cannot be replayed from reason: %+v", d)
+		}
+	}
+}
+
 // TestInjectorEscapesBlockMarkers is the HIGH-fix regression: a stored slice
 // containing block markers must not break the [semantix-reuse] structure.
 func TestInjectorEscapesBlockMarkers(t *testing.T) {
