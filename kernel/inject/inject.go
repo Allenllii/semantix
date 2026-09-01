@@ -4,11 +4,10 @@
 // block for the harness compose step.
 //
 // Design invariants (see Agent-Infra-架构设计.md §4.2):
-//   - canonical order: injection slices are sorted by ID so identical
-//     retrievals produce byte-identical blocks (DeepSeek prefix-cache
-//     friendly); never sorted by score.
-//   - budget: only whole slices are dropped, in score order, until the block
-//     fits the budget; the top slice is always kept when k >= 1.
+//   - canonical order: injection slices are score-descending with an ID
+//     tie-break so relevance order and byte stability agree.
+//   - budget: only whole slices are dropped; no candidate, including top-1,
+//     may make the final block exceed the configured hard byte limit.
 //   - low-authority: the block is wrapped in markers so the harness can place
 //     it after the system prefix / before the user message, and strip it on
 //     user edit/rollback (SliceReject).
@@ -105,7 +104,7 @@ type Injector struct {
 
 // Injection is the assembled, deterministic reuse block.
 type Injection struct {
-	Slices  []*slice.Slice // canonical (ID-sorted) order
+	Slices  []*slice.Slice // score-descending; ID tie-break
 	Text    string         // marker-wrapped block to place in the compose step
 	Bytes   int
 	Dropped int // slices dropped by zone filter or budget (whole-slice truncation)
@@ -172,9 +171,10 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 	// redundant pre-escape budget check from the #279 merge plus a dead
 	// "(score=%.2f)" header that never reached the output.)
 	type candidate struct {
-		sl      *slice.Slice
-		content string // sanitized + marker-escaped, == the bytes written
-		grey    bool   // audit-mode admission under the unverified header
+		sl    *slice.Slice
+		item  string // exact header + provenance + sanitized content bytes written
+		grey  bool   // audit-mode admission under the unverified header
+		score float64
 	}
 	var cands []candidate
 	decisions := make([]CandidateDecision, 0, len(hits))
@@ -245,32 +245,36 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 			continue
 		}
 		content = escapeMarker(content)
-		// Budget judged on the EXACT bytes that will be written (escaped
-		// content, canonical header — including the grey audit variant) —
-		// never on a pre-escape length.
-		header := "--- slice %s ---\n%s\n"
-		if isGrey {
-			header = "--- slice %s (grey, unverified) ---\n%s\n"
-		}
-		item := len(fmt.Sprintf(header, h.Slice.ID, content))
-		if size+item+len(blockClose)+64 > budget && len(cands) > 0 {
+		// Budget is judged on the exact bytes that will be written, including
+		// provenance, escaped content, and the grey audit variant.
+		item := formatSliceItem(h.Slice, h.Score, content, isGrey)
+		if size+len(item)+len(blockClose) > budget {
 			d.Reason = "budget"
 			decisions = append(decisions, d)
 			dropped++
 			continue
 		}
-		size += item
+		size += len(item)
 		d.Admitted = true
 		d.Reason = "admitted"
 		decisions = append(decisions, d)
-		cands = append(cands, candidate{sl: h.Slice, content: content, grey: isGrey})
+		cands = append(cands, candidate{sl: h.Slice, item: item, grey: isGrey, score: h.Score})
 	}
 
-	// Canonical order: verified candidates first, then audit-mode grey,
-	// each ID-sorted for byte-stable output (never score order).
+	if len(cands) == 0 {
+		return &Injection{Dropped: dropped, Decisions: decisions}, nil
+	}
+
+	// Canonical order: verified candidates first, then audit-mode grey;
+	// relevance is score-descending and equal scores use ID as the stable
+	// tie-break. This preserves prefix determinism without hiding the best
+	// evidence behind an arbitrary identifier.
 	sort.Slice(cands, func(i, j int) bool {
 		if cands[i].grey != cands[j].grey {
 			return !cands[i].grey
+		}
+		if cands[i].score != cands[j].score {
+			return cands[i].score > cands[j].score
 		}
 		return cands[i].sl.ID < cands[j].sl.ID
 	})
@@ -280,12 +284,10 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 	buf.WriteString(blockOpen)
 	greyIncluded := 0
 	for _, c := range cands {
-		header := "--- slice %s ---\n%s\n"
 		if c.grey {
-			header = "--- slice %s (grey, unverified) ---\n%s\n"
 			greyIncluded++
 		}
-		fmt.Fprintf(&buf, header, c.sl.ID, c.content)
+		buf.WriteString(c.item)
 		kept = append(kept, c.sl)
 	}
 	buf.WriteString(blockClose)
@@ -298,4 +300,16 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 		GreyIncluded: greyIncluded,
 		Decisions:    decisions,
 	}, nil
+}
+
+func formatSliceItem(sl *slice.Slice, score float64, content string, grey bool) string {
+	header := fmt.Sprintf("--- slice %s ---\n", sl.ID)
+	if grey {
+		header = fmt.Sprintf("--- slice %s (grey, unverified) ---\n", sl.ID)
+	}
+	provenance := fmt.Sprintf(
+		"type=%s project=%q source=%q origin=%s verified=unknown score=%.4f created_at=%d\n",
+		sl.Type.String(), sl.Meta.ProjectSlug, sl.Meta.SourceSession, sl.Meta.Origin, score, sl.CreatedAt,
+	)
+	return header + provenance + content + "\n"
 }

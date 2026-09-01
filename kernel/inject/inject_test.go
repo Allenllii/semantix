@@ -211,6 +211,28 @@ func TestInjectorAdmissionTraceReplaysDecision(t *testing.T) {
 	}
 }
 
+func TestInjectorHeaderIncludesProvenanceAndScore(t *testing.T) {
+	sl := &slice.Slice{
+		ID: "ctx-provenance", Type: slice.Context, Scope: slice.Project,
+		Content: []byte("repair cache invalidation"), CreatedAt: 1788280000,
+		Meta: slice.SliceMeta{
+			ProjectSlug: "owner/repo", SourceSession: "session-7", Origin: slice.OriginSessionAuto,
+		},
+	}
+	out, err := (&Injector{Budget: 4096}).BuildHits("cache invalidation", []slice.Hit{{Slice: sl, Score: 1.23456}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{
+		"type=context", `project="owner/repo"`, `source="session-7"`,
+		"origin=session-auto", "verified=unknown", "score=1.2346", "created_at=1788280000",
+	} {
+		if !strings.Contains(out.Text, field) {
+			t.Fatalf("injection header missing %q:\n%s", field, out.Text)
+		}
+	}
+}
+
 // TestInjectorEscapesBlockMarkers is the HIGH-fix regression: a stored slice
 // containing block markers must not break the [semantix-reuse] structure.
 func TestInjectorEscapesBlockMarkers(t *testing.T) {
