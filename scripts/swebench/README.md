@@ -140,6 +140,9 @@ python3 memory_matrix_report.py \
   --format md --out results/issue447-memory.report.md
 ```
 
+首次单实例端到端预跑及其因果边界见
+[`docs/reports/issue-447-memory-matrix-pilot.md`](../../docs/reports/issue-447-memory-matrix-pilot.md)。
+
 legacy binary 应固定构建自 `cb5e9cc`（repo 隔离已合并、strict 仍为旧全类型
 策略），不能用 harness `--ablate all` 代替。矩阵 manifest 保存每个 run 的完整
 命令、state/work/run 路径；重复执行会沿用 `run_bench.py` 的按实例续跑能力。
