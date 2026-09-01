@@ -119,6 +119,11 @@ class MemoryMatrixReportTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "instance set"):
             memory_matrix_report.build_report(manifest)
 
+    def test_missing_repeat_fields_stay_unattributed(self):
+        legacy = {"tool_calls_by_name": {"read_file": 3}}
+        self.assertIsNone(memory_matrix_report.metric_value(legacy, "repeated_tool_calls"))
+        self.assertIsNone(memory_matrix_report.metric_value(legacy, "repeated_read_calls"))
+
 
 if __name__ == "__main__":
     unittest.main()
