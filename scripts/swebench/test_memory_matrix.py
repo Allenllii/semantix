@@ -123,6 +123,13 @@ class MemoryMatrixReportTest(unittest.TestCase):
         legacy = {"tool_calls_by_name": {"read_file": 3}}
         self.assertIsNone(memory_matrix_report.metric_value(legacy, "repeated_tool_calls"))
         self.assertIsNone(memory_matrix_report.metric_value(legacy, "repeated_read_calls"))
+        normalized_legacy = {
+            "repeated_tool_calls": None,
+            "repeated_tool_calls_by_name": None,
+        }
+        self.assertIsNone(memory_matrix_report.metric_value(
+            normalized_legacy, "repeated_read_calls"
+        ))
 
 
 if __name__ == "__main__":

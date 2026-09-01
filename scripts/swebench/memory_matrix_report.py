@@ -97,15 +97,15 @@ def metric_value(row: dict, metric: str) -> float | None:
     if metric == "test_calls":
         return tool_family(row, TEST_TOOLS)
     if metric == "repeated_read_calls":
-        if "repeated_tool_calls_by_name" not in row:
+        if not isinstance(row.get("repeated_tool_calls_by_name"), dict):
             return None
         return tool_family(row, READ_TOOLS, "repeated_tool_calls_by_name")
     if metric == "repeated_search_calls":
-        if "repeated_tool_calls_by_name" not in row:
+        if not isinstance(row.get("repeated_tool_calls_by_name"), dict):
             return None
         return tool_family(row, SEARCH_TOOLS, "repeated_tool_calls_by_name")
     if metric == "repeated_test_calls":
-        if "repeated_tool_calls_by_name" not in row:
+        if not isinstance(row.get("repeated_tool_calls_by_name"), dict):
             return None
         return tool_family(row, TEST_TOOLS, "repeated_tool_calls_by_name")
     if metric.startswith("semantix_"):
