@@ -49,6 +49,8 @@ class SemantixMetricAttributionTest(unittest.TestCase):
             "tool_calls": 8,
             "tool_failures": 1,
             "tool_calls_by_name": {"read_file": 4, "grep": 3, "bash": 1},
+            "repeated_tool_calls": 3,
+            "repeated_tool_calls_by_name": {"read_file": 2, "grep": 1},
         }
 
         metrics = self.new_metrics()
@@ -77,6 +79,8 @@ class SemantixMetricAttributionTest(unittest.TestCase):
             "grep": 3,
             "bash": 1,
         })
+        self.assertEqual(metrics.repeated_tool_calls, 3)
+        self.assertEqual(metrics.repeated_tool_calls_by_name, {"read_file": 2, "grep": 1})
 
     def test_fill_metrics_keeps_old_records_explicitly_unattributed(self) -> None:
         metrics = self.new_metrics()
@@ -160,6 +164,8 @@ class AttributionReportTest(unittest.TestCase):
                 tool_failures=1,
                 model_calls_by_source={"executor": 5, "classifier": 2},
                 tool_calls_by_name={"grep": 3, "bash": 1},
+                repeated_tool_calls=2,
+                repeated_tool_calls_by_name={"grep": 2},
             ),
             self.metric_row(
                 executor_calls=3,
@@ -176,6 +182,8 @@ class AttributionReportTest(unittest.TestCase):
                 tool_failures=0,
                 model_calls_by_source={"executor": 3, "goal-evaluator": 2},
                 tool_calls_by_name={"grep": 1, "bash": 1},
+                repeated_tool_calls=1,
+                repeated_tool_calls_by_name={"grep": 1},
             ),
         ]
         tmp, run_dir = self.write_run(rows)
@@ -201,6 +209,8 @@ class AttributionReportTest(unittest.TestCase):
             "goal-evaluator": 2,
         })
         self.assertEqual(aggregate["tool_calls_by_name"], {"bash": 2, "grep": 4})
+        self.assertEqual(aggregate["repeated_tool_calls"], 3)
+        self.assertEqual(aggregate["repeated_tool_calls_by_name"], {"grep": 3})
 
     def test_load_run_treats_legacy_attribution_fields_as_zero(self) -> None:
         tmp, run_dir = self.write_run([self.metric_row()])
@@ -213,6 +223,8 @@ class AttributionReportTest(unittest.TestCase):
         self.assertEqual(aggregate["provider_retries"], 0)
         self.assertEqual(aggregate["model_calls_by_source"], {})
         self.assertEqual(aggregate["tool_calls_by_name"], {})
+        self.assertEqual(aggregate["repeated_tool_calls"], 0)
+        self.assertEqual(aggregate["repeated_tool_calls_by_name"], {})
 
 
 if __name__ == "__main__":
