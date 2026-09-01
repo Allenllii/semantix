@@ -4,11 +4,10 @@
 // block for the harness compose step.
 //
 // Design invariants (see Agent-Infra-架构设计.md §4.2):
-//   - canonical order: injection slices are sorted by ID so identical
-//     retrievals produce byte-identical blocks (DeepSeek prefix-cache
-//     friendly); never sorted by score.
-//   - budget: only whole slices are dropped, in score order, until the block
-//     fits the budget; the top slice is always kept when k >= 1.
+//   - canonical order: injection slices are score-descending with an ID
+//     tie-break so relevance order and byte stability agree.
+//   - budget: only whole slices are dropped; no candidate, including top-1,
+//     may make the final block exceed the configured hard byte limit.
 //   - low-authority: the block is wrapped in markers so the harness can place
 //     it after the system prefix / before the user message, and strip it on
 //     user edit/rollback (SliceReject).
@@ -105,7 +104,7 @@ type Injector struct {
 
 // Injection is the assembled, deterministic reuse block.
 type Injection struct {
-	Slices  []*slice.Slice // canonical (ID-sorted) order
+	Slices  []*slice.Slice // score-descending; ID tie-break
 	Text    string         // marker-wrapped block to place in the compose step
 	Bytes   int
 	Dropped int // slices dropped by zone filter or budget (whole-slice truncation)
@@ -175,6 +174,7 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 		sl      *slice.Slice
 		content string // sanitized + marker-escaped, == the bytes written
 		grey    bool   // audit-mode admission under the unverified header
+		score   float64
 	}
 	var cands []candidate
 	decisions := make([]CandidateDecision, 0, len(hits))
@@ -253,7 +253,7 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 			header = "--- slice %s (grey, unverified) ---\n%s\n"
 		}
 		item := len(fmt.Sprintf(header, h.Slice.ID, content))
-		if size+item+len(blockClose)+64 > budget && len(cands) > 0 {
+		if size+item+len(blockClose) > budget {
 			d.Reason = "budget"
 			decisions = append(decisions, d)
 			dropped++
@@ -263,14 +263,23 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 		d.Admitted = true
 		d.Reason = "admitted"
 		decisions = append(decisions, d)
-		cands = append(cands, candidate{sl: h.Slice, content: content, grey: isGrey})
+		cands = append(cands, candidate{sl: h.Slice, content: content, grey: isGrey, score: h.Score})
 	}
 
-	// Canonical order: verified candidates first, then audit-mode grey,
-	// each ID-sorted for byte-stable output (never score order).
+	if len(cands) == 0 {
+		return &Injection{Dropped: dropped, Decisions: decisions}, nil
+	}
+
+	// Canonical order: verified candidates first, then audit-mode grey;
+	// relevance is score-descending and equal scores use ID as the stable
+	// tie-break. This preserves prefix determinism without hiding the best
+	// evidence behind an arbitrary identifier.
 	sort.Slice(cands, func(i, j int) bool {
 		if cands[i].grey != cands[j].grey {
 			return !cands[i].grey
+		}
+		if cands[i].score != cands[j].score {
+			return cands[i].score > cands[j].score
 		}
 		return cands[i].sl.ID < cands[j].sl.ID
 	})
