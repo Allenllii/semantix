@@ -94,6 +94,8 @@ runner 会把原生 `usage_by_source` 规范化进每实例 `metrics.jsonl`：
 | `provider_retries` | provider 传输重试事件数；没有 Usage 事件时不计入 `steps` |
 | `compactions` | compaction 尝试次数；与实际产生 Usage 的 `compaction_calls` 不同 |
 | `tool_calls_by_name` | 已完成工具调用按 canonical tool name 汇总 |
+| `repeated_tool_calls` | 同一 provider-visible 工具名 + canonical JSON 参数在首次完成后的重复次数 |
+| `repeated_tool_calls_by_name` | 上述重复按工具名拆分；只保留参数摘要，不写原始参数 |
 
 `report.py` 的 Markdown 表用 `calls E/P/S/C/O` 显示
 executor/planner/subagent/compaction/other；JSON 输出保留完整来源表和工具表。
