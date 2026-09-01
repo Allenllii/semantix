@@ -81,6 +81,8 @@ class InstanceMetrics:
     subagent_runs: int = 0
     tool_failures: int = 0
     tool_calls_by_name: dict[str, int] = field(default_factory=dict)
+    repeated_tool_calls: int = 0
+    repeated_tool_calls_by_name: dict[str, int] = field(default_factory=dict)
     cost_usd: float | None = None    # computed from DeepSeek prices when possible
     cost_native: float | None = None # what the harness itself reported
     cost_native_currency: str = ""
