@@ -114,6 +114,45 @@ memory-on 时 runner 按数据集 `repo=owner/repo` 分组。同 repo 实例严�
 非法或缺失 repo 标识会在调度前失败，不会落入共享的 unknown 库。每实例
 `raw.semantix_repo` / `raw.semantix_project_dir` 记录实际归属，便于审计。
 
+#### Issue #447 A-D 配对矩阵
+
+`memory_matrix.py` 固定按 repetition 内 A→B→C→D 串行执行，避免跨臂的
+provider/CPU 竞争；每个 repetition/arm 使用独立 state/work 目录，同时复用同一
+`--ids` 顺序：
+
+| 臂 | 配置 | agent binary |
+|---|---|---|
+| A | `memory=off`, `retrieval=off` | 当前版本 |
+| B | `memory=on`, `retrieval=shadow` | 当前版本 |
+| C | `memory=on`, `retrieval=strict` | 当前版本（P0 门禁） |
+| D | `memory=on`, `retrieval=strict` | P0.4 前的 legacy all-type 版本 |
+
+```bash
+python3 memory_matrix.py \
+  --dataset data/swebench_verified.jsonl \
+  --ids subsets/verified-50-s20260824.txt \
+  --model deepseek-v4-flash --repetitions 3 --workers 4 \
+  --semantix-bin ../../bin/semantix-agent \
+  --legacy-semantix-bin ../../bin/semantix-agent-issue447-legacy \
+  --semantix-kernel-bin ../../bin/semantix
+
+# 对生成的每个 run 完成官方 evaluate.py 后：
+python3 memory_matrix_report.py \
+  --manifest results/issue447-memory.matrix.json \
+  --format md --out results/issue447-memory.report.md
+```
+
+legacy binary 应固定构建自 `cb5e9cc`（repo 隔离已合并、strict 仍为旧全类型
+策略），不能用 harness `--ablate all` 代替。矩阵 manifest 保存每个 run 的完整
+命令、state/work/run 路径；重复执行会沿用 `run_bench.py` 的按实例续跑能力。
+
+报告严格按 `(repetition, instance_id)` 与 A 配对；任一臂缺实例立即报错。输出
+resolved、executor calls、steps、input tokens、工具总数和 read/search/test 工具族、
+wall、cost、retry、注入次数/字节的 absolute 与相对 A 的 median/P75/P90。接入
+`repeated_tool_calls` 后，Markdown 额外显示 `Δ repeats median/P75/P90`，JSON 同时
+保留重复 read/search/test 工具族。旧 metrics 缺少重复字段时维持 unattributed，
+不会把“未采集”伪装成 0；重复信号用于归因，不单独作为有害循环或熔断依据。
+
 ## 方法学要点（对比公平性）
 
 - **同一 prompt 模板**（`common.PROMPT_TEMPLATE`）喂给所有 harness；system prompt 保持各 harness 原生（那正是 harness 差异的一部分）。
