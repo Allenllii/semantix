@@ -58,3 +58,22 @@ func TestSamplingRequestCoalescesSemantixHistoryForStrictProviders(t *testing.T)
 		t.Fatalf("history and current task not preserved in user context: %+v", prepared.req.Messages)
 	}
 }
+
+func TestSemantixHistoryStaysWithCurrentTurn(t *testing.T) {
+	base := []provider.Message{
+		{Role: provider.RoleSystem, Content: "base system"},
+		{Role: provider.RoleUser, Content: "old task"},
+		{Role: provider.RoleAssistant, Content: "old answer"},
+		{Role: provider.RoleUser, Content: "current task"},
+	}
+	got := prependSemantixHistory(base, "historical evidence")
+	if len(got) != 5 {
+		t.Fatalf("messages=%d, want 5: %+v", len(got), got)
+	}
+	want := []string{"base system", "old task", "old answer", "historical evidence", "current task"}
+	for i, content := range want {
+		if !strings.Contains(got[i].Content, content) {
+			t.Fatalf("message[%d]=%q, want content %q; history must stay with current turn", i, got[i].Content, content)
+		}
+	}
+}
