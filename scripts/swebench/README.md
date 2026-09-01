@@ -97,6 +97,13 @@ runner 会把原生 `usage_by_source` 规范化进每实例 `metrics.jsonl`：
 `report.py` 的 Markdown 表用 `calls E/P/S/C/O` 显示
 executor/planner/subagent/compaction/other；JSON 输出保留完整来源表和工具表。
 
+#### Shadow retrieval 实验臂
+
+`--semantix-retrieval-mode off|shadow|strict`（默认 `strict`）控制开启内核后的
+L2 路径。`shadow` 会检索、执行相同的 zone/清洗/预算判定并记录 `kernel_cache`
+诊断，但不向 provider 消息添加复用块；因此可作为 A/B 臂 B，与
+`--semantix-memory off` 做请求字节不变量检查，再用其分数分布标定后续门禁。
+
 ## 方法学要点（对比公平性）
 
 - **同一 prompt 模板**（`common.PROMPT_TEMPLATE`）喂给所有 harness；system prompt 保持各 harness 原生（那正是 harness 差异的一部分）。

@@ -207,6 +207,7 @@ class SemantixAdapter(Adapter):
 [semantix]
 enabled      = true
 inject       = true
+mode         = "{self.args.semantix_retrieval_mode}"
 budget       = 4096
 project_dir  = "{self.kernel_dir}"
 sessions_dir = "{sessions_dir}"
@@ -777,6 +778,10 @@ def main() -> None:
     ap.add_argument("--semantix-memory", default="on", choices=("on", "off"),
                     help="semantix memory-kernel arm: on = [semantix] enabled+inject, shared slice "
                     "library across instances, per-instance extract; off = kernel disabled (ablation twin)")
+    ap.add_argument("--semantix-retrieval-mode", default="strict",
+                    choices=("off", "shadow", "strict"),
+                    help="L2 retrieval mode when --semantix-memory=on; shadow records the same "
+                    "candidates and admission decisions as strict but leaves provider messages unchanged")
     ap.add_argument("--semantix-bin", default="")
     ap.add_argument("--semantix-kernel-bin", default="",
                     help="path to the semantix kernel CLI (default: bin/semantix) used for slice extraction")
