@@ -146,9 +146,10 @@ legacy binary 应固定构建自 `cb5e9cc`（repo 隔离已合并、strict 仍�
 
 报告严格按 `(repetition, instance_id)` 与 A 配对；任一臂缺实例立即报错。输出
 resolved、executor calls、steps、input tokens、工具总数和 read/search/test 工具族、
-wall、cost、retry、注入次数/字节的 absolute 与相对 A 的 median/P75/P90。当前
-metrics 只有工具名计数，工具族字段表示调用总量而非“重复调用”；重复参数级指标
-仍需 P1 trajectory/fuse 事件补齐，不能从同名调用数反推。
+wall、cost、retry、注入次数/字节的 absolute 与相对 A 的 median/P75/P90。接入
+`repeated_tool_calls` 后，Markdown 额外显示 `Δ repeats median/P75/P90`，JSON 同时
+保留重复 read/search/test 工具族。旧 metrics 缺少重复字段时维持 unattributed，
+不会把“未采集”伪装成 0；重复信号用于归因，不单独作为有害循环或熔断依据。
 
 ## 方法学要点（对比公平性）
 
