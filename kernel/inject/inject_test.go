@@ -211,6 +211,93 @@ func TestInjectorAdmissionTraceReplaysDecision(t *testing.T) {
 	}
 }
 
+func TestInjectorPolicyRejectsWithReplayableReasons(t *testing.T) {
+	contextHit := func(id, content, session string, score float64) slice.Hit {
+		return slice.Hit{Score: score, Slice: &slice.Slice{
+			ID: id, Type: slice.Context, Scope: slice.Project, Content: []byte(content),
+			Meta: slice.SliceMeta{SourceSession: session},
+		}}
+	}
+	promptHit := slice.Hit{Score: 3, Slice: &slice.Slice{
+		ID: "prompt", Type: slice.Prompt, Scope: slice.Project, Content: []byte("cache failure repair"),
+	}}
+	baseHits := []slice.Hit{
+		contextHit("ctx-a", "cache failure repair", "s1", 3),
+		contextHit("ctx-b", "cache failure diagnosis", "s2", 2),
+	}
+	base := func() *Injector {
+		return &Injector{
+			AllowedTypes:         map[slice.SliceType]bool{slice.Context: true, slice.Memory: true},
+			LibrarySize:          8,
+			MinLibrarySize:       5,
+			SourceSessionsByType: map[slice.SliceType]int{slice.Context: 2},
+			MinSourceSessions:    2,
+			MinScore:             0.7,
+			MinCoverage:          0.25,
+			MinTopMargin:         0.15,
+			RequireRunnerUp:      true,
+			Budget:               4096,
+		}
+	}
+	cases := []struct {
+		name   string
+		mutate func(*Injector) []slice.Hit
+		reason string
+	}{
+		{"type", func(in *Injector) []slice.Hit { return []slice.Hit{promptHit, baseHits[0], baseHits[1]} }, "type_not_allowed"},
+		{"library", func(in *Injector) []slice.Hit { in.LibrarySize = 4; return baseHits }, "library_too_small"},
+		{"sessions", func(in *Injector) []slice.Hit { in.SourceSessionsByType[slice.Context] = 1; return baseHits }, "type_sources_too_few"},
+		{"runner up", func(in *Injector) []slice.Hit { return baseHits[:1] }, "runner_up_missing"},
+		{"margin", func(in *Injector) []slice.Hit {
+			return []slice.Hit{baseHits[0], contextHit("ctx-b", "cache failure diagnosis", "s2", 2.9)}
+		}, "top_margin_low"},
+		{"score", func(in *Injector) []slice.Hit { in.MinScore = 4; return baseHits }, "below_min_score"},
+		{"coverage", func(in *Injector) []slice.Hit { in.MinCoverage = 0.9; return baseHits }, "coverage_low"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := base()
+			inj, err := in.BuildHits("cache failure repair", tc.mutate(in))
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, d := range inj.Decisions {
+				if d.Reason == tc.reason {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("decisions = %+v, want reason %q", inj.Decisions, tc.reason)
+			}
+		})
+	}
+}
+
+func TestInjectorPolicyAdmitsContextWithStrongEvidence(t *testing.T) {
+	hits := []slice.Hit{
+		{Score: 3, Slice: &slice.Slice{ID: "a", Type: slice.Context, Scope: slice.Project, Content: []byte("cache failure repair")}},
+		{Score: 2, Slice: &slice.Slice{ID: "b", Type: slice.Context, Scope: slice.Project, Content: []byte("cache failure diagnosis")}},
+	}
+	in := &Injector{
+		AllowedTypes: map[slice.SliceType]bool{slice.Context: true, slice.Memory: true},
+		LibrarySize:  8, MinLibrarySize: 5,
+		SourceSessionsByType: map[slice.SliceType]int{slice.Context: 2}, MinSourceSessions: 2,
+		MinScore: 0.7, MinCoverage: 0.25, MinTopMargin: 0.15, RequireRunnerUp: true,
+		Budget: 4096,
+	}
+	inj, err := in.BuildHits("cache failure repair", hits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inj.Slices) == 0 || inj.TopMargin != 1 {
+		t.Fatalf("injection = %+v, want admitted context and margin 1", inj)
+	}
+	if inj.Decisions[0].Reason != "admitted" {
+		t.Fatalf("top decision = %+v", inj.Decisions[0])
+	}
+}
+
 // TestInjectorEscapesBlockMarkers is the HIGH-fix regression: a stored slice
 // containing block markers must not break the [semantix-reuse] structure.
 func TestInjectorEscapesBlockMarkers(t *testing.T) {
