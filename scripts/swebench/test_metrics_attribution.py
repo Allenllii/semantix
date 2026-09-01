@@ -144,10 +144,10 @@ class SemantixMetricAttributionTest(unittest.TestCase):
             self.assertEqual((native / "i1.semantix.stderr.txt").read_text(),
                              "provider stderr\n")
             command = run.call_args.args[0]
-            self.assertEqual(command[command.index("--model") + 1], "swebench-deepseek")
+            self.assertEqual(command[command.index("--model") + 1], "deepseek-flash")
             config = (root / "home" / "inst" / "i1" / "config.toml").read_text()
-            self.assertIn('default_model = "swebench-deepseek"', config)
-            self.assertIn('name        = "swebench-deepseek"', config)
+            self.assertIn('default_model = "deepseek-flash"', config)
+            self.assertIn('name        = "deepseek-flash"', config)
 
 
 class AttributionReportTest(unittest.TestCase):

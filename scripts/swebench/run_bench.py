@@ -187,7 +187,8 @@ class Adapter:
 # semantix-agent
 # ---------------------------------------------------------------------------
 
-SEMANTIX_BENCH_PROVIDER = "swebench-deepseek"
+def semantix_bench_provider(model: str) -> str:
+    return "deepseek-pro" if model.endswith("-pro") else "deepseek-flash"
 
 
 class SemantixAdapter(Adapter):
@@ -243,6 +244,7 @@ class SemantixAdapter(Adapter):
             f"DEEPSEEK_API_KEY={os.environ.get('DEEPSEEK_API_KEY', 'smoke')}\n")
         env_file.chmod(0o600)
         base = self.args.openai_base or DEEPSEEK_OPENAI_BASE
+        provider_selector = semantix_bench_provider(self.args.model)
         effort = f'effort      = "{self.args.effort}"\n' if self.args.effort else ""
         memory_section = ""
         if self.memory_on:
@@ -260,7 +262,7 @@ project_dir  = "{kernel_dir}"
 sessions_dir = "{sessions_dir}"
 '''
         (home / "config.toml").write_text(
-            f'''default_model = "{SEMANTIX_BENCH_PROVIDER}"
+            f'''default_model = "{provider_selector}"
 {memory_section}
 # Benchmark convention: every arm runs in its max-permission mode (codex
 # danger-full-access, claude --dangerously-skip-permissions, dsh
@@ -269,7 +271,7 @@ sessions_dir = "{sessions_dir}"
 bash = "off"
 
 [[providers]]
-name        = "{SEMANTIX_BENCH_PROVIDER}"
+name        = "{provider_selector}"
 kind        = "openai"
 base_url    = "{base}"
 models      = ["{self.args.model}"]
@@ -302,7 +304,7 @@ context_window = 128000
             "--permission-mode", "auto",
             "--preset", self.args.preset,
             "--metrics", str(mfile),
-            "--model", SEMANTIX_BENCH_PROVIDER,
+            "--model", semantix_bench_provider(self.args.model),
         ]
         if self.args.ablate:
             cmd += ["--ablate", self.args.ablate]
