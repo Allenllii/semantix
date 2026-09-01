@@ -187,6 +187,9 @@ class Adapter:
 # semantix-agent
 # ---------------------------------------------------------------------------
 
+SEMANTIX_BENCH_PROVIDER = "swebench-deepseek"
+
+
 class SemantixAdapter(Adapter):
     name = "semantix"
 
@@ -257,7 +260,7 @@ project_dir  = "{kernel_dir}"
 sessions_dir = "{sessions_dir}"
 '''
         (home / "config.toml").write_text(
-            f'''default_model = "deepseek"
+            f'''default_model = "{SEMANTIX_BENCH_PROVIDER}"
 {memory_section}
 # Benchmark convention: every arm runs in its max-permission mode (codex
 # danger-full-access, claude --dangerously-skip-permissions, dsh
@@ -266,7 +269,7 @@ sessions_dir = "{sessions_dir}"
 bash = "off"
 
 [[providers]]
-name        = "deepseek"
+name        = "{SEMANTIX_BENCH_PROVIDER}"
 kind        = "openai"
 base_url    = "{base}"
 models      = ["{self.args.model}"]
@@ -299,7 +302,7 @@ context_window = 128000
             "--permission-mode", "auto",
             "--preset", self.args.preset,
             "--metrics", str(mfile),
-            "--model", "deepseek",
+            "--model", SEMANTIX_BENCH_PROVIDER,
         ]
         if self.args.ablate:
             cmd += ["--ablate", self.args.ablate]

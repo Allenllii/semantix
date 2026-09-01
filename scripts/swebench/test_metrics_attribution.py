@@ -135,7 +135,7 @@ class SemantixMetricAttributionTest(unittest.TestCase):
             adapter.memory_on = False
             completed = SimpleNamespace(returncode=1, stdout="provider stdout\n",
                                         stderr="provider stderr\n")
-            with mock.patch("run_bench.subprocess.run", return_value=completed):
+            with mock.patch("run_bench.subprocess.run", return_value=completed) as run:
                 adapter.run_instance(root, "prompt", {"instance_id": "i1"})
 
             native = root / "run" / "native"
@@ -143,6 +143,11 @@ class SemantixMetricAttributionTest(unittest.TestCase):
                              "provider stdout\n")
             self.assertEqual((native / "i1.semantix.stderr.txt").read_text(),
                              "provider stderr\n")
+            command = run.call_args.args[0]
+            self.assertEqual(command[command.index("--model") + 1], "swebench-deepseek")
+            config = (root / "home" / "inst" / "i1" / "config.toml").read_text()
+            self.assertIn('default_model = "swebench-deepseek"', config)
+            self.assertIn('name        = "swebench-deepseek"', config)
 
 
 class AttributionReportTest(unittest.TestCase):
