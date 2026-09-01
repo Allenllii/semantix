@@ -171,10 +171,10 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 	// redundant pre-escape budget check from the #279 merge plus a dead
 	// "(score=%.2f)" header that never reached the output.)
 	type candidate struct {
-		sl      *slice.Slice
-		content string // sanitized + marker-escaped, == the bytes written
-		grey    bool   // audit-mode admission under the unverified header
-		score   float64
+		sl    *slice.Slice
+		item  string // exact header + provenance + sanitized content bytes written
+		grey  bool   // audit-mode admission under the unverified header
+		score float64
 	}
 	var cands []candidate
 	decisions := make([]CandidateDecision, 0, len(hits))
@@ -245,25 +245,20 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 			continue
 		}
 		content = escapeMarker(content)
-		// Budget judged on the EXACT bytes that will be written (escaped
-		// content, canonical header — including the grey audit variant) —
-		// never on a pre-escape length.
-		header := "--- slice %s ---\n%s\n"
-		if isGrey {
-			header = "--- slice %s (grey, unverified) ---\n%s\n"
-		}
-		item := len(fmt.Sprintf(header, h.Slice.ID, content))
-		if size+item+len(blockClose) > budget {
+		// Budget is judged on the exact bytes that will be written, including
+		// provenance, escaped content, and the grey audit variant.
+		item := formatSliceItem(h.Slice, h.Score, content, isGrey)
+		if size+len(item)+len(blockClose) > budget {
 			d.Reason = "budget"
 			decisions = append(decisions, d)
 			dropped++
 			continue
 		}
-		size += item
+		size += len(item)
 		d.Admitted = true
 		d.Reason = "admitted"
 		decisions = append(decisions, d)
-		cands = append(cands, candidate{sl: h.Slice, content: content, grey: isGrey, score: h.Score})
+		cands = append(cands, candidate{sl: h.Slice, item: item, grey: isGrey, score: h.Score})
 	}
 
 	if len(cands) == 0 {
@@ -289,12 +284,10 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 	buf.WriteString(blockOpen)
 	greyIncluded := 0
 	for _, c := range cands {
-		header := "--- slice %s ---\n%s\n"
 		if c.grey {
-			header = "--- slice %s (grey, unverified) ---\n%s\n"
 			greyIncluded++
 		}
-		fmt.Fprintf(&buf, header, c.sl.ID, c.content)
+		buf.WriteString(c.item)
 		kept = append(kept, c.sl)
 	}
 	buf.WriteString(blockClose)
@@ -307,4 +300,16 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 		GreyIncluded: greyIncluded,
 		Decisions:    decisions,
 	}, nil
+}
+
+func formatSliceItem(sl *slice.Slice, score float64, content string, grey bool) string {
+	header := fmt.Sprintf("--- slice %s ---\n", sl.ID)
+	if grey {
+		header = fmt.Sprintf("--- slice %s (grey, unverified) ---\n", sl.ID)
+	}
+	provenance := fmt.Sprintf(
+		"type=%s project=%q source=%q origin=%s verified=unknown score=%.4f created_at=%d\n",
+		sl.Type.String(), sl.Meta.ProjectSlug, sl.Meta.SourceSession, sl.Meta.Origin, score, sl.CreatedAt,
+	)
+	return header + provenance + content + "\n"
 }
