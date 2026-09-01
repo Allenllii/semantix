@@ -37,6 +37,18 @@
 - 新 Notice 码 `semantix_inject`（Detail `{"bytes":n}`），每用户轮注入块非空时发一次。
 - `RunMetrics` 新增：`semantix_inject_turns` / `semantix_inject_bytes` / `semantix_reuse_hits` / `semantix_reuse_savings_usd`（omitempty，旧读者无感）。metricsSink 消费 `semantix_inject` 与既有 `semantix_reuse` Notice。
 
+### P0 调用来源归因（Issue #447）
+
+`RunMetrics.steps` 已包含 executor、planner、subagent、compaction 和其他辅助模型调用，不能直接当作主循环步数。Go 侧 `usage_by_source` 保持权威来源；SWE-bench runner 将其规范化为：
+
+- 完整 `model_calls_by_source` 映射，未知来源不丢弃；
+- `executor_calls`、`planner_calls`、`subagent_calls`、`compaction_calls` 四个便捷字段；
+- `other_model_calls`，汇总 classifier/title/capability-router/recovery-reviewer/goal-evaluator 与未来来源；
+- `source_call_total` 和 `source_call_delta = steps - source_call_total`，用于发现漏归因；
+- `provider_retries`、`compactions`、`subagent_runs`、`tool_failures` 和 `tool_calls_by_name`，用于区分模型调用、传输重试、压缩尝试、委派与工具行为。
+
+旧 metrics 缺少这些字段时全部按 0 读取；`source_call_delta` 保留其 `steps`，明确表示无法追溯，而不是错误归入 executor。该变更只扩展观测 JSON 和报告，不修改 agent、provider request 或记忆注入行为。
+
 ## 3. 实验臂协议（替代旧 §4「--ablate all 隔离记忆内核」的错误设想）
 
 - **记忆对照 = `--semantix-memory on` vs `off` 两臂**（同子集、同模型、同 preset）。`--ablate` 不用于记忆对照（它只关 harness 侧 planner/subagent/evidence/harness-memory/compaction）。

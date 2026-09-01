@@ -77,6 +77,26 @@ harness 侧模块，不触碰内核）。判读字段（metrics `raw`）：
 `semantix_inject_turns` / `semantix_inject_bytes` / `semantix_reuse_hits` /
 `raw.extract`（每实例入库量）。设计与根因：`docs/specs/swebench-memory-arm.md`。
 
+#### 调用来源归因字段
+
+Semantix 的 `steps` 是所有已计费模型调用总数，不等同于 executor 主循环轮数。
+runner 会把原生 `usage_by_source` 规范化进每实例 `metrics.jsonl`：
+
+| 字段 | 含义 |
+|---|---|
+| `steps` | 所有来源的已计费模型调用总数 |
+| `model_calls_by_source` | 原生完整来源表；未知的新来源原样保留 |
+| `executor_calls` / `planner_calls` / `subagent_calls` / `compaction_calls` | 四个主要来源的稳定便捷计数 |
+| `other_model_calls` | classifier、title、capability-router、recovery-reviewer、goal-evaluator 及未来来源之和 |
+| `source_call_total` | `model_calls_by_source` 的调用数总和 |
+| `source_call_delta` | `steps - source_call_total`；当前完整 metrics 预期为 0，旧记录可能非 0 |
+| `provider_retries` | provider 传输重试事件数；没有 Usage 事件时不计入 `steps` |
+| `compactions` | compaction 尝试次数；与实际产生 Usage 的 `compaction_calls` 不同 |
+| `tool_calls_by_name` | 已完成工具调用按 canonical tool name 汇总 |
+
+`report.py` 的 Markdown 表用 `calls E/P/S/C/O` 显示
+executor/planner/subagent/compaction/other；JSON 输出保留完整来源表和工具表。
+
 ## 方法学要点（对比公平性）
 
 - **同一 prompt 模板**（`common.PROMPT_TEMPLATE`）喂给所有 harness；system prompt 保持各 harness 原生（那正是 harness 差异的一部分）。

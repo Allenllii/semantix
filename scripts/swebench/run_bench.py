@@ -95,6 +95,35 @@ def sum_ledger(rows: list[dict]) -> dict:
     return total
 
 
+def normalize_call_counts(value: object) -> dict[str, int]:
+    """Return valid non-negative call counts from a usage-by-source object."""
+    if not isinstance(value, dict):
+        return {}
+    out = {}
+    for source, bucket in value.items():
+        if not isinstance(source, str) or not isinstance(bucket, dict):
+            continue
+        calls = bucket.get("calls")
+        if isinstance(calls, bool) or not isinstance(calls, int) or calls < 0:
+            continue
+        out[source] = calls
+    return out
+
+
+def normalize_count_map(value: object) -> dict[str, int]:
+    """Return valid non-negative counters from a flat string-to-int object."""
+    if not isinstance(value, dict):
+        return {}
+    return {
+        name: count
+        for name, count in value.items()
+        if isinstance(name, str)
+        and isinstance(count, int)
+        and not isinstance(count, bool)
+        and count >= 0
+    }
+
+
 def clean_env(*, drop_prefixes=(), drop=()) -> dict:
     env = {}
     for k, v in os.environ.items():
@@ -275,6 +304,23 @@ context_window = 128000
         m.cache_miss_tokens = raw.get("cache_miss_tokens", 0)
         m.steps = raw.get("steps", 0)
         m.tool_calls = raw.get("tool_calls", 0)
+        m.model_calls_by_source = normalize_call_counts(raw.get("usage_by_source"))
+        m.executor_calls = m.model_calls_by_source.get("executor", 0)
+        m.planner_calls = m.model_calls_by_source.get("planner", 0)
+        m.subagent_calls = m.model_calls_by_source.get("subagent", 0)
+        m.compaction_calls = m.model_calls_by_source.get("compaction", 0)
+        named_sources = {"executor", "planner", "subagent", "compaction"}
+        m.other_model_calls = sum(
+            calls for source, calls in m.model_calls_by_source.items()
+            if source not in named_sources
+        )
+        m.source_call_total = sum(m.model_calls_by_source.values())
+        m.source_call_delta = m.steps - m.source_call_total
+        m.provider_retries = raw.get("retries", 0)
+        m.compactions = raw.get("compactions", 0)
+        m.subagent_runs = raw.get("subagent_runs", 0)
+        m.tool_failures = raw.get("tool_failures", 0)
+        m.tool_calls_by_name = normalize_count_map(raw.get("tool_calls_by_name"))
         m.cost_native = raw.get("cost")
         m.cost_native_currency = raw.get("currency", "")
 

@@ -68,6 +68,19 @@ class InstanceMetrics:
     cache_miss_tokens: int = 0
     steps: int = 0                   # model calls
     tool_calls: int = 0
+    model_calls_by_source: dict[str, int] = field(default_factory=dict)
+    executor_calls: int = 0
+    planner_calls: int = 0
+    subagent_calls: int = 0
+    compaction_calls: int = 0
+    other_model_calls: int = 0
+    source_call_total: int = 0
+    source_call_delta: int = 0
+    provider_retries: int = 0
+    compactions: int = 0
+    subagent_runs: int = 0
+    tool_failures: int = 0
+    tool_calls_by_name: dict[str, int] = field(default_factory=dict)
     cost_usd: float | None = None    # computed from DeepSeek prices when possible
     cost_native: float | None = None # what the harness itself reported
     cost_native_currency: str = ""
