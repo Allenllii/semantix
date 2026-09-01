@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 
 HERE = Path(__file__).resolve().parent
@@ -115,6 +116,33 @@ class SemantixMetricAttributionTest(unittest.TestCase):
         self.assertEqual(metrics.tool_calls_by_name, {"grep": 2})
         self.assertEqual(metrics.source_call_total, 3)
         self.assertEqual(metrics.source_call_delta, 1)
+
+    def test_run_instance_persists_cli_output_for_failure_diagnosis(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            args = SimpleNamespace(
+                openai_base="http://127.0.0.1:8139/v1",
+                effort="",
+                model="deepseek-v4-flash",
+                semantix_retrieval_mode="off",
+                preset="balanced",
+                ablate="",
+                timeout=30,
+            )
+            adapter = SemantixAdapter(args, root / "run")
+            adapter.binary = "semantix-agent"
+            adapter.home = root / "home"
+            adapter.memory_on = False
+            completed = SimpleNamespace(returncode=1, stdout="provider stdout\n",
+                                        stderr="provider stderr\n")
+            with mock.patch("run_bench.subprocess.run", return_value=completed):
+                adapter.run_instance(root, "prompt", {"instance_id": "i1"})
+
+            native = root / "run" / "native"
+            self.assertEqual((native / "i1.semantix.stdout.txt").read_text(),
+                             "provider stdout\n")
+            self.assertEqual((native / "i1.semantix.stderr.txt").read_text(),
+                             "provider stderr\n")
 
 
 class AttributionReportTest(unittest.TestCase):

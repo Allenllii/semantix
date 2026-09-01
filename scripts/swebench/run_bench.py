@@ -303,12 +303,28 @@ context_window = 128000
         ]
         if self.args.ablate:
             cmd += ["--ablate", self.args.ablate]
+        stdout_text = ""
+        stderr_text = ""
         try:
             proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
                                   env=env, timeout=self.args.timeout)
             exit_code, err = proc.returncode, ""
-        except subprocess.TimeoutExpired:
+            stdout_text = proc.stdout or ""
+            stderr_text = proc.stderr or ""
+        except subprocess.TimeoutExpired as exc:
             exit_code, err = None, f"timeout after {self.args.timeout}s"
+            stdout_text = exc.stdout or ""
+            stderr_text = exc.stderr or ""
+        if isinstance(stdout_text, bytes):
+            stdout_text = stdout_text.decode("utf-8", errors="replace")
+        if isinstance(stderr_text, bytes):
+            stderr_text = stderr_text.decode("utf-8", errors="replace")
+        # Preserve adapter-local diagnostics beside native metrics. Without
+        # these files, an early CLI failure produces only zero counters and
+        # discards the actual provider/configuration error.
+        stem = mfile.with_suffix("")
+        Path(str(stem) + ".stdout.txt").write_text(stdout_text, encoding="utf-8")
+        Path(str(stem) + ".stderr.txt").write_text(stderr_text, encoding="utf-8")
         raw = {}
         for candidate in (mfile, Path(str(mfile) + ".partial")):
             if candidate.exists():
