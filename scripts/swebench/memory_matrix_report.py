@@ -13,6 +13,8 @@ METRICS = (
     "resolved", "executor_calls", "steps", "input_tokens", "tool_calls",
     "read_calls", "search_calls", "test_calls", "wall_ms", "cost_usd",
     "provider_retries", "semantix_inject_turns", "semantix_inject_bytes",
+    "repeated_tool_calls", "repeated_read_calls", "repeated_search_calls",
+    "repeated_test_calls",
 )
 
 READ_TOOLS = {"read", "read_file", "readfile", "view", "view_file"}
@@ -76,8 +78,8 @@ def load_rows(run: dict) -> dict[str, dict]:
     return rows
 
 
-def tool_family(row: dict, names: set[str]) -> float:
-    counts = row.get("tool_calls_by_name", {})
+def tool_family(row: dict, names: set[str], field: str = "tool_calls_by_name") -> float:
+    counts = row.get(field, {})
     if not isinstance(counts, dict):
         return 0.0
     return float(sum(
@@ -94,6 +96,12 @@ def metric_value(row: dict, metric: str) -> float | None:
         return tool_family(row, SEARCH_TOOLS)
     if metric == "test_calls":
         return tool_family(row, TEST_TOOLS)
+    if metric == "repeated_read_calls":
+        return tool_family(row, READ_TOOLS, "repeated_tool_calls_by_name")
+    if metric == "repeated_search_calls":
+        return tool_family(row, SEARCH_TOOLS, "repeated_tool_calls_by_name")
+    if metric == "repeated_test_calls":
+        return tool_family(row, TEST_TOOLS, "repeated_tool_calls_by_name")
     if metric.startswith("semantix_"):
         value = row.get("raw", {}).get(metric)
     else:
@@ -166,8 +174,8 @@ def fmt(value: float | None) -> str:
 
 def markdown(report: dict) -> str:
     lines = [
-        "| arm | paired n | resolved | Δ executor median/P75/P90 | Δ input median/P75/P90 | Δ tools median/P75/P90 |",
-        "|---|---:|---:|---:|---:|---:|",
+        "| arm | paired n | resolved | Δ executor median/P75/P90 | Δ input median/P75/P90 | Δ tools median/P75/P90 | Δ repeats median/P75/P90 |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
     for arm, data in report["arms"].items():
         def delta(metric: str) -> str:
@@ -179,7 +187,8 @@ def markdown(report: dict) -> str:
         lines.append(
             f"| {arm} | {data['instances']} | "
             f"{'n/a' if resolved is None else f'{resolved:.1%}'} | "
-            f"{delta('executor_calls')} | {delta('input_tokens')} | {delta('tool_calls')} |"
+            f"{delta('executor_calls')} | {delta('input_tokens')} | {delta('tool_calls')} | "
+            f"{delta('repeated_tool_calls')} |"
         )
     return "\n".join(lines) + "\n"
 

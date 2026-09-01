@@ -70,14 +70,24 @@ class MemoryMatrixReportTest(unittest.TestCase):
                 {"instance_id": "i1", "executor_calls": 5, "steps": 6,
                  "input_tokens": 100, "tool_calls": 8, "wall_ms": 1000,
                  "cost_usd": 1.0, "provider_retries": 0, "empty_patch": False,
-                 "tool_calls_by_name": {"read_file": 3, "grep": 2, "bash": 1}, "raw": {}},
+                 "tool_calls_by_name": {"read_file": 3, "grep": 2, "bash": 1},
+                 "repeated_tool_calls": 3,
+                 "repeated_tool_calls_by_name": {"read_file": 2, "grep": 1}, "raw": {}},
                 {"instance_id": "i2", "executor_calls": 7, "steps": 8,
                  "input_tokens": 200, "tool_calls": 10, "wall_ms": 2000,
                  "cost_usd": 2.0, "provider_retries": 1, "empty_patch": False,
-                 "tool_calls_by_name": {"read_file": 4, "grep": 1, "bash": 2}, "raw": {}},
+                 "tool_calls_by_name": {"read_file": 4, "grep": 1, "bash": 2},
+                 "repeated_tool_calls": 2,
+                 "repeated_tool_calls_by_name": {"read_file": 1, "grep": 1}, "raw": {}},
             ]
-            strict_rows = [dict(base_rows[0], executor_calls=4, input_tokens=80),
-                           dict(base_rows[1], executor_calls=6, input_tokens=150)]
+            strict_rows = [
+                dict(base_rows[0], executor_calls=4, input_tokens=80,
+                     repeated_tool_calls=1,
+                     repeated_tool_calls_by_name={"read_file": 1}),
+                dict(base_rows[1], executor_calls=6, input_tokens=150,
+                     repeated_tool_calls=0,
+                     repeated_tool_calls_by_name={}),
+            ]
             runs = []
             for arm, rows, resolved in (
                 ("A", base_rows, ["i1"]),
@@ -96,6 +106,10 @@ class MemoryMatrixReportTest(unittest.TestCase):
             self.assertEqual(c["resolved_rate"], 1.0)
             self.assertEqual(c["metrics"]["executor_calls"]["delta_vs_A"]["median"], -1.0)
             self.assertEqual(c["metrics"]["input_tokens"]["delta_vs_A"]["p90"], -23.0)
+            self.assertEqual(c["metrics"]["repeated_tool_calls"]["delta_vs_A"]["median"], -2.0)
+            self.assertEqual(c["metrics"]["repeated_read_calls"]["delta_vs_A"]["median"], -1.0)
+            self.assertEqual(c["metrics"]["repeated_search_calls"]["delta_vs_A"]["median"], -1.0)
+            self.assertIn("Δ repeats median/P75/P90", memory_matrix_report.markdown(report))
 
     def test_report_rejects_unpaired_instance_sets(self):
         manifest = {"schema": 1, "runs": [
