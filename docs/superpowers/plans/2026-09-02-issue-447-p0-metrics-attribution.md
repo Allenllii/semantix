@@ -142,7 +142,7 @@ python scripts/swebench/test_metrics_attribution.py -v
 
 Expected: all tests PASS.
 
-- [ ] **Step 7: Commit the normalized per-instance metrics**
+- [x] **Step 7: Commit the normalized per-instance metrics**
 
 ```powershell
 git add scripts/swebench/common.py scripts/swebench/run_bench.py scripts/swebench/test_metrics_attribution.py
@@ -219,7 +219,7 @@ python scripts/swebench/test_metrics_attribution.py -v
 
 Expected: all tests PASS.
 
-- [ ] **Step 6: Commit report aggregation**
+- [x] **Step 6: Commit report aggregation**
 
 ```powershell
 git add scripts/swebench/report.py scripts/swebench/test_metrics_attribution.py
@@ -283,14 +283,14 @@ go test ./cmd/semantix -run '^TestDispatchExitCodeContract$' -count=1
 
 Expected on baseline `eceb763`: FAIL at `main_test.go:291` because `run(nil, ...)` returns 0 instead of the test's expected usage code 2. This package does not touch `cmd/semantix`; do not claim a clean full-suite baseline.
 
-- [ ] **Step 5: Commit documentation**
+- [x] **Step 5: Commit documentation**
 
 ```powershell
 git add scripts/swebench/README.md docs/specs/swebench-memory-arm.md
 git commit -m "docs(swebench): define call attribution metrics"
 ```
 
-- [ ] **Step 6: Final branch verification**
+- [x] **Step 6: Final branch verification**
 
 Run:
 
