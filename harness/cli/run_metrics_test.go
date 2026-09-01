@@ -199,6 +199,7 @@ func TestWriteMetricsIncludesReadinessFields(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 	for _, key := range []string{
+		"repeated_tool_calls",
 		"readiness_checks",
 		"readiness_allowed",
 		"readiness_blocks",

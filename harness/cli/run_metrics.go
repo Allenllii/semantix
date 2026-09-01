@@ -147,7 +147,7 @@ type RunMetrics struct {
 	// RepeatedToolCalls counts completed calls after the first occurrence of
 	// the same provider-visible tool name + canonical JSON arguments. Only a
 	// digest is retained; raw arguments never enter metrics.
-	RepeatedToolCalls       int            `json:"repeated_tool_calls,omitempty"`
+	RepeatedToolCalls       int            `json:"repeated_tool_calls"`
 	RepeatedToolCallsByName map[string]int `json:"repeated_tool_calls_by_name,omitempty"`
 }
 
