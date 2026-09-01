@@ -19,10 +19,13 @@ class ShadowConfigTests(unittest.TestCase):
         adapter.memory_on = True
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            adapter.kernel_dir = root / "kernel"
-            adapter._write_home(root / "home", root / "sessions")
+            adapter.kernel_root = root / "kernel"
+            kernel_dir = adapter.kernel_dir_for(
+                {"instance_id": "django-1", "repo": "django/django"})
+            adapter._write_home(root / "home", root / "sessions", kernel_dir)
             config = (root / "home" / "config.toml").read_text()
         self.assertIn('mode         = "shadow"', config)
+        self.assertIn(f'project_dir  = "{kernel_dir}"', config)
         self.assertIn("enabled      = true", config)
 
 

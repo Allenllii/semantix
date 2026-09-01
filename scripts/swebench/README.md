@@ -69,8 +69,9 @@ python3 run_bench.py --harness semantix --model deepseek-v4-flash \
 
 `--semantix-memory on`（默认）把记忆内核真正接入基准：config 写入 `[semantix]`
 enabled/inject；**每实例独立 `SEMANTIX_HOME`**（并发归属无竞态），所有实例的
-`project_dir` 指向**同一共享切片库**（`semantix-home/kernel/`）；每实例结束后
-runner 跑 `semantix extract` 把该会话蒸馏进库，后续实例即可检索注入（跨实例
+`project_dir` 指向**真实 repo 独立切片库**
+（`semantix-home/kernel/<owner>__<repo>/`）；每实例结束后 runner 跑
+`semantix extract` 把该会话蒸馏进库，后续同 repo 实例即可检索注入（跨实例
 记忆闭环，需 `go build -o bin/semantix ./cmd/semantix`）。`off` 为消融孪生臂
 （内核关闭，等价旧行为）。记忆对照请用这对臂，**不要用 `--ablate`**（它只关
 harness 侧模块，不触碰内核）。判读字段（metrics `raw`）：
@@ -104,12 +105,19 @@ L2 路径。`shadow` 会检索、执行相同的 zone/清洗/预算判定并记�
 诊断，但不向 provider 消息添加复用块；因此可作为 A/B 臂 B，与
 `--semantix-memory off` 做请求字节不变量检查，再用其分数分布标定后续门禁。
 
+#### Repo 隔离与调度
+
+memory-on 时 runner 按数据集 `repo=owner/repo` 分组。同 repo 实例严格保持冻结
+子集中的选中顺序并在同一 worker 内串行；不同 repo 才使用 `--workers` 并行。
+非法或缺失 repo 标识会在调度前失败，不会落入共享的 unknown 库。每实例
+`raw.semantix_repo` / `raw.semantix_project_dir` 记录实际归属，便于审计。
+
 ## 方法学要点（对比公平性）
 
 - **同一 prompt 模板**（`common.PROMPT_TEMPLATE`）喂给所有 harness；system prompt 保持各 harness 原生（那正是 harness 差异的一部分）。
 - **同一冻结子集**（`--sample N --seed S` 或 `--ids` 文件），同一模型、同一时段（DeepSeek 2026-08-16 起分峰谷计价，跨时段跑会引入成本噪声；成本按 off-peak 表折算，峰时 ×2）。
 - patch 提取统一为 `git add -A && git diff --cached`（工作区全部改动，含新文件）。
-- 切片库（`project_dir`）在 run 内跨实例共享——跨实例记忆/缓存正是被测对象；如需无记忆对照，用 `--semantix-memory off`，或换 `--run-id` 清空 state。
+- 切片库（`project_dir`）仅在同 repo 实例间共享；repo 之间物理隔离。如需无记忆对照，用 `--semantix-memory off`，或换 `--run-id` 清空 state。
 - 单实例 exit code 不作成败信号（semantix 有已知的非零退出怪癖），以 diff 非空 + 官方评测为准。
 - 每实例默认 2400s 超时；超时/崩溃记为 error，patch 照常提取（可能为空）。
 
