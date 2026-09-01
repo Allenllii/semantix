@@ -1,8 +1,6 @@
 # Semantix L2 严格准入策略
 
-> 状态：P0 基线（2026-09-02）  
-> 跟踪 Issue：[#447](https://github.com/Gnosil/semantix/issues/447)  
-> 适用路径：`harness/semantix` → `kernel/inject`
+> 状态：P0 基线（2026-09-02）`r`n> 跟踪 Issue：[#447](https://github.com/Gnosil/semantix/issues/447)`r`n> 适用路径：`harness/semantix` → `kernel/inject`
 
 ## 1. 目标与边界
 
