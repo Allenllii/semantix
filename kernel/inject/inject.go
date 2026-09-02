@@ -225,7 +225,7 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 			dropped++
 			continue
 		}
-		if h.Slice.Type == slice.Result && h.Slice.Meta.EffectiveResultStatus() != slice.ResultStatusVerified {
+		if in.AllowedTypes != nil && h.Slice.Type == slice.Result && h.Slice.Meta.EffectiveResultStatus() != slice.ResultStatusVerified {
 			d.Reason = "result_probation"
 			decisions = append(decisions, d)
 			dropped++
@@ -400,5 +400,5 @@ func (in *Injector) admissionTypeEligible(sl *slice.Slice) bool {
 	if sl == nil || !in.typeAllowed(sl.Type) {
 		return false
 	}
-	return sl.Type != slice.Result || sl.Meta.EffectiveResultStatus() == slice.ResultStatusVerified
+	return in.AllowedTypes == nil || sl.Type != slice.Result || sl.Meta.EffectiveResultStatus() == slice.ResultStatusVerified
 }

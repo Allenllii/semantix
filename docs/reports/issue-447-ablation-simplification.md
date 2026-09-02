@@ -17,7 +17,7 @@
 
 | 候选 | 去掉后的反事实 | 观测 | 决定 |
 |---|---|---|---|
-| `Injector.RequireVerifiedResults` | 调用方忘记置 `true` 时，probation Result 会进入提示词 | 失败测试实际录得 probation 与 verified 两条均被接纳 | 删除开关；Result 验证改为注入器内建不变量 |
+| `Injector.RequireVerifiedResults` | 严格 allowlist 调用方忘记置 `true` 时，probation Result 会进入提示词 | 失败测试实际录得 probation 与 verified 两条均被接纳 | 删除开关；Result 验证改为严格 `AllowedTypes` admission 的内建不变量 |
 | 强制 D-legacy 实验臂 | 每次正式矩阵都要准备旧 binary，并额外执行 3 个 run | A/B/C 已分别回答无记忆基线、仅检索观测、当前严格注入；D 只复现已废弃策略 | 默认只跑 A/B/C；仅显式提供 legacy binary 时追加 D |
 | B-shadow | 删除后只能比较 A/C，无法区分“检索命中变化”和“提示词注入变化” | B 与 A 保持请求字节一致，同时保留 admission trace | 保留 |
 | structured retrieval query | 回退为整段 turn 检索会再次混入状态、命令输出和既有注入文本 | 已有单测覆盖从真实用户目标构造查询 | 保留 |
@@ -37,7 +37,8 @@
 FAIL
 ```
 
-删除该字段并把判定固化到 `BuildHits` 与 top-margin eligibility 后，同一测试通过：
+删除该字段并把判定固化到严格 `AllowedTypes` 路径的 `BuildHits` 与 top-margin
+eligibility 后，同一测试通过；未启用 allowlist 的通用 lookup/security probe 维持原语义：
 
 ```text
 ok  semantix/kernel/inject
