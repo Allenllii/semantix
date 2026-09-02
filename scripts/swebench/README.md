@@ -117,11 +117,12 @@ memory-on 时 runner 按数据集 `repo=owner/repo` 分组。同 repo 实例严�
 非法或缺失 repo 标识会在调度前失败，不会落入共享的 unknown 库。每实例
 `raw.semantix_repo` / `raw.semantix_project_dir` 记录实际归属，便于审计。
 
-#### Issue #447 A-D 配对矩阵
+#### Issue #447 A/B/C 核心配对矩阵
 
-`memory_matrix.py` 固定按 repetition 内 A→B→C→D 串行执行，避免跨臂的
+`memory_matrix.py` 默认按 repetition 内 A→B→C 串行执行，避免跨臂的
 provider/CPU 竞争；每个 repetition/arm 使用独立 state/work 目录，同时复用同一
-`--ids` 顺序：
+`--ids` 顺序。传入 `--legacy-semantix-bin` 时才追加 D；D 只用于复现旧策略，
+不属于判断当前修复是否优于 memory-off 的核心实验：
 
 所有 CLI 路径会在 runner 启动时解析为绝对路径。这样 agent 切换到每个实例的
 workspace 后，仍会读取同一个 state/config/credential 目录并把 metrics 写回预期的
@@ -132,7 +133,7 @@ results 目录；从 `scripts/swebench` 传入相对路径与绝对路径语义�
 | A | `memory=off`, `retrieval=off` | 当前版本 |
 | B | `memory=on`, `retrieval=shadow` | 当前版本 |
 | C | `memory=on`, `retrieval=strict` | 当前版本（P0 门禁） |
-| D | `memory=on`, `retrieval=strict` | P0.4 前的 legacy all-type 版本 |
+| D（可选） | `memory=on`, `retrieval=strict` | P0.4 前的 legacy all-type 版本 |
 
 ```bash
 python3 memory_matrix.py \
@@ -141,7 +142,6 @@ python3 memory_matrix.py \
   --model deepseek-v4-flash --repetitions 3 --workers 4 \
   --semantix-seed-dir state/issue447-frozen-seed \
   --semantix-bin ../../bin/semantix-agent \
-  --legacy-semantix-bin ../../bin/semantix-agent-issue447-legacy \
   --semantix-kernel-bin ../../bin/semantix
 
 # 对生成的每个 run 完成官方 evaluate.py 后：
@@ -154,14 +154,16 @@ python3 memory_matrix_report.py \
 [`docs/reports/issue-447-memory-matrix-pilot.md`](../../docs/reports/issue-447-memory-matrix-pilot.md)。
 
 `--semantix-seed-dir` 接收一个冻结的 repo-store 根目录，内部结构与 runner 的
-`kernel/<owner>__<repo>/` 一致。矩阵会在 B/C/D 第一次启动时分别复制同一份 seed，
+`kernel/<owner>__<repo>/` 一致。矩阵会在 B/C（以及显式启用的 D）第一次启动时
+分别复制同一份 seed，
 A 不读取 seed；断点续跑通过 `.seed-source.json` 识别已经完成的复制，不会覆盖运行中
 新提取的切片。若目标 state 已有数据但没有 seed 标记，runner 会直接报错，避免把
 未知历史与冻结语料混在一起。发布实验结果时应同时保存 seed 生成命令、输入 session
 列表和 repo 顺序。
 
-legacy binary 应固定构建自 `cb5e9cc`（repo 隔离已合并、strict 仍为旧全类型
-策略），不能用 harness `--ablate all` 代替。矩阵 manifest 保存每个 run 的完整
+需要历史策略对照时，显式传入 `--legacy-semantix-bin`；该 binary 应固定构建自
+`cb5e9cc`（repo 隔离已合并、strict 仍为旧全类型策略），不能用 harness
+`--ablate all` 代替。矩阵 manifest 保存每个 run 的完整
 命令、state/work/run 路径；重复执行会沿用 `run_bench.py` 的按实例续跑能力。
 
 报告严格按 `(repetition, instance_id)` 与 A 配对；任一臂缺实例立即报错。输出
