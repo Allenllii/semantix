@@ -124,7 +124,7 @@ Prompt、ToolPattern 默认 shadow-only；Result 只有在具有成功验证或�
 
 #### 5.7 查询结构化
 
-检索 query 从完整 prompt 改为任务意图、repo、路径、符号和错误码；固定 benchmark 外壳不参与检索。
+检索 query 从完整 prompt 改为任务意图、repo、路径、符号、错误码/异常、测试名和依赖；固定 benchmark 外壳与 URL 不参与检索。找不到结构化信号时回退到 P0 lexical cleaning，并记录稳定 fallback reason。
 
 #### 5.8 ToolPattern 升级
 
@@ -191,7 +191,9 @@ Result 初始为 probation；只有验证命令通过、无回滚，或外部评
 - P0.3 Repo 隔离：已完成，采用真实 repo 独立 store 和 repo 内确定性串行；
 - P0.4 严格准入：已实现 C/M allowlist、小库/来源会话/绝对分/coverage/margin/runner-up 门禁和 query 清洗；
 - P0.5 历史正文降权、provenance、严格预算和 score-first 稳定排序：已实现；
-- 后续：A-D 配对实验、Result 成功提升和负迁移熔断。
+- P1.1 结构化 query：已实现确定性 intent/repo/path/symbol/error/test/dependency 提取、lexical fallback 和 eventwire 观测；
+- A-D 执行器已支持冻结种子，离线 strict/shadow/legacy 注入管线已验证；
+- 后续：冻结样本正式配对实验、Result 成功提升和负迁移熔断。
 
 P0.4 的具体默认值、reason code、校准和回滚合同见 `docs/specs/semantix-l2-admission-policy.md`；
 P0.5 的 provider 消息合同、完整字节预算口径和回滚步骤见
