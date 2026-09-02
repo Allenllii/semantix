@@ -55,6 +55,9 @@ type Config struct {
 	// log resolve against (kernel CLI semantics: <dir>/.semantix/...).
 	// Empty uses the process working directory.
 	ProjectDir string
+	// WorkspaceDir is the live repository used for commit/dependency checks.
+	// Empty falls back to ProjectDir for normal non-benchmark runs.
+	WorkspaceDir string
 	// CostMissUSD / CostHitUSD are the usage cost model prices (USD per 1M
 	// tokens at cache miss / hit) for the reuse panel savings delta.
 	// Zero keeps the kernel defaults (usage.DefaultCost*PerMTok).
@@ -273,12 +276,15 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 		return InjectResult{}
 	}
 	z := zone.Default()
+	workspaceDir := b.workspaceDir()
 	inj, err := (&inject.Injector{
 		Index:                idx,
 		Scope:                slice.Project,
 		K:                    5,
 		Budget:               budget,
 		AllowedTypes:         strictAllowedTypes,
+		RootDir:              workspaceDir,
+		CurrentCommit:        readGitHead(workspaceDir),
 		LibrarySize:          len(projectSlices),
 		MinLibrarySize:       strictMinLibrarySize,
 		SourceSessionsByType: sourceSessionCounts(projectSlices),
@@ -337,7 +343,7 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 }
 
 func (b *Bridge) retrievalDiagnostics(query string, retrievalQuery RetrievalQuery, library []*slice.Slice, hits []slice.Hit, inj *inject.Injection) *event.RetrievalDiagnostics {
-	projectDir := b.projectDir()
+	projectDir := b.workspaceDir()
 	d := &event.RetrievalDiagnostics{
 		Mode: string(b.mode), LibrarySize: len(library), Repo: filepath.Base(filepath.Clean(projectDir)),
 		BaseCommit: readGitHead(projectDir), QueryBefore: summarizeQuery(query), QueryAfter: summarizeQuery(retrievalQuery.Text),
@@ -362,6 +368,7 @@ func (b *Bridge) retrievalDiagnostics(query string, retrievalQuery RetrievalQuer
 			candidate.Type = sl.Type.String()
 			candidate.SourceSession = sl.Meta.SourceSession
 			candidate.Project = sl.Meta.ProjectSlug
+			candidate.BaseCommit = sl.Meta.BaseCommit
 			candidate.Origin = string(sl.Meta.Origin)
 			if sl.Type == slice.Result {
 				candidate.Verified = string(sl.Meta.EffectiveResultStatus())
@@ -665,6 +672,13 @@ func (b *Bridge) projectDir() string {
 		return "."
 	}
 	return wd
+}
+
+func (b *Bridge) workspaceDir() string {
+	if strings.TrimSpace(b.cfg.WorkspaceDir) != "" {
+		return b.cfg.WorkspaceDir
+	}
+	return b.projectDir()
 }
 
 // usagePath is the kernel usage log the reuse panel savings delta reads.

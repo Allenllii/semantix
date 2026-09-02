@@ -108,7 +108,14 @@ func TestFormatUSD(t *testing.T) {
 // Returns the project dir (pass as Config.ProjectDir).
 func writeKernelDir(t *testing.T, slicesIn []*slice.Slice, usageLines []string) string {
 	t.Helper()
+	const fixtureCommit = "1111111111111111111111111111111111111111"
 	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte(fixtureCommit+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	kernelDir := filepath.Join(dir, ".semantix")
 	if err := os.MkdirAll(kernelDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -118,6 +125,9 @@ func writeKernelDir(t *testing.T, slicesIn []*slice.Slice, usageLines []string) 
 		t.Fatal(err)
 	}
 	for _, s := range slicesIn {
+		if s.Meta.BaseCommit == "" {
+			s.Meta.BaseCommit = fixtureCommit
+		}
 		if err := store.Put(s); err != nil {
 			t.Fatal(err)
 		}
