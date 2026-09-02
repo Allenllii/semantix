@@ -86,6 +86,12 @@ def mirror_fingerprint_paths(mirror: Path, workspace: Path) -> list[str]:
             for child in value:
                 visit(child, key)
             return
+        if isinstance(value, str) and key in {"args", "arguments"}:
+            try:
+                visit(json.loads(value))
+            except json.JSONDecodeError:
+                pass
+            return
         if not isinstance(value, str) or key not in {
                 "path", "paths", "file", "files", "file_path", "filepath", "filename"}:
             return

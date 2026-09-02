@@ -444,20 +444,38 @@ func (in *Injector) freshnessReason(sl *slice.Slice) string {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
+	root, err := filepath.Abs(in.RootDir)
+	if err != nil {
+		return "dependency_path_invalid"
+	}
+	root, err = filepath.EvalSymlinks(root)
+	if err != nil {
+		return "dependency_path_invalid"
+	}
 	for _, path := range paths {
 		if !filepath.IsLocal(path) {
 			return "dependency_path_invalid"
 		}
-		fullPath := filepath.Join(in.RootDir, path)
-		info, err := os.Lstat(fullPath)
-		if os.IsNotExist(err) {
-			return "path_missing"
-		}
-		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-			return "dependency_path_invalid"
+		parts := strings.Split(filepath.Clean(filepath.FromSlash(path)), string(filepath.Separator))
+		current := root
+		for i, part := range parts {
+			current = filepath.Join(current, part)
+			info, err := os.Lstat(current)
+			if os.IsNotExist(err) {
+				return "path_missing"
+			}
+			if err != nil || info.Mode()&os.ModeSymlink != 0 {
+				return "dependency_path_invalid"
+			}
+			if i < len(parts)-1 && !info.IsDir() {
+				return "dependency_path_invalid"
+			}
+			if i == len(parts)-1 && !info.Mode().IsRegular() {
+				return "dependency_path_invalid"
+			}
 		}
 	}
-	changed, err := fingerprint.Verify(in.RootDir, sl.Meta.Deps)
+	changed, err := fingerprint.Verify(root, sl.Meta.Deps)
 	if err != nil || len(changed) > 0 {
 		return "dependency_changed"
 	}

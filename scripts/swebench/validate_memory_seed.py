@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -30,7 +31,17 @@ def load_store(path: Path) -> dict[str, dict]:
     for row in read_jsonl(path) or ():
         if row.get("ID"):
             entries[row["ID"]] = row
-    for row in read_jsonl(Path(str(path) + ".journal")) or ():
+    journal = Path(str(path) + ".journal")
+    journal_rows = list(read_jsonl(journal) or ())
+    if journal_rows:
+        header = journal_rows.pop(0)
+        stat = path.stat()
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        if (header.get("j") != 1 or header.get("bsize") != stat.st_size
+                or header.get("bmtime") != stat.st_mtime_ns
+                or header.get("bsha") != digest):
+            raise ValueError(f"{journal}: journal header does not match base store")
+    for row in journal_rows:
         op = row.get("op")
         if op == "put" and isinstance(row.get("s"), dict) and row["s"].get("ID"):
             entries[row["s"]["ID"]] = row["s"]
@@ -76,7 +87,12 @@ def validate(seed_dir: Path, dataset: Path, ids_path: Path,
     for repo, instance_ids in repos.items():
         key = repo.replace("/", "__", 1)
         db = seed_dir / key / ".semantix" / "project.db"
-        entries = load_store(db) if db.exists() else {}
+        store_error = ""
+        try:
+            entries = load_store(db) if db.exists() else {}
+        except ValueError as exc:
+            entries = {}
+            store_error = str(exc)
         sessions_by_type: dict[str, set[str]] = defaultdict(set)
         injectable: list[dict] = []
         missing_commit: list[str] = []
@@ -102,6 +118,8 @@ def validate(seed_dir: Path, dataset: Path, ids_path: Path,
         errors: list[str] = []
         if not db.exists():
             errors.append("missing_store")
+        elif store_error:
+            errors.append("store_invalid")
         if len(entries) < min_library:
             errors.append("library_too_small")
         if not eligible_types:
@@ -113,7 +131,7 @@ def validate(seed_dir: Path, dataset: Path, ids_path: Path,
             "injectable": len(injectable), "verified_results": verified_results,
             "source_sessions_by_type": {k: len(v) for k, v in sorted(sessions_by_type.items())},
             "eligible_types": eligible_types, "missing_base_commit": sorted(missing_commit),
-            "errors": errors,
+            "store_error": store_error, "errors": errors,
         }
         report["repos"][repo] = repo_report
         report["errors"].extend(f"{repo}:{error}" for error in errors)

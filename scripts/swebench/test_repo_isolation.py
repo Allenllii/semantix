@@ -193,7 +193,7 @@ class RepoStoreTests(unittest.TestCase):
             source.write_text("value = 1\n", encoding="utf-8")
             (sessions / "turn.jsonl").write_text(
                 '{"role":"assistant","tool_calls":[{"id":"1","name":"read_file",'
-                '"arguments":{"path":"pkg/cache.py"}}]}\n', encoding="utf-8")
+                '"arguments":"{\\"path\\":\\"pkg/cache.py\\"}"}]}\n', encoding="utf-8")
             kernel_dir = adapter.kernel_dir_for(inst("d", "django/django"))
             completed = SimpleNamespace(returncode=0, stdout="stored=1", stderr="")
             with mock.patch("run_bench.subprocess.run", return_value=completed) as run:

@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,7 +16,9 @@ class ValidateMemorySeedTest(unittest.TestCase):
         db = root / "seed" / "org__repo" / ".semantix" / "project.db"
         db.parent.mkdir(parents=True)
         db.write_text("")
-        rows = [{"j": 1, "bsize": 0, "bmtime": 0, "bsha": ""}]
+        stat = db.stat()
+        rows = [{"j": 1, "bsize": stat.st_size, "bmtime": stat.st_mtime_ns,
+                 "bsha": hashlib.sha256(db.read_bytes()).hexdigest()}]
         for index in range(5):
             meta = {"SourceSession": f"s{index % 2}"}
             if with_commit:
@@ -45,6 +48,14 @@ class ValidateMemorySeedTest(unittest.TestCase):
         self.assertFalse(report["ok"])
         self.assertIn("org/repo:commit_unknown", report["errors"])
         self.assertIn("other/repo:missing_store", report["errors"])
+
+    def test_rejects_journal_bound_to_another_base_generation(self):
+        with tempfile.TemporaryDirectory() as td:
+            seed, dataset, ids = self.fixture(Path(td))
+            db = seed / "org__repo" / ".semantix" / "project.db"
+            db.write_text("{}\n")
+            report = validator.validate(seed, dataset, ids)
+        self.assertIn("org/repo:store_invalid", report["errors"])
 
 
 if __name__ == "__main__":
