@@ -81,6 +81,10 @@ class InstanceMetrics:
     subagent_runs: int = 0
     tool_failures: int = 0
     tool_calls_by_name: dict[str, int] = field(default_factory=dict)
+    # None means the selected harness/binary predates repeat attribution;
+    # zero means attribution ran and observed no repeated signature.
+    repeated_tool_calls: int | None = None
+    repeated_tool_calls_by_name: dict[str, int] | None = None
     cost_usd: float | None = None    # computed from DeepSeek prices when possible
     cost_native: float | None = None # what the harness itself reported
     cost_native_currency: str = ""

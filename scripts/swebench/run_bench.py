@@ -372,6 +372,12 @@ context_window = 128000
         m.subagent_runs = raw.get("subagent_runs", 0)
         m.tool_failures = raw.get("tool_failures", 0)
         m.tool_calls_by_name = normalize_count_map(raw.get("tool_calls_by_name"))
+        if "repeated_tool_calls" in raw:
+            m.repeated_tool_calls = raw.get("repeated_tool_calls")
+        if "repeated_tool_calls_by_name" in raw:
+            m.repeated_tool_calls_by_name = normalize_count_map(
+                raw.get("repeated_tool_calls_by_name")
+            )
         m.cost_native = raw.get("cost")
         m.cost_native_currency = raw.get("currency", "")
 
