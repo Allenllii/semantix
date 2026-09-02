@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import common
+import run_bench
 from run_bench import Adapter, SemantixAdapter, process_batch, repo_store_key
 
 
@@ -58,6 +59,33 @@ class RepoSchedulingTests(unittest.TestCase):
 
 
 class RepoStoreTests(unittest.TestCase):
+    def test_relative_cli_paths_are_resolved_before_workspace_chdir(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            args = SimpleNamespace(
+                dataset="data/verified.jsonl",
+                ids="subsets/ids.txt",
+                results_dir="results",
+                work_dir="work",
+                state_dir="state",
+                prices="",
+                custom_spec="",
+                semantix_bin="bin/semantix-agent",
+                semantix_kernel_bin="bin/semantix",
+                codex_bin="",
+            )
+
+            run_bench.resolve_cli_paths(args, root)
+
+            for name in (
+                "dataset", "ids", "results_dir", "work_dir", "state_dir",
+                "semantix_bin", "semantix_kernel_bin",
+            ):
+                self.assertTrue(Path(getattr(args, name)).is_absolute(), name)
+            self.assertEqual(args.results_dir, str(root / "results"))
+            self.assertEqual(args.state_dir, str(root / "state"))
+            self.assertEqual(args.prices, "")
+
     def test_repo_cache_clone_is_portable_and_atomic(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
