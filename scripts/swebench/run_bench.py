@@ -147,6 +147,25 @@ def normalize_count_map(value: object) -> dict[str, int]:
     }
 
 
+CLI_PATH_FIELDS = (
+    "dataset", "ids", "results_dir", "work_dir", "state_dir", "prices",
+    "custom_spec", "semantix_bin", "semantix_kernel_bin", "codex_bin",
+)
+
+
+def resolve_cli_paths(args, base: Path | None = None) -> None:
+    """Pin CLI paths before adapters change the child process workspace."""
+    base = (base or Path.cwd()).resolve()
+    for name in CLI_PATH_FIELDS:
+        value = getattr(args, name, "")
+        if not value:
+            continue
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            path = base / path
+        setattr(args, name, str(path.resolve()))
+
+
 def clean_env(*, drop_prefixes=(), drop=()) -> dict:
     env = {}
     for k, v in os.environ.items():
@@ -881,6 +900,7 @@ def main() -> None:
     ap.add_argument("--anthropic-base", default="", help="override Anthropic-compatible base URL (mock)")
     ap.add_argument("--keep-ws", action="store_true")
     args = ap.parse_args()
+    resolve_cli_paths(args)
 
     if not args.run_id:
         args.run_id = f"{args.harness}.{args.model.replace('/', '-')}.{args.seed}"
