@@ -6,7 +6,7 @@ Arms are executed sequentially to avoid cross-arm provider/CPU contention:
   A  memory off
   B  memory on + shadow retrieval
   C  memory on + current strict policy
-  D  memory on + legacy all-type policy (separate agent binary)
+  D  optional historical replay of the legacy all-type policy
 
 Each repetition/arm gets an isolated state and work directory. The selected
 dataset order is identical because every command reuses the same --ids/--seed.
@@ -52,12 +52,14 @@ def add_optional(command: list[str], flag: str, value: str) -> None:
 
 def build_runs(args: argparse.Namespace) -> list[MatrixRun]:
     runs: list[MatrixRun] = []
+    legacy_bin = getattr(args, "legacy_semantix_bin", "")
+    arm_config = tuple(config for config in ARM_CONFIG if not config[4] or legacy_bin)
     for repetition in range(1, args.repetitions + 1):
-        for arm, label, memory, retrieval, legacy in ARM_CONFIG:
+        for arm, label, memory, retrieval, legacy in arm_config:
             run_id = f"{args.prefix}.r{repetition:02d}.{arm}-{label}"
             state_dir = str(Path(args.state_dir) / f"r{repetition:02d}" / f"{arm}-{label}")
             work_dir = str(Path(args.work_dir) / f"r{repetition:02d}" / f"{arm}-{label}")
-            agent_bin = args.legacy_semantix_bin if legacy else args.semantix_bin
+            agent_bin = legacy_bin if legacy else args.semantix_bin
             command = [
                 sys.executable, str(HERE / "run_bench.py"),
                 "--harness", "semantix",
@@ -101,7 +103,7 @@ def manifest_for(args: argparse.Namespace, runs: list[MatrixRun]) -> dict:
         "model": args.model,
         "repetitions": args.repetitions,
         "semantix_seed_dir": getattr(args, "semantix_seed_dir", ""),
-        "arm_order": [arm for arm, *_ in ARM_CONFIG],
+        "arm_order": list(dict.fromkeys(run.arm for run in runs)),
         "runs": [asdict(run) for run in runs],
     }
 
@@ -112,8 +114,8 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--ids", required=True, help="frozen instance IDs in dataset order")
     ap.add_argument("--model", default="deepseek-v4-flash")
     ap.add_argument("--semantix-bin", required=True, help="current strict semantix-agent")
-    ap.add_argument("--legacy-semantix-bin", required=True,
-                    help="baseline semantix-agent retaining the old all-type policy")
+    ap.add_argument("--legacy-semantix-bin", default="",
+                    help="optional historical semantix-agent retaining the old all-type policy")
     ap.add_argument("--semantix-kernel-bin", required=True)
     ap.add_argument("--semantix-seed-dir", default="",
                     help="frozen owner__repo store root copied into B/C/D")
