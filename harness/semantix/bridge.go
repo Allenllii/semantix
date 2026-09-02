@@ -92,7 +92,18 @@ const (
 	RetrievalOff    RetrievalMode = "off"
 	RetrievalShadow RetrievalMode = "shadow"
 	RetrievalStrict RetrievalMode = "strict"
+
+	strictMinLibrarySize    = 5
+	strictMinSourceSessions = 2
+	strictMinScore          = 0.70
+	strictMinCoverage       = 0.25
+	strictMinTopMargin      = 0.15
 )
+
+var strictAllowedTypes = map[slice.SliceType]bool{
+	slice.Context: true,
+	slice.Memory:  true,
+}
 
 // NewBridge builds a Bridge from cfg.
 func NewBridge(cfg Config) *Bridge {
@@ -240,20 +251,37 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 		b.emitKernelCache("miss", "L2", nil, 0, "slice library unavailable")
 		return InjectResult{}
 	}
-	hits, err := idx.Search(query, 5, slice.Project)
+	cleanedQuery := cleanRetrievalQuery(query)
+	if cleanedQuery == "" {
+		diagnostics := b.retrievalDiagnostics(query, cleanedQuery, projectSlices, nil, nil)
+		diagnostics.Decision = "rejected"
+		diagnostics.DecisionReason = "empty_query_after_cleaning"
+		b.emitKernelCacheDetailed("miss", "L2", nil, 0, diagnostics.DecisionReason, diagnostics)
+		return InjectResult{Diagnostics: diagnostics}
+	}
+	hits, err := idx.Search(cleanedQuery, 5, slice.Project)
 	if err != nil {
 		b.emitKernelCache("miss", "L2", nil, 0, err.Error())
 		return InjectResult{}
 	}
 	z := zone.Default()
 	inj, err := (&inject.Injector{
-		Index:     idx,
-		Scope:     slice.Project,
-		K:         5,
-		Budget:    budget,
-		Zones:     &z,
-		AllowGrey: b.cfg.GreyMode == "audit",
-	}).BuildHits(query, hits)
+		Index:                idx,
+		Scope:                slice.Project,
+		K:                    5,
+		Budget:               budget,
+		AllowedTypes:         strictAllowedTypes,
+		LibrarySize:          len(projectSlices),
+		MinLibrarySize:       strictMinLibrarySize,
+		SourceSessionsByType: sourceSessionCounts(projectSlices),
+		MinSourceSessions:    strictMinSourceSessions,
+		MinScore:             strictMinScore,
+		MinCoverage:          strictMinCoverage,
+		MinTopMargin:         strictMinTopMargin,
+		RequireRunnerUp:      true,
+		Zones:                &z,
+		AllowGrey:            b.cfg.GreyMode == "audit",
+	}).BuildHits(cleanedQuery, hits)
 	if err != nil {
 		op := "miss"
 		if budget < b.cfg.Budget {
@@ -262,7 +290,7 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 		b.emitKernelCache(op, "L2", nil, 0, err.Error())
 		return InjectResult{}
 	}
-	diagnostics := b.retrievalDiagnostics(query, projectSlices, hits, inj)
+	diagnostics := b.retrievalDiagnostics(query, cleanedQuery, projectSlices, hits, inj)
 	if b.mode == RetrievalShadow {
 		diagnostics.Decision = "withheld"
 		diagnostics.DecisionReason = "shadow_mode"
@@ -300,21 +328,16 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 	return InjectResult{Text: inj.Text, Targets: targets, Diagnostics: diagnostics}
 }
 
-func (b *Bridge) retrievalDiagnostics(query string, library []*slice.Slice, hits []slice.Hit, inj *inject.Injection) *event.RetrievalDiagnostics {
+func (b *Bridge) retrievalDiagnostics(query, cleanedQuery string, library []*slice.Slice, hits []slice.Hit, inj *inject.Injection) *event.RetrievalDiagnostics {
 	projectDir := b.projectDir()
 	d := &event.RetrievalDiagnostics{
 		Mode: string(b.mode), LibrarySize: len(library), Repo: filepath.Base(filepath.Clean(projectDir)),
-		BaseCommit: readGitHead(projectDir), QueryBefore: summarizeQuery(query), QueryAfter: summarizeQuery(query),
-	}
-	if len(hits) > 0 {
-		d.TopMargin = hits[0].Score
-		if len(hits) > 1 {
-			d.TopMargin -= hits[1].Score
-		}
+		BaseCommit: readGitHead(projectDir), QueryBefore: summarizeQuery(query), QueryAfter: summarizeQuery(cleanedQuery),
 	}
 	if inj == nil {
 		return d
 	}
+	d.TopMargin = inj.TopMargin
 	for i, decision := range inj.Decisions {
 		candidate := event.RetrievalCandidate{
 			ID: decision.ID, Score: decision.Score, Coverage: decision.Coverage,
@@ -335,6 +358,24 @@ func (b *Bridge) retrievalDiagnostics(query string, library []*slice.Slice, hits
 		}
 	}
 	return d
+}
+
+func sourceSessionCounts(library []*slice.Slice) map[slice.SliceType]int {
+	sets := make(map[slice.SliceType]map[string]struct{})
+	for _, sl := range library {
+		if sl == nil || sl.Meta.SourceSession == "" {
+			continue
+		}
+		if sets[sl.Type] == nil {
+			sets[sl.Type] = make(map[string]struct{})
+		}
+		sets[sl.Type][sl.Meta.SourceSession] = struct{}{}
+	}
+	counts := make(map[slice.SliceType]int, len(sets))
+	for typ, sessions := range sets {
+		counts[typ] = len(sessions)
+	}
+	return counts
 }
 
 func summarizeQuery(query string) event.QuerySummary {
