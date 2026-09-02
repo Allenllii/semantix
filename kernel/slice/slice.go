@@ -145,6 +145,8 @@ type SliceMeta struct {
 	TaskType      string
 	Language      string
 	ProjectSlug   string
+	// BaseCommit is the repository revision visible when the source session ran.
+	BaseCommit string `json:"base_commit,omitempty"`
 	// Origin is the provenance/trust tag (Issue #279): writing channels
 	// stamp it, injection and the L3 gate check its integrity level.
 	// Empty means unlabelled (legacy) — treated as the lowest level
