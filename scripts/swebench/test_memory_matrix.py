@@ -13,6 +13,32 @@ import memory_matrix_report  # noqa: E402
 
 
 class MemoryMatrixCommandTest(unittest.TestCase):
+    def test_defaults_to_core_abc_without_legacy_binary(self):
+        args = argparse.Namespace(
+            dataset="dataset.jsonl",
+            ids="ids.txt",
+            model="deepseek-v4-flash",
+            semantix_bin="bin/current-agent",
+            semantix_kernel_bin="bin/semantix",
+            semantix_seed_dir="seed",
+            repetitions=1,
+            prefix="issue447",
+            results_dir="results",
+            work_dir="work",
+            state_dir="state",
+            workers=3,
+            timeout=1200,
+            max_turns=80,
+            preset="balanced",
+            effort="",
+            prices="",
+            openai_base="",
+            anthropic_base="",
+        )
+        runs = memory_matrix.build_runs(args)
+        self.assertEqual([r.arm for r in runs], ["A", "B", "C"])
+        self.assertEqual(memory_matrix.manifest_for(args, runs)["arm_order"], ["A", "B", "C"])
+
     def test_builds_repeated_abcd_commands_with_isolated_state(self):
         args = argparse.Namespace(
             dataset="dataset.jsonl",

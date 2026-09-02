@@ -274,22 +274,21 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 	}
 	z := zone.Default()
 	inj, err := (&inject.Injector{
-		Index:                  idx,
-		Scope:                  slice.Project,
-		K:                      5,
-		Budget:                 budget,
-		AllowedTypes:           strictAllowedTypes,
-		RequireVerifiedResults: true,
-		LibrarySize:            len(projectSlices),
-		MinLibrarySize:         strictMinLibrarySize,
-		SourceSessionsByType:   sourceSessionCounts(projectSlices),
-		MinSourceSessions:      strictMinSourceSessions,
-		MinScore:               strictMinScore,
-		MinCoverage:            strictMinCoverage,
-		MinTopMargin:           strictMinTopMargin,
-		RequireRunnerUp:        true,
-		Zones:                  &z,
-		AllowGrey:              b.cfg.GreyMode == "audit",
+		Index:                idx,
+		Scope:                slice.Project,
+		K:                    5,
+		Budget:               budget,
+		AllowedTypes:         strictAllowedTypes,
+		LibrarySize:          len(projectSlices),
+		MinLibrarySize:       strictMinLibrarySize,
+		SourceSessionsByType: sourceSessionCounts(projectSlices),
+		MinSourceSessions:    strictMinSourceSessions,
+		MinScore:             strictMinScore,
+		MinCoverage:          strictMinCoverage,
+		MinTopMargin:         strictMinTopMargin,
+		RequireRunnerUp:      true,
+		Zones:                &z,
+		AllowGrey:            b.cfg.GreyMode == "audit",
 	}).BuildHits(cleanedQuery, hits)
 	if err != nil {
 		op := "miss"
