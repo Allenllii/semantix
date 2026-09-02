@@ -5,10 +5,13 @@ package semantix
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,8 +35,11 @@ type Config struct {
 	// Retained for the legacy semantix_lookup tool; the reuse panel and
 	// injection read the kernel in-process (U39) and never spawn the CLI.
 	Binary string
-	// Inject appends the [semantix-reuse] block to the system prompt region.
+	// Inject adds the [semantix-reuse] block as untrusted user-role history.
 	Inject bool
+	// Mode controls L2 retrieval: off | shadow | strict. Empty preserves the
+	// legacy Inject boolean; an explicit value takes precedence.
+	Mode string
 	// Budget caps the L2 injection block size in bytes (default 4096).
 	Budget int
 	// GreyMode controls the grey-zone injection policy: "" / "drop" keeps
@@ -62,6 +68,7 @@ type Config struct {
 // the agent main loop.
 type Bridge struct {
 	cfg    Config
+	mode   RetrievalMode
 	events *kernelevent.SyncBus
 
 	mu    sync.Mutex
@@ -77,16 +84,58 @@ type Bridge struct {
 	closing     bool
 }
 
+// RetrievalMode controls whether L2 retrieval is disabled, observed only, or
+// allowed to contribute provider-visible untrusted history.
+type RetrievalMode string
+
+const (
+	RetrievalOff    RetrievalMode = "off"
+	RetrievalShadow RetrievalMode = "shadow"
+	RetrievalStrict RetrievalMode = "strict"
+
+	strictMinLibrarySize    = 5
+	strictMinSourceSessions = 2
+	strictMinScore          = 0.70
+	strictMinCoverage       = 0.25
+	strictMinTopMargin      = 0.15
+)
+
+var strictAllowedTypes = map[slice.SliceType]bool{
+	slice.Context: true,
+	slice.Memory:  true,
+}
+
 // NewBridge builds a Bridge from cfg.
 func NewBridge(cfg Config) *Bridge {
 	if cfg.Budget <= 0 {
 		cfg.Budget = 4096
 	}
 	bus := kernelevent.NewSyncBus()
-	b := &Bridge{cfg: cfg, events: bus}
+	b := &Bridge{cfg: cfg, mode: resolveRetrievalMode(cfg), events: bus}
 	bus.Subscribe(b.mirrorKernel)
 	b.evolution = NewEvolutionLoop(bus, evolve.New(evolve.Config{}))
 	return b
+}
+
+func resolveRetrievalMode(cfg Config) RetrievalMode {
+	if !cfg.Enabled {
+		return RetrievalOff
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.Mode)) {
+	case "":
+		if cfg.Inject {
+			return RetrievalStrict
+		}
+		return RetrievalOff
+	case string(RetrievalOff):
+		return RetrievalOff
+	case string(RetrievalShadow):
+		return RetrievalShadow
+	case string(RetrievalStrict):
+		return RetrievalStrict
+	default:
+		return RetrievalOff
+	}
 }
 
 // AttachEvolution connects the live scheduler and prefetcher to the online loop.
@@ -99,8 +148,9 @@ func (b *Bridge) AttachEvolution(scheduler, prefetcher EvolutionTuner) {
 // InjectResult carries the stable block and the canonical slice identities it
 // represents, allowing prefetch feedback to retain the existing targets wire.
 type InjectResult struct {
-	Text    string
-	Targets []string
+	Text        string
+	Targets     []string
+	Diagnostics *event.RetrievalDiagnostics
 }
 
 // Events is the in-process kernel event bus shared by the harness and kernel
@@ -120,9 +170,19 @@ func (b *Bridge) Events() kernelevent.Bus {
 // Enabled reports whether the kernel is wired in.
 func (b *Bridge) Enabled() bool { return b != nil && b.cfg.Enabled }
 
+// RetrievalMode reports the fail-closed effective L2 mode.
+func (b *Bridge) RetrievalMode() RetrievalMode {
+	if b == nil {
+		return RetrievalOff
+	}
+	return b.mode
+}
+
 // InjectEnabled reports whether L2 injection is wired on (used to decide
 // whether speculative prefetch warm-up is worth starting).
-func (b *Bridge) InjectEnabled() bool { return b != nil && b.cfg.Enabled && b.cfg.Inject }
+func (b *Bridge) InjectEnabled() bool {
+	return b != nil && b.Enabled() && b.mode == RetrievalStrict
+}
 
 // Sink wraps inner so every event is also mirrored into the kernel session
 // JSONL. Returns inner unchanged when the kernel is not enabled (zero-cost
@@ -177,7 +237,7 @@ func (b *Bridge) InjectDetailed(ctx context.Context, query string) InjectResult 
 }
 
 func (b *Bridge) injectResult(ctx context.Context, query string, budget int) InjectResult {
-	if !b.Enabled() || !b.cfg.Inject {
+	if !b.Enabled() || b.mode == RetrievalOff {
 		return InjectResult{}
 	}
 	store, idx, err := b.kernelIndex()
@@ -185,16 +245,43 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 		b.emitKernelCache("miss", "L2", nil, 0, "slice store unavailable")
 		return InjectResult{}
 	}
-	closeSliceStore(store)
+	defer closeSliceStore(store)
+	projectSlices, err := store.List(slice.Project)
+	if err != nil {
+		b.emitKernelCache("miss", "L2", nil, 0, "slice library unavailable")
+		return InjectResult{}
+	}
+	cleanedQuery := cleanRetrievalQuery(query)
+	if cleanedQuery == "" {
+		diagnostics := b.retrievalDiagnostics(query, cleanedQuery, projectSlices, nil, nil)
+		diagnostics.Decision = "rejected"
+		diagnostics.DecisionReason = "empty_query_after_cleaning"
+		b.emitKernelCacheDetailed("miss", "L2", nil, 0, diagnostics.DecisionReason, diagnostics)
+		return InjectResult{Diagnostics: diagnostics}
+	}
+	hits, err := idx.Search(cleanedQuery, 5, slice.Project)
+	if err != nil {
+		b.emitKernelCache("miss", "L2", nil, 0, err.Error())
+		return InjectResult{}
+	}
 	z := zone.Default()
 	inj, err := (&inject.Injector{
-		Index:     idx,
-		Scope:     slice.Project,
-		K:         5,
-		Budget:    budget,
-		Zones:     &z,
-		AllowGrey: b.cfg.GreyMode == "audit",
-	}).Build(query)
+		Index:                idx,
+		Scope:                slice.Project,
+		K:                    5,
+		Budget:               budget,
+		AllowedTypes:         strictAllowedTypes,
+		LibrarySize:          len(projectSlices),
+		MinLibrarySize:       strictMinLibrarySize,
+		SourceSessionsByType: sourceSessionCounts(projectSlices),
+		MinSourceSessions:    strictMinSourceSessions,
+		MinScore:             strictMinScore,
+		MinCoverage:          strictMinCoverage,
+		MinTopMargin:         strictMinTopMargin,
+		RequireRunnerUp:      true,
+		Zones:                &z,
+		AllowGrey:            b.cfg.GreyMode == "audit",
+	}).BuildHits(cleanedQuery, hits)
 	if err != nil {
 		op := "miss"
 		if budget < b.cfg.Budget {
@@ -203,13 +290,22 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 		b.emitKernelCache(op, "L2", nil, 0, err.Error())
 		return InjectResult{}
 	}
+	diagnostics := b.retrievalDiagnostics(query, cleanedQuery, projectSlices, hits, inj)
+	if b.mode == RetrievalShadow {
+		diagnostics.Decision = "withheld"
+		diagnostics.DecisionReason = "shadow_mode"
+		b.emitKernelCacheDetailed("shadow", "L2", diagnostics.FinalOrder, 0, "shadow_mode", diagnostics)
+		return InjectResult{Targets: append([]string(nil), diagnostics.FinalOrder...), Diagnostics: diagnostics}
+	}
 	if inj == nil || len(inj.Slices) == 0 {
 		op := "miss"
 		if budget < b.cfg.Budget {
 			op = "degraded"
 		}
-		b.emitKernelCache(op, "L2", nil, 0, "no matching slices")
-		return InjectResult{}
+		diagnostics.Decision = "rejected"
+		diagnostics.DecisionReason = "no_admitted_slices"
+		b.emitKernelCacheDetailed(op, "L2", nil, 0, "no matching slices", diagnostics)
+		return InjectResult{Diagnostics: diagnostics}
 	}
 	targets := make([]string, 0, len(inj.Slices))
 	for _, sl := range inj.Slices {
@@ -219,12 +315,100 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 	}
 	sort.Strings(targets)
 	b.recordInjection(targets, inj.Bytes)
+	diagnostics.Injected = true
+	diagnostics.Bytes = inj.Bytes
+	diagnostics.MessageRole = "user"
+	diagnostics.Decision = "injected"
+	diagnostics.DecisionReason = "admitted"
 	op := "inject"
 	if budget < b.cfg.Budget {
 		op = "degraded"
 	}
-	b.emitKernelCache(op, "L2", targets, inj.Bytes, "")
-	return InjectResult{Text: inj.Text, Targets: targets}
+	b.emitKernelCacheDetailed(op, "L2", targets, inj.Bytes, "", diagnostics)
+	return InjectResult{Text: inj.Text, Targets: targets, Diagnostics: diagnostics}
+}
+
+func (b *Bridge) retrievalDiagnostics(query, cleanedQuery string, library []*slice.Slice, hits []slice.Hit, inj *inject.Injection) *event.RetrievalDiagnostics {
+	projectDir := b.projectDir()
+	d := &event.RetrievalDiagnostics{
+		Mode: string(b.mode), LibrarySize: len(library), Repo: filepath.Base(filepath.Clean(projectDir)),
+		BaseCommit: readGitHead(projectDir), QueryBefore: summarizeQuery(query), QueryAfter: summarizeQuery(cleanedQuery),
+	}
+	if inj == nil {
+		return d
+	}
+	d.TopMargin = inj.TopMargin
+	for i, decision := range inj.Decisions {
+		candidate := event.RetrievalCandidate{
+			ID: decision.ID, Score: decision.Score, Coverage: decision.Coverage,
+			Zone: decision.Zone, Admitted: decision.Admitted, Reason: decision.Reason, Verified: "unknown",
+		}
+		if i < len(hits) && hits[i].Slice != nil {
+			sl := hits[i].Slice
+			candidate.Type = sl.Type.String()
+			candidate.SourceSession = sl.Meta.SourceSession
+			candidate.Project = sl.Meta.ProjectSlug
+			candidate.Origin = string(sl.Meta.Origin)
+		}
+		d.Candidates = append(d.Candidates, candidate)
+	}
+	for _, sl := range inj.Slices {
+		if sl != nil {
+			d.FinalOrder = append(d.FinalOrder, sl.ID)
+		}
+	}
+	return d
+}
+
+func sourceSessionCounts(library []*slice.Slice) map[slice.SliceType]int {
+	sets := make(map[slice.SliceType]map[string]struct{})
+	for _, sl := range library {
+		if sl == nil || sl.Meta.SourceSession == "" {
+			continue
+		}
+		if sets[sl.Type] == nil {
+			sets[sl.Type] = make(map[string]struct{})
+		}
+		sets[sl.Type][sl.Meta.SourceSession] = struct{}{}
+	}
+	counts := make(map[slice.SliceType]int, len(sets))
+	for typ, sessions := range sets {
+		counts[typ] = len(sessions)
+	}
+	return counts
+}
+
+func summarizeQuery(query string) event.QuerySummary {
+	sum := sha256.Sum256([]byte(query))
+	return event.QuerySummary{SHA256: fmt.Sprintf("%x", sum[:]), Bytes: len(query), Tokens: len(bm25.Tokenize(query))}
+}
+
+func readGitHead(root string) string {
+	gitDir := filepath.Join(root, ".git")
+	if raw, err := os.ReadFile(gitDir); err == nil {
+		line := strings.TrimSpace(string(raw))
+		if strings.HasPrefix(line, "gitdir:") {
+			gitDir = strings.TrimSpace(strings.TrimPrefix(line, "gitdir:"))
+			if !filepath.IsAbs(gitDir) {
+				gitDir = filepath.Join(root, gitDir)
+			}
+		}
+	}
+	head, err := os.ReadFile(filepath.Join(gitDir, "HEAD"))
+	if err != nil {
+		return ""
+	}
+	value := strings.TrimSpace(string(head))
+	if !strings.HasPrefix(value, "ref:") {
+		return value
+	}
+	ref := strings.TrimSpace(strings.TrimPrefix(value, "ref:"))
+	for _, base := range []string{gitDir, filepath.Clean(filepath.Join(gitDir, "..", ".."))} {
+		if raw, err := os.ReadFile(filepath.Join(base, filepath.FromSlash(ref))); err == nil {
+			return strings.TrimSpace(string(raw))
+		}
+	}
+	return ""
 }
 
 // emitKernelCache forwards an observed kernel cache operation to the live
@@ -232,6 +416,10 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 // mirror; this small projection is only for the workspace SSE/UI and is
 // fail-open when no frontend sink is attached.
 func (b *Bridge) emitKernelCache(op, layer string, ids []string, bytes int, reason string) {
+	b.emitKernelCacheDetailed(op, layer, ids, bytes, reason, nil)
+}
+
+func (b *Bridge) emitKernelCacheDetailed(op, layer string, ids []string, bytes int, reason string, retrieval *event.RetrievalDiagnostics) {
 	if b == nil || !b.Enabled() {
 		return
 	}
@@ -244,7 +432,7 @@ func (b *Bridge) emitKernelCache(op, layer string, ids []string, bytes int, reas
 		return
 	}
 	sink.Emit(event.Event{Kind: event.KernelCache, Text: op, Source: label,
-		KernelCache: &event.KernelCachePayload{Op: op, Layer: layer, SliceIDs: ids, Bytes: bytes, Reason: reason}})
+		KernelCache: &event.KernelCachePayload{Op: op, Layer: layer, SliceIDs: ids, Bytes: bytes, Reason: reason, Retrieval: retrieval}})
 }
 
 func (b *Bridge) recordInjection(ids []string, bytes int) {
