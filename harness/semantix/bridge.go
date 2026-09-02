@@ -35,7 +35,7 @@ type Config struct {
 	// Retained for the legacy semantix_lookup tool; the reuse panel and
 	// injection read the kernel in-process (U39) and never spawn the CLI.
 	Binary string
-	// Inject appends the [semantix-reuse] block to the system prompt region.
+	// Inject adds the [semantix-reuse] block as untrusted user-role history.
 	Inject bool
 	// Mode controls L2 retrieval: off | shadow | strict. Empty preserves the
 	// legacy Inject boolean; an explicit value takes precedence.
@@ -85,7 +85,7 @@ type Bridge struct {
 }
 
 // RetrievalMode controls whether L2 retrieval is disabled, observed only, or
-// allowed to contribute a provider-visible system block.
+// allowed to contribute provider-visible untrusted history.
 type RetrievalMode string
 
 const (
@@ -317,7 +317,7 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 	b.recordInjection(targets, inj.Bytes)
 	diagnostics.Injected = true
 	diagnostics.Bytes = inj.Bytes
-	diagnostics.MessageRole = "system"
+	diagnostics.MessageRole = "user"
 	diagnostics.Decision = "injected"
 	diagnostics.DecisionReason = "admitted"
 	op := "inject"

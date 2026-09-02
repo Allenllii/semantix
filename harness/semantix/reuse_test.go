@@ -202,6 +202,9 @@ func TestBridgeInjectRecordsStatsAndEvent(t *testing.T) {
 	if result.Text == "" || len(result.Targets) == 0 {
 		t.Fatalf("InjectDetailed() = %+v, want injected slices", result)
 	}
+	if result.Diagnostics == nil || result.Diagnostics.MessageRole != "user" {
+		t.Fatalf("injection message role = %+v, want user", result.Diagnostics)
+	}
 	if err := b.Close(); err != nil {
 		t.Fatal(err)
 	}
