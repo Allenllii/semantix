@@ -82,6 +82,22 @@ type Injector struct {
 	Budget int
 	// MinScore drops slices below this BM25 score (0 disables).
 	MinScore float64
+	// AllowedTypes, when non-nil, is a fail-closed injection allowlist. Search
+	// results outside it remain in Decisions for shadow analysis.
+	AllowedTypes map[slice.SliceType]bool
+	// LibrarySize and MinLibrarySize gate immature Project libraries.
+	LibrarySize    int
+	MinLibrarySize int
+	// SourceSessionsByType counts distinct non-empty source sessions in the
+	// library. MinSourceSessions prevents one session from self-confirming.
+	SourceSessionsByType map[slice.SliceType]int
+	MinSourceSessions    int
+	// MinCoverage is the cleaned-query token coverage floor.
+	MinCoverage float64
+	// MinTopMargin is the absolute score gap between the two best candidates
+	// that pass AllowedTypes. RequireRunnerUp rejects a singleton eligible set.
+	MinTopMargin    float64
+	RequireRunnerUp bool
 	// Zones, when non-nil, applies the grey-zone classifier: only clearly
 	// reusable slices (zone.Hit) enter the block; grey/miss candidates are
 	// skipped (Krites §3.1 — the grey zone must be verified, not injected).
@@ -117,11 +133,16 @@ type Injection struct {
 	// candidate. It is observation-only: replaying Admitted from Reason must
 	// yield the same slice set that produced Text.
 	Decisions []CandidateDecision
+	// TopMargin is top1-top2 over type-eligible candidates. Zero means fewer
+	// than two eligible candidates or equal scores.
+	TopMargin float64
 }
 
 // CandidateDecision is the replayable admission outcome for one retrieved
 // slice. Reason is a stable enum: admitted, below_min_score, zone_grey,
-// zone_miss, sanitized_empty, origin_below_floor, budget, or nil_slice.
+// zone_miss, sanitized_empty, origin_below_floor, budget, nil_slice,
+// type_not_allowed, library_too_small, type_sources_too_few,
+// runner_up_missing, top_margin_low, or coverage_low.
 type CandidateDecision struct {
 	ID       string
 	Score    float64
@@ -158,9 +179,19 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 	if budget <= 0 {
 		budget = DefaultBudget
 	}
+	eligibleScores := make([]float64, 0, len(hits))
+	for _, h := range hits {
+		if h.Slice != nil && in.typeAllowed(h.Slice.Type) {
+			eligibleScores = append(eligibleScores, h.Score)
+		}
+	}
 	top1 := 0.0
-	if len(hits) > 0 {
-		top1 = hits[0].Score
+	topMargin := 0.0
+	if len(eligibleScores) > 0 {
+		top1 = eligibleScores[0]
+	}
+	if len(eligibleScores) > 1 {
+		topMargin = eligibleScores[0] - eligibleScores[1]
 	}
 
 	var kept []*slice.Slice
@@ -188,8 +219,44 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 		}
 		d.ID = h.Slice.ID
 		d.Coverage = bm25.QueryCoverage(query, string(h.Slice.Content))
+		if !in.typeAllowed(h.Slice.Type) {
+			d.Reason = "type_not_allowed"
+			decisions = append(decisions, d)
+			dropped++
+			continue
+		}
+		if in.MinLibrarySize > 0 && in.LibrarySize < in.MinLibrarySize {
+			d.Reason = "library_too_small"
+			decisions = append(decisions, d)
+			dropped++
+			continue
+		}
+		if in.MinSourceSessions > 0 && in.SourceSessionsByType[h.Slice.Type] < in.MinSourceSessions {
+			d.Reason = "type_sources_too_few"
+			decisions = append(decisions, d)
+			dropped++
+			continue
+		}
+		if in.RequireRunnerUp && len(eligibleScores) < 2 {
+			d.Reason = "runner_up_missing"
+			decisions = append(decisions, d)
+			dropped++
+			continue
+		}
+		if in.MinTopMargin > 0 && topMargin < in.MinTopMargin {
+			d.Reason = "top_margin_low"
+			decisions = append(decisions, d)
+			dropped++
+			continue
+		}
 		if in.MinScore > 0 && h.Score < in.MinScore {
 			d.Reason = "below_min_score"
+			decisions = append(decisions, d)
+			dropped++
+			continue
+		}
+		if in.MinCoverage > 0 && d.Coverage < in.MinCoverage {
+			d.Reason = "coverage_low"
 			decisions = append(decisions, d)
 			dropped++
 			continue
@@ -297,5 +364,10 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 		Dropped:      dropped,
 		GreyIncluded: greyIncluded,
 		Decisions:    decisions,
+		TopMargin:    topMargin,
 	}, nil
+}
+
+func (in *Injector) typeAllowed(t slice.SliceType) bool {
+	return in.AllowedTypes == nil || in.AllowedTypes[t]
 }
