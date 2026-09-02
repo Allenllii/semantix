@@ -107,6 +107,9 @@ type SliceStats struct {
 	Misses       uint64
 	Injected     uint64
 	Rejected     uint64
+	Useful       uint64
+	Neutral      uint64
+	Harmful      uint64
 	UserFeedback float64 // +1 keep / -1 reject / 0 none
 	// LastUsed is the unix-seconds time this slice last served a hit or an
 	// injection. 0 = never used (or legacy line without the field). Unlike
@@ -133,6 +136,9 @@ func mergeStats(cur *SliceStats, delta SliceStats) {
 	cur.Misses += delta.Misses
 	cur.Injected += delta.Injected
 	cur.Rejected += delta.Rejected
+	cur.Useful += delta.Useful
+	cur.Neutral += delta.Neutral
+	cur.Harmful += delta.Harmful
 	cur.UserFeedback += delta.UserFeedback
 	if delta.LastUsed > cur.LastUsed {
 		cur.LastUsed = delta.LastUsed

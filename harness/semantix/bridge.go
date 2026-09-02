@@ -498,7 +498,22 @@ func (b *Bridge) recordInjection(ids []string, bytes int) {
 // every injected slice that was active when the harness loop guard fired. IDs
 // are canonicalized so one fuse increments each slice exactly once.
 func (b *Bridge) RecordInjectionReject(ids []string, reason string) {
+	b.recordInjectionOutcome(ids, "harmful", reason, true)
+}
+
+// RecordInjectionOutcome persists an evaluator/guard observation for each
+// injected slice. Unsupported outcomes are ignored rather than inventing a
+// category; callers must supply useful, neutral, or harmful.
+func (b *Bridge) RecordInjectionOutcome(ids []string, outcome, reason string) {
+	b.recordInjectionOutcome(ids, outcome, reason, false)
+}
+
+func (b *Bridge) recordInjectionOutcome(ids []string, outcome, reason string, legacyReject bool) {
 	if b == nil || !b.Enabled() || len(ids) == 0 {
+		return
+	}
+	outcome = strings.ToLower(strings.TrimSpace(outcome))
+	if outcome != "useful" && outcome != "neutral" && outcome != "harmful" {
 		return
 	}
 	ids = append([]string(nil), ids...)
@@ -520,7 +535,17 @@ func (b *Bridge) RecordInjectionReject(ids []string, reason string) {
 	if store, err := slice.NewFileStore(filepath.Join(b.projectDir(), ".semantix", "project.db")); err == nil {
 		deltas := make(map[string]slice.SliceStats, len(unique))
 		for _, id := range unique {
-			deltas[id] = slice.SliceStats{Rejected: 1, LastUsed: now.Unix()}
+			delta := slice.SliceStats{LastUsed: now.Unix()}
+			switch outcome {
+			case "useful":
+				delta.Useful = 1
+			case "neutral":
+				delta.Neutral = 1
+			case "harmful":
+				delta.Harmful = 1
+				delta.Rejected = 1
+			}
+			deltas[id] = delta
 		}
 		_ = slice.ApplyStats(store, deltas)
 		closeSliceStore(store)
@@ -529,9 +554,15 @@ func (b *Bridge) RecordInjectionReject(ids []string, reason string) {
 	session := b.label
 	b.mu.Unlock()
 	for _, id := range unique {
-		data, err := json.Marshal(kernelevent.SliceRejectPayload{SliceID: id, Reason: reason})
+		data, err := json.Marshal(kernelevent.SliceOutcomePayload{SliceID: id, Outcome: outcome, Reason: reason})
 		if err == nil {
-			b.events.Emit(kernelevent.Event{Kind: kernelevent.SliceReject, SessionID: session, At: now, Data: data})
+			b.events.Emit(kernelevent.Event{Kind: kernelevent.SliceOutcome, SessionID: session, At: now, Data: data})
+		}
+		if legacyReject {
+			data, err = json.Marshal(kernelevent.SliceRejectPayload{SliceID: id, Reason: reason})
+			if err == nil {
+				b.events.Emit(kernelevent.Event{Kind: kernelevent.SliceReject, SessionID: session, At: now, Data: data})
+			}
 		}
 	}
 }
