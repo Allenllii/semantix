@@ -120,6 +120,10 @@ memory-on 时 runner 按数据集 `repo=owner/repo` 分组。同 repo 实例严�
 provider/CPU 竞争；每个 repetition/arm 使用独立 state/work 目录，同时复用同一
 `--ids` 顺序：
 
+所有 CLI 路径会在 runner 启动时解析为绝对路径。这样 agent 切换到每个实例的
+workspace 后，仍会读取同一个 state/config/credential 目录并把 metrics 写回预期的
+results 目录；从 `scripts/swebench` 传入相对路径与绝对路径语义一致。
+
 | 臂 | 配置 | agent binary |
 |---|---|---|
 | A | `memory=off`, `retrieval=off` | 当前版本 |
