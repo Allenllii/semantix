@@ -114,6 +114,16 @@ type SliceStats struct {
 	LastUsed int64 `json:"last_used,omitempty"`
 }
 
+// ResultStatus records whether a Result slice is still an untrusted final
+// answer or has host-observable success evidence. Empty legacy metadata is
+// deliberately interpreted as probation.
+type ResultStatus string
+
+const (
+	ResultStatusProbation ResultStatus = "probation"
+	ResultStatusVerified  ResultStatus = "verified"
+)
+
 // mergeStats folds delta into cur. Counters accumulate; LastUsed max-merges.
 // Live UpdateStats and journal replay share this single rule — if they ever
 // disagreed, replaying a journal would compute different stats than the
@@ -184,6 +194,20 @@ type SliceMeta struct {
 	// slice (Issue #133 gateway). Cross-model reuse is never allowed, so
 	// the L3 gate requires a match when non-empty.
 	Model string `json:"model,omitempty"`
+	// ResultStatus gates Result slices at L2. Automatic extraction starts them
+	// in probation and only records verified when a successful verification
+	// follows the latest workspace mutation in the transcript.
+	ResultStatus               ResultStatus `json:"result_status,omitempty"`
+	ResultVerifiedBy           string       `json:"result_verified_by,omitempty"`
+	ResultVerificationEvidence string       `json:"result_verification_evidence,omitempty"`
+}
+
+// EffectiveResultStatus fails closed for legacy, empty, and unknown values.
+func (m SliceMeta) EffectiveResultStatus() ResultStatus {
+	if m.ResultStatus == ResultStatusVerified {
+		return ResultStatusVerified
+	}
+	return ResultStatusProbation
 }
 
 // Slice is the core semantic slice value.

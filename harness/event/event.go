@@ -566,9 +566,8 @@ type RetrievalQueryStructure struct {
 }
 
 // RetrievalCandidate records one score-ordered top-k result and the exact
-// production admission outcome. Verified is "unknown" until slice metadata
-// gains a distinct successful-evaluation marker; provenance must not be
-// misreported as verification.
+// production admission outcome. Verified is probation/verified for Result
+// slices and unknown for types without a verification lifecycle.
 type RetrievalCandidate struct {
 	ID            string  `json:"id,omitempty"`
 	Type          string  `json:"type,omitempty"`

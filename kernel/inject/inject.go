@@ -84,6 +84,9 @@ type Injector struct {
 	// AllowedTypes, when non-nil, is a fail-closed injection allowlist. Search
 	// results outside it remain in Decisions for shadow analysis.
 	AllowedTypes map[slice.SliceType]bool
+	// RequireVerifiedResults keeps automatically extracted final answers in
+	// probation until host-observable verification promotes them.
+	RequireVerifiedResults bool
 	// LibrarySize and MinLibrarySize gate immature Project libraries.
 	LibrarySize    int
 	MinLibrarySize int
@@ -180,7 +183,7 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 	}
 	eligibleScores := make([]float64, 0, len(hits))
 	for _, h := range hits {
-		if h.Slice != nil && in.typeAllowed(h.Slice.Type) {
+		if h.Slice != nil && in.admissionTypeEligible(h.Slice) {
 			eligibleScores = append(eligibleScores, h.Score)
 		}
 	}
@@ -221,6 +224,12 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 		d.Coverage = bm25.QueryCoverage(query, string(h.Slice.Content))
 		if !in.typeAllowed(h.Slice.Type) {
 			d.Reason = "type_not_allowed"
+			decisions = append(decisions, d)
+			dropped++
+			continue
+		}
+		if in.RequireVerifiedResults && h.Slice.Type == slice.Result && h.Slice.Meta.EffectiveResultStatus() != slice.ResultStatusVerified {
+			d.Reason = "result_probation"
 			decisions = append(decisions, d)
 			dropped++
 			continue
@@ -375,13 +384,24 @@ func formatSliceItem(sl *slice.Slice, score float64, content string, grey bool) 
 	if grey {
 		header = fmt.Sprintf("--- slice %s (grey, unverified) ---\n", sl.ID)
 	}
+	verified := "unknown"
+	if sl.Type == slice.Result {
+		verified = string(sl.Meta.EffectiveResultStatus())
+	}
 	provenance := fmt.Sprintf(
-		"type=%s project=%q source=%q origin=%s verified=unknown score=%.4f created_at=%d\n",
-		sl.Type.String(), sl.Meta.ProjectSlug, sl.Meta.SourceSession, sl.Meta.Origin, score, sl.CreatedAt,
+		"type=%s project=%q source=%q origin=%s verified=%s score=%.4f created_at=%d\n",
+		sl.Type.String(), sl.Meta.ProjectSlug, sl.Meta.SourceSession, sl.Meta.Origin, verified, score, sl.CreatedAt,
 	)
 	return header + provenance + content + "\n"
 }
 
 func (in *Injector) typeAllowed(t slice.SliceType) bool {
 	return in.AllowedTypes == nil || in.AllowedTypes[t]
+}
+
+func (in *Injector) admissionTypeEligible(sl *slice.Slice) bool {
+	if sl == nil || !in.typeAllowed(sl.Type) {
+		return false
+	}
+	return !in.RequireVerifiedResults || sl.Type != slice.Result || sl.Meta.EffectiveResultStatus() == slice.ResultStatusVerified
 }
