@@ -2,6 +2,7 @@ package semantix
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -268,6 +269,37 @@ func TestBridgeStrictAdmissionInjectsOnlyContextWithStrongEvidence(t *testing.T)
 	}
 	if strings.Contains(result.Text, "prompt-blocked") || strings.Contains(result.Text, "result-blocked") {
 		t.Fatalf("wrong-type slice leaked into injection:\n%s", result.Text)
+	}
+}
+
+func TestBridgeRecordInjectionRejectUpdatesSlicesAndEmitsEvents(t *testing.T) {
+	dir := writeKernelDir(t, admissionFixtureSlices(), nil)
+	b := NewBridge(Config{Enabled: true, Mode: "strict", ProjectDir: dir})
+	defer b.Close()
+	var rejected []kernelevent.SliceRejectPayload
+	unsub := b.Events().Subscribe(func(e kernelevent.Event) {
+		if e.Kind != kernelevent.SliceReject {
+			return
+		}
+		var payload kernelevent.SliceRejectPayload
+		if json.Unmarshal(e.Data, &payload) == nil {
+			rejected = append(rejected, payload)
+		}
+	})
+	defer unsub()
+
+	b.RecordInjectionReject([]string{"ctx-strong", "ctx-strong"}, "repeat_tool_loop")
+	if len(rejected) != 1 || rejected[0].SliceID != "ctx-strong" || rejected[0].Reason != "repeat_tool_loop" {
+		t.Fatalf("reject events = %+v", rejected)
+	}
+	store, err := slice.NewFileStore(filepath.Join(dir, ".semantix", "project.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeSliceStore(store)
+	got, err := store.Get("ctx-strong")
+	if err != nil || got.Stats.Rejected != 1 {
+		t.Fatalf("slice after reject = %+v, %v", got, err)
 	}
 }
 

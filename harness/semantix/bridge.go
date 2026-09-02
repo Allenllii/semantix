@@ -220,11 +220,17 @@ func (b *Bridge) Inject(ctx context.Context, query string) string {
 // 2): the harness calls this when the window budget crosses the
 // degrade_inject tier — shrink the injection instead of dropping it.
 func (b *Bridge) InjectDegraded(ctx context.Context, query string) string {
+	return b.InjectDegradedDetailed(ctx, query).Text
+}
+
+// InjectDegradedDetailed is the target-preserving form used by the agent so a
+// later negative-transfer fuse can attribute the reduced block to its slices.
+func (b *Bridge) InjectDegradedDetailed(ctx context.Context, query string) InjectResult {
 	budget := b.cfg.Budget / 2
 	if budget <= 0 {
 		budget = 1 // never fall back to the full DefaultBudget via the <=0 path
 	}
-	return b.inject(ctx, query, budget)
+	return b.injectResult(ctx, query, budget)
 }
 
 // inject is the shared injection path with an explicit block budget.
@@ -475,6 +481,48 @@ func (b *Bridge) recordInjection(ids []string, bytes int) {
 		}
 		_ = slice.ApplyStats(store, deltas)
 	}()
+}
+
+// RecordInjectionReject attributes a conservative negative-transfer signal to
+// every injected slice that was active when the harness loop guard fired. IDs
+// are canonicalized so one fuse increments each slice exactly once.
+func (b *Bridge) RecordInjectionReject(ids []string, reason string) {
+	if b == nil || !b.Enabled() || len(ids) == 0 {
+		return
+	}
+	ids = append([]string(nil), ids...)
+	sort.Strings(ids)
+	unique := ids[:0]
+	for _, id := range ids {
+		if id != "" && (len(unique) == 0 || unique[len(unique)-1] != id) {
+			unique = append(unique, id)
+		}
+	}
+	if len(unique) == 0 {
+		return
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "negative_transfer"
+	}
+	now := time.Now().UTC()
+	if store, err := slice.NewFileStore(filepath.Join(b.projectDir(), ".semantix", "project.db")); err == nil {
+		deltas := make(map[string]slice.SliceStats, len(unique))
+		for _, id := range unique {
+			deltas[id] = slice.SliceStats{Rejected: 1, LastUsed: now.Unix()}
+		}
+		_ = slice.ApplyStats(store, deltas)
+		closeSliceStore(store)
+	}
+	b.mu.Lock()
+	session := b.label
+	b.mu.Unlock()
+	for _, id := range unique {
+		data, err := json.Marshal(kernelevent.SliceRejectPayload{SliceID: id, Reason: reason})
+		if err == nil {
+			b.events.Emit(kernelevent.Event{Kind: kernelevent.SliceReject, SessionID: session, At: now, Data: data})
+		}
+	}
 }
 
 // RecordPrefetch emits one terminal outcome for a warmed result. lead is

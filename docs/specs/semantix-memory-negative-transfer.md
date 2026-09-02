@@ -136,7 +136,7 @@ Result 初始为 probation；只有验证命令通过、无回滚，或外部评
 
 #### 5.10 负迁移熔断
 
-将 slice ID 与后续工具行为关联。连续出现重复读取、重复搜索、重复测试、无效路径或回滚时，当前 turn 停止使用该 slice，并累计 reject/waste，而不是仅累计 injected。
+将 slice ID 与后续工具行为关联。第一阶段复用 harness 已有 loop/progress guard：只有该 guard 已确认连续调用没有新增证据时，才从后续 provider request 清除当前 turn 的历史块，并为关联 slice 发出 `SliceReject(reason=loop_guard)`、累计 `Rejected`。熔断在同一 turn 幂等，后台 prefetch 也不能重新注入。重复调用本身仍只是相关信号，不单独证明某 slice 有害。
 
 ### P2：检索升级
 
@@ -192,8 +192,9 @@ Result 初始为 probation；只有验证命令通过、无回滚，或外部评
 - P0.4 严格准入：已实现 C/M allowlist、小库/来源会话/绝对分/coverage/margin/runner-up 门禁和 query 清洗；
 - P0.5 历史正文降权、provenance、严格预算和 score-first 稳定排序：已实现；
 - P1.1 结构化 query：已实现确定性 intent/repo/path/symbol/error/test/dependency 提取、lexical fallback 和 eventwire 观测；
+- P1.4 第一阶段负迁移熔断：已接入 loop/progress guard、本轮移除、slice reject 反馈及 SWE metrics；
 - A-D 执行器已支持冻结种子，离线 strict/shadow/legacy 注入管线已验证；
-- 后续：冻结样本正式配对实验、Result 成功提升和负迁移熔断。
+- 后续：冻结样本正式配对实验、Result 成功提升，以及按无效路径/回滚/外部 unresolved 细分 fuse reason。
 
 P0.4 的具体默认值、reason code、校准和回滚合同见 `docs/specs/semantix-l2-admission-policy.md`；
 P0.5 的 provider 消息合同、完整字节预算口径和回滚步骤见

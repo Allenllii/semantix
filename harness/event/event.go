@@ -659,6 +659,9 @@ const (
 	// once per user turn so metrics can count injection coverage without
 	// scraping the prompt.
 	NoticeCodeSemantixInject = "semantix_inject"
+	// NoticeCodeSemantixFuse reports that a loop/progress guard removed the
+	// active history block. Detail carries {"slices": n, "reason": string}.
+	NoticeCodeSemantixFuse = "semantix_fuse"
 )
 
 type Event struct {
