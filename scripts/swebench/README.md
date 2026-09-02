@@ -136,6 +136,7 @@ python3 memory_matrix.py \
   --dataset data/swebench_verified.jsonl \
   --ids subsets/verified-50-s20260824.txt \
   --model deepseek-v4-flash --repetitions 3 --workers 4 \
+  --semantix-seed-dir state/issue447-frozen-seed \
   --semantix-bin ../../bin/semantix-agent \
   --legacy-semantix-bin ../../bin/semantix-agent-issue447-legacy \
   --semantix-kernel-bin ../../bin/semantix
@@ -148,6 +149,13 @@ python3 memory_matrix_report.py \
 
 首次单实例端到端预跑及其因果边界见
 [`docs/reports/issue-447-memory-matrix-pilot.md`](../../docs/reports/issue-447-memory-matrix-pilot.md)。
+
+`--semantix-seed-dir` 接收一个冻结的 repo-store 根目录，内部结构与 runner 的
+`kernel/<owner>__<repo>/` 一致。矩阵会在 B/C/D 第一次启动时分别复制同一份 seed，
+A 不读取 seed；断点续跑通过 `.seed-source.json` 识别已经完成的复制，不会覆盖运行中
+新提取的切片。若目标 state 已有数据但没有 seed 标记，runner 会直接报错，避免把
+未知历史与冻结语料混在一起。发布实验结果时应同时保存 seed 生成命令、输入 session
+列表和 repo 顺序。
 
 legacy binary 应固定构建自 `cb5e9cc`（repo 隔离已合并、strict 仍为旧全类型
 策略），不能用 harness `--ablate all` 代替。矩阵 manifest 保存每个 run 的完整
