@@ -187,6 +187,10 @@ class Adapter:
 # semantix-agent
 # ---------------------------------------------------------------------------
 
+def semantix_bench_provider(model: str) -> str:
+    return "deepseek-pro" if model.endswith("-pro") else "deepseek-flash"
+
+
 class SemantixAdapter(Adapter):
     name = "semantix"
 
@@ -240,6 +244,7 @@ class SemantixAdapter(Adapter):
             f"DEEPSEEK_API_KEY={os.environ.get('DEEPSEEK_API_KEY', 'smoke')}\n")
         env_file.chmod(0o600)
         base = self.args.openai_base or DEEPSEEK_OPENAI_BASE
+        provider_selector = semantix_bench_provider(self.args.model)
         effort = f'effort      = "{self.args.effort}"\n' if self.args.effort else ""
         memory_section = ""
         if self.memory_on:
@@ -257,7 +262,7 @@ project_dir  = "{kernel_dir}"
 sessions_dir = "{sessions_dir}"
 '''
         (home / "config.toml").write_text(
-            f'''default_model = "deepseek"
+            f'''default_model = "{provider_selector}"
 {memory_section}
 # Benchmark convention: every arm runs in its max-permission mode (codex
 # danger-full-access, claude --dangerously-skip-permissions, dsh
@@ -266,7 +271,7 @@ sessions_dir = "{sessions_dir}"
 bash = "off"
 
 [[providers]]
-name        = "deepseek"
+name        = "{provider_selector}"
 kind        = "openai"
 base_url    = "{base}"
 models      = ["{self.args.model}"]
@@ -299,16 +304,32 @@ context_window = 128000
             "--permission-mode", "auto",
             "--preset", self.args.preset,
             "--metrics", str(mfile),
-            "--model", "deepseek",
+            "--model", semantix_bench_provider(self.args.model),
         ]
         if self.args.ablate:
             cmd += ["--ablate", self.args.ablate]
+        stdout_text = ""
+        stderr_text = ""
         try:
             proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
                                   env=env, timeout=self.args.timeout)
             exit_code, err = proc.returncode, ""
-        except subprocess.TimeoutExpired:
+            stdout_text = proc.stdout or ""
+            stderr_text = proc.stderr or ""
+        except subprocess.TimeoutExpired as exc:
             exit_code, err = None, f"timeout after {self.args.timeout}s"
+            stdout_text = exc.stdout or ""
+            stderr_text = exc.stderr or ""
+        if isinstance(stdout_text, bytes):
+            stdout_text = stdout_text.decode("utf-8", errors="replace")
+        if isinstance(stderr_text, bytes):
+            stderr_text = stderr_text.decode("utf-8", errors="replace")
+        # Preserve adapter-local diagnostics beside native metrics. Without
+        # these files, an early CLI failure produces only zero counters and
+        # discards the actual provider/configuration error.
+        stem = mfile.with_suffix("")
+        Path(str(stem) + ".stdout.txt").write_text(stdout_text, encoding="utf-8")
+        Path(str(stem) + ".stderr.txt").write_text(stderr_text, encoding="utf-8")
         raw = {}
         for candidate in (mfile, Path(str(mfile) + ".partial")):
             if candidate.exists():

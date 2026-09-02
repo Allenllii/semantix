@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
+import common
 from run_bench import Adapter, SemantixAdapter, process_batch, repo_store_key
 
 
@@ -57,6 +58,38 @@ class RepoSchedulingTests(unittest.TestCase):
 
 
 class RepoStoreTests(unittest.TestCase):
+    def test_repo_cache_clone_is_portable_and_atomic(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+
+            def fake_clone(command, **_kwargs):
+                Path(command[-1]).mkdir()
+                return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+            with mock.patch("common._run", side_effect=fake_clone) as run:
+                cache = common.ensure_repo_cache(root, "django/django")
+            self.assertTrue(cache.is_dir())
+            self.assertEqual(run.call_count, 1)
+
+    def test_prepare_workspace_removes_stale_tree_without_shell_rm(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            inst_row = {
+                "instance_id": "django-1",
+                "repo": "django/django",
+                "base_commit": "abc123",
+            }
+            stale = root / "ws" / "run" / "django-1"
+            stale.mkdir(parents=True)
+            (stale / "leftover").write_text("stale", encoding="utf-8")
+            cache = root / "cache.git"
+            cache.mkdir()
+            with mock.patch("common.ensure_repo_cache", return_value=cache), \
+                    mock.patch("common._run") as run:
+                workspace = common.prepare_workspace(root, "run", inst_row)
+            self.assertFalse((workspace / "leftover").exists())
+            self.assertEqual(run.call_count, 4)
+
     def adapter(self, root: Path) -> SemantixAdapter:
         args = SimpleNamespace(openai_base="http://127.0.0.1:8139/v1", effort="",
                                model="deepseek-v4-flash", semantix_retrieval_mode="strict")
