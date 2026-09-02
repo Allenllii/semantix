@@ -59,6 +59,40 @@ class RepoSchedulingTests(unittest.TestCase):
 
 
 class RepoStoreTests(unittest.TestCase):
+    def test_frozen_seed_store_is_copied_once_and_resume_keeps_new_slices(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            seed = root / "seed"
+            seed_db = seed / "django__django" / ".semantix" / "project.db.journal"
+            seed_db.parent.mkdir(parents=True)
+            seed_db.write_text("frozen seed\n", encoding="utf-8")
+            adapter = SemantixAdapter.__new__(SemantixAdapter)
+            adapter.args = SimpleNamespace(semantix_seed_dir=str(seed))
+            adapter.kernel_root = root / "kernel"
+            adapter.kernel_root.mkdir()
+
+            adapter._seed_kernel_root()
+            copied = adapter.kernel_root / "django__django" / ".semantix" / "project.db.journal"
+            self.assertEqual(copied.read_text(encoding="utf-8"), "frozen seed\n")
+
+            copied.write_text("frozen seed\nnew slice\n", encoding="utf-8")
+            adapter._seed_kernel_root()
+            self.assertEqual(copied.read_text(encoding="utf-8"), "frozen seed\nnew slice\n")
+
+    def test_frozen_seed_store_refuses_to_mix_with_unmarked_state(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            seed = root / "seed"
+            seed.mkdir()
+            adapter = SemantixAdapter.__new__(SemantixAdapter)
+            adapter.args = SimpleNamespace(semantix_seed_dir=str(seed))
+            adapter.kernel_root = root / "kernel"
+            adapter.kernel_root.mkdir()
+            (adapter.kernel_root / "existing").write_text("untracked state", encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "already contains unseeded state"):
+                adapter._seed_kernel_root()
+
     def test_relative_cli_paths_are_resolved_before_workspace_chdir(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -72,6 +106,7 @@ class RepoStoreTests(unittest.TestCase):
                 custom_spec="",
                 semantix_bin="bin/semantix-agent",
                 semantix_kernel_bin="bin/semantix",
+                semantix_seed_dir="seed",
                 codex_bin="",
             )
 
@@ -79,7 +114,7 @@ class RepoStoreTests(unittest.TestCase):
 
             for name in (
                 "dataset", "ids", "results_dir", "work_dir", "state_dir",
-                "semantix_bin", "semantix_kernel_bin",
+                "semantix_bin", "semantix_kernel_bin", "semantix_seed_dir",
             ):
                 self.assertTrue(Path(getattr(args, name)).is_absolute(), name)
             self.assertEqual(args.results_dir, str(root / "results"))

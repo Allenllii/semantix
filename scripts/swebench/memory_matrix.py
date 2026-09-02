@@ -81,6 +81,9 @@ def build_runs(args: argparse.Namespace) -> list[MatrixRun]:
             add_optional(command, "--prices", args.prices)
             add_optional(command, "--openai-base", args.openai_base)
             add_optional(command, "--anthropic-base", args.anthropic_base)
+            if memory == "on":
+                add_optional(command, "--semantix-seed-dir",
+                             getattr(args, "semantix_seed_dir", ""))
             runs.append(MatrixRun(
                 arm=arm, label=label, repetition=repetition, run_id=run_id,
                 run_dir=str(Path(args.results_dir) / run_id),
@@ -97,6 +100,7 @@ def manifest_for(args: argparse.Namespace, runs: list[MatrixRun]) -> dict:
         "ids": args.ids,
         "model": args.model,
         "repetitions": args.repetitions,
+        "semantix_seed_dir": getattr(args, "semantix_seed_dir", ""),
         "arm_order": [arm for arm, *_ in ARM_CONFIG],
         "runs": [asdict(run) for run in runs],
     }
@@ -111,6 +115,8 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--legacy-semantix-bin", required=True,
                     help="baseline semantix-agent retaining the old all-type policy")
     ap.add_argument("--semantix-kernel-bin", required=True)
+    ap.add_argument("--semantix-seed-dir", default="",
+                    help="frozen owner__repo store root copied into B/C/D")
     ap.add_argument("--repetitions", type=int, default=3)
     ap.add_argument("--prefix", default="issue447-memory")
     ap.add_argument("--results-dir", default=str(HERE / "results"))
