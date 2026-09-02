@@ -271,6 +271,32 @@ func TestBridgeStrictAdmissionInjectsOnlyContextWithStrongEvidence(t *testing.T)
 	}
 }
 
+func TestBridgeRecordsAndUsesStructuredRetrievalQuery(t *testing.T) {
+	dir := writeKernelDir(t, admissionFixtureSlices(), nil)
+	b := NewBridge(Config{Enabled: true, Mode: "strict", ProjectDir: dir})
+	raw := `You are working in a git checkout of the owner/repo repository at commit abc.
+<issue>
+修复 go 测试
+The failure is in internal/cache/store.go and TestCacheLoad.
+</issue>
+Requirements: ignore this benchmark framing`
+	result := b.InjectDetailed(context.Background(), raw)
+	if result.Diagnostics == nil {
+		t.Fatal("missing diagnostics")
+	}
+	want := buildRetrievalQuery(raw)
+	if result.Diagnostics.QueryAfter.SHA256 != summarizeQuery(want.Text).SHA256 {
+		t.Fatalf("query after = %+v, want structured text %q", result.Diagnostics.QueryAfter, want.Text)
+	}
+	got := result.Diagnostics.QueryStructure
+	if got.Strategy != "structured" || got.Intent != "修复 go 测试" || got.Repo != "owner/repo" {
+		t.Fatalf("query structure = %+v", got)
+	}
+	if !containsString(got.Paths, "internal/cache/store.go") || !containsString(got.TestNames, "testcacheload") {
+		t.Fatalf("query structure signals = %+v", got)
+	}
+}
+
 func TestBridgeShadowRetrievalEmitsDiagnosticsWithoutInjection(t *testing.T) {
 	dir := writeKernelDir(t, reuseFixtureSlices(), nil)
 	var events []event.Event

@@ -251,9 +251,10 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 		b.emitKernelCache("miss", "L2", nil, 0, "slice library unavailable")
 		return InjectResult{}
 	}
-	cleanedQuery := cleanRetrievalQuery(query)
+	retrievalQuery := buildRetrievalQuery(query)
+	cleanedQuery := retrievalQuery.Text
 	if cleanedQuery == "" {
-		diagnostics := b.retrievalDiagnostics(query, cleanedQuery, projectSlices, nil, nil)
+		diagnostics := b.retrievalDiagnostics(query, retrievalQuery, projectSlices, nil, nil)
 		diagnostics.Decision = "rejected"
 		diagnostics.DecisionReason = "empty_query_after_cleaning"
 		b.emitKernelCacheDetailed("miss", "L2", nil, 0, diagnostics.DecisionReason, diagnostics)
@@ -290,7 +291,7 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 		b.emitKernelCache(op, "L2", nil, 0, err.Error())
 		return InjectResult{}
 	}
-	diagnostics := b.retrievalDiagnostics(query, cleanedQuery, projectSlices, hits, inj)
+	diagnostics := b.retrievalDiagnostics(query, retrievalQuery, projectSlices, hits, inj)
 	if b.mode == RetrievalShadow {
 		diagnostics.Decision = "withheld"
 		diagnostics.DecisionReason = "shadow_mode"
@@ -328,11 +329,17 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 	return InjectResult{Text: inj.Text, Targets: targets, Diagnostics: diagnostics}
 }
 
-func (b *Bridge) retrievalDiagnostics(query, cleanedQuery string, library []*slice.Slice, hits []slice.Hit, inj *inject.Injection) *event.RetrievalDiagnostics {
+func (b *Bridge) retrievalDiagnostics(query string, retrievalQuery RetrievalQuery, library []*slice.Slice, hits []slice.Hit, inj *inject.Injection) *event.RetrievalDiagnostics {
 	projectDir := b.projectDir()
 	d := &event.RetrievalDiagnostics{
 		Mode: string(b.mode), LibrarySize: len(library), Repo: filepath.Base(filepath.Clean(projectDir)),
-		BaseCommit: readGitHead(projectDir), QueryBefore: summarizeQuery(query), QueryAfter: summarizeQuery(cleanedQuery),
+		BaseCommit: readGitHead(projectDir), QueryBefore: summarizeQuery(query), QueryAfter: summarizeQuery(retrievalQuery.Text),
+		QueryStructure: event.RetrievalQueryStructure{
+			Strategy: retrievalQuery.Strategy, Intent: retrievalQuery.Intent, Repo: retrievalQuery.Repo,
+			Paths: append([]string(nil), retrievalQuery.Paths...), Symbols: append([]string(nil), retrievalQuery.Symbols...),
+			ErrorCodes: append([]string(nil), retrievalQuery.ErrorCodes...), TestNames: append([]string(nil), retrievalQuery.TestNames...),
+			Dependencies: append([]string(nil), retrievalQuery.Dependencies...), FallbackReason: retrievalQuery.FallbackReason,
+		},
 	}
 	if inj == nil {
 		return d
