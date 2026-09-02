@@ -115,6 +115,7 @@ class MemoryMatrixReportTest(unittest.TestCase):
             self.assertEqual(c["metrics"]["repeated_read_calls"]["delta_vs_A"]["median"], -1.0)
             self.assertEqual(c["metrics"]["repeated_search_calls"]["delta_vs_A"]["median"], -1.0)
             self.assertIn("Δ repeats median/P75/P90", memory_matrix_report.markdown(report))
+            self.assertIn("Δ fuses median/P75/P90", memory_matrix_report.markdown(report))
 
     def test_report_rejects_unpaired_instance_sets(self):
         manifest = {"schema": 1, "runs": [

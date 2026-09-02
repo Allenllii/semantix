@@ -447,6 +447,8 @@ context_window = 128000
             m.repeated_tool_calls_by_name = normalize_count_map(
                 raw.get("repeated_tool_calls_by_name")
             )
+        m.semantix_fuse_turns = raw.get("semantix_fuse_turns", 0)
+        m.semantix_rejected_slices = raw.get("semantix_rejected_slices", 0)
         m.cost_native = raw.get("cost")
         m.cost_native_currency = raw.get("currency", "")
 
