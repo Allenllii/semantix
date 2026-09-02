@@ -270,6 +270,11 @@ func TestBridgeStrictAdmissionInjectsOnlyContextWithStrongEvidence(t *testing.T)
 	if strings.Contains(result.Text, "prompt-blocked") || strings.Contains(result.Text, "result-blocked") {
 		t.Fatalf("wrong-type slice leaked into injection:\n%s", result.Text)
 	}
+	for _, candidate := range result.Diagnostics.Candidates {
+		if candidate.ID == "result-blocked" && (candidate.Reason != "result_probation" || candidate.Verified != "probation") {
+			t.Fatalf("probation result diagnostics = %+v", candidate)
+		}
+	}
 }
 
 func TestBridgeRecordInjectionRejectUpdatesSlicesAndEmitsEvents(t *testing.T) {

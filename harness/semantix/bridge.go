@@ -103,6 +103,7 @@ const (
 var strictAllowedTypes = map[slice.SliceType]bool{
 	slice.Context: true,
 	slice.Memory:  true,
+	slice.Result:  true,
 }
 
 // NewBridge builds a Bridge from cfg.
@@ -273,21 +274,22 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
 	}
 	z := zone.Default()
 	inj, err := (&inject.Injector{
-		Index:                idx,
-		Scope:                slice.Project,
-		K:                    5,
-		Budget:               budget,
-		AllowedTypes:         strictAllowedTypes,
-		LibrarySize:          len(projectSlices),
-		MinLibrarySize:       strictMinLibrarySize,
-		SourceSessionsByType: sourceSessionCounts(projectSlices),
-		MinSourceSessions:    strictMinSourceSessions,
-		MinScore:             strictMinScore,
-		MinCoverage:          strictMinCoverage,
-		MinTopMargin:         strictMinTopMargin,
-		RequireRunnerUp:      true,
-		Zones:                &z,
-		AllowGrey:            b.cfg.GreyMode == "audit",
+		Index:                  idx,
+		Scope:                  slice.Project,
+		K:                      5,
+		Budget:                 budget,
+		AllowedTypes:           strictAllowedTypes,
+		RequireVerifiedResults: true,
+		LibrarySize:            len(projectSlices),
+		MinLibrarySize:         strictMinLibrarySize,
+		SourceSessionsByType:   sourceSessionCounts(projectSlices),
+		MinSourceSessions:      strictMinSourceSessions,
+		MinScore:               strictMinScore,
+		MinCoverage:            strictMinCoverage,
+		MinTopMargin:           strictMinTopMargin,
+		RequireRunnerUp:        true,
+		Zones:                  &z,
+		AllowGrey:              b.cfg.GreyMode == "audit",
 	}).BuildHits(cleanedQuery, hits)
 	if err != nil {
 		op := "miss"
@@ -362,6 +364,9 @@ func (b *Bridge) retrievalDiagnostics(query string, retrievalQuery RetrievalQuer
 			candidate.SourceSession = sl.Meta.SourceSession
 			candidate.Project = sl.Meta.ProjectSlug
 			candidate.Origin = string(sl.Meta.Origin)
+			if sl.Type == slice.Result {
+				candidate.Verified = string(sl.Meta.EffectiveResultStatus())
+			}
 		}
 		d.Candidates = append(d.Candidates, candidate)
 	}
