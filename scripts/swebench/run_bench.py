@@ -149,7 +149,8 @@ def normalize_count_map(value: object) -> dict[str, int]:
 
 CLI_PATH_FIELDS = (
     "dataset", "ids", "results_dir", "work_dir", "state_dir", "prices",
-    "custom_spec", "semantix_bin", "semantix_kernel_bin", "codex_bin",
+    "custom_spec", "semantix_bin", "semantix_kernel_bin", "semantix_seed_dir",
+    "codex_bin",
 )
 
 
@@ -227,6 +228,7 @@ class SemantixAdapter(Adapter):
         self.kernel_root = self.home / "kernel"
         if self.memory_on:
             self.kernel_root.mkdir(parents=True, exist_ok=True)
+            self._seed_kernel_root()
             self.kernel_bin = self.args.semantix_kernel_bin or shutil.which("semantix") or str(
                 HERE.parent.parent / "bin" / "semantix")
             if not Path(self.kernel_bin).exists():
@@ -242,6 +244,33 @@ class SemantixAdapter(Adapter):
                 f"semantix-agent binary not found ({self.binary}); build with "
                 "`go build -o bin/semantix-agent ./cmd/semantix-agent` or pass --semantix-bin"
             )
+
+    def _seed_kernel_root(self) -> None:
+        seed_value = getattr(self.args, "semantix_seed_dir", "")
+        if not seed_value:
+            return
+        source = Path(seed_value).resolve()
+        if not source.is_dir():
+            raise RuntimeError(f"Semantix seed store directory does not exist: {source}")
+        marker = self.kernel_root / ".seed-source.json"
+        source_text = str(source)
+        if marker.exists():
+            recorded = json.loads(marker.read_text(encoding="utf-8"))
+            if recorded.get("source") != source_text:
+                raise RuntimeError(
+                    f"Semantix state was seeded from {recorded.get('source')!r}, "
+                    f"not {source_text!r}"
+                )
+            return
+        if any(self.kernel_root.iterdir()):
+            raise RuntimeError(
+                f"Semantix kernel root already contains unseeded state: {self.kernel_root}"
+            )
+        shutil.copytree(source, self.kernel_root, dirs_exist_ok=True)
+        marker.write_text(
+            json.dumps({"schema": 1, "source": source_text}, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     def execution_batches(self, instances: list[dict]) -> list[list[dict]]:
         if not self.memory_on:
@@ -890,6 +919,8 @@ def main() -> None:
     ap.add_argument("--semantix-bin", default="")
     ap.add_argument("--semantix-kernel-bin", default="",
                     help="path to the semantix kernel CLI (default: bin/semantix) used for slice extraction")
+    ap.add_argument("--semantix-seed-dir", default="",
+                    help="frozen repo-store root copied once into each memory-on run")
     ap.add_argument("--codex-bin", default="", help="codex binary override (chat wire needs ≤0.80.0)")
     ap.add_argument("--codex-wire-api", default="responses", choices=["responses", "chat"])
     ap.add_argument("--state-dir", default=os.path.expanduser("~/.cache/semantix-swebench"),

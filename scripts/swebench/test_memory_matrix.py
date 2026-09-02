@@ -21,6 +21,7 @@ class MemoryMatrixCommandTest(unittest.TestCase):
             semantix_bin="bin/current-agent",
             legacy_semantix_bin="bin/legacy-agent",
             semantix_kernel_bin="bin/semantix",
+            semantix_seed_dir="seed",
             repetitions=2,
             prefix="issue447",
             results_dir="results",
@@ -46,6 +47,10 @@ class MemoryMatrixCommandTest(unittest.TestCase):
         self.assertIn("strict", commands["C"])
         self.assertIn("bin/legacy-agent", commands["D"])
         self.assertIn("bin/current-agent", commands["C"])
+        self.assertNotIn("--semantix-seed-dir", commands["A"])
+        for arm in ("B", "C", "D"):
+            self.assertIn("--semantix-seed-dir", commands[arm])
+            self.assertIn("seed", commands[arm])
         self.assertEqual(len({r.state_dir for r in runs}), 8)
         self.assertEqual(len({r.work_dir for r in runs}), 8)
 
