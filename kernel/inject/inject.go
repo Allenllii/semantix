@@ -84,9 +84,6 @@ type Injector struct {
 	// AllowedTypes, when non-nil, is a fail-closed injection allowlist. Search
 	// results outside it remain in Decisions for shadow analysis.
 	AllowedTypes map[slice.SliceType]bool
-	// RequireVerifiedResults keeps automatically extracted final answers in
-	// probation until host-observable verification promotes them.
-	RequireVerifiedResults bool
 	// LibrarySize and MinLibrarySize gate immature Project libraries.
 	LibrarySize    int
 	MinLibrarySize int
@@ -228,7 +225,7 @@ func (in *Injector) BuildHits(query string, hits []slice.Hit) (*Injection, error
 			dropped++
 			continue
 		}
-		if in.RequireVerifiedResults && h.Slice.Type == slice.Result && h.Slice.Meta.EffectiveResultStatus() != slice.ResultStatusVerified {
+		if h.Slice.Type == slice.Result && h.Slice.Meta.EffectiveResultStatus() != slice.ResultStatusVerified {
 			d.Reason = "result_probation"
 			decisions = append(decisions, d)
 			dropped++
@@ -403,5 +400,5 @@ func (in *Injector) admissionTypeEligible(sl *slice.Slice) bool {
 	if sl == nil || !in.typeAllowed(sl.Type) {
 		return false
 	}
-	return !in.RequireVerifiedResults || sl.Type != slice.Result || sl.Meta.EffectiveResultStatus() == slice.ResultStatusVerified
+	return sl.Type != slice.Result || sl.Meta.EffectiveResultStatus() == slice.ResultStatusVerified
 }

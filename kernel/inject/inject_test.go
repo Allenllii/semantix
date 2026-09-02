@@ -183,12 +183,12 @@ func TestInjectorZoneFilterDropsGrey(t *testing.T) {
 	}
 }
 
-func TestInjectorRequiresVerifiedResults(t *testing.T) {
+func TestInjectorAlwaysRequiresVerifiedResults(t *testing.T) {
 	probation := &slice.Slice{ID: "probation", Type: slice.Result, Scope: slice.Project, Content: []byte("fix cache")}
 	probation.Meta.ResultStatus = slice.ResultStatusProbation
 	verified := &slice.Slice{ID: "verified", Type: slice.Result, Scope: slice.Project, Content: []byte("fix cache safely")}
 	verified.Meta.ResultStatus = slice.ResultStatusVerified
-	out, err := (&Injector{Budget: 4096, AllowedTypes: map[slice.SliceType]bool{slice.Result: true}, RequireVerifiedResults: true}).BuildHits(
+	out, err := (&Injector{Budget: 4096, AllowedTypes: map[slice.SliceType]bool{slice.Result: true}}).BuildHits(
 		"fix cache", []slice.Hit{{Slice: probation, Score: 2}, {Slice: verified, Score: 1.8}})
 	if err != nil {
 		t.Fatal(err)
