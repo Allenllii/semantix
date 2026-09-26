@@ -1,0 +1,5 @@
+kernel/slice/task_body.go
+kernel/slice/task_body_test.go
+kernel/slice/task_body_boundaries_test.go
+kernel/slice/distill.go
+harness/semantix/query.go

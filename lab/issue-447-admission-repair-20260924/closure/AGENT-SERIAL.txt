@@ -1,0 +1,16 @@
+--- FAIL: TestMemoryFlowInvoiceHistoryToProvider (3.83s)
+--- FAIL: TestListSessionOrderIncludesEmptySessionsWithoutPreviewScan (0.04s)
+--- FAIL: TestPreviewSessionStripsTransientResponseLanguageBlock (0.03s)
+--- FAIL: TestUpdateToolCallPreviewPersistsAfterMidTurnSnapshot (0.06s)
+--- FAIL: TestTaskToolInjectsWorkspaceContextIntoSubagentPrompt (0.05s)
+--- FAIL: TestTaskToolPropagatesSubagentImageCandidates (0.05s)
+FAIL
+FAIL	semantix/harness/agent	81.400s
+FAIL
+
+# Attribution appendix (2026-09-24T22:10:39Z):
+# HEAD filtered run of the 6 full-package failures: only invoice env failure remains;
+# second full-package run produced a DIFFERENT non-overlapping failure set
+# (MigrateLegacySessions/SaveRewrite/ConcurrentLoad/SessionLease/BackgroundTask);
+# pristine BASE filtered run: only invoice. Failures rotate across full runs and pass
+# when isolated -> pre-existing Windows intra-package flakiness, not batch regression.

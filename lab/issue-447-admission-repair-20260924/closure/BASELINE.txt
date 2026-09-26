@@ -1,0 +1,186 @@
+=== RUN   TestHistoricalObservationsRetainSourceNotSnapshotValidity
+=== RUN   TestHistoricalObservationsRetainSourceNotSnapshotValidity/unchanged
+    historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+        Frequent paths:
+        - parser.go (3) excluded/misrepresented: &{Slices:[0x24af37618b40] Text:[semantix-reuse]
+        --- slice 61a749380631a213 ---
+        type=context project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790284929
+        Project context observed from repeated tool calls:
+        Frequent paths:
+        - parser.go (3)
+        [/semantix-reuse] Bytes:280 Dropped:0 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+    historical_observation_test.go:89: historical card Repo operations (distilled from session):
+        Observed commands:
+        - go test ./... (ok) excluded/misrepresented: &{Slices:[0x24af37618f00] Text:[semantix-reuse]
+        --- slice dbd5f9303adc0ec0 ---
+        type=context project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790284929
+        Repo operations (distilled from session):
+        Observed commands:
+        - go test ./... (ok)
+        [/semantix-reuse] Bytes:279 Dropped:0 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+    historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+        locate(×2) → edit → verify excluded/misrepresented: &{Slices:[0x24af376190e0] Text:[semantix-reuse]
+        --- slice f274cb9fa52c900a ---
+        type=memory project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790284929
+        Plan skeleton (task=bugfix):
+        locate(×2) → edit → verify
+        [/semantix-reuse] Bytes:257 Dropped:0 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+    historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+        Edited:
+        - parser.go
+        Verified-by: go test ./... excluded/misrepresented: &{Slices:[0x24af376192c0] Text:[semantix-reuse]
+        --- slice 856084f6d6948898 ---
+        type=memory project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790284929
+        Task outcome (task=bugfix): Fix parser regression
+        Edited:
+        - parser.go
+        Verified-by: go test ./...
+        [/semantix-reuse] Bytes:293 Dropped:0 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+=== RUN   TestHistoricalObservationsRetainSourceNotSnapshotValidity/unrelated_changed
+    historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+        Frequent paths:
+        - parser.go (3) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Repo operations (distilled from session):
+        Observed commands:
+        - go test ./... (ok) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+        locate(×2) → edit → verify excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+        Edited:
+        - parser.go
+        Verified-by: go test ./... excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+=== RUN   TestHistoricalObservationsRetainSourceNotSnapshotValidity/related_changed
+    historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+        Frequent paths:
+        - parser.go (3) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Repo operations (distilled from session):
+        Observed commands:
+        - go test ./... (ok) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+        locate(×2) → edit → verify excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+        Edited:
+        - parser.go
+        Verified-by: go test ./... excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+=== RUN   TestHistoricalObservationsRetainSourceNotSnapshotValidity/related_deleted
+    historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+        Frequent paths:
+        - parser.go (3) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+    historical_observation_test.go:89: historical card Repo operations (distilled from session):
+        Observed commands:
+        - go test ./... (ok) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+    historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+        locate(×2) → edit → verify excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+    historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+        Edited:
+        - parser.go
+        Verified-by: go test ./... excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+--- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity (0.01s)
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/unchanged (0.00s)
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/unrelated_changed (0.00s)
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/related_changed (0.00s)
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/related_deleted (0.00s)
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims/legacy
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims/result_cannot_claim_history
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims/no_revision
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims/no_source
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims/unsafe_path
+--- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims (0.00s)
+    --- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims/legacy (0.00s)
+    --- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims/result_cannot_claim_history (0.00s)
+    --- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims/no_revision (0.00s)
+    --- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims/no_source (0.00s)
+    --- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims/unsafe_path (0.00s)
+FAIL
+FAIL	semantix/kernel/inject	0.021s
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions/Fix_the_following_issue_in_/test
+    task_body_test.go:34: runner polluted card: Task outcome (task=bugfix): Fix the following issue in /testbed. The matching Python environment and dependencies are preinstalled at /opt/miniconda3/envs/testbed; use that Python and the existing tests.
+        Edited:
+        - parser.go
+        Verified-by: go test ./...
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions/<execution-policy>Fix_tests_firs
+    task_body_test.go:39: no outcome
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions/You_are_working_in_a_git_checkou
+    task_body_test.go:34: runner polluted card: Task outcome (task=bugfix): Why does the payment parser stall?
+        Edited:
+        - parser.go
+        Verified-by: go test ./...
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions/You_are_solving_a_real_GitHub_is
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions/Why_does_the_payment_parser_stal
+--- FAIL: TestDistillUsesTaskBodyNotRunnerInstructions (0.00s)
+    --- FAIL: TestDistillUsesTaskBodyNotRunnerInstructions/Fix_the_following_issue_in_/test (0.00s)
+    --- FAIL: TestDistillUsesTaskBodyNotRunnerInstructions/<execution-policy>Fix_tests_firs (0.00s)
+    --- FAIL: TestDistillUsesTaskBodyNotRunnerInstructions/You_are_working_in_a_git_checkou (0.00s)
+    --- PASS: TestDistillUsesTaskBodyNotRunnerInstructions/You_are_solving_a_real_GitHub_is (0.00s)
+    --- PASS: TestDistillUsesTaskBodyNotRunnerInstructions/Why_does_the_payment_parser_stal (0.00s)
+FAIL
+FAIL	semantix/kernel/slice	0.014s
+=== RUN   TestAssemblyDoesNotRecordDelivery
+    delivery_accounting_test.go:24: assembly advertised actual delivery
+    delivery_accounting_test.go:39: unconsumed assembly changed usage: {Hits:0 Misses:0 Injected:1 Rejected:0 Useful:0 Neutral:0 Harmful:0 UserFeedback:0 LastUsed:1790284929}
+    delivery_accounting_test.go:24: assembly advertised actual delivery
+    delivery_accounting_test.go:39: unconsumed assembly changed usage: {Hits:0 Misses:0 Injected:2 Rejected:0 Useful:0 Neutral:0 Harmful:0 UserFeedback:0 LastUsed:1790284929}
+--- FAIL: TestAssemblyDoesNotRecordDelivery (0.02s)
+=== RUN   TestDeliveryPersistenceFailureIsVisible
+    delivery_accounting_test.go:65: no explicit provider-delivery recorder
+--- FAIL: TestDeliveryPersistenceFailureIsVisible (0.01s)
+FAIL
+FAIL	semantix/harness/semantix	0.033s
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/prepared_only
+    memory_delivery_test.go:180: prepared_only stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284929} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/unused_prefetch
+    memory_delivery_test.go:180: unused_prefetch stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284929} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/removed
+    memory_delivery_test.go:180: removed stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284929} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/blocked
+    memory_delivery_test.go:180: blocked stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284929} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/rewritten
+    memory_delivery_test.go:180: rewritten stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284929} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/local_only
+    memory_delivery_test.go:180: local_only stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284929} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/cancelled
+    memory_delivery_test.go:155: send should fail
+    memory_delivery_test.go:180: cancelled stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284929} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/provider_error
+    memory_delivery_test.go:180: provider_error stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284929} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/budget_exit
+    memory_delivery_test.go:180: budget_exit stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284929} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/accepted_twice
+--- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest (0.08s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/prepared_only (0.01s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/unused_prefetch (0.01s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/removed (0.01s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/blocked (0.01s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/rewritten (0.01s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/local_only (0.01s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/cancelled (0.01s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/provider_error (0.01s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/budget_exit (0.01s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/accepted_twice (0.01s)
+=== RUN   TestMemoryDeliveryHTTPSerializesUnprivilegedHistory
+=== RUN   TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/openai
+=== RUN   TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/anthropic
+=== RUN   TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/responses
+--- PASS: TestMemoryDeliveryHTTPSerializesUnprivilegedHistory (0.02s)
+    --- PASS: TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/openai (0.01s)
+    --- PASS: TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/anthropic (0.01s)
+    --- PASS: TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/responses (0.01s)
+=== RUN   TestMemoryDeliveryResponsesIncrementalAndExpiredReplay
+--- PASS: TestMemoryDeliveryResponsesIncrementalAndExpiredReplay (0.01s)
+FAIL
+FAIL	semantix/harness/agent	0.181s
+=== RUN   TestE2EL2FailedForwardDoesNotRecordDelivery
+2026/09/24 17:22:09 gateway: POST /v1/chat/completions (1ms)
+    stats_test.go:143: upstream rejected but credited delivery: {Hits:0 Misses:0 Injected:1 Rejected:0 Useful:0 Neutral:0 Harmful:0 UserFeedback:0 LastUsed:1790284929}
+--- FAIL: TestE2EL2FailedForwardDoesNotRecordDelivery (0.01s)
+FAIL
+FAIL	semantix/gateway	0.018s
+=== RUN   TestInjectAssemblyDoesNotWriteDeliveryStats
+    lookup_stats_test.go:92: assembly wrongly recorded delivery on target: &{ID:target Type:result Scope:project Content:[103 97 116 101 119 97 121 32 115 116 114 101 97 109 105 110 103 32 112 97 115 115 116 104 114 111 117 103 104 32 102 108 117 115 104 32 100 111 110 101 32 109 97 114 107 101 114 32 116 101 114 109 105 110 97 116 105 111 110] Embedding:[] Stats:{Hits:0 Misses:0 Injected:1 Rejected:0 Useful:0 Neutral:0 Harmful:0 UserFeedback:0 LastUsed:1790284929} Weight:1 Meta:{SourceSession: SourceSessions:[] TaskType: Language: ProjectSlug: BaseCommit: Origin:session-auto CompressionVersion: SanitizeVersion: OriginalBytes:0 StoredBytes:0 Deps:map[] Mtimes:map[] L3Safe:false EmbedModel: EmbedDim:0 ContextHash: Model: ResultStatus: ResultVerifiedBy: ResultVerificationEvidence:} CreatedAt:0}
+--- FAIL: TestInjectAssemblyDoesNotWriteDeliveryStats (0.01s)
+FAIL
+FAIL	semantix/cmd/semantix	0.019s
+FAIL

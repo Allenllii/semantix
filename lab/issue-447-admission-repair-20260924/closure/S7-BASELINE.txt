@@ -1,0 +1,3 @@
+fork/exec C:\Users\liwen\AppData\Local\Temp\go-build3172787597\b001\inject.test.exe: Access is denied.
+FAIL	semantix/kernel/inject	0.712s
+FAIL

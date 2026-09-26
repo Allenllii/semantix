@@ -1,0 +1,97 @@
+=== RUN   TestHistoricalObservationsRetainSourceNotSnapshotValidity
+=== RUN   TestHistoricalObservationsRetainSourceNotSnapshotValidity/unchanged
+    historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+        Frequent paths:
+        - parser.go (3) excluded/misrepresented: &{Slices:[0x27d6200734a0] Text:[semantix-reuse]
+        --- slice 61a749380631a213 ---
+        type=context project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790284018
+        Project context observed from repeated tool calls:
+        Frequent paths:
+        - parser.go (3)
+        [/semantix-reuse] Bytes:280 Dropped:0 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+    historical_observation_test.go:89: historical card Repo operations (distilled from session):
+        Observed commands:
+        - go test ./... (ok) excluded/misrepresented: &{Slices:[0x27d620073860] Text:[semantix-reuse]
+        --- slice dbd5f9303adc0ec0 ---
+        type=context project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790284018
+        Repo operations (distilled from session):
+        Observed commands:
+        - go test ./... (ok)
+        [/semantix-reuse] Bytes:279 Dropped:0 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+    historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+        locate(×2) → edit → verify excluded/misrepresented: &{Slices:[0x27d620073a40] Text:[semantix-reuse]
+        --- slice f274cb9fa52c900a ---
+        type=memory project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790284018
+        Plan skeleton (task=bugfix):
+        locate(×2) → edit → verify
+        [/semantix-reuse] Bytes:257 Dropped:0 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+    historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+        Edited:
+        - parser.go
+        Verified-by: go test ./... excluded/misrepresented: &{Slices:[0x27d620073c20] Text:[semantix-reuse]
+        --- slice 856084f6d6948898 ---
+        type=memory project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790284018
+        Task outcome (task=bugfix): Fix parser regression
+        Edited:
+        - parser.go
+        Verified-by: go test ./...
+        [/semantix-reuse] Bytes:293 Dropped:0 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+=== RUN   TestHistoricalObservationsRetainSourceNotSnapshotValidity/unrelated_changed
+    historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+        Frequent paths:
+        - parser.go (3) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Repo operations (distilled from session):
+        Observed commands:
+        - go test ./... (ok) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+        locate(×2) → edit → verify excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+        Edited:
+        - parser.go
+        Verified-by: go test ./... excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+=== RUN   TestHistoricalObservationsRetainSourceNotSnapshotValidity/related_changed
+    historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+        Frequent paths:
+        - parser.go (3) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Repo operations (distilled from session):
+        Observed commands:
+        - go test ./... (ok) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+        locate(×2) → edit → verify excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+        Edited:
+        - parser.go
+        Verified-by: go test ./... excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+=== RUN   TestHistoricalObservationsRetainSourceNotSnapshotValidity/related_deleted
+    historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+        Frequent paths:
+        - parser.go (3) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+    historical_observation_test.go:89: historical card Repo operations (distilled from session):
+        Observed commands:
+        - go test ./... (ok) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+    historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+        locate(×2) → edit → verify excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+    historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+        Edited:
+        - parser.go
+        Verified-by: go test ./... excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+--- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity (0.02s)
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/unchanged (0.00s)
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/unrelated_changed (0.00s)
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/related_changed (0.00s)
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/related_deleted (0.00s)
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims/legacy
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims/result_cannot_claim_history
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims/no_revision
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims/no_source
+=== RUN   TestHistoricalFlagDoesNotPromoteArbitraryClaims/unsafe_path
+--- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims (0.00s)
+    --- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims/legacy (0.00s)
+    --- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims/result_cannot_claim_history (0.00s)
+    --- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims/no_revision (0.00s)
+    --- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims/no_source (0.00s)
+    --- PASS: TestHistoricalFlagDoesNotPromoteArbitraryClaims/unsafe_path (0.00s)
+FAIL
+FAIL	semantix/kernel/inject	0.023s
+FAIL

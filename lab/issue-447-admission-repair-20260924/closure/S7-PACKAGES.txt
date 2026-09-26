@@ -1,0 +1,24 @@
+ok  	semantix/kernel/adapt	0.039s
+ok  	semantix/kernel/audit	0.014s
+ok  	semantix/kernel/bm25	0.031s
+ok  	semantix/kernel/cache	0.101s
+ok  	semantix/kernel/config	0.057s
+ok  	semantix/kernel/embed	3.457s
+ok  	semantix/kernel/event	0.019s
+ok  	semantix/kernel/evolve	0.018s
+ok  	semantix/kernel/fingerprint	0.032s
+ok  	semantix/kernel/fuse	0.019s
+ok  	semantix/kernel/ingest	0.081s
+ok  	semantix/kernel/inject	0.510s
+ok  	semantix/kernel/judge	0.053s
+?   	semantix/kernel/lookup	[no test files]
+ok  	semantix/kernel/prefetch	0.292s
+ok  	semantix/kernel/promote	1.114s
+ok  	semantix/kernel/sanitize	0.011s
+ok  	semantix/kernel/sched	0.010s
+ok  	semantix/kernel/security	0.040s
+ok  	semantix/kernel/slice	2.540s
+ok  	semantix/kernel/usage	0.012s
+ok  	semantix/kernel/zone	0.005s
+ok  	semantix/harness/semantix	2.682s
+ok  	semantix/cmd/semantix	1.345s

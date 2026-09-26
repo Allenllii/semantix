@@ -1,0 +1,2 @@
+ok  	semantix/kernel/slice	0.817s
+ok  	semantix/harness/semantix	0.799s

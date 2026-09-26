@@ -1,0 +1,12 @@
+=== RUN   TestMemoryDeliveryHTTPSerializesUnprivilegedHistory
+=== RUN   TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/openai
+=== RUN   TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/anthropic
+=== RUN   TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/responses
+--- PASS: TestMemoryDeliveryHTTPSerializesUnprivilegedHistory (0.07s)
+    --- PASS: TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/openai (0.02s)
+    --- PASS: TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/anthropic (0.02s)
+    --- PASS: TestMemoryDeliveryHTTPSerializesUnprivilegedHistory/responses (0.02s)
+=== RUN   TestMemoryDeliveryResponsesIncrementalAndExpiredReplay
+--- PASS: TestMemoryDeliveryResponsesIncrementalAndExpiredReplay (0.02s)
+PASS
+ok  	semantix/harness/agent	0.122s

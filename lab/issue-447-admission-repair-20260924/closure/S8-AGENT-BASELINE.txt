@@ -1,0 +1,35 @@
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/prepared_only
+    memory_delivery_test.go:174: prepared_only stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284275} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/unused_prefetch
+    memory_delivery_test.go:174: unused_prefetch stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284275} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/removed
+    memory_delivery_test.go:174: removed stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284275} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/blocked
+    memory_delivery_test.go:174: blocked stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284275} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/rewritten
+    memory_delivery_test.go:174: rewritten stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284275} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/local_only
+    memory_delivery_test.go:174: local_only stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284275} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/cancelled
+    memory_delivery_test.go:149: send should fail
+    memory_delivery_test.go:174: cancelled stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284275} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/provider_error
+    memory_delivery_test.go:174: provider_error stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284275} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/budget_exit
+    memory_delivery_test.go:174: budget_exit stats={Hits:0 Misses:0 Injected:1 Rejected:1 Useful:0 Neutral:0 Harmful:1 UserFeedback:0 LastUsed:1790284275} want delivery/rejection=0
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/accepted_twice
+--- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest (0.22s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/prepared_only (0.02s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/unused_prefetch (0.02s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/removed (0.02s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/blocked (0.02s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/rewritten (0.02s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/local_only (0.02s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/cancelled (0.02s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/provider_error (0.02s)
+    --- FAIL: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/budget_exit (0.02s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/accepted_twice (0.02s)
+FAIL
+FAIL	semantix/harness/agent	0.253s
+FAIL

@@ -1,0 +1,24 @@
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions/Fix_the_following_issue_in_/test
+    task_body_test.go:34: runner polluted card: Task outcome (task=bugfix): Fix the following issue in /testbed. The matching Python environment and dependencies are preinstalled at /opt/miniconda3/envs/testbed; use that Python and the existing tests.
+        Edited:
+        - parser.go
+        Verified-by: go test ./...
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions/<execution-policy>Fix_tests_firs
+    task_body_test.go:39: no outcome
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions/You_are_working_in_a_git_checkou
+    task_body_test.go:34: runner polluted card: Task outcome (task=bugfix): Why does the payment parser stall?
+        Edited:
+        - parser.go
+        Verified-by: go test ./...
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions/You_are_solving_a_real_GitHub_is
+=== RUN   TestDistillUsesTaskBodyNotRunnerInstructions/Why_does_the_payment_parser_stal
+--- FAIL: TestDistillUsesTaskBodyNotRunnerInstructions (0.00s)
+    --- FAIL: TestDistillUsesTaskBodyNotRunnerInstructions/Fix_the_following_issue_in_/test (0.00s)
+    --- FAIL: TestDistillUsesTaskBodyNotRunnerInstructions/<execution-policy>Fix_tests_firs (0.00s)
+    --- FAIL: TestDistillUsesTaskBodyNotRunnerInstructions/You_are_working_in_a_git_checkou (0.00s)
+    --- PASS: TestDistillUsesTaskBodyNotRunnerInstructions/You_are_solving_a_real_GitHub_is (0.00s)
+    --- PASS: TestDistillUsesTaskBodyNotRunnerInstructions/Why_does_the_payment_parser_stal (0.00s)
+FAIL
+FAIL	semantix/kernel/slice	0.008s
+FAIL

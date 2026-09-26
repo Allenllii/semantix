@@ -1,0 +1,1 @@
+go test ./kernel/inject ./kernel/slice ./harness/semantix ./harness/agent ./gateway ./cmd/semantix -run 'TestHistorical|TestDistillUsesTaskBodyNotRunnerInstructions|TestAssemblyDoesNotRecordDelivery|TestDeliveryPersistenceFailureIsVisible|TestMemoryDelivery|TestE2EL2FailedForwardDoesNotRecordDelivery|TestInjectAssemblyDoesNotWriteDeliveryStats' -count=1 -v

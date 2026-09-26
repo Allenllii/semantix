@@ -1,0 +1,18 @@
+[
+  "cmd/semantix/lookup.go",
+  "cmd/semantix/lookup_stats_test.go",
+  "gateway/pipeline.go",
+  "gateway/stats_test.go",
+  "harness/agent/sampling_request.go",
+  "harness/agent/turnruntime.go",
+  "harness/agent/progress_guard.go",
+  "harness/agent/negative_transfer_fuse_test.go",
+  "harness/agent/memory_delivery_test.go",
+  "harness/semantix/bridge.go",
+  "harness/semantix/delivery_accounting_test.go",
+  "harness/semantix/admission_defaults_test.go",
+  "harness/semantix/reuse_test.go",
+  "harness/event/event.go",
+  "kernel/event/event.go",
+  "harness/agent/memory_flow_e2e_test.go"
+]

@@ -1,0 +1,39 @@
+=== RUN   TestAssemblyDoesNotRecordDelivery
+--- PASS: TestAssemblyDoesNotRecordDelivery (0.03s)
+=== RUN   TestBridgeDeliveredInjectionRecordsStatsAndEvent
+--- PASS: TestBridgeDeliveredInjectionRecordsStatsAndEvent (0.04s)
+PASS
+ok  	semantix/harness/semantix	0.093s
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/prepared_only
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/unused_prefetch
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/removed
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/blocked
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/rewritten
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/local_only
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/cancelled
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/provider_error
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/budget_exit
+=== RUN   TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/accepted_twice
+--- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest (0.13s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/prepared_only (0.01s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/unused_prefetch (0.01s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/removed (0.01s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/blocked (0.01s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/rewritten (0.01s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/local_only (0.01s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/cancelled (0.01s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/provider_error (0.01s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/budget_exit (0.01s)
+    --- PASS: TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest/accepted_twice (0.02s)
+PASS
+ok  	semantix/harness/agent	0.192s
+=== RUN   TestInjectAssemblyDoesNotWriteDeliveryStats
+--- PASS: TestInjectAssemblyDoesNotWriteDeliveryStats (0.02s)
+PASS
+ok  	semantix/cmd/semantix	0.030s
+=== RUN   TestE2EL2FailedForwardDoesNotRecordDelivery
+2026/09/24 17:12:16 gateway: POST /v1/chat/completions (1ms)
+--- PASS: TestE2EL2FailedForwardDoesNotRecordDelivery (0.02s)
+PASS
+ok  	semantix/gateway	0.031s

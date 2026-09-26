@@ -1,0 +1,61 @@
+VERIFICATION — S7–S9 closure batch, 2026-09-24 (ZCode 接力 codex 完成S9；Windows 原生工具链)
+==============================================================================================
+
+范围：f5be6877..47987b66（S7 历史观察卡 2dc964ce、S8 交付信用 79cd80dd、
+S9 任务正文投影 47987b66，以及协作遗留 204e8d9a 测试清理、5c8f4b7f 文档）。
+基线 BASE = f5be6877；最终 HEAD = 47987b66。工作树提交后 clean（除 untracked 协作纪要与 lab/）。
+
+产物（本目录）：
+  DIFF_FILE.patch      git diff f5be6877..47987b66（1667 行）
+  MODIFIED_FILE.tar.gz 47987b66 上批次 26 个改动文件（tar -tzf 41 项含目录）
+  ROLLBACK.sh          将已应用批次的副本恢复为 BASE 原字节（modified→checkout BASE，added→删除）
+  RED.txt / GREEN.txt / ROLLBACK-RED.txt / BASE-ENVPACKAGES.txt / AGENT-SERIAL.txt
+
+一、RED（BASE + 观察测试，独立副本 /tmp/s9red）
+  cmd: git worktree add --detach /tmp/s9red f5be6877 && git checkout 47987b66 -- <观察测试>
+       go -C /tmp/s9red test ./kernel/inject ./harness/semantix ./gateway -count=1
+  out: --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity
+       FAIL  semantix/kernel/inject
+       FAIL  semantix/harness/semantix [build failed]   ← 观察测试引用批次新 API，编译级 RED
+       --- FAIL: TestE2EStreamUsageChunkSynthesized / NoFinishReason / L2FailedForwardDoesNotRecordDelivery
+       FAIL  semantix/gateway
+  exit: 1   → 目标失败复现（S7 断言级 + S8 断言级 + S9 编译级）。
+  注：首次 RED 尝试因 shell cwd 漂移跑错目录，输出作废；本表为绝对路径复跑结果。
+
+二、GREEN（HEAD 47987b66，串行，无并发 go test）
+  cmd: go test ./kernel/slice ./kernel/inject ./harness/semantix ./gateway ./cmd/semantix -count=1
+  out: ok 全部五包（见 GREEN.txt；cmd/semantix 首轮一次环境抖动失败，两次即时复跑均 ok，已附）
+  vet: go vet 同六包（含 harness/agent）通过（VET_EXIT=0）。
+
+三、ROLLBACK-RED（HEAD 副本 /tmp/s9green → ROLLBACK.sh → 重新叠加观察测试）
+  cmd: git worktree add --detach /tmp/s9green 47987b66 && bash ROLLBACK.sh /tmp/s9green
+       git checkout 47987b66 -- <观察测试> && go -C /tmp/s9green test ./kernel/inject ./harness/semantix ./gateway -count=1
+  out: ROLLBACK_EXIT=0（状态清单恰为批次文件）；测试结果与一相同（三处 RED 复现）。
+
+四、产物重开核验
+  tar -tzf MODIFIED_FILE.tar.gz | wc -l        → 41
+  git apply --check DIFF_FILE.patch（于 BASE 副本）→ 通过（RED 复制即按此路径构建）
+  bash ROLLBACK.sh（真实执行，见三）           → exit 0
+
+五、全量与归因（Windows 原生；诚实记录，不冒充 Linux）
+  1. go test ./... 全量：121 包 ok；批次五受影响包全绿（串行复跑确认）。
+     树内 lab/issue-447-admission-repair-20260924/*/ 的部分文件副本使 ./... 含
+     [build failed] 项——它们是验证夹具不是项目包，不计入。
+  2. 批次外失败包（autoresearch/boot/cli/control 及 agent 部分 e2e）在
+     pristine BASE f5be6877 上同样失败（BASE-ENVPACKAGES.txt）：symlink 权限类、
+     终端/paste/shell/statusline 类 → 存量 Windows 环境失败，与本批次无关。
+  3. TestMemoryFlowInvoiceHistoryToProvider exit 49 = 登录 shell python3 Store 存根
+     （ZCode 2026-09-24 定位，纪要第 0 节）；绑定真 Python 后 codex 轮已验证通过。
+  4. -race：Windows 无 C 工具链（gcc 缺失、CGO_ENABLED=0），WSL 无 Go——
+     Linux race 未执行，如实记为待办；不以此充当已验证。
+  5. 早前一轮包级抖动（TestReadGitHeadPackedWorktree 等）由本机前后台 go test
+     并发互相干扰所致；严格串行后不复现，串行结果为准。
+
+六、commit 链（本批次，未 push）
+  da7ae3ce spec S7-S9 → 2dc964ce S7 → 79cd80dd S8 → 204e8d9a 测试清理 →
+  5c8f4b7f 文档（round-2 合并落盘）→ 47987b66 S9 投影共享。
+
+七、口径
+  本验证证明软件契约（RED/GREEN/ROLLBACK 三态一致 + 受影响包串行全绿）；
+  不声称模型采用或成绩提升；Linux race、正式 SWE 收益、旧库迁移仍为使用前提
+  与后续工作，见 spec §7/§9.5/§9.10。

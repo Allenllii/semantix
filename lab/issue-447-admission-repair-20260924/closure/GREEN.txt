@@ -1,0 +1,275 @@
+# GREEN: final HEAD 47987b66, serial run (2026-09-24T22:04:41Z)
+$ go test ./kernel/slice ./kernel/inject ./harness/semantix ./gateway ./cmd/semantix -count=1
+ok  	semantix/kernel/slice	5.544s
+ok  	semantix/kernel/inject	0.958s
+ok  	semantix/harness/semantix	5.548s
+ok  	semantix/gateway	4.579s
+calibrate: consistency 25.0% < 95.0%
+calibrate: need at least one of --audit <oracle.tsv> or --usage <usage.jsonl>
+calibrate: open testdata/does-not-exist.tsv: The system cannot find the file specified.
+calibrate: malformed audit line: only-two-columns	approve
+eval-judge: consistency 28.6% < 95.0%
+eval-judge: consistency 71.4% < 95.0%
+eval-judge: open testdata/does-not-exist.tsv: The system cannot find the file specified.
+eval-judge: need --stub OR --judge-base-url+--judge-model+SEMANTIX_JUDGE_API_KEY
+eval-judge: invalid --stub "bogus" (want yes, no, or error)
+eval-judge: invalid --min-consistency (want 0 <= v <= 100)
+eval-judge: invalid --min-consistency (want 0 <= v <= 100)
+eval-judge: invalid --p-prom (want 0 <= v <= 1)
+eval-judge: invalid --p-prom (want 0 <= v <= 1)
+eval-judge: invalid --min-consistency (want 0 <= v <= 100)
+flag provided but not defined: -bogus
+Usage of verify:
+  -abs-high float
+    	absolute score floor for clear hit (default 0.7)
+  -abs-low float
+    	absolute score floor for grey zone (default 0.45)
+  -adapt-db string
+    	per-entry adaptive state file (Issue #259 阶段 3); empty = <db 同目录>/l3-adapt.json, 缺失则不报告
+  -calibrate
+    	append the Issue #262 calibration report: per-bin hit/miss distribution + three-region drift vs default thresholds
+  -db string
+    	database path override (default: .semantix/project.db) (default ".semantix/project.db")
+  -grey-target float
+    	grey-zone traffic ratio alarm threshold in percent (0 disables the alarm) (default 30)
+  -holdout float
+    	fraction of latest sessions reserved as replay stream (0-1) (default 0.3)
+  -json
+    	output as JSON envelope (summary + rows)
+  -judge-base-url string
+    	LLM judge endpoint base URL (e.g. https://api.openai.com/v1)
+  -judge-model string
+    	LLM judge model name
+  -judge-protocol string
+    	LLM judge protocol: openai|anthropic (empty = rules only)
+  -labels string
+    	optional oracle relevance marks: session<TAB>turn<TAB>1|0 (implies --calibrate; adds per-bin fp/precision)
+  -project string
+    	project slug
+  -scope string
+    	scope: project|user|session (default "project")
+  -session value
+    	session JSONL file or directory (repeatable)
+  -strict
+    	return exit code 3 when the grey-zone ratio exceeds --grey-target
+  -tau-high float
+    	relative confidence for clear hit (score/top1) (default 0.8)
+  -tau-low float
+    	relative confidence for grey zone (default 0.55)
+  -usage-db string
+    	usage log for the L1 hit-rate regression footer (missing = skipped) (default ".semantix\\usage.jsonl")
+flag provided but not defined: -bogus
+Usage of eval:
+  -abs-high float
+    	absolute score floor for clear hit (default 0.7)
+  -abs-low float
+    	absolute score floor for grey zone (default 0.45)
+  -grey-target float
+    	grey-zone traffic ratio alarm threshold in percent (0 disables) (default 30)
+  -json
+    	write JSON envelope output (§4.2)
+  -scope string
+    	scope: project|user|session (default "project")
+  -set string
+    	oracle evaluation set TSV: class<TAB>query
+  -single-tau float
+    	absolute BM25 score threshold for the single-threshold baseline (default 1)
+  -strict
+    	return exit code 3 when the grey-zone ratio exceeds --grey-target
+  -tau-high float
+    	relative confidence for clear hit (score/top1) (default 0.8)
+  -tau-low float
+    	relative confidence for grey zone (default 0.55)
+  -train-frac float
+    	fraction of rows indexed as training slices (0-1) (default 0.7)
+eval-judge: need --stub OR --judge-base-url+--judge-model+SEMANTIX_JUDGE_API_KEY
+eval-judge: open C:\Users\liwen\AppData\Local\Temp\TestDispatchExitCodeContract2314501283\001\missing.jsonl: The system cannot find the file specified.
+usage: usage: open: open C:\Users\liwen\AppData\Local\Temp\TestDispatchExitCodeContract2314501283\001\nope.jsonl: The system cannot find the file specified.
+flag provided but not defined: -bogus
+Usage of usage:
+  -cost-hit float
+    	USD per 1M tokens at cache hit (default 0.07)
+  -cost-miss float
+    	USD per 1M tokens at cache miss (default 0.27)
+  -db string
+    	usage log path (default .semantix/usage.jsonl) (default ".semantix\\usage.jsonl")
+  -evolve-db string
+    	optional evolve state dir (replays the log as cache_hit signals; params consumed by lookup/inject --evolve-db)
+  -json
+    	output as JSON envelope
+Usage of verify:
+  -abs-high float
+    	absolute score floor for clear hit (default 0.7)
+  -abs-low float
+    	absolute score floor for grey zone (default 0.45)
+  -adapt-db string
+    	per-entry adaptive state file (Issue #259 阶段 3); empty = <db 同目录>/l3-adapt.json, 缺失则不报告
+  -calibrate
+    	append the Issue #262 calibration report: per-bin hit/miss distribution + three-region drift vs default thresholds
+  -db string
+    	database path override (default: .semantix/project.db) (default ".semantix/project.db")
+  -grey-target float
+    	grey-zone traffic ratio alarm threshold in percent (0 disables the alarm) (default 30)
+  -holdout float
+    	fraction of latest sessions reserved as replay stream (0-1) (default 0.3)
+  -json
+    	output as JSON envelope (summary + rows)
+  -judge-base-url string
+    	LLM judge endpoint base URL (e.g. https://api.openai.com/v1)
+  -judge-model string
+    	LLM judge model name
+  -judge-protocol string
+    	LLM judge protocol: openai|anthropic (empty = rules only)
+  -labels string
+    	optional oracle relevance marks: session<TAB>turn<TAB>1|0 (implies --calibrate; adds per-bin fp/precision)
+  -project string
+    	project slug
+  -scope string
+    	scope: project|user|session (default "project")
+  -session value
+    	session JSONL file or directory (repeatable)
+  -strict
+    	return exit code 3 when the grey-zone ratio exceeds --grey-target
+  -tau-high float
+    	relative confidence for clear hit (score/top1) (default 0.8)
+  -tau-low float
+    	relative confidence for grey zone (default 0.55)
+  -usage-db string
+    	usage log for the L1 hit-rate regression footer (missing = skipped) (default ".semantix\\usage.jsonl")
+Usage of eval:
+  -abs-high float
+    	absolute score floor for clear hit (default 0.7)
+  -abs-low float
+    	absolute score floor for grey zone (default 0.45)
+  -grey-target float
+    	grey-zone traffic ratio alarm threshold in percent (0 disables) (default 30)
+  -json
+    	write JSON envelope output (§4.2)
+  -scope string
+    	scope: project|user|session (default "project")
+  -set string
+    	oracle evaluation set TSV: class<TAB>query
+  -single-tau float
+    	absolute BM25 score threshold for the single-threshold baseline (default 1)
+  -strict
+    	return exit code 3 when the grey-zone ratio exceeds --grey-target
+  -tau-high float
+    	relative confidence for clear hit (score/top1) (default 0.8)
+  -tau-low float
+    	relative confidence for grey zone (default 0.55)
+  -train-frac float
+    	fraction of rows indexed as training slices (0-1) (default 0.7)
+Usage of eval-judge:
+  -audit string
+    	human-audited sample: query	cached_answer	oracle(approve|reject) (default "testdata/judge-audit.tsv")
+  -json
+    	write JSON envelope output (§4.2)
+  -judge-base-url string
+    	OpenAI/Anthropic compatible endpoint (with --stub empty)
+  -judge-model string
+    	judge model name
+  -judge-protocol string
+    	openai|anthropic (default "openai")
+  -min-consistency float
+    	fail threshold: consistency %% (exit 3 when below) (default 95)
+  -p-prom float
+    	promoted traffic share for the error-upper bound (default 0.3)
+  -stub string
+    	deterministic judge for CI: yes|no|error (overrides --judge-*)
+Usage of calibrate:
+  -audit string
+    	human-audited oracle sample: query	cached_answer	oracle(approve|reject)
+  -json
+    	write JSON envelope output (§4.2)
+  -judge-base-url string
+    	OpenAI/Anthropic compatible endpoint (with --stub empty)
+  -judge-model string
+    	judge model name
+  -judge-protocol string
+    	openai|anthropic (default "openai")
+  -min-consistency float
+    	fail threshold: consistency %% (exit 3 when below) (default 95)
+  -p-prom float
+    	promoted traffic share for the error-upper bound (default 0.3)
+  -stub string
+    	deterministic judge for CI: yes|no|error (overrides --judge-*)
+  -usage string
+    	gateway usage log (kernel/usage JSONL); missing → runtime block shows N/A
+Usage of usage:
+  -cost-hit float
+    	USD per 1M tokens at cache hit (default 0.07)
+  -cost-miss float
+    	USD per 1M tokens at cache miss (default 0.27)
+  -db string
+    	usage log path (default .semantix/usage.jsonl) (default ".semantix\\usage.jsonl")
+  -evolve-db string
+    	optional evolve state dir (replays the log as cache_hit signals; params consumed by lookup/inject --evolve-db)
+  -json
+    	output as JSON envelope
+Usage of trust:
+  -audit-db string
+    	audit log path (default ".semantix\\audit.jsonl")
+  -db string
+    	database path override (default: project db)
+  -json
+    	output as JSON envelope
+  -origin string
+    	target origin: user-curated (default) | session-auto | prefetch (default "user-curated")
+  -project-db string
+    	project/session database path (default ".semantix/project.db")
+  -scope string
+    	slice scope: session, project, or user (default "project")
+  -user-db string
+    	user database path (default "C:\\Users\\liwen\\.semantix\\user.db")
+Usage of verify-result:
+  -audit-db string
+    	audit log path (default ".semantix\\audit.jsonl")
+  -db string
+    	database path override (default: project db)
+  -evidence string
+    	verification command, evaluator result, or confirmation reference
+  -json
+    	output as JSON envelope
+  -method string
+    	evidence channel: command, official, or user
+  -project-db string
+    	project/session database path (default ".semantix/project.db")
+  -scope string
+    	slice scope: session, project, or user (default "project")
+  -user-db string
+    	user database path (default "C:\\Users\\liwen\\.semantix\\user.db")
+Usage of import:
+  -audit-db string
+    	audit log path (default ".semantix\\audit.jsonl")
+  -db string
+    	database path override (default: project db)
+  -input string
+    	JSONL file to import (required)
+  -json
+    	output as JSON envelope
+  -project-db string
+    	project/session database path (default ".semantix/project.db")
+  -scope string
+    	slice scope: session, project, or user (default "project")
+  -trust
+    	stamp imported slices as user-curated (import + trust in one action)
+  -user-db string
+    	user database path (default "C:\\Users\\liwen\\.semantix\\user.db")
+usage: usage: open: open C:\Users\liwen\AppData\Local\Temp\TestRunUsageMissingDB3540808292\001\nope.jsonl: The system cannot find the file specified.
+--- FAIL: TestVerifyReplayProducesEvaluationTable (0.01s)
+    testing.go:1464: TempDir RemoveAll cleanup: unlinkat C:\Users\liwen\AppData\Local\Temp\TestVerifyReplayProducesEvaluationTable669803353\002: The directory is not empty.
+FAIL
+FAIL	semantix/cmd/semantix	3.565s
+FAIL
+EXIT=1
+
+$ go vet ./kernel/slice ./kernel/inject ./harness/semantix ./harness/agent ./gateway ./cmd/semantix
+VET_EXIT=0
+
+# cmd/semantix flake investigation: two immediate serial reruns (2026-09-24T22:05:21Z)
+FAIL
+FAIL	semantix/cmd/semantix	1.853s
+FAIL
+FAIL
+FAIL	semantix/cmd/semantix	2.164s
+FAIL

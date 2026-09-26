@@ -1,0 +1,8 @@
+[
+  "kernel/inject/historical_observation_test.go",
+  "kernel/slice/task_body_test.go",
+  "harness/semantix/delivery_accounting_test.go",
+  "harness/agent/memory_delivery_test.go",
+  "gateway/stats_test.go",
+  "cmd/semantix/lookup_stats_test.go"
+]

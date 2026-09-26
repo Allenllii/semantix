@@ -1,0 +1,227 @@
+# ROLLBACK-RED: 47987b66 copy -> ROLLBACK.sh -> re-overlay observation tests (2026-09-24T22:04:09Z)
+$ bash ROLLBACK.sh /tmp/s9green
+RESTORED: status below lists exactly the batch files rolled back to base f5be6877
+M  cmd/semantix/lookup.go
+M  cmd/semantix/lookup_stats_test.go
+M  docs/reports/issue-447-memory-flow-repair.md
+M  docs/specs/issue-447-memory-flow-repair.md
+M  gateway/pipeline.go
+M  gateway/stats_test.go
+ D harness/agent/memory_delivery_test.go
+M  harness/agent/memory_flow_e2e_test.go
+M  harness/agent/negative_transfer_fuse_test.go
+M  harness/agent/progress_guard.go
+M  harness/agent/sampling_request.go
+M  harness/agent/turnruntime.go
+M  harness/event/event.go
+M  harness/semantix/admission_defaults_test.go
+M  harness/semantix/bridge.go
+ D harness/semantix/delivery_accounting_test.go
+M  harness/semantix/query.go
+M  harness/semantix/reuse_test.go
+M  kernel/event/event.go
+ D kernel/inject/historical_observation_test.go
+M  kernel/inject/inject.go
+M  kernel/slice/distill.go
+M  kernel/slice/extractor.go
+M  kernel/slice/slice.go
+ D kernel/slice/task_body.go
+ D kernel/slice/task_body_boundaries_test.go
+ D kernel/slice/task_body_test.go
+ROLLBACK_EXIT=0
+$ go -C /tmp/s9green test ./kernel/inject ./harness/semantix ./gateway -count=1 (after rollback + observation tests)
+# semantix/harness/semantix [semantix/harness/semantix.test]
+harness\semantix\reuse_test.go:224:4: b.RecordInjectionDelivery undefined (type *Bridge has no field or method RecordInjectionDelivery)
+--- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity (0.06s)
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/unchanged (0.01s)
+        historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+            Frequent paths:
+            - parser.go (3) excluded/misrepresented: &{Slices:[0x293194770000] Text:[semantix-reuse]
+            --- slice 61a749380631a213 ---
+            type=context project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790287463
+            Project context observed from repeated tool calls:
+            Frequent paths:
+            - parser.go (3)
+            [/semantix-reuse] Bytes:280 Dropped:0 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+        historical_observation_test.go:89: historical card Repo operations (distilled from session):
+            Observed commands:
+            - go test ./... (ok) excluded/misrepresented: &{Slices:[0x2931947703c0] Text:[semantix-reuse]
+            --- slice dbd5f9303adc0ec0 ---
+            type=context project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790287463
+            Repo operations (distilled from session):
+            Observed commands:
+            - go test ./... (ok)
+            [/semantix-reuse] Bytes:279 Dropped:0 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+        historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+            locate(×2) → edit → verify excluded/misrepresented: &{Slices:[0x2931947705a0] Text:[semantix-reuse]
+            --- slice f274cb9fa52c900a ---
+            type=memory project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790287463
+            Plan skeleton (task=bugfix):
+            locate(×2) → edit → verify
+            [/semantix-reuse] Bytes:257 Dropped:0 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+        historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+            Edited:
+            - parser.go
+            Verified-by: go test ./... excluded/misrepresented: &{Slices:[0x293194770780] Text:[semantix-reuse]
+            --- slice 856084f6d6948898 ---
+            type=memory project="repo" source="past-task" commit="old" origin=session-auto verified=unknown score=2.0000 created_at=1790287463
+            Task outcome (task=bugfix): Fix parser regression
+            Edited:
+            - parser.go
+            Verified-by: go test ./...
+            [/semantix-reuse] Bytes:293 Dropped:0 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:unclassified Admitted:true Reason:admitted}] TopMargin:0}
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/unrelated_changed (0.01s)
+        historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+            Frequent paths:
+            - parser.go (3) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+        historical_observation_test.go:89: historical card Repo operations (distilled from session):
+            Observed commands:
+            - go test ./... (ok) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+        historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+            locate(×2) → edit → verify excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+        historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+            Edited:
+            - parser.go
+            Verified-by: go test ./... excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/related_changed (0.01s)
+        historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+            Frequent paths:
+            - parser.go (3) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+        historical_observation_test.go:89: historical card Repo operations (distilled from session):
+            Observed commands:
+            - go test ./... (ok) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+        historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+            locate(×2) → edit → verify excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+        historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+            Edited:
+            - parser.go
+            Verified-by: go test ./... excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:miss Admitted:false Reason:dependency_changed}] TopMargin:0}
+    --- FAIL: TestHistoricalObservationsRetainSourceNotSnapshotValidity/related_deleted (0.01s)
+        historical_observation_test.go:89: historical card Project context observed from repeated tool calls:
+            Frequent paths:
+            - parser.go (3) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:61a749380631a213 Score:2 Coverage:0.5 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+        historical_observation_test.go:89: historical card Repo operations (distilled from session):
+            Observed commands:
+            - go test ./... (ok) excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:dbd5f9303adc0ec0 Score:2 Coverage:0 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+        historical_observation_test.go:89: historical card Plan skeleton (task=bugfix):
+            locate(×2) → edit → verify excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:f274cb9fa52c900a Score:2 Coverage:0 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+        historical_observation_test.go:89: historical card Task outcome (task=bugfix): Fix parser regression
+            Edited:
+            - parser.go
+            Verified-by: go test ./... excluded/misrepresented: &{Slices:[] Text: Bytes:0 Dropped:1 GreyIncluded:0 Decisions:[{ID:856084f6d6948898 Score:2 Coverage:1 Zone:miss Admitted:false Reason:path_missing}] TopMargin:0}
+FAIL
+FAIL	semantix/kernel/inject	0.858s
+FAIL	semantix/harness/semantix [build failed]
+2026/09/24 18:04:24 gateway: l3 judge slice=l3-1 rel=0.000 verdict=declined called=false fail_closed=false latency_ms=0 prompt_tokens=0 reason="" err=""
+2026/09/24 18:04:24 gateway: l3 judge slice=l3-2 rel=0.000 verdict=approved called=false fail_closed=false latency_ms=0 prompt_tokens=0 reason="" err=""
+2026/09/24 18:04:24 gateway: store maintenance: rescored=4 evicted=2 archived=2 capacity=2
+2026/09/24 18:04:24 gateway: store maintenance: rescored=1 evicted=0 archived=0 capacity=5000
+2026/09/24 18:04:24 gateway: l3 lexical slice=l3-a score=0.791 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (5ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (0s)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (0s)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (0s)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (0s)
+2026/09/24 18:04:24 gateway: GET /healthz (1ms)
+2026/09/24 18:04:24 gateway: GET /v1/models (0s)
+2026/09/24 18:04:24 gateway: l3 lexical slice=l3-s score=0.791 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (0s)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:24 gateway: l3 lexical slice=l3-ctx score=0.863 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:24 gateway: l3 lexical slice=l3-ctx score=0.863 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:24 gateway: l3 lexical slice=l3-unsafe score=0.791 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (4ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (1ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (1ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:24 gateway: l3 lexical slice=07c3fa6d3b578050 score=0.895 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (5ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (1ms)
+2026/09/24 18:04:24 gateway: l3 lexical slice=l3-gw7 score=0.791 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (1ms)
+2026/09/24 18:04:24 gateway: l3 lexical slice=l3-gw7b score=0.791 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (1ms)
+2026/09/24 18:04:24 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:24 gateway: GET /healthz (1ms)
+2026/09/24 18:04:24 gateway: GET /healthz (0s)
+2026/09/24 18:04:24 gateway: GET /healthz (2ms)
+2026/09/24 18:04:25 gateway: GET /healthz (1.001s)
+2026/09/24 18:04:25 gateway: GET /healthz (0s)
+2026/09/24 18:04:25 gateway: l3 lexical slice=l3-a score=0.791 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:25 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:25 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:25 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:26 gateway: [retrieval] embed_backend=model needs embed_base_url, embed_model and SEMANTIX_EMBED_API_KEY; degrading to hash embedder
+2026/09/24 18:04:26 gateway: l3 judge slice=grey-decline rel=1.000 verdict=declined called=true fail_closed=false latency_ms=0 prompt_tokens=12 reason="judge declined" err=""
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:26 gateway: l3 judge slice=grey-error rel=1.000 verdict=fail_closed called=true fail_closed=true latency_ms=1 prompt_tokens=12 reason="judge error: conservative reject" err="judge: http://127.0.0.1:57818/chat/completions: HTTP 500 (use https endpoints)"
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (4ms)
+2026/09/24 18:04:26 gateway: l3 judge slice=grey-approve rel=1.000 verdict=approved called=true fail_closed=false latency_ms=1 prompt_tokens=12 reason="judge approved" err=""
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:26 gateway: l3 judge slice=grey-stream rel=1.000 verdict=declined called=true fail_closed=false latency_ms=0 prompt_tokens=12 reason="judge declined" err=""
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (4ms)
+2026/09/24 18:04:26 gateway: l3 judge slice=grey-cost rel=1.000 verdict=declined called=true fail_closed=false latency_ms=0 prompt_tokens=12 reason="judge declined" err=""
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:26 gateway: l3 lexical slice=l3-bm25 score=0.791 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (1ms)
+2026/09/24 18:04:26 gateway: l3 lexical slice=l3-vector score=0.894 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:26 gateway: l3 lexical slice=l3-hybrid score=1.000 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (1ms)
+2026/09/24 18:04:26 gateway: l3 lexical slice=a score=0.900 lexical=0.000 blocked=true zone=grey
+2026/09/24 18:04:26 gateway: l3 lexical slice=b score=0.900 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:26 gateway: l3 lexical slice=c score=0.800 lexical=0.000 blocked=true zone=grey
+2026/09/24 18:04:26 gateway: l3 judge slice=grey-promote rel=1.000 verdict=approved called=true fail_closed=false latency_ms=0 prompt_tokens=12 reason="judge approved" err=""
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (5ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (1ms)
+2026/09/24 18:04:26 gateway: l3 judge slice=grey-base rel=1.000 verdict=approved called=true fail_closed=false latency_ms=0 prompt_tokens=12 reason="judge approved" err=""
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (4ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (4ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (0s)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (4ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (1ms)
+2026/09/24 18:04:26 gateway: GET /v1/quota (0s)
+2026/09/24 18:04:26 gateway: GET /v1/quota (0s)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:26 gateway: GET /v1/quota (0s)
+2026/09/24 18:04:26 gateway: wallet balance probe failed (balance: status 500: ); keeping previous paid=false, retrying in 5s
+2026/09/24 18:04:26 gateway: [retrieval] embed_backend=model needs embed_base_url, embed_model and SEMANTIX_EMBED_API_KEY; degrading to hash embedder
+2026/09/24 18:04:26 gateway: embed fallback: embed: http://127.0.0.1:57905/embeddings: HTTP 500 (use https endpoints)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (4ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:26 gateway: upstream deepseek: Post "http://127.0.0.1:57915/chat/completions": EOF (retrying once)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:26 gateway: l3 lexical slice=l3-stats score=0.791 lexical=1.000 blocked=false zone=hit
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (2ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (3ms)
+2026/09/24 18:04:26 gateway: POST /v1/chat/completions (2ms)
+--- FAIL: TestE2EL2FailedForwardDoesNotRecordDelivery (0.01s)
+    stats_test.go:143: upstream rejected but credited delivery: {Hits:0 Misses:0 Injected:1 Rejected:0 Useful:0 Neutral:0 Harmful:0 UserFeedback:0 LastUsed:1790287466}
+2026/09/24 18:04:26 gateway: unknown reasoning_effort "ultra-brain" — forwarding without a thinking parameter (endpoint default applies)
+FAIL
+FAIL	semantix/gateway	3.427s
+FAIL
+EXIT=1

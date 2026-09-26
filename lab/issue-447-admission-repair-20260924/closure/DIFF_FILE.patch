@@ -1,0 +1,1667 @@
+diff --git a/cmd/semantix/lookup.go b/cmd/semantix/lookup.go
+index d90c34df..cd52733f 100644
+--- a/cmd/semantix/lookup.go
++++ b/cmd/semantix/lookup.go
+@@ -169,18 +169,7 @@ func runInject(args []string, stdout, stderr io.Writer, deps dependencies) error
+ 	if err != nil {
+ 		return err
+ 	}
+-	// Injection accounting stays on the caller side — Injector.Build itself
+-	// must remain read-only (kernel decision chain has no side effects).
+-	if inj != nil && len(inj.Slices) > 0 {
+-		deltas := make(map[string]slice.SliceStats, len(inj.Slices))
+-		nowUnix := time.Now().Unix()
+-		for _, sl := range inj.Slices {
+-			deltas[sl.ID] = slice.SliceStats{Injected: 1, LastUsed: nowUnix}
+-		}
+-		if err := slice.ApplyStats(store, deltas); err != nil {
+-			fmt.Fprintf(stderr, "semantix: stats write-back: %v\n", err)
+-		}
+-	}
++	// This command only assembles text; no provider has accepted it.
+ 	fmt.Fprintf(stdout, "%s\n", stripESC(inj.Text))
+ 	return nil
+ }
+diff --git a/cmd/semantix/lookup_stats_test.go b/cmd/semantix/lookup_stats_test.go
+index 510cc7e1..5ba42c88 100644
+--- a/cmd/semantix/lookup_stats_test.go
++++ b/cmd/semantix/lookup_stats_test.go
+@@ -71,8 +71,8 @@ func TestLookupHitWritesStats(t *testing.T) {
+ 	}
+ }
+ 
+-// inject credits Injected+1 to exactly the slices in the assembled block.
+-func TestInjectWritesStats(t *testing.T) {
++// CLI assembly has no provider acceptance and must not credit delivery.
++func TestInjectAssemblyDoesNotWriteDeliveryStats(t *testing.T) {
+ 	deps, db := buildLookupStatsDeps(t)
+ 	seedLookupCorpus(t, db)
+ 
+@@ -88,8 +88,8 @@ func TestInjectWritesStats(t *testing.T) {
+ 
+ 	st := openTestStore(t, db)
+ 	got, _ := st.Get("target")
+-	if got == nil || got.Stats.Injected != 1 || got.Stats.LastUsed == 0 {
+-		t.Fatalf("injection not recorded on target: %+v", got)
++	if got == nil || got.Stats.Injected != 0 || got.Stats.LastUsed != 0 {
++		t.Fatalf("assembly wrongly recorded delivery on target: %+v", got)
+ 	}
+ 	if got.Stats.Hits != 0 {
+ 		t.Fatalf("inject must not count as lookup hit: %+v", got.Stats)
+diff --git a/docs/reports/issue-447-memory-flow-repair.md b/docs/reports/issue-447-memory-flow-repair.md
+index 5908f066..68895b58 100644
+--- a/docs/reports/issue-447-memory-flow-repair.md
++++ b/docs/reports/issue-447-memory-flow-repair.md
+@@ -2,6 +2,12 @@
+ 
+ 日期：2026-09-18。状态：Draft PR；关联 [实现 SPEC](../specs/issue-447-memory-flow-repair.md)。本报告只提交经整理的指标与结果，不上传原始模型轨迹、凭据、机器路径或二进制。
+ 
++## 2026-09-24 本地 PR 文案补充（待同步远端）
++
++- 旧库不自动迁移；Prompt/ToolPattern 或缺来源/版本的旧记录不会因为撤除六项默认门槛就取得注入资格。重收割的完整命令统一见 [SPEC §6.1](../specs/issue-447-memory-flow-repair.md#61-旧库重收割配方逐个真实会话执行)，不覆盖原库。
++- SWE 与交互式 Harness 历史均建议逐会话使用 `--distill --consolidate --origin session-auto --base-commit "$SOURCE_REVISION" --embedder hash`；输入路径、会话 ID、项目与版本必须来自真实会话。ObservedCommit 是当时版本，不是当前 HEAD；不通过改标签、补造来源或改写历史版本制造合格卡。
++- 本地文案更新不代表远端 PR 已更新，也不代表已经执行真实库重收割或新一轮模型收益实验。
++
+ ## 1. 结果摘要及可比性
+ 
+ | 组 | 版本说明 | 输出 | 有效 | PASS | FAIL | 超时 | 其它 |
+diff --git a/docs/specs/issue-447-memory-flow-repair.md b/docs/specs/issue-447-memory-flow-repair.md
+index d3091823..6a266226 100644
+--- a/docs/specs/issue-447-memory-flow-repair.md
++++ b/docs/specs/issue-447-memory-flow-repair.md
+@@ -86,10 +86,45 @@ Agent 原始任务 → Bridge query → Project BM25 → Injector 资格/准入
+ | 正式 SWE 可确认的注入 → 采用 → 收益 | **未达成**；后29题正 bytes+sliceIds 日志0，前7题观测不完整 |
+ | 本次36题证明最终提交版本显著提升 | **未证明**；两段构建且最终 shell 修复未参加该轮 |
+ 
++### 6.1 旧库重收割配方（逐个真实会话执行）
++
++本批没有原地迁移旧库。一个只含 Prompt/ToolPattern、缺真实来源或缺版本信息的库，应用 S2 后仍可能全部被现有类型/来源/freshness 条件拒绝。需要从原始会话重新提取；将旧卡直接改成 Context、补造 session/origin 或把历史 revision 改成当前 HEAD，并不是供给修复。
++
++有原始 Harness 会话镜像时，在**单独输出库**离线重新提取。SWE 历史与交互式历史都建议启用 `--distill --consolidate`，而非只对 SWE 启用。每个会话分别设置下列变量，再执行一次；命令使用已有 CLI 参数，hash embedder 不调用远端模型：
++
++```sh
++semantix extract --input "$SESSION_JSONL" \
++  --db "$REPLAY_DB" --scope project \
++  --session "$SOURCE_SESSION" --project "$SOURCE_PROJECT" \
++  --base-commit "$SOURCE_REVISION" --origin session-auto \
++  --embedder hash --distill --consolidate
++```
++
++- `SESSION_JSONL`、`SOURCE_SESSION`、`SOURCE_PROJECT`、`SOURCE_REVISION` 必须分别来自该真实会话的镜像路径、会话 ID、项目标识和观察时版本，不从当前任务猜测，也不为凑来源数量拆分或伪造会话。
++- **ObservedCommit 是会话当时观察到的版本**（上面的 `SOURCE_REVISION`，经 `--base-commit` 写入现有 `BaseCommit` 字段），不是执行重收割时的当前 HEAD。不要用此时的 `git rev-parse HEAD` 补填未知历史版本；缺失证据就保持未知，且不声称重提取后已具备注入资格。
++- `REPLAY_DB` 指向新建的离线检查目录，同项目的真实会话逐个写入该输出库，原库不覆盖；`session-auto` 仅对应实际自动生成的 Harness 镜像，外部导入材料不靠改标签取得该身份。
++- 只有恢复了对应来源工作区、且掌握真实相关文件路径时，才从该来源工作区运行并追加 `--fingerprint "$SOURCE_RELATIVE_PATHS"`。现有 CLI 把这一组 Deps 赋给所有产物，仍不是逐卡归属。没有原始证据时保持未知。
++- 不传 `--l3-safe`；重提取不授予直接答案复用能力。先查看真实产物类型、来源、验证状态及拒因，再决定使用；四层 flags 不保证任意短会话都产生可用知识。
++
++上述命令是离线重提取配方，不是已执行的用户真实库迁移；本批未改历史实验、用户库或原始轨迹。
++
++### 6.2 freshness 的现行运行后果
++
++以下是 Harness 在候选到达 freshness 检查时的拒绝 reason；更早的类型、状态等检查也可能先拒绝它。
++
++| 运行条件 | reason / 后果 |
++|---|---|
++| 当前工作区提交未知，例如非 Git 工作区或 HEAD 解析失败 | `current_commit_unknown`；历史卡不注入 |
++| 当前提交已知，但卡片 `BaseCommit` 未知 | `commit_unknown`；历史卡不注入，即使存有 Deps 也不绕过来源版本缺失 |
++| 当前提交和 `BaseCommit` 均已知且不同，卡片没有 Deps | `stale_commit`；原本合格的卡在 HEAD 变化后失格 |
++
++**无 Deps 且绑定旧提交的合格卡，在下一次提交使 HEAD 改变后即被拒绝，不论这次提交是否只改无关文档。** 若库中所有原本合格的卡都满足此条件，L2 会再次零注入；检索命中或重提取成功不消除这一后果。有真实 Deps 的跨提交卡仍需通过依赖校验与其它资格检查，不保证一定注入。S2 撤除的六项默认门槛不包含 freshness，§6.1 的重收割配方也不改变该契约。
++
+ ## 7. 后续问题，不在本 PR 中伪装完成
+ 
+ - 逐卡“断言 → 实际来源工具证据 → 必要依赖”归属。需要真实跨题正负例，不能仅凭卡片名称、TaskType 或 body 关键词省略 Deps。
+ - 区分“某版本上观察到的历史事实”和“适用于当前任务的建议”，不将前者直接当可迁移保证。
++- freshness 仍可产生 `current_commit_unknown` / `commit_unknown` / `stale_commit`（条件见 §6.2）；无 Deps、绑定旧提交的合格卡在 HEAD 变化后失格，甚至使整库 L2 再次零注入。逐卡适用性另按 §9.5 设计；不采用最近 N 提交窗口回退，理由见 §9.3。
+ - 类型、验证状态、task tag、版本与依赖检查继续独立审查误拒。撤除六项默认阻断不等于证明这些检查全部正确，也不等于所有历史零注入已解决；需要分别识别错误供给、正确拒绝和过粗适用性绑定。
+ - 更完整的 shell 嵌套/动态形式验证需要独立设计；本次只声称所列 AST 回归形状被覆盖。
+ - 小型配对观察到传输及采用迹象，但正式 SWE 没有收益因果证据；是否继续评测需另行决定，不自动追加付费任务。
+@@ -144,6 +179,7 @@ Agent 原始任务 → Bridge query → Project BM25 → Injector 资格/准入
+ 
+ - **整体回到旧版：不选。** 会同时撤掉真实来源、消息权限、精确预算、host 收据与缺陷修复，难以归因。
+ - **六个阈值调低或全部参数化：不选。** 仍要求无关代理信号为历史参考背书，只是把误拒藏进另一套默认值。
++- **无 Deps 卡的最近 N 提交窗口回退：不采用。** 提交距离不是必要依赖未变的证据：一个提交就能改变关键行为，许多无关文档提交也可能完全不影响历史。任意 N 既会放过已失效卡，也会拒绝仍相关的旧卡；它只是另一个未经校准的代理阈值，没有解决“历史观察”与“当前适用断言”的区别。本批保留现行 freshness 与显式拒因，代价是 §6.2 所述 HEAD 变化后的失格；后续按 §9.5 用逐卡来源、必要依赖和跨提交正负例独立验收，不以窗口或伪造 Deps 掩盖缺口。
+ - **分解契约，先减法再修接线：采用。** 先撤默认六项否决，保留原排序/预算/边界；查询污染、异步代际和生命周期按独立缺陷处理；卡片适用性与交付统计各自单独验收。不引入新模型、Jev、额外评分器或策略框架。
+ 
+ **预期与代价：** 合格的单条/同源/近分相关历史可以回到 provider 上下文，但词汇相似、语义不适用的历史也可能更多。离线正例证明“能进去”，负例守住明确无关及权限边界；这不等于质量提升，更不等于任务正确率会提高。
+@@ -164,7 +200,7 @@ Agent 原始任务 → Bridge query → Project BM25 → Injector 资格/准入
+ - [x] 检查已开始读取能够退出、关闭后不重开库；实际 Agent/provider 用例重复运行验证清理。不宣称阻断所有其它 Bridge API 或 join 整个异步任务。
+ - 关键代码顺序：`Lock → closing? return → statsWG.Add(1) → Unlock → defer statsWG.Done → kernelIndex → defer closeSliceStore`。
+ - 验收：`go test ./harness/semantix -run '^TestBridgeAdmissionAfterClose$' -count=1 -v`；Linux race 与实际 Agent 用例再检验。
+-- Commit：`fix(memory): join injection reads before bridge shutdown`。
++- Commit：`4f9817b2` — `fix(memory): join injection reads before bridge shutdown`。
+ 
+ #### S2 — 撤除六项默认代理门槛
+ 
+@@ -174,7 +210,7 @@ Agent 原始任务 → Bridge query → Project BM25 → Injector 资格/准入
+ - [x] 删除六项 Bridge 设置及只为来源数量门槛存在的 helper；不修改 Kernel 显式可选参数。
+ - [x] 真实 transcript → 提取/提炼 → Store → Bridge → Agent → recordingProvider；同源 Result/outcome 近分仍可交付，off/shadow 请求保持无块，user-role/来源/精确预算保持。
+ - 验收：`go test ./harness/semantix ./kernel/inject -count=1`；`go test ./harness/agent -run '^TestMemoryFlow(CorroboratingResultAndOutcomeToProvider|InvoiceHistoryToProvider)$' -count=3 -v`。
+-- Commit：`fix(memory): remove uncalibrated default admission vetoes`。
++- Commit：`2af62ed6` — `fix(memory): remove uncalibrated default admission vetoes`。
+ 
+ #### S3 — 查询取真实任务，不取 runner 包装
+ 
+@@ -184,17 +220,17 @@ Agent 原始任务 → Bridge query → Project BM25 → Injector 资格/准入
+ - [x] 负例：包装的 runtime 路径及操作要求不变成 intent/path/error/test；正文中非边界的 `Issue:` 字样不被截断；保留无外壳的普通多行输入。
+ - [x] 仅识别已知完整 testbed 前缀、开头的 Issue 标签或明确 git-checkout 外壳；正文内部 Expected/Actual/Requirements 不作通用截断。XML 也保留完整正文词义，不再只留标题加提取字段；因此正文里的普通叙述仍可能参与 BM25，这是避免丢需求的明确取舍。error 正则大小写只作用于异常名分支；test 识别命名格式而非裸单词。沿现有 tokenizer，不另造 query 模型。
+ - 验收：`go test ./harness/semantix -run 'Test(Clean|Build)RetrievalQuery' -count=1 -v`，再跑整个 Bridge 包。
+-- Commit：`fix(memory): separate issue content from runner query framing`。
++- Commit：`a66ea1d7` — `fix(memory): separate issue content from runner query framing`。
+ 
+ #### S4 — 异步预取绑定发起任务
+ 
+-文件：`harness/agent/agent.go`、`prefetch_feedback.go`、现有 prefetch 测试文件。
++文件：`harness/agent/agent.go`、`prefetch_feedback.go`、`prefetch_feedback_test.go`。
+ 
+ - [x] 在启动处捕获 `turn := a.semantixTurn.Load()`，与 input 一同传给异步结果；结果不再在完成时取得新 turn。
+ - [x] 旧 turn 结果不得覆盖当前 turn 的有效结果；延迟结果仍按原 turn 记废弃反馈。
+ - [x] channel/既有事件同步构造 A 发起 → B 开始 → A 完成，断言 B 请求没有 A 历史、新缓存不被旧缓存替换；保留原 prefetch 命中/浪费统计语义。
+ - 验收：`go test -race ./harness/agent -run 'Prefetch|InjectWarm|RetrievalInput' -count=1`，再跑全 Agent 包；不通过 sleep 或删除断言掩盖竞态。
+-- Commit：`fix(agent): keep speculative memory within its originating turn`。
++- Commit：`110cd235` — `fix(agent): keep speculative memory within its originating turn`。2026-09-24 ZCode 第二轮审查通过，无阻塞缺陷；本轮保持这三个文件不变。
+ 
+ #### S5 — 合并验证与独立回退
+ 
+@@ -233,24 +269,9 @@ Agent 原始任务 → Bridge query → Project BM25 → Injector 资格/准入
+ 
+ ### 9.8 旧库、重提取与仍可能零注入的运行条件
+ 
+-本批没有原地迁移旧库。一个只含 Prompt/ToolPattern、缺真实来源或缺版本信息的库，应用 S2 后仍可能全部被现有类型/来源/freshness 条件拒绝。将旧卡直接改成 Context、补造 session/origin 或把历史 revision 改成当前 HEAD，并不是合法的供给修复。
+-
+-有原始 Harness 会话镜像时，可以在**单独输出库**离线重新提取；命令中的值来自该会话的真实记录，不从当前任务猜测。下列是 `cmd/semantix/extract.go` 已有 CLI 参数的使用方式，hash embedder 不调用远端模型：
++重收割配方统一见 §6.1；不在这里维护另一份命令。
+ 
+-```sh
+-semantix extract --input "$SESSION_JSONL" \
+-  --db "$REPLAY_DB" --scope project \
+-  --session "$SOURCE_SESSION" --project "$SOURCE_PROJECT" \
+-  --base-commit "$SOURCE_REVISION" --origin session-auto \
+-  --embedder hash --distill --consolidate
+-```
+-
+-- `REPLAY_DB` 指向新建的离线检查目录，原库不覆盖；`session-auto` 仅对应实际自动生成的 Harness 镜像，外部导入材料不靠改标签取得该身份。
+-- 只有恢复了对应来源工作区、且掌握真实相关文件路径时，才从该来源工作区运行并追加 `--fingerprint "$SOURCE_RELATIVE_PATHS"`。现有 CLI 把这一组 Deps 赋给所有产物，仍不是逐卡归属。没有原始证据时保持未知。
+-- 不传 `--l3-safe`；重提取不授予直接答案复用能力。先查看真实产物类型、来源、验证状态及拒因，再决定使用；四层 flags 不保证任意短会话都产生可用知识。
+-- 当前 Harness 仍要求 revision 已知；无 Deps 的卡在来源 commit 不同于当前 commit 时得到 `stale_commit`。**因此下一次提交后，依赖为空的旧卡仍可能全部退出候选。** 这正是9.5待处理的适用性契约，不用一个任意“允许最近 N 次提交”的新阈值掩盖它。
+-
+-上述命令是离线重提取配方，不是已执行的用户真实库迁移；本批未改历史实验、用户库或原始轨迹。
++freshness 的运行条件与三种版本拒因见 §6.2，后续范围见 §7 / §9.5；最近 N 提交窗口回退不予采用的设计决策见 §9.3。
+ 
+ 
+ ### 9.9 S6 — 任务标签保留描述作用，不再默认否决相关历史
+@@ -282,3 +303,34 @@ semantix extract --input "$SESSION_JSONL" \
+ **S6 已验收：** 设计 `aac310da`，补齐既有中文断言的计划纠正 `4ef94afc`，实现 `a17ba134`。原代码正例出现 `task_type_mismatch`；修改后普通/降级与 strict/shadow/off 的正负例通过。精确 Git 源码副本通过项目 `go test ./... -count=1`、相关 Kernel/Bridge/Agent race 与 vet；独立评审无阻塞发现。独立副本回退后，同一观察测试重新失败，恢复旧默认误拒；原文件复核后留存，工作树继续保留修复。首次失败后六文件回滚、原始 Windows 失败、所有命令输出与回退均保存在本步骤 `/lab/` 证据，不伪称 Windows 全包通过。
+ 
+ 本步骤已解除 Harness 默认的 task 标签否决；Kernel 调用者显式设置 `TaskType` 的过滤仍原样存在。§9.5 的逐卡依赖/freshness 与交付记账依然未完成；其它检查仍可导致整批候选被拒绝。未改变旧实验、真实库、收费条件，未进行模型调用，未推送或更新远端 PR。其它进行中的文档及 invoice 测试改动没有混入本步骤提交和独立验收副本。
++
++
++### 9.10 S7–S9 — 已授权的剩余闭环修复（2026-09-24）
++
++用户要求按同一 workflow 连续完成：本地 SPEC 先提交，红灯复现，最小实现，验证后分步 commit；实现失败先保存并恢复该步骤拥有的改动再调整。继续原 worktree，不改旧实验/真实库，不追加付费调用，不自动推送或修改远端 PR。
++
++**第一性原理：** L2 提供有来源的历史观察，L3 才声称直接复用当前答案。一次会话访问的所有文件并非每条历史观察的当前依赖。当前 extractor/distiller 将同一 Deps 复制到所有卡，Injector 又把它们当当前有效结论；于是“以前运行过某命令/改过某文件”随任意文件改变而消失。相反，任意自然语言 Result 的真实依赖并不能从词匹配证明完整，仍须保守核验，不伪造逐文件归属。
++
++#### S7：逐卡声明历史观察，而非按类型豁免
++
++- 仅确定性 extractor 的 repeated-tool Context，以及 Distill 的 repo-ops / plan-skeleton / outcome 模板卡，由生产者标记 `SliceMeta.Historical=true`。标记描述“过去发生过”，不声明现在仍适用。Prompt、ToolPattern、任意最终 Result 不继承输入的 historical 标记，默认/旧库保持 snapshot 语义。
++- Kernel 仅对带该标记、Context/Memory、origin 至少 session-auto、非空 source session/base commit 的卡使用历史语义。仍要求当前项目/版本可识别，仍检查依赖路径语法；保留原 source/commit/Deps 值作来源审计，绝不全库清空或改写历史指纹。历史卡不读取当前文件以证明过去事件，因此相关或无关文件变化/删除不会把真实过去变成假过去；输出明确 `applicability=historical_observation; revalidate_before_use`。
++- 其它卡不变：当前结果依赖变化/缺失/越界/symlink、来源不明、未验证 Result 继续拒绝；Result 即使误带 historical 也不豁免，L3 验证完全不变。旧库需可信原轨迹重新提取才获得新分类，不自动升级旧记录。
++- 这不是将 Context/Memory 全部放行，也不把模板观察称为通用真理。收敛复用维持 metadata 一致规则，来源聚合不抹掉版本/指纹边界。
++- 文件：`kernel/slice/{slice,extractor,distill}.go`、`kernel/inject/inject.go` 和相邻测试。测试覆盖四种模板真实抽取→存储重开→跨提交/文件变更的注入；原文本 Result、未知/旧卡、假标记/来源、无关词、项目、预算、清洗与 L3 负例。
++
++#### S8：组装不是交付；反馈只认真正进入 provider 的历史
++
++- `InjectDetailed`/degraded/prefetch 是候选选择与组装；它们仅输出诊断，不提前增长持久 `Injected`/LastUsed。CLI `inject` 只输出文本，同样没有 provider 交付；保持输出形状，取消提前记入 SliceInject/Injected。
++- Agent 在 finalized request（含 interceptor、预算、角色投影）之后调用 provider，只有 `Stream` 成功返回非空 channel 且最终 user-role 内容仍包含本 turn 的完整 host-owned block，才记 `SliceInject`/Injected；取消、预算退出、删除/改写/拒绝、未消费预取、provider 同步失败不记。每个 user turn 的同一 block 只记一次，重试和多轮复用不放大演化权重。
++- 这项计数证明 provider 接口接受请求，不等于模型采用/收益，也不等于第一字节生成成功。内建 HTTP provider 的接受点在成功响应头之后；用本地 HTTP recorder 独立核实序列化内容。Responses stateful 延续可以沿用已经交付的历史，不必每轮重新传输；过期 ID 回退完整请求、删除历史后全量重放均应测试。
++- 复用 Bridge 事件和 stats，不新增计数表/ID/hash/gate；持久化错误通过现有 KernelCache 诊断显式报告，不虚称保存。loop/progress guard 仍可熔断组装块，但仅对已交付 IDs 记录负反馈，信号仍不是因果证明。
++- 同步修所有 Injected 写入口：Gateway 在成功 forward 的 2xx 后才记录；转换/网络/非2xx不记，CLI 无 provider 不记。历史已持久计数不篡改，报告注明旧计数含组装与新语义的版本边界。
++- 文件：Bridge、Agent sampling/turn/fuse、Gateway pipeline、CLI lookup 与对应测试；Kernel event 注释同步语义。不改权限、TLS、上游、预算或 provider 重试策略。
++
++#### S9：真实输入与全链验收
++
++- 把已验证的 runner task-body 投影提到 Kernel 共用的纯文本 helper；Bridge 检索与 Distill 标题/描述标签共同使用，避免检索修了但新卡仍记录 testbed 外壳。普通多行任务语义保留；不修改真正发给 provider 的任务/权限指令。
++- 项目完整 `go test ./... -count=1`，受影响包 Linux race 和 vet；原失败与修复输出都保存。使用隔离的精确 Git 源码副本，排除他人未提交改动。局部失败先回滚所属步骤，不擦掉他人改动。
++- 独立副本：本批原 Git 代码 + 新观察测试应 RED，修复代码 GREEN，ROLLBACK 恢复原字节后观察测试重新 RED；工作副本继续保留修复。产物在 `/lab/issue-447-admission-repair-20260924/closure/`：MODIFIED_FILE.tar.gz、DIFF_FILE.patch、VERIFICATION.txt、可执行 ROLLBACK.sh，全部重开核验。
++- 完成口径：链路软件契约可离线证明；显著成绩提升/模型采用不凭合成测试宣布。未迁移的旧库、真实模型相关性及显式调用者额外过滤条件仍如实列为使用前提，不将它们当成代码完成证明。
+diff --git a/gateway/pipeline.go b/gateway/pipeline.go
+index 5dd19931..215a4939 100644
+--- a/gateway/pipeline.go
++++ b/gateway/pipeline.go
+@@ -114,23 +114,7 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
+ 	if inj != nil {
+ 		injectedTokens = int64(inj.Bytes / 4)
+ 		sliceHits = len(inj.Slices)
+-		if len(inj.Slices) > 0 {
+-			now := g.now()
+-			ids := make([]string, 0, len(inj.Slices))
+-			deltas := make(map[string]slice.SliceStats, len(inj.Slices))
+-			for _, sl := range inj.Slices {
+-				if sl == nil {
+-					continue
+-				}
+-				ids = append(ids, sl.ID)
+-				deltas[sl.ID] = slice.SliceStats{Injected: 1, LastUsed: now.Unix()}
+-			}
+-			if len(ids) > 0 {
+-				g.recordSliceStats(deltas)
+-				g.recordSliceEvent(sessionID, chash, req.Model, kernelevent.SliceInject,
+-					kernelevent.SliceInjectPayload{SliceIDs: ids, Bytes: inj.Bytes}, now)
+-			}
+-		}
++
+ 	}
+ 	if up.Vendor == "anthropic" {
+ 		// Anthropic hop (design §0.5): translate the OpenAI body to the
+@@ -155,6 +139,27 @@ func (g *Gateway) handleChat(w http.ResponseWriter, r *http.Request, body []byte
+ 	}
+ 	defer resp.Body.Close()
+ 
++	// Assembly/conversion/network/non-2xx failures are not accepted injections.
++	if inj != nil && resp.StatusCode >= 200 && resp.StatusCode < 300 {
++		if len(inj.Slices) > 0 {
++			now := g.now()
++			ids := make([]string, 0, len(inj.Slices))
++			deltas := make(map[string]slice.SliceStats, len(inj.Slices))
++			for _, sl := range inj.Slices {
++				if sl == nil {
++					continue
++				}
++				ids = append(ids, sl.ID)
++				deltas[sl.ID] = slice.SliceStats{Injected: 1, LastUsed: now.Unix()}
++			}
++			if len(ids) > 0 {
++				g.recordSliceStats(deltas)
++				g.recordSliceEvent(sessionID, chash, req.Model, kernelevent.SliceInject,
++					kernelevent.SliceInjectPayload{SliceIDs: ids, Bytes: inj.Bytes}, now)
++			}
++		}
++	}
++
+ 	if req.Stream {
+ 		if up.Vendor == "anthropic" {
+ 			g.streamThroughAnthropic(w, resp, sessionID, req, chash, query, injectedTokens, sliceHits, up, jc, l3Obs, l3FalseHit)
+diff --git a/gateway/stats_test.go b/gateway/stats_test.go
+index 65335b31..0a89a6bf 100644
+--- a/gateway/stats_test.go
++++ b/gateway/stats_test.go
+@@ -119,3 +119,27 @@ func TestE2EL2InjectionRecordsStatsAndEvent(t *testing.T) {
+ 		t.Fatalf("events=%+v, want SliceInject", events)
+ 	}
+ }
++
++func TestE2EL2FailedForwardDoesNotRecordDelivery(t *testing.T) {
++	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "rejected", http.StatusBadRequest) }))
++	defer up.Close()
++	g := newTestGateway(t, up.URL)
++	srv := httptest.NewServer(g)
++	defer srv.Close()
++	seed(t, g, &slice.Slice{ID: "selected", Type: slice.Prompt, Scope: slice.Project, Content: []byte("prior knowledge about widgets")})
++	for _, s := range []string{"alpha", "bravo", "charlie", "delta"} {
++		seed(t, g, &slice.Slice{ID: s, Type: slice.Prompt, Scope: slice.Project, Content: []byte(s)})
++	}
++	resp, _ := postChatWithHeaders(t, srv, "test-key", map[string]string{"x-semantix-session": "failed-l2"}, chatBody("deepseek-chat", "widgets", false))
++	if resp.StatusCode == http.StatusOK {
++		t.Fatal("fixture did not reject")
++	}
++	g.ingestWG.Wait()
++	got, err := g.store.Get("selected")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.Stats.Injected != 0 {
++		t.Fatalf("upstream rejected but credited delivery: %+v", got.Stats)
++	}
++}
+diff --git a/harness/agent/memory_delivery_test.go b/harness/agent/memory_delivery_test.go
+new file mode 100644
+index 00000000..20bdb126
+--- /dev/null
++++ b/harness/agent/memory_delivery_test.go
+@@ -0,0 +1,344 @@
++package agent
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++
++	"semantix/harness/event"
++	"semantix/harness/extension"
++	"semantix/harness/extension/dispatch"
++	"semantix/harness/extension/protocol"
++	"semantix/harness/provider"
++	"semantix/harness/provider/anthropic"
++	"semantix/harness/provider/openai"
++	"semantix/harness/provider/responses"
++	"semantix/harness/semantix"
++	"semantix/harness/tool"
++	"semantix/kernel/slice"
++)
++
++type rejectedMemoryProvider struct{}
++
++func (rejectedMemoryProvider) Name() string { return "rejected" }
++func (rejectedMemoryProvider) Stream(context.Context, provider.Request) (<-chan provider.Chunk, error) {
++	return nil, errors.New("request rejected")
++}
++
++func memoryDeliveryAgent(t *testing.T, p provider.Provider) (*Agent, *semantix.Bridge, string) {
++	t.Helper()
++	root := t.TempDir()
++	commit := strings.Repeat("1", 40)
++	for _, dir := range []string{".git", ".semantix"} {
++		if err := os.MkdirAll(filepath.Join(root, dir), 0700); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if err := os.WriteFile(filepath.Join(root, ".git", "HEAD"), []byte(commit), 0600); err != nil {
++		t.Fatal(err)
++	}
++	db := filepath.Join(root, ".semantix", "project.db")
++	s, err := slice.NewFileStore(db)
++	if err != nil {
++		t.Fatal(err)
++	}
++	card := &slice.Slice{ID: "parser-memory", Type: slice.Context, Scope: slice.Project, Content: []byte("parser regression parse parser"), Meta: slice.SliceMeta{Origin: slice.OriginSessionAuto, BaseCommit: commit, SourceSession: "prior"}}
++	if err := s.Put(card); err != nil {
++		t.Fatal(err)
++	}
++	if err := s.(interface{ Close() error }).Close(); err != nil {
++		t.Fatal(err)
++	}
++	b := semantix.NewBridge(semantix.Config{Enabled: true, Mode: "strict", ProjectDir: root, SessionsDir: filepath.Join(root, "sessions"), Budget: 4096})
++	t.Cleanup(func() { _ = b.Close() })
++	sess := NewSession("system rules")
++	sess.Messages = append(sess.Messages, provider.Message{Role: provider.RoleUser, Content: "repair parser regression"})
++	a := New(p, tool.NewRegistry(), sess, Options{Semantix: b}, event.Discard)
++	r := b.InjectDetailed(context.Background(), "repair parser regression")
++	if r.Text == "" || len(r.Targets) != 1 {
++		t.Fatalf("fixture failed: %+v", r)
++	}
++	a.turn.injectBlock = r.Text
++	a.turn.injectTargets = r.Targets
++	return a, b, db
++}
++
++func memoryDeliveryStats(t *testing.T, b *semantix.Bridge, db string) slice.SliceStats {
++	t.Helper()
++	if err := b.Close(); err != nil {
++		t.Fatal(err)
++	}
++	s, err := slice.NewFileStore(db)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer s.(interface{ Close() error }).Close()
++	got, err := s.Get("parser-memory")
++	if err != nil || got == nil {
++		t.Fatalf("Get: %v %v", got, err)
++	}
++	return got.Stats
++}
++
++func TestMemoryDeliveryOnlyCreditsAcceptedFinalRequest(t *testing.T) {
++	for _, kind := range []string{"prepared_only", "unused_prefetch", "removed", "blocked", "rewritten", "local_only", "cancelled", "provider_error", "budget_exit", "accepted_twice"} {
++		t.Run(kind, func(t *testing.T) {
++			var p provider.Provider = &mockProvider{name: "recorder", chunks: []provider.Chunk{{Type: provider.ChunkDone}}}
++			if kind == "provider_error" {
++				p = rejectedMemoryProvider{}
++			}
++			a, b, db := memoryDeliveryAgent(t, p)
++			if kind == "unused_prefetch" {
++				a.storePrefetch(&prefetchedInjectResult{Text: a.turn.injectBlock, Targets: a.turn.injectTargets, Turn: a.semantixTurn.Load()})
++				a.wastePrefetch()
++			}
++			if kind == "removed" || kind == "rewritten" || kind == "blocked" {
++				client := &fakeDispatchClient{interceptFn: func(ev protocol.InterceptEvent, payload json.RawMessage) (protocol.InterceptResult, error) {
++					if ev != protocol.EventProviderRequest {
++						return protocol.InterceptResult{Decision: protocol.DecisionContinue}, nil
++					}
++					if kind == "blocked" {
++						return blockWith("stop"), nil
++					}
++					var in dispatch.ProviderRequestPayload
++					if err := json.Unmarshal(payload, &in); err != nil {
++						return protocol.InterceptResult{}, err
++					}
++					for i := range in.Request.Messages {
++						if strings.Contains(in.Request.Messages[i].Content, "[semantix-reuse]") {
++							in.Request.Messages[i].Content = "removed"
++							if kind == "rewritten" {
++								in.Request.Messages[i].Content = "[semantix-reuse]not the selected content[/semantix-reuse]"
++							}
++						}
++					}
++					return replaceWith(t, in), nil
++				}}
++				a.SetExtensions(newExtDispatcher(client, true, nil, extension.PointProviderRequest))
++			}
++			if kind == "budget_exit" {
++				a.contextWindow = 1
++				a.maxOutputTokens = 1
++			}
++			req, err := a.prepareSamplingRequest(context.Background())
++			if kind == "blocked" || kind == "budget_exit" {
++				if err == nil {
++					t.Fatal("fixture did not block")
++				}
++			} else if err != nil {
++				t.Fatal(err)
++			}
++			ctx := context.Background()
++			if kind == "cancelled" {
++				var cancel context.CancelFunc
++				ctx, cancel = context.WithCancel(ctx)
++				cancel()
++			}
++			if kind == "local_only" {
++				for i := range req.req.Messages {
++					if strings.Contains(req.req.Messages[i].Content, "[semantix-reuse]") {
++						req.req.Messages[i].LocalOnly = true
++					}
++				}
++			}
++			if err == nil && kind != "prepared_only" && kind != "unused_prefetch" {
++				ch, sendErr := a.streamProviderRequest(ctx, req.req)
++				if kind == "provider_error" || kind == "cancelled" {
++					if sendErr == nil {
++						t.Error("send should fail")
++					}
++				} else if sendErr != nil {
++					t.Fatal(sendErr)
++				}
++				if ch != nil {
++					for range ch {
++					}
++				}
++				if kind == "accepted_twice" {
++					ch, err = a.streamProviderRequest(ctx, req.req)
++					if err != nil {
++						t.Fatal(err)
++					}
++					for range ch {
++					}
++				}
++			}
++			a.armLoopGuardPass(0)
++			got := memoryDeliveryStats(t, b, db)
++			want := uint64(0)
++			if kind == "accepted_twice" {
++				want = 1
++			}
++			if got.Injected != want || got.Rejected != want {
++				t.Fatalf("%s stats=%+v want delivery/rejection=%d", kind, got, want)
++			}
++		})
++	}
++}
++
++func drainMemoryRequest(t *testing.T, a *Agent, req provider.Request) {
++	t.Helper()
++	ch, err := a.streamProviderRequest(context.Background(), req)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for chunk := range ch {
++		if chunk.Err != nil {
++			t.Fatal(chunk.Err)
++		}
++	}
++}
++
++func TestMemoryDeliveryHTTPSerializesUnprivilegedHistory(t *testing.T) {
++	for _, kind := range []string{"openai", "anthropic", "responses"} {
++		t.Run(kind, func(t *testing.T) {
++			bodies := make(chan map[string]any, 4)
++			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++				var body map[string]any
++				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
++					t.Error(err)
++					w.WriteHeader(400)
++					return
++				}
++				bodies <- body
++				w.Header().Set("Content-Type", "text/event-stream")
++				switch kind {
++				case "openai":
++					fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
++				case "anthropic":
++					fmt.Fprint(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"answer\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
++				default:
++					fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"answer\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp1\"}}\n\n")
++				}
++			}))
++			defer srv.Close()
++			cfg := provider.Config{Name: "local-recorder", BaseURL: srv.URL, Model: "fixture", APIKey: "fixture-not-a-real-key"}
++			var p provider.Provider
++			var err error
++			switch kind {
++			case "openai":
++				p, err = openai.New(cfg)
++			case "anthropic":
++				p, err = anthropic.New(cfg)
++			default:
++				p = responses.New(responses.Config{Name: cfg.Name, BaseURL: srv.URL, Model: cfg.Model, APIKey: cfg.APIKey, Mode: "stateless"})
++			}
++			if err != nil {
++				t.Fatal(err)
++			}
++			a, b, db := memoryDeliveryAgent(t, p)
++			a.strictAlternatingRoles = true
++			req, err := a.prepareSamplingRequest(context.Background())
++			if err != nil {
++				t.Fatal(err)
++			}
++			drainMemoryRequest(t, a, req.req)
++			body := <-bodies
++			messages, _ := body["messages"].([]any)
++			if kind == "responses" {
++				messages, _ = body["input"].([]any)
++			}
++			found := false
++			for _, raw := range messages {
++				msg := raw.(map[string]any)
++				content, _ := json.Marshal(msg["content"])
++				if strings.Contains(string(content), "parser-memory") {
++					if msg["role"] != "user" {
++						t.Fatalf("history elevated: %v", msg)
++					}
++					found = true
++				}
++			}
++			if !found {
++				t.Fatalf("serialized request lacks history: %v", body)
++			}
++			for _, key := range []string{"system", "instructions"} {
++				raw, _ := json.Marshal(body[key])
++				if strings.Contains(string(raw), "parser-memory") {
++					t.Fatalf("history in privileged %s", key)
++				}
++			}
++			// Replaying the frozen request is not a second per-turn use observation.
++			drainMemoryRequest(t, a, req.req)
++			<-bodies
++			if got := memoryDeliveryStats(t, b, db); got.Injected != 1 {
++				t.Fatalf("accepted HTTP history stats=%+v", got)
++			}
++		})
++	}
++}
++
++func TestMemoryDeliveryResponsesIncrementalAndExpiredReplay(t *testing.T) {
++	bodies := make(chan map[string]any, 8)
++	attempt := 0
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		var body map[string]any
++		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
++			t.Error(err)
++			w.WriteHeader(400)
++			return
++		}
++		bodies <- body
++		attempt++
++		if attempt == 3 {
++			http.Error(w, "previous_response_id expired", http.StatusBadRequest)
++			return
++		}
++		w.Header().Set("Content-Type", "text/event-stream")
++		fmt.Fprintf(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"answer\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp%d\"}}\n\n", attempt)
++	}))
++	defer srv.Close()
++	p := responses.New(responses.Config{Name: "local-stateful", BaseURL: srv.URL, Model: "fixture", APIKey: "fixture", Mode: "stateful"})
++	a, b, db := memoryDeliveryAgent(t, p)
++	frozen, err := a.prepareSamplingRequest(context.Background())
++	if err != nil {
++		t.Fatal(err)
++	}
++	req := frozen.req
++	drainMemoryRequest(t, a, req)
++	first := <-bodies
++	raw, _ := json.Marshal(first["input"])
++	if !strings.Contains(string(raw), "parser-memory") {
++		t.Fatal("first wire request lacks history")
++	}
++	for _, prompt := range []string{"followup two", "followup three"} {
++		req.Messages = append(req.Messages, provider.Message{Role: provider.RoleAssistant, Content: "answer"}, provider.Message{Role: provider.RoleUser, Content: prompt})
++		drainMemoryRequest(t, a, req)
++		wire := <-bodies
++		if wire["previous_response_id"] == nil || wire["input"] != prompt {
++			t.Fatalf("not incremental: %v", wire)
++		}
++		if prompt == "followup three" {
++			wire = <-bodies
++			raw, _ = json.Marshal(wire["input"])
++			if wire["previous_response_id"] != nil || !strings.Contains(string(raw), "parser-memory") {
++				t.Fatalf("expired ID lost full history: %v", wire)
++			}
++		}
++	}
++	// Removing history invalidates the stateful prefix, rather than silently
++	// keeping the previous response's hidden history through its ID.
++	var clean []provider.Message
++	for _, msg := range req.Messages {
++		if !strings.Contains(msg.Content, "parser-memory") {
++			clean = append(clean, msg)
++		}
++	}
++	req.Messages = clean
++	drainMemoryRequest(t, a, req)
++	wire := <-bodies
++	raw, _ = json.Marshal(wire["input"])
++	if wire["previous_response_id"] != nil || strings.Contains(string(raw), "parser-memory") {
++		t.Fatalf("deleted history still inherited: %v", wire)
++	}
++	if got := memoryDeliveryStats(t, b, db); got.Injected != 1 {
++		t.Fatalf("incremental/retry inflated use: %+v", got)
++	}
++}
+diff --git a/harness/agent/memory_flow_e2e_test.go b/harness/agent/memory_flow_e2e_test.go
+index 4dc76b98..86fce9f4 100644
+--- a/harness/agent/memory_flow_e2e_test.go
++++ b/harness/agent/memory_flow_e2e_test.go
+@@ -58,6 +58,9 @@ func TestMemoryFlowCorroboratingResultAndOutcomeToProvider(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
++	if closer, ok := store.(interface{ Close() error }); ok {
++		defer closer.Close()
++	}
+ 	const query = "Validate orchard cache expired-entry regression"
+ 	const verifiedCommand = "go test ./internal/orchard -run TestExpiredCacheEntry"
+ 	wantID, resultID := "", ""
+@@ -71,6 +74,7 @@ func TestMemoryFlowCorroboratingResultAndOutcomeToProvider(t *testing.T) {
+ 		if err != nil {
+ 			t.Fatal(err)
+ 		}
++		defer hs.Close()
+ 		hs.Emit(event.Event{Kind: event.TurnStarted, Text: history.task})
+ 		hs.Emit(event.Event{Kind: event.Text, Text: "Inspect the cache implementation."})
+ 		hs.Emit(event.Event{Kind: event.Message, Text: "Inspect the cache implementation."})
+@@ -224,7 +228,7 @@ func TestMemoryFlowCorroboratingResultAndOutcomeToProvider(t *testing.T) {
+ 				if diagnostics == nil || diagnostics.Injected || diagnostics.Bytes != 0 || diagnostics.MessageRole != "" || diagnostics.DecisionReason != "shadow_mode" {
+ 					t.Fatalf("shadow did not withhold historical knowledge: %+v", diagnostics)
+ 				}
+-			} else if diagnostics == nil || !diagnostics.Injected || diagnostics.Bytes != len(block) || diagnostics.MessageRole != "user" || diagnostics.DecisionReason != "admitted" || block == "" {
++			} else if diagnostics == nil || diagnostics.Decision != "assembled" || diagnostics.Bytes != len(block) || diagnostics.MessageRole != "user" || diagnostics.DecisionReason != "admitted" || block == "" {
+ 				t.Fatalf("strict injection absent or wrong bytes/role: %+v", diagnostics)
+ 			}
+ 			var result, outcome *event.RetrievalCandidate
+@@ -381,6 +385,9 @@ class InvoiceBasicTests(unittest.TestCase):
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
++	if closer, ok := store.(interface{ Close() error }); ok {
++		defer closer.Close()
++	}
+ 	wantID := ""
+ 	for _, history := range []struct{ id, task, name, class, input string }{
+ 		{"prior-zero", "Add invoice total regression tests for zero quantity; locate the invoice suite and verify it.", "zero", "Zero", `[("12.50", 0)]`},
+@@ -390,6 +397,7 @@ class InvoiceBasicTests(unittest.TestCase):
+ 		if err != nil {
+ 			t.Fatal(err)
+ 		}
++		defer hs.Close()
+ 		hs.Emit(event.Event{Kind: event.TurnStarted, Text: history.task})
+ 		emit := func(id, name string, args map[string]string, execute func() string, mutation, verify bool) {
+ 			t.Helper()
+@@ -516,7 +524,7 @@ class InvoiceBasicTests(unittest.TestCase):
+ 				}
+ 				return
+ 			}
+-			if diagnostics == nil || !diagnostics.Injected || diagnostics.Bytes != len(block) || diagnostics.MessageRole != "user" || len(block) == 0 {
++			if diagnostics == nil || diagnostics.Decision != "assembled" || diagnostics.Bytes != len(block) || diagnostics.MessageRole != "user" || len(block) == 0 {
+ 				t.Fatalf("strict injection absent or wrong bytes/role: %+v", diagnostics)
+ 			}
+ 			for _, want := range []string{"--- slice " + wantID + " ---", `source="prior-zero"`, "Verified-by: " + command, "tests/test_invoice_zero.py", `commit="` + revision + `"`, `origin=session-auto`} {
+@@ -562,7 +570,7 @@ class InvoiceBasicTests(unittest.TestCase):
+ 			t.Fatalf("historical invoice dependencies changed: %v, %v", changed, err)
+ 		}
+ 		request, block, diagnostics := memoryFlowRun(t, repo, "strict", query)
+-		if diagnostics == nil || !diagnostics.Injected || diagnostics.BaseCommit != current || diagnostics.Bytes != len(block) {
++		if diagnostics == nil || diagnostics.Decision != "assembled" || diagnostics.BaseCommit != current || diagnostics.Bytes != len(block) {
+ 			t.Fatalf("cross-commit matching dependencies did not pass production Bridge: %+v", diagnostics)
+ 		}
+ 		for _, want := range []string{"--- slice " + wantID + " ---", `commit="` + revision + `"`, `origin=session-auto`, "Verified-by: " + command} {
+diff --git a/harness/agent/negative_transfer_fuse_test.go b/harness/agent/negative_transfer_fuse_test.go
+index 7e494ad4..f6a81226 100644
+--- a/harness/agent/negative_transfer_fuse_test.go
++++ b/harness/agent/negative_transfer_fuse_test.go
+@@ -39,6 +39,7 @@ func TestLoopGuardFusesInjectedSlicesOnce(t *testing.T) {
+ 	}))
+ 	a.turn.injectBlock = "[semantix-reuse]\ncache repair\n[/semantix-reuse]"
+ 	a.turn.injectTargets = []string{"ctx-a"}
++	a.turn.injectionDelivered = true // this case exercises feedback after confirmed dispatch
+ 
+ 	a.armLoopGuardPass(0)
+ 	a.armLoopGuardPass(0)
+diff --git a/harness/agent/progress_guard.go b/harness/agent/progress_guard.go
+index dcd03f39..4e9ca026 100644
+--- a/harness/agent/progress_guard.go
++++ b/harness/agent/progress_guard.go
+@@ -184,7 +184,7 @@ func (a *Agent) armLoopGuardPass(receiptMark int) {
+ 	targets := append([]string(nil), a.turn.injectTargets...)
+ 	a.turn.injectBlock = ""
+ 	a.turn.injectionFused = true
+-	if a.semantix != nil {
++	if a.semantix != nil && a.turn.injectionDelivered {
+ 		a.semantix.RecordInjectionReject(targets, "loop_guard")
+ 	}
+ 	detail, _ := json.Marshal(map[string]any{"slices": len(targets), "reason": "loop_guard"})
+diff --git a/harness/agent/sampling_request.go b/harness/agent/sampling_request.go
+index 76481861..ccb5e4bb 100644
+--- a/harness/agent/sampling_request.go
++++ b/harness/agent/sampling_request.go
+@@ -17,7 +17,22 @@ type samplingRequest struct {
+ }
+ 
+ func (a *Agent) streamProviderRequest(ctx context.Context, req provider.Request) (<-chan provider.Chunk, error) {
+-	return a.svc.prov.Stream(ctx, req)
++	if err := ctx.Err(); err != nil {
++		return nil, err
++	}
++	ch, err := a.svc.prov.Stream(ctx, req)
++	if err == nil && ch != nil && a.semantix != nil && !a.turn.injectionDelivered && a.turn.injectBlock != "" {
++		// Interceptors/budget/projection can discard or replace an assembled
++		// block. Attribute only the host-owned block still in final user input.
++		for _, msg := range provider.ModelMessages(req.Messages) {
++			if msg.Role == provider.RoleUser && strings.Contains(msg.Content, a.turn.injectBlock) {
++				a.turn.injectionDelivered = true
++				a.semantix.RecordInjectionDelivery(a.turn.injectTargets, len(a.turn.injectBlock))
++				break
++			}
++		}
++	}
++	return ch, err
+ }
+ 
+ func (a *Agent) handleSamplingError(
+diff --git a/harness/agent/turnruntime.go b/harness/agent/turnruntime.go
+index 76cc88fb..4d1acf54 100644
+--- a/harness/agent/turnruntime.go
++++ b/harness/agent/turnruntime.go
+@@ -40,6 +40,8 @@ type turnRuntime struct {
+ 	// same slices more than once in one user turn.
+ 	injectTargets  []string
+ 	injectionFused bool
++	// injectionDelivered is per-turn provider acceptance, not assembly/use.
++	injectionDelivered bool
+ 
+ 	// reuse is this turn's semantix reuse panel data (U33/H4a): hit slices,
+ 	// incremental cost savings, and top source sessions, gathered on the
+diff --git a/harness/event/event.go b/harness/event/event.go
+index a8972e7c..513cda7f 100644
+--- a/harness/event/event.go
++++ b/harness/event/event.go
+@@ -586,6 +586,8 @@ type RetrievalCandidate struct {
+ // RetrievalDiagnostics is the replayable per-turn L2 retrieval record. In
+ // shadow mode Candidates and the counterfactual FinalOrder are populated but
+ // Injected/Bytes/MessageRole remain zero because provider input is untouched.
++// Strict selection emits Decision=assembled with Injected=false; a later host
++// provider-acceptance record emits Decision=delivered and Injected=true.
+ type RetrievalDiagnostics struct {
+ 	Mode           string                  `json:"mode,omitempty"`
+ 	LibrarySize    int                     `json:"librarySize,omitempty"`
+diff --git a/harness/semantix/admission_defaults_test.go b/harness/semantix/admission_defaults_test.go
+index 688dda9d..3839013f 100644
+--- a/harness/semantix/admission_defaults_test.go
++++ b/harness/semantix/admission_defaults_test.go
+@@ -59,7 +59,7 @@ func TestBridgeAdmissionWithoutExtraGates(t *testing.T) {
+ 			if len(got.Targets) != tc.want || (got.Text != "") != (tc.want > 0) {
+ 				t.Fatalf("targets=%v, want %d matching cards; decisions=%+v", got.Targets, tc.want, got.Diagnostics.Candidates)
+ 			}
+-			if len(got.Text) > 4096 || got.Diagnostics.Injected != (tc.want > 0) {
++			if len(got.Text) > 4096 || (got.Diagnostics.Decision == "assembled") != (tc.want > 0) {
+ 				t.Fatalf("budget/injection status changed: %+v", got.Diagnostics)
+ 			}
+ 			if tc.want > 0 && got.Diagnostics.MessageRole != "user" {
+@@ -109,7 +109,7 @@ func TestBridgeTaskLabelsAreDescriptive(t *testing.T) {
+ 						}
+ 						return
+ 					}
+-					if got.Diagnostics == nil || got.Diagnostics.Injected != wantText {
++					if got.Diagnostics == nil || (got.Diagnostics.Decision == "assembled") != wantText {
+ 						t.Fatalf("assembly status=%+v", got.Diagnostics)
+ 					}
+ 					if wantText && (got.Diagnostics.MessageRole != "user" || !strings.Contains(got.Text, tc.body) || !strings.Contains(got.Text, `source="prior-task"`)) {
+diff --git a/harness/semantix/bridge.go b/harness/semantix/bridge.go
+index b5da790a..88c82722 100644
+--- a/harness/semantix/bridge.go
++++ b/harness/semantix/bridge.go
+@@ -344,13 +344,11 @@ func (b *Bridge) injectResult(ctx context.Context, query string, budget int) Inj
+ 		}
+ 	}
+ 	sort.Strings(targets)
+-	b.recordInjection(targets, inj.Bytes)
+-	diagnostics.Injected = true
+ 	diagnostics.Bytes = inj.Bytes
+ 	diagnostics.MessageRole = "user"
+-	diagnostics.Decision = "injected"
++	diagnostics.Decision = "assembled"
+ 	diagnostics.DecisionReason = "admitted"
+-	op := "inject"
++	op := "assembled"
+ 	if budget < b.cfg.Budget {
+ 		op = "degraded"
+ 	}
+@@ -476,39 +474,46 @@ func (b *Bridge) emitKernelCacheDetailed(op, layer string, ids []string, bytes i
+ 		KernelCache: &event.KernelCachePayload{Op: op, Layer: layer, SliceIDs: ids, Bytes: bytes, Reason: reason, Retrieval: retrieval}})
+ }
+ 
+-func (b *Bridge) recordInjection(ids []string, bytes int) {
++// RecordInjectionDelivery records host-confirmed provider acceptance, never
++// selection or speculative warm-up. Callers deduplicate their logical turn.
++// It is evidence of dispatch, not model use, correctness, or saved cost.
++func (b *Bridge) RecordInjectionDelivery(ids []string, bytes int) {
++	if !b.InjectEnabled() || len(ids) == 0 || bytes <= 0 {
++		return
++	}
++	ids = canonicalPrefetchTargets(ids)
+ 	if len(ids) == 0 {
+ 		return
+ 	}
+-	ids = append([]string(nil), ids...)
+-	now := time.Now().UTC()
+-	projectDB := filepath.Join(b.projectDir(), ".semantix", "project.db")
+ 	b.mu.Lock()
+ 	if b.closing {
+ 		b.mu.Unlock()
++		b.emitKernelCache("stats_error", "L2", ids, bytes, "bridge_closed")
+ 		return
+ 	}
+ 	b.statsWG.Add(1)
+ 	session := b.label
+ 	b.mu.Unlock()
+-
+-	data, err := json.Marshal(kernelevent.SliceInjectPayload{SliceIDs: ids, Bytes: bytes})
++	defer b.statsWG.Done()
++	now := time.Now().UTC()
++	data, _ := json.Marshal(kernelevent.SliceInjectPayload{SliceIDs: ids, Bytes: bytes})
++	b.events.Emit(kernelevent.Event{Kind: kernelevent.SliceInject, SessionID: session, At: now, Data: data})
++	b.emitKernelCacheDetailed("inject", "L2", ids, bytes, "provider_accepted", &event.RetrievalDiagnostics{
++		Mode: string(b.mode), Injected: true, Bytes: bytes, MessageRole: "user", FinalOrder: ids,
++		Decision: "delivered", DecisionReason: "provider_accepted",
++	})
++	store, err := slice.NewFileStore(filepath.Join(b.projectDir(), ".semantix", "project.db"))
+ 	if err == nil {
+-		b.events.Emit(kernelevent.Event{Kind: kernelevent.SliceInject, SessionID: session, At: now, Data: data})
+-	}
+-	go func() {
+-		defer b.statsWG.Done()
+-		store, err := slice.NewFileStore(projectDB)
+-		if err != nil {
+-			return
+-		}
+-		defer closeSliceStore(store)
+ 		deltas := make(map[string]slice.SliceStats, len(ids))
+ 		for _, id := range ids {
+ 			deltas[id] = slice.SliceStats{Injected: 1, LastUsed: now.Unix()}
+ 		}
+-		_ = slice.ApplyStats(store, deltas)
+-	}()
++		err = slice.ApplyStats(store, deltas)
++		closeSliceStore(store)
++	}
++	if err != nil {
++		b.emitKernelCache("stats_error", "L2", ids, bytes, "delivery write-back: "+err.Error())
++	}
+ }
+ 
+ // RecordInjectionReject attributes a conservative negative-transfer signal to
+@@ -529,6 +534,14 @@ func (b *Bridge) recordInjectionOutcome(ids []string, outcome, reason string, le
+ 	if b == nil || !b.Enabled() || len(ids) == 0 {
+ 		return
+ 	}
++	b.mu.Lock()
++	if b.closing {
++		b.mu.Unlock()
++		return
++	}
++	b.statsWG.Add(1)
++	b.mu.Unlock()
++	defer b.statsWG.Done()
+ 	outcome = strings.ToLower(strings.TrimSpace(outcome))
+ 	if outcome != "useful" && outcome != "neutral" && outcome != "harmful" {
+ 		return
+@@ -549,7 +562,8 @@ func (b *Bridge) recordInjectionOutcome(ids []string, outcome, reason string, le
+ 		reason = "negative_transfer"
+ 	}
+ 	now := time.Now().UTC()
+-	if store, err := slice.NewFileStore(filepath.Join(b.projectDir(), ".semantix", "project.db")); err == nil {
++	store, err := slice.NewFileStore(filepath.Join(b.projectDir(), ".semantix", "project.db"))
++	if err == nil {
+ 		deltas := make(map[string]slice.SliceStats, len(unique))
+ 		for _, id := range unique {
+ 			delta := slice.SliceStats{LastUsed: now.Unix()}
+@@ -564,9 +578,12 @@ func (b *Bridge) recordInjectionOutcome(ids []string, outcome, reason string, le
+ 			}
+ 			deltas[id] = delta
+ 		}
+-		_ = slice.ApplyStats(store, deltas)
++		err = slice.ApplyStats(store, deltas)
+ 		closeSliceStore(store)
+ 	}
++	if err != nil {
++		b.emitKernelCache("stats_error", "L2", unique, 0, "outcome write-back: "+err.Error())
++	}
+ 	b.mu.Lock()
+ 	session := b.label
+ 	b.mu.Unlock()
+diff --git a/harness/semantix/delivery_accounting_test.go b/harness/semantix/delivery_accounting_test.go
+new file mode 100644
+index 00000000..a3513157
+--- /dev/null
++++ b/harness/semantix/delivery_accounting_test.go
+@@ -0,0 +1,78 @@
++package semantix
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"semantix/harness/event"
++	"semantix/kernel/slice"
++	"testing"
++)
++
++func TestAssemblyDoesNotRecordDelivery(t *testing.T) {
++	for _, degraded := range []bool{false, true} {
++		dir := writeKernelDir(t, admissionFixtureSlices(), nil)
++		b := NewBridge(Config{Enabled: true, Mode: "strict", ProjectDir: dir, Budget: 4096})
++		r := b.InjectDetailed(context.Background(), "修复 go 测试")
++		if degraded {
++			r = b.InjectDegradedDetailed(context.Background(), "修复 go 测试")
++		}
++		if r.Text == "" {
++			t.Fatal("fixture did not assemble")
++		}
++		if r.Diagnostics.Injected {
++			t.Error("assembly advertised actual delivery")
++		}
++		if err := b.Close(); err != nil {
++			t.Fatal(err)
++		}
++		s, err := slice.NewFileStore(filepath.Join(dir, ".semantix", "project.db"))
++		if err != nil {
++			t.Fatal(err)
++		}
++		for _, id := range r.Targets {
++			got, err := s.Get(id)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if got.Stats.Injected != 0 || got.Stats.LastUsed != 0 {
++				t.Errorf("unconsumed assembly changed usage: %+v", got.Stats)
++			}
++		}
++		closeSliceStore(s)
++	}
++}
++
++func TestDeliveryPersistenceFailureIsVisible(t *testing.T) {
++	dir := writeKernelDir(t, admissionFixtureSlices(), nil)
++	b := NewBridge(Config{Enabled: true, Mode: "strict", ProjectDir: dir, SessionsDir: t.TempDir(), Budget: 4096})
++	defer b.Close()
++	var events []event.Event
++	b.Sink(event.FuncSink(func(e event.Event) { events = append(events, e) }))
++	result := b.InjectDetailed(context.Background(), "修复 go 测试")
++	if result.Text == "" {
++		t.Fatal("fixture did not assemble")
++	}
++	db := filepath.Join(dir, ".semantix", "project.db")
++	if err := os.Rename(db, db+".before"); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Mkdir(db, 0700); err != nil {
++		t.Fatal(err)
++	}
++	recorder, ok := any(b).(interface{ RecordInjectionDelivery([]string, int) })
++	if !ok {
++		t.Fatal("no explicit provider-delivery recorder")
++	}
++	recorder.RecordInjectionDelivery(result.Targets, len(result.Text))
++	delivered, failed := false, false
++	for _, e := range events {
++		if e.KernelCache != nil {
++			delivered = delivered || (e.KernelCache.Op == "inject" && e.KernelCache.Reason == "provider_accepted")
++			failed = failed || (e.KernelCache.Op == "stats_error" && e.KernelCache.Reason != "")
++		}
++	}
++	if !delivered || !failed {
++		t.Fatalf("dispatch and persistence status were conflated: delivered=%v failure=%v", delivered, failed)
++	}
++}
+diff --git a/harness/semantix/query.go b/harness/semantix/query.go
+index b7d2a5d9..f79893f0 100644
+--- a/harness/semantix/query.go
++++ b/harness/semantix/query.go
+@@ -6,6 +6,7 @@ import (
+ 	"strings"
+ 
+ 	"semantix/kernel/bm25"
++	"semantix/kernel/slice"
+ )
+ 
+ var (
+@@ -46,7 +47,7 @@ var retrievalStopwords = map[string]struct{}{
+ // and QueryCoverage consume the same tokenizer, so punctuation loss cannot
+ // change the lexical evidence while boilerplate cannot dominate it.
+ func cleanRetrievalQuery(raw string) string {
+-	query := urlPattern.ReplaceAllString(retrievalTaskBody(raw), " ")
++	query := urlPattern.ReplaceAllString(slice.TaskBody(raw), " ")
+ 	tokens := bm25.Tokenize(query)
+ 	kept := tokens[:0]
+ 	for _, token := range tokens {
+@@ -61,7 +62,7 @@ func cleanRetrievalQuery(raw string) string {
+ // no such field exists it preserves the P0 lexical cleaning behavior rather
+ // than pretending a generic sentence is structured evidence.
+ func buildRetrievalQuery(raw string) RetrievalQuery {
+-	body := retrievalTaskBody(raw)
++	body := slice.TaskBody(raw)
+ 	signalBody := urlPattern.ReplaceAllString(body, " ")
+ 	q := RetrievalQuery{Intent: firstNonEmptyLine(body), Repo: firstCapture(repoPattern, raw)}
+ 	q.Paths = collectPaths(signalBody, q.Repo)
+@@ -100,32 +101,6 @@ func buildRetrievalQuery(raw string) RetrievalQuery {
+ 	return q
+ }
+ 
+-// retrievalTaskBody recognizes only explicit task boundaries and known runner
+-// framing. Ordinary headings inside a task (Expected, Actual, Requirements)
+-// are task evidence, not generic delimiters.
+-func retrievalTaskBody(raw string) string {
+-	body := strings.TrimSpace(stripTaggedBlock(strings.ReplaceAll(raw, "\r\n", "\n"), "execution-policy"))
+-	if issue, ok := taggedBody(body, "issue"); ok {
+-		return strings.TrimSpace(issue)
+-	}
+-	const testbedPrefix = "Fix the following issue in /testbed. The matching Python environment and dependencies are preinstalled at /opt/miniconda3/envs/testbed; use that Python and the existing tests.\n\n"
+-	if task, ok := strings.CutPrefix(body, testbedPrefix); ok {
+-		return strings.TrimSpace(task)
+-	}
+-	if strings.HasPrefix(body, "You are working in a git checkout of the ") {
+-		if _, task, ok := strings.Cut(body, "\n\nIssue:\n"); ok {
+-			// This exact suffix is the runner's instruction, not an arbitrary
+-			// Requirements heading that may belong to the issue itself.
+-			task, _, _ = strings.Cut(task, "\n\nRequirements:\n- Find the root cause and implement a complete fix")
+-			return strings.TrimSpace(task)
+-		}
+-	}
+-	if task, ok := strings.CutPrefix(body, "Issue:\n"); ok {
+-		return strings.TrimSpace(task)
+-	}
+-	return body
+-}
+-
+ func firstNonEmptyLine(text string) string {
+ 	for _, line := range strings.Split(text, "\n") {
+ 		if line = strings.TrimSpace(line); line != "" {
+@@ -224,39 +199,3 @@ func joinRetrievalTokens(values ...string) string {
+ 	}
+ 	return strings.Join(tokens, " ")
+ }
+-
+-func stripTaggedBlock(text, tag string) string {
+-	for {
+-		lower := strings.ToLower(text)
+-		start := strings.Index(lower, "<"+tag)
+-		if start < 0 {
+-			return text
+-		}
+-		openEndRel := strings.Index(lower[start:], ">")
+-		if openEndRel < 0 {
+-			return text[:start]
+-		}
+-		closeStartRel := strings.Index(lower[start+openEndRel+1:], "</"+tag+">")
+-		if closeStartRel < 0 {
+-			return text[:start]
+-		}
+-		end := start + openEndRel + 1 + closeStartRel + len(tag) + 3
+-		text = text[:start] + " " + text[end:]
+-	}
+-}
+-
+-func taggedBody(text, tag string) (string, bool) {
+-	lower := strings.ToLower(text)
+-	open := "<" + tag + ">"
+-	close := "</" + tag + ">"
+-	start := strings.Index(lower, open)
+-	if start < 0 {
+-		return "", false
+-	}
+-	start += len(open)
+-	endRel := strings.Index(lower[start:], close)
+-	if endRel < 0 {
+-		return "", false
+-	}
+-	return text[start : start+endRel], true
+-}
+diff --git a/harness/semantix/reuse_test.go b/harness/semantix/reuse_test.go
+index 54e70430..8094c72b 100644
+--- a/harness/semantix/reuse_test.go
++++ b/harness/semantix/reuse_test.go
+@@ -209,7 +209,7 @@ func TestBridgeReuseForwardsKernelCacheObservation(t *testing.T) {
+ 	}
+ }
+ 
+-func TestBridgeInjectRecordsStatsAndEvent(t *testing.T) {
++func TestBridgeDeliveredInjectionRecordsStatsAndEvent(t *testing.T) {
+ 	dir := writeKernelDir(t, admissionFixtureSlices(), nil)
+ 	sessionsDir := t.TempDir()
+ 	b := NewBridge(Config{Enabled: true, Inject: true, ProjectDir: dir, SessionsDir: sessionsDir, Budget: 4096})
+@@ -221,6 +221,7 @@ func TestBridgeInjectRecordsStatsAndEvent(t *testing.T) {
+ 	if result.Diagnostics == nil || result.Diagnostics.MessageRole != "user" {
+ 		t.Fatalf("injection message role = %+v, want user", result.Diagnostics)
+ 	}
++	b.RecordInjectionDelivery(result.Targets, len(result.Text))
+ 	if err := b.Close(); err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -278,7 +279,7 @@ func TestBridgeStrictAdmissionInjectsOnlyContextWithStrongEvidence(t *testing.T)
+ 	b := NewBridge(Config{Enabled: true, Mode: "strict", ProjectDir: dir})
+ 	defer b.Close()
+ 	result := b.InjectDetailed(context.Background(), "修复 go 测试")
+-	if result.Text == "" || result.Diagnostics == nil || !result.Diagnostics.Injected {
++	if result.Text == "" || result.Diagnostics == nil || result.Diagnostics.Decision != "assembled" {
+ 		t.Fatalf("strict strong-evidence result = %+v", result)
+ 	}
+ 	if len(result.Targets) != 1 || result.Targets[0] != "ctx-strong" {
+diff --git a/kernel/event/event.go b/kernel/event/event.go
+index f4dec4ba..6437ad8e 100644
+--- a/kernel/event/event.go
++++ b/kernel/event/event.go
+@@ -26,7 +26,7 @@ const (
+ 	ToolRoundEnd
+ 	// SliceHit reports a semantic cache hit (L1/L2/L3).
+ 	SliceHit
+-	// SliceInject reports an L2 stable slice injection.
++	// SliceInject reports provider-accepted L2 history, not speculative assembly.
+ 	SliceInject
+ 	// SliceReject reports injection pollution (user edited/rolled back a slice).
+ 	SliceReject
+@@ -105,7 +105,9 @@ type SliceHitPayload struct {
+ 	Scores   []float64 `json:"scores,omitempty"`
+ }
+ 
+-// SliceInjectPayload reports an L2 injection; SliceIDs are in canonical order.
++// SliceInjectPayload reports provider acceptance; SliceIDs are canonical.
++// Older producers emitted this at assembly time; do not reinterpret old logs
++// as proof of delivery, model adoption, or causal benefit.
+ type SliceInjectPayload struct {
+ 	SliceIDs []string `json:"slice_ids"`
+ 	Bytes    int      `json:"bytes"`
+diff --git a/kernel/inject/historical_observation_test.go b/kernel/inject/historical_observation_test.go
+new file mode 100644
+index 00000000..c197d143
+--- /dev/null
++++ b/kernel/inject/historical_observation_test.go
+@@ -0,0 +1,150 @@
++package inject
++
++import (
++	"encoding/json"
++	"os"
++	"path/filepath"
++	"reflect"
++	"strings"
++	"testing"
++
++	"semantix/kernel/fingerprint"
++	"semantix/kernel/slice"
++)
++
++const observationTranscript = `{"role":"user","content":"Fix parser regression"}
++{"role":"assistant","tool_calls":[{"id":"r1","name":"read_file","arguments":{"path":"parser.go"}},{"id":"r2","name":"read_file","arguments":{"path":"parser.go"}},{"id":"e1","name":"edit_file","arguments":{"path":"parser.go"}}]}
++{"role":"tool","tool_call_id":"e1","content":"edited parser.go","workspace_mutation":true}
++{"role":"assistant","tool_calls":[{"id":"t1","name":"bash","arguments":{"command":"go test ./..."}}]}
++{"role":"tool","tool_call_id":"t1","content":"ok","verification":"passed"}
++{"role":"assistant","content":"Parser regression fixed and tested."}
++`
++
++func TestHistoricalObservationsRetainSourceNotSnapshotValidity(t *testing.T) {
++	root := t.TempDir()
++	for _, p := range []string{"parser.go", "unrelated.go"} {
++		if err := os.WriteFile(filepath.Join(root, p), []byte("before"), 0600); err != nil {
++			t.Fatal(err)
++		}
++	}
++	deps, err := fingerprint.Capture(root, []string{"parser.go", "unrelated.go"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	meta := slice.SliceMeta{SourceSession: "past-task", ProjectSlug: "repo", BaseCommit: "old", Origin: slice.OriginSessionAuto, Deps: deps}
++	items, err := slice.NewExtractor().Extract([]byte(observationTranscript), meta)
++	if err != nil {
++		t.Fatal(err)
++	}
++	cards, err := slice.Distill([]byte(observationTranscript), meta)
++	if err != nil {
++		t.Fatal(err)
++	}
++	items = append(items, cards...)
++	db := filepath.Join(t.TempDir(), "project.db")
++	store, err := slice.NewFileStore(db)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, item := range items {
++		if err := store.Put(item); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if err := store.(interface{ Close() error }).Close(); err != nil {
++		t.Fatal(err)
++	}
++	store = newTestStore(t, db)
++	in := &Injector{Scope: slice.Project, Budget: 4096, RootDir: root, CurrentCommit: "new", MinOrigin: slice.OriginSessionAuto,
++		AllowedTypes: map[slice.SliceType]bool{slice.Context: true, slice.Memory: true, slice.Result: true}}
++	for _, phase := range []string{"unchanged", "unrelated changed", "related changed", "related deleted"} {
++		switch phase {
++		case "unrelated changed":
++			err = os.WriteFile(filepath.Join(root, "unrelated.go"), []byte("after"), 0600)
++		case "related changed":
++			err = os.WriteFile(filepath.Join(root, "parser.go"), []byte("after"), 0600)
++		case "related deleted":
++			err = os.Remove(filepath.Join(root, "parser.go"))
++		}
++		if err != nil {
++			t.Fatal(err)
++		}
++		t.Run(phase, func(t *testing.T) {
++			observations := 0
++			for _, item := range items {
++				got, err := store.Get(item.ID)
++				if err != nil {
++					t.Fatal(err)
++				}
++				if got.Meta.SourceSession != meta.SourceSession || got.Meta.BaseCommit != "old" || !reflect.DeepEqual(got.Meta.Deps, deps) {
++					t.Fatalf("source evidence changed: %+v", got.Meta)
++				}
++				out, err := in.BuildHits("parser regression", []slice.Hit{{Slice: got, Score: 2}})
++				if err != nil {
++					t.Fatal(err)
++				}
++				if got.Type == slice.Context || got.Type == slice.Memory {
++					observations++
++					if len(out.Slices) != 1 || !strings.Contains(out.Text, "applicability=historical_observation; revalidate_before_use") {
++						t.Errorf("historical card %s excluded/misrepresented: %+v", got.Content, out)
++					}
++				} else if got.Type == slice.Result && phase != "unchanged" && len(out.Slices) != 0 {
++					t.Errorf("stale result admitted: %+v", out)
++				}
++			}
++			if observations != 4 {
++				t.Fatalf("observations=%d want all four templates", observations)
++			}
++		})
++	}
++}
++
++func TestHistoricalFlagDoesNotPromoteArbitraryClaims(t *testing.T) {
++	root := t.TempDir()
++	in := &Injector{Scope: slice.Project, Budget: 4096, RootDir: root, CurrentCommit: "new", MinOrigin: slice.OriginSessionAuto,
++		AllowedTypes: map[slice.SliceType]bool{slice.Context: true, slice.Memory: true, slice.Result: true}}
++	for _, tc := range []struct {
++		name string
++		typ  slice.SliceType
++		meta string
++		want string
++	}{
++		{"legacy", slice.Context, `{"base_commit":"old","SourceSession":"s","origin":"session-auto"}`, "stale_commit"},
++		{"result cannot claim history", slice.Result, `{"historical":true,"base_commit":"old","SourceSession":"s","origin":"session-auto","result_status":"verified"}`, "stale_commit"},
++		{"no revision", slice.Memory, `{"historical":true,"SourceSession":"s","origin":"session-auto"}`, "commit_unknown"},
++		{"no source", slice.Context, `{"historical":true,"base_commit":"old","origin":"session-auto"}`, "stale_commit"},
++		{"unsafe path", slice.Context, `{"historical":true,"base_commit":"old","SourceSession":"s","origin":"session-auto","deps":{"../outside":"x"}}`, "dependency_path_invalid"},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			var meta slice.SliceMeta
++			if err := json.Unmarshal([]byte(tc.meta), &meta); err != nil {
++				t.Fatal(err)
++			}
++			sl := &slice.Slice{ID: "card", Type: tc.typ, Scope: slice.Project, Content: []byte("parser regression"), Meta: meta}
++			out, err := in.BuildHits("parser regression", []slice.Hit{{Slice: sl, Score: 2}})
++			if err != nil {
++				t.Fatal(err)
++			}
++			if len(out.Slices) != 0 || out.Decisions[0].Reason != tc.want {
++				t.Fatalf("unexpected admission: %+v", out)
++			}
++		})
++	}
++	var input slice.SliceMeta
++	if err := json.Unmarshal([]byte(`{"historical":true}`), &input); err != nil {
++		t.Fatal(err)
++	}
++	items, err := slice.NewExtractor().Extract([]byte(observationTranscript), input)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, item := range items {
++		if item.Type == slice.Context {
++			continue
++		}
++		b, _ := json.Marshal(item.Meta)
++		if strings.Contains(string(b), `"historical":true`) {
++			t.Fatalf("input flag promoted non-observation %s", item.Type)
++		}
++	}
++}
+diff --git a/kernel/inject/inject.go b/kernel/inject/inject.go
+index 0a2709f0..7bf6b04f 100644
+--- a/kernel/inject/inject.go
++++ b/kernel/inject/inject.go
+@@ -472,6 +472,9 @@ func formatSliceItem(sl *slice.Slice, score float64, content string, grey bool)
+ 		"type=%s project=%q source=%q commit=%q origin=%s verified=%s score=%.4f created_at=%d\n",
+ 		sl.Type.String(), sl.Meta.ProjectSlug, sl.Meta.SourceSession, sl.Meta.BaseCommit, sl.Meta.Origin, verified, score, sl.CreatedAt,
+ 	)
++	if sl.IsHistoricalObservation() {
++		provenance += "applicability=historical_observation; revalidate_before_use\n"
++	}
+ 	return header + provenance + content + "\n"
+ }
+ 
+@@ -496,6 +499,17 @@ func (in *Injector) freshnessReason(sl *slice.Slice) string {
+ 	if sl.Meta.BaseCommit == "" {
+ 		return "commit_unknown"
+ 	}
++	// A source-revision observation is not an executable/current snapshot.
++	// Keep source Deps untouched and validate syntax, but never read paths
++	// merely to prove that a historical tool call once happened.
++	if sl.IsHistoricalObservation() {
++		for path := range sl.Meta.Deps {
++			if !filepath.IsLocal(path) {
++				return "dependency_path_invalid"
++			}
++		}
++		return ""
++	}
+ 	if sl.Meta.BaseCommit != in.CurrentCommit && len(sl.Meta.Deps) == 0 {
+ 		return "stale_commit"
+ 	}
+diff --git a/kernel/slice/distill.go b/kernel/slice/distill.go
+index 2639fe6e..a49ea0d2 100644
+--- a/kernel/slice/distill.go
++++ b/kernel/slice/distill.go
+@@ -31,6 +31,7 @@ func Distill(sessionJSONL []byte, meta SliceMeta) ([]*Slice, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
++	doc.userText = TaskBody(doc.userText)
+ 	if meta.TaskType == "" {
+ 		meta.TaskType = ClassifyTask(doc.userText)
+ 	}
+@@ -218,7 +219,7 @@ func repoOpsSlice(doc *distillDoc, meta SliceMeta) *Slice {
+ 			fmt.Fprintf(&b, "- %s (seen %d)\n", p, pitfalls[p])
+ 		}
+ 	}
+-	return newSlice(Context, Project, []byte(strings.TrimSpace(b.String())), meta)
++	return observedSlice(Context, Project, []byte(strings.TrimSpace(b.String())), meta)
+ }
+ 
+ // normalizeCommand strips the leading repo-position noise (`cd <dir> && `)
+@@ -368,7 +369,7 @@ func planSkeletonSlice(doc *distillDoc, meta SliceMeta) *Slice {
+ 		parts = append(parts, "…")
+ 	}
+ 	content := fmt.Sprintf("Plan skeleton (task=%s):\n%s", meta.TaskType, strings.Join(parts, " → "))
+-	return newSlice(Memory, Project, []byte(content), meta)
++	return observedSlice(Memory, Project, []byte(content), meta)
+ }
+ 
+ // --- outcome card (layer D) ------------------------------------------------
+@@ -408,16 +409,12 @@ func outcomeSlice(doc *distillDoc, meta SliceMeta) *Slice {
+ 	if doc.verifiedBy != "" {
+ 		fmt.Fprintf(&b, "Verified-by: %s\n", doc.verifiedBy)
+ 	}
+-	return newSlice(Memory, Project, []byte(strings.TrimSpace(b.String())), meta)
++	return observedSlice(Memory, Project, []byte(strings.TrimSpace(b.String())), meta)
+ }
+ 
+-// summarizeTask condenses the first user message to one bounded line. Task
+-// templates bury the distinguishing text behind a preamble, so an "Issue:"
+-// section wins over the head of the message; leading tag lines are skipped.
++// summarizeTask condenses the projected task (not host framing) to one bounded
++// line. The full task remains intact for classification and lexical retrieval.
+ func summarizeTask(text string) string {
+-	if i := strings.Index(text, "Issue:"); i >= 0 {
+-		text = text[i+len("Issue:"):]
+-	}
+ 	for _, line := range strings.Split(text, "\n") {
+ 		line = strings.TrimSpace(line)
+ 		if line == "" || strings.HasPrefix(line, "<") {
+diff --git a/kernel/slice/extractor.go b/kernel/slice/extractor.go
+index 0f0ec933..721c5231 100644
+--- a/kernel/slice/extractor.go
++++ b/kernel/slice/extractor.go
+@@ -173,7 +173,7 @@ func contextSlice(lines []transcriptLine, meta SliceMeta) *Slice {
+ 	writeContextSection(&b, "Frequent paths:", pathTop)
+ 	writeContextSection(&b, "Frequent directories:", dirTop)
+ 	writeContextSection(&b, "Common command heads:", commandTop)
+-	return newSlice(Context, Project, []byte(strings.TrimSpace(b.String())), meta)
++	return observedSlice(Context, Project, []byte(strings.TrimSpace(b.String())), meta)
+ }
+ 
+ func decodeToolArgs(raw json.RawMessage) any {
+@@ -514,7 +514,17 @@ func compressionMeta(meta SliceMeta, original string, stored []byte) SliceMeta {
+ 	return meta
+ }
+ 
++// observedSlice is used only for bounded tool-observation templates. Retain
++// source revision/fingerprints; the quote does not assert current applicability.
++func observedSlice(t SliceType, sc Scope, content []byte, meta SliceMeta) *Slice {
++	s := newSlice(t, sc, content, meta)
++	s.Meta.Historical = true
++	return s
++}
++
+ func newSlice(t SliceType, sc Scope, content []byte, meta SliceMeta) *Slice {
++	// Caller metadata cannot promote an arbitrary Prompt/Result into history.
++	meta.Historical = false
+ 	// Write-side sanitization (Issue #278, Security §3.1): every slice
+ 	// extracted from a session passes the deterministic pipeline — escape
+ 	// stripping, injection-feature removal, sensitive redaction — before
+diff --git a/kernel/slice/slice.go b/kernel/slice/slice.go
+index 05615c27..ef23e798 100644
+--- a/kernel/slice/slice.go
++++ b/kernel/slice/slice.go
+@@ -177,8 +177,14 @@ type SliceMeta struct {
+ 	// without mixing non-LLM work into the model usage ledger.
+ 	OriginalBytes int `json:"original_bytes,omitempty"`
+ 	StoredBytes   int `json:"stored_bytes,omitempty"`
+-	// Deps captures the dependency fingerprint at slice time (path -> sha256,
+-	// Issue #8): reuse is gated on these files not having changed.
++	// Historical is set only by deterministic observation-card producers, not
++	// by arbitrary transcript summaries. L2 may quote what happened at the
++	// recorded source revision; it must not present that as a current fact.
++	// Missing/legacy values retain snapshot validity. L3 never consults it.
++	Historical bool `json:"historical,omitempty"`
++	// Deps captures source-session file fingerprints. Snapshot claims require
++	// unchanged files; historical observations retain them as source evidence,
++	// not as a claim that every source-session file is needed to read the card.
+ 	Deps fingerprint.Deps `json:"deps,omitempty"`
+ 	// Mtimes captures file modification times at slice time (path -> unix
+ 	// seconds, U16): cheap fast-fail check before the sha256 re-read.
+@@ -213,6 +219,15 @@ type SliceMeta struct {
+ 	ResultVerificationEvidence string       `json:"result_verification_evidence,omitempty"`
+ }
+ 
++// IsHistoricalObservation separates producer-stamped, attributed observations
++// from arbitrary Context/Memory text and Result claims. A type name alone never
++// relaxes snapshot validity. Stored imports cannot promote their own trust.
++func (s *Slice) IsHistoricalObservation() bool {
++	return s != nil && s.Meta.Historical && (s.Type == Context || s.Type == Memory) &&
++		s.Meta.Origin.Level() >= OriginSessionAuto.Level() &&
++		s.Meta.SourceSession != "" && s.Meta.BaseCommit != ""
++}
++
+ // EffectiveResultStatus fails closed for legacy, empty, and unknown values.
+ func (m SliceMeta) EffectiveResultStatus() ResultStatus {
+ 	if m.ResultStatus == ResultStatusVerified {
+diff --git a/kernel/slice/task_body.go b/kernel/slice/task_body.go
+new file mode 100644
+index 00000000..4539f305
+--- /dev/null
++++ b/kernel/slice/task_body.go
+@@ -0,0 +1,85 @@
++package slice
++
++import "strings"
++
++// TaskBody recognizes only explicit task boundaries and known runner
++// framing. Ordinary headings inside a task (Expected, Actual, Requirements)
++// are task evidence, not generic delimiters.
++func TaskBody(raw string) string {
++	body := strings.TrimSpace(stripTaggedBlock(strings.ReplaceAll(raw, "\r\n", "\n"), "execution-policy"))
++	if issue, ok := taggedBody(body, "issue"); ok {
++		return strings.TrimSpace(issue)
++	}
++	const testbedPrefix = "Fix the following issue in /testbed. The matching Python environment and dependencies are preinstalled at /opt/miniconda3/envs/testbed; use that Python and the existing tests.\n\n"
++	if task, ok := strings.CutPrefix(body, testbedPrefix); ok {
++		return strings.TrimSpace(task)
++	}
++	if strings.HasPrefix(body, "You are working in a git checkout of the ") || strings.HasPrefix(body, "You are solving a real GitHub issue in this repository.") {
++		if _, task, ok := strings.Cut(body, "\n\nIssue:\n"); ok {
++			// This exact suffix is the runner's instruction, not an arbitrary
++			// Requirements heading that may belong to the issue itself.
++			task, _, _ = strings.Cut(task, "\n\nRequirements:\n- Find the root cause and implement a complete fix")
++			return strings.TrimSpace(task)
++		}
++	}
++	if task, ok := strings.CutPrefix(body, "Issue:\n"); ok {
++		return strings.TrimSpace(task)
++	}
++	return body
++}
++
++func stripTaggedBlock(text, tag string) string {
++	for {
++		lower := asciiLower(text)
++		start := 0
++		for {
++			rel := strings.Index(lower[start:], "<"+tag)
++			if rel < 0 {
++				return text
++			}
++			start += rel
++			next := start + len(tag) + 1
++			if next == len(lower) || strings.ContainsRune("> \t\r\n\f", rune(lower[next])) {
++				break
++			}
++			start = next
++		}
++		openEndRel := strings.Index(lower[start:], ">")
++		if openEndRel < 0 {
++			return text[:start]
++		}
++		closeStartRel := strings.Index(lower[start+openEndRel+1:], "</"+tag+">")
++		if closeStartRel < 0 {
++			return text[:start]
++		}
++		end := start + openEndRel + 1 + closeStartRel + len(tag) + 3
++		text = text[:start] + " " + text[end:]
++	}
++}
++
++func taggedBody(text, tag string) (string, bool) {
++	lower := asciiLower(text)
++	open := "<" + tag + ">"
++	close := "</" + tag + ">"
++	start := strings.Index(lower, open)
++	if start < 0 {
++		return "", false
++	}
++	start += len(open)
++	endRel := strings.Index(lower[start:], close)
++	if endRel < 0 {
++		return "", false
++	}
++	return text[start : start+endRel], true
++}
++
++// Tag matching must preserve byte offsets into the original Unicode task.
++func asciiLower(text string) string {
++	b := []byte(text)
++	for i, c := range b {
++		if c >= 'A' && c <= 'Z' {
++			b[i] = c + ('a' - 'A')
++		}
++	}
++	return string(b)
++}
+diff --git a/kernel/slice/task_body_boundaries_test.go b/kernel/slice/task_body_boundaries_test.go
+new file mode 100644
+index 00000000..cd364e1b
+--- /dev/null
++++ b/kernel/slice/task_body_boundaries_test.go
+@@ -0,0 +1,18 @@
++package slice
++
++import "testing"
++
++func TestTaskBodyPreservesUnicodeAndUnrelatedTags(t *testing.T) {
++	for _, tc := range []struct{ input, want string }{
++		{"<execution-policy>İ Fix tests</execution-policy><issue>修复 İ parser</issue>", "修复 İ parser"},
++		{"İ preface <ISSUE>修复 parser</ISSUE>", "修复 parser"},
++		{"Fix <execution-policy-example> markup", "Fix <execution-policy-example> markup"},
++		{"<execution-policy-example>keep</execution-policy-example><execution-policy mode=\"strict\">remove</execution-policy>\nIssue:\nFix parser", "<execution-policy-example>keep</execution-policy-example> \nIssue:\nFix parser"},
++	} {
++		t.Run(tc.input, func(t *testing.T) {
++			if got := TaskBody(tc.input); got != tc.want {
++				t.Fatalf("TaskBody = %q, want %q", got, tc.want)
++			}
++		})
++	}
++}
+diff --git a/kernel/slice/task_body_test.go b/kernel/slice/task_body_test.go
+new file mode 100644
+index 00000000..aea81a55
+--- /dev/null
++++ b/kernel/slice/task_body_test.go
+@@ -0,0 +1,43 @@
++package slice
++
++import (
++	"encoding/json"
++	"strings"
++	"testing"
++)
++
++func TestDistillUsesTaskBodyNotRunnerInstructions(t *testing.T) {
++	const task = "Why does the payment parser stall?"
++	for _, input := range []string{
++		"Fix the following issue in /testbed. The matching Python environment and dependencies are preinstalled at /opt/miniconda3/envs/testbed; use that Python and the existing tests.\n\n" + task,
++		"<execution-policy>Fix tests first</execution-policy>\n<issue>" + task + "</issue>",
++		"You are working in a git checkout of the org/repo repository.\n\nIssue:\n" + task + "\n\nRequirements:\n- Find the root cause and implement a complete fix",
++		"You are solving a real GitHub issue in this repository.\n\nIssue:\n" + task,
++		task + "\nExpected: returns immediately\nActual: stalls",
++	} {
++		t.Run(input[:min(32, len(input))], func(t *testing.T) {
++			line, _ := json.Marshal(map[string]string{"role": "user", "content": input})
++			transcript := append(line, []byte(`
++{"role":"assistant","tool_calls":[{"id":"e","name":"edit_file","arguments":{"path":"parser.go"}},{"id":"v","name":"bash","arguments":{"command":"go test ./..."}}]}
++{"role":"tool","tool_call_id":"e","content":"edited parser.go"}
++{"role":"tool","tool_call_id":"v","content":"ok","verification":"passed"}
++`)...)
++			cards, err := Distill(transcript, SliceMeta{})
++			if err != nil {
++				t.Fatal(err)
++			}
++			found := false
++			for _, c := range cards {
++				if strings.HasPrefix(string(c.Content), "Task outcome") {
++					found = true
++					if c.Meta.TaskType != TaskInvestigate || !strings.Contains(string(c.Content), "): "+task+"\n") {
++						t.Fatalf("runner polluted card: %s", c.Content)
++					}
++				}
++			}
++			if !found {
++				t.Fatal("no outcome")
++			}
++		})
++	}
++}

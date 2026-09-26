@@ -1,0 +1,21 @@
+--- FAIL: TestLoadTaskRejectsSymlinkAndUnsafeIDs (0.01s)
+--- FAIL: TestLoadTaskRejectsSymlinkedArchiveRoot (0.03s)
+--- FAIL: TestArchiveReaderRejectsSymlinkedTaskContent (0.08s)
+FAIL
+FAIL	semantix/harness/autoresearch	1.585s
+--- FAIL: TestRememberPermissionRuleSerializesCrossProcessWriters (8.94s)
+FAIL	semantix/harness/boot	604.555s
+--- FAIL: TestQueuedFoldedPasteExpandsBeforeInterjectSend (0.08s)
+--- FAIL: TestLoadGitStatus (4.07s)
+--- FAIL: TestServeStartsWithMissingProviderKey (19.20s)
+FAIL
+FAIL	semantix/harness/cli	220.011s
+--- FAIL: TestResumeRestoresTerminalGoalTodosFromSidecar (0.02s)
+--- FAIL: TestSubmitClearDiscardsCurrentContextWithoutSavingTranscript (0.08s)
+--- FAIL: TestGoalSidecarCompatRestoresOldAndNewFields (0.03s)
+--- FAIL: TestMultiSteerActiveSetAcksAll (0.07s)
+--- FAIL: TestColdResumeUnderThresholdUsesCanonical (0.04s)
+--- FAIL: TestRunShell_HeredocCancelReleasesTurn (6.80s)
+FAIL
+FAIL	semantix/harness/control	93.635s
+FAIL

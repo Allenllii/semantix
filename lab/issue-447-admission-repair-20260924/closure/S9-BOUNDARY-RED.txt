@@ -1,0 +1,17 @@
+=== RUN   TestTaskBodyPreservesUnicodeAndUnrelatedTags
+=== RUN   TestTaskBodyPreservesUnicodeAndUnrelatedTags/<execution-policy>İ_Fix_tests</execution-policy><issue>修复_İ_parser</issue>
+    task_body_boundaries_test.go:12: TaskBody = "修复 İ parse", want "修复 İ parser"
+=== RUN   TestTaskBodyPreservesUnicodeAndUnrelatedTags/İ_preface_<ISSUE>修复_parser</ISSUE>
+    task_body_boundaries_test.go:12: TaskBody = ">修复 parse", want "修复 parser"
+=== RUN   TestTaskBodyPreservesUnicodeAndUnrelatedTags/Fix_<execution-policy-example>_markup
+    task_body_boundaries_test.go:12: TaskBody = "Fix", want "Fix <execution-policy-example> markup"
+=== RUN   TestTaskBodyPreservesUnicodeAndUnrelatedTags/<execution-policy-example>keep</execution-policy-example><execution-policy_mode="strict">remove</execution-policy>_Issue:_Fix_parser
+    task_body_boundaries_test.go:12: TaskBody = "Fix parser", want "<execution-policy-example>keep</execution-policy-example> \nIssue:\nFix parser"
+--- FAIL: TestTaskBodyPreservesUnicodeAndUnrelatedTags (0.00s)
+    --- FAIL: TestTaskBodyPreservesUnicodeAndUnrelatedTags/<execution-policy>İ_Fix_tests</execution-policy><issue>修复_İ_parser</issue> (0.00s)
+    --- FAIL: TestTaskBodyPreservesUnicodeAndUnrelatedTags/İ_preface_<ISSUE>修复_parser</ISSUE> (0.00s)
+    --- FAIL: TestTaskBodyPreservesUnicodeAndUnrelatedTags/Fix_<execution-policy-example>_markup (0.00s)
+    --- FAIL: TestTaskBodyPreservesUnicodeAndUnrelatedTags/<execution-policy-example>keep</execution-policy-example><execution-policy_mode="strict">remove</execution-policy>_Issue:_Fix_parser (0.00s)
+FAIL
+FAIL	semantix/kernel/slice	0.005s
+FAIL

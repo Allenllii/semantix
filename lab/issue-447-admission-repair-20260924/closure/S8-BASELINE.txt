@@ -1,0 +1,20 @@
+=== RUN   TestAssemblyDoesNotRecordDelivery
+    delivery_accounting_test.go:22: assembly advertised actual delivery
+    delivery_accounting_test.go:37: unconsumed assembly changed usage: {Hits:0 Misses:0 Injected:1 Rejected:0 Useful:0 Neutral:0 Harmful:0 UserFeedback:0 LastUsed:1790284215}
+    delivery_accounting_test.go:22: assembly advertised actual delivery
+    delivery_accounting_test.go:37: unconsumed assembly changed usage: {Hits:0 Misses:0 Injected:2 Rejected:0 Useful:0 Neutral:0 Harmful:0 UserFeedback:0 LastUsed:1790284215}
+--- FAIL: TestAssemblyDoesNotRecordDelivery (0.05s)
+FAIL
+FAIL	semantix/harness/semantix	0.058s
+=== RUN   TestInjectAssemblyDoesNotWriteDeliveryStats
+    lookup_stats_test.go:92: assembly wrongly recorded delivery on target: &{ID:target Type:result Scope:project Content:[103 97 116 101 119 97 121 32 115 116 114 101 97 109 105 110 103 32 112 97 115 115 116 104 114 111 117 103 104 32 102 108 117 115 104 32 100 111 110 101 32 109 97 114 107 101 114 32 116 101 114 109 105 110 97 116 105 111 110] Embedding:[] Stats:{Hits:0 Misses:0 Injected:1 Rejected:0 Useful:0 Neutral:0 Harmful:0 UserFeedback:0 LastUsed:1790284215} Weight:1 Meta:{SourceSession: SourceSessions:[] TaskType: Language: ProjectSlug: BaseCommit: Origin:session-auto CompressionVersion: SanitizeVersion: OriginalBytes:0 StoredBytes:0 Historical:false Deps:map[] Mtimes:map[] L3Safe:false EmbedModel: EmbedDim:0 ContextHash: Model: ResultStatus: ResultVerifiedBy: ResultVerificationEvidence:} CreatedAt:0}
+--- FAIL: TestInjectAssemblyDoesNotWriteDeliveryStats (0.02s)
+FAIL
+FAIL	semantix/cmd/semantix	0.031s
+=== RUN   TestE2EL2FailedForwardDoesNotRecordDelivery
+2026/09/24 17:10:15 gateway: POST /v1/chat/completions (1ms)
+    stats_test.go:143: upstream rejected but credited delivery: {Hits:0 Misses:0 Injected:1 Rejected:0 Useful:0 Neutral:0 Harmful:0 UserFeedback:0 LastUsed:1790284215}
+--- FAIL: TestE2EL2FailedForwardDoesNotRecordDelivery (0.02s)
+FAIL
+FAIL	semantix/gateway	0.026s
+FAIL
