@@ -607,11 +607,11 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			return false, a.gracePause(state)
 		}
 		state.emptyFinalBlocks++
-		if state.emptyFinalBlocks >= maxEmptyFinalBlocks {
+		if state.emptyFinalBlocks >= maxOutputLimitBlocks {
 			return false, fmt.Errorf("model hit the output limit %d times without tool progress", state.emptyFinalBlocks)
 		}
 		a.svc.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: "output_truncated", Text: "Response reached its output limit; continuing the task.", Detail: emptyFinalNoticeDetail(a.svc.prov.Name(), usage, len(reasoning))})
-		nudge := "The previous response hit the output limit; it did not complete the task. Continue the current task with the smallest concrete next step, using a tool when needed. Keep the continuation concise; do not repeat prior analysis or claim unfinished work is done."
+		nudge := "The previous response hit the output limit without completing anything: it was analysis, not progress. Do not write another long analysis. Call a tool NOW to make the smallest concrete edit or run the smallest verification command, then reply in one or two sentences."
 		a.sess.conversation.Add(provider.Message{Role: provider.RoleUser, Content: a.withTurnPreferences(nudge)})
 		return true, nil
 	}

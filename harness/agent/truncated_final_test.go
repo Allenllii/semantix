@@ -78,8 +78,12 @@ func TestLengthTruncationBoundaries(t *testing.T) {
 		name, finish, text string
 		steps, calls       int
 	}{
-		{"bounded", "length", "", 40, 3},
-		{"partial_visible", "length", "unfinished fragment", 40, 3},
+		// The output-limit site gets its own strike budget
+		// (maxOutputLimitBlocks): two more chances than the reasoning-only
+		// stop site, because long-reasoning models legitimately spend whole
+		// output budgets on analysis before their first tool call (#521 I2).
+		{"bounded", "length", "", 40, 5},
+		{"partial_visible", "length", "unfinished fragment", 40, 5},
 		{"step_limit", "length", "", 1, 1},
 		{"ordinary_stop", "stop", "not done", 40, 1},
 	} {
@@ -94,7 +98,7 @@ func TestLengthTruncationBoundaries(t *testing.T) {
 			if err == nil || p.call != tc.calls {
 				t.Fatalf("calls=%d err=%v; want %d calls and non-success", p.call, err, tc.calls)
 			}
-			if tc.calls == 3 && !strings.Contains(err.Error(), "output limit") {
+			if tc.calls == 5 && !strings.Contains(err.Error(), "output limit") {
 				t.Fatalf("lost truncation reason: %v", err)
 			}
 			if tc.name == "step_limit" && sessionHasUserMessageContaining(a.Session(), "output limit") {
