@@ -49,17 +49,6 @@ const maxToolOutputBytes = 32 * 1024
 
 const maxEmptyFinalBlocks = 3
 
-// maxOutputLimitBlocks is the separate strike budget for responses truncated
-// by the output-token limit (FinishReason "length"). Long-reasoning models on
-// hard tasks legitimately spend their whole output budget on analysis before
-// any tool call; three strikes killed such tasks mid-investigation (#521 I2:
-// django-11019 died at 4 steps, astropy-14182 at 9, both with wall budget
-// remaining), so the length-triggered site gets two more strikes than the
-// reasoning-only-stop site — paired with a nudge that demands a tool call
-// instead of more analysis. Both sites share one counter that a tool round
-// resets, so the combined worst case is still bounded.
-const maxOutputLimitBlocks = 5
-
 // maxStreamRecoveries is the number of body-phase stream retries after the
 // initial sampling attempt (Codex-aligned default: 1 + 5 = 6 attempts total).
 const maxStreamRecoveries = 5
