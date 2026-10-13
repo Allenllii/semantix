@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
  */
 
 const REPO = "https://github.com/Gnosil/semantix";
-const DESKTOP_RELEASE = `${REPO}/releases/download/desktop-v0.1.3`;
+const DESKTOP_RELEASE = `${REPO}/releases/download/desktop-v0.1.4`;
 
 const MAC_DMG = `${DESKTOP_RELEASE}/Semantix-darwin-universal.dmg`;
 const WIN_ZIP = `${DESKTOP_RELEASE}/Semantix-windows-amd64.zip`;
