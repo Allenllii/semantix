@@ -361,6 +361,9 @@ func TestSendWithRetryRateLimitPatienceIsBounded(t *testing.T) {
 // A 429 Retry-After is honored up to the higher rate-limit clamp; generic
 // statuses keep the original clamp and attempt budget.
 func TestRateLimitDelayHonorsRetryAfterUpToHigherCap(t *testing.T) {
+	if got := rateLimitDelay(maxRateLimitAttempts, 0); got < maxRateLimitBackoff || got >= maxRateLimitBackoff+2*time.Second {
+		t.Fatalf("late rate-limit backoff = %v, want [60s, 62s)", got)
+	}
 	if got := rateLimitDelay(1, 75*time.Second); got != 75*time.Second {
 		t.Fatalf("75s Retry-After = %v, want honored under the 90s clamp", got)
 	}
@@ -390,12 +393,45 @@ func TestSendWithRetry429DoesNotConsumeGenericBudget(t *testing.T) {
 		return statusResp(http.StatusBadGateway, nil), nil
 	})}
 
-	_, err := SendWithRetry(context.Background(), cl, SendOptions{Provider: "p"}, newDummyReq)
+	ctx := WithRetryNotify(context.Background(), func(info RetryInfo) {
+		wantMax := MaxRetries
+		if calls == 1 {
+			wantMax = maxRateLimitAttempts
+		}
+		if info.Max != wantMax || info.Attempt < 1 || info.Attempt > info.Max {
+			t.Errorf("retry notification = %+v, want max %d", info, wantMax)
+		}
+	})
+	_, err := SendWithRetry(ctx, cl, SendOptions{Provider: "p"}, newDummyReq)
 	apiErr, ok := err.(*APIError)
 	if !ok || apiErr.Status != http.StatusBadGateway {
 		t.Fatalf("err = %v, want *APIError 502 after generic budget drained", err)
 	}
 	if calls != MaxRetries+2 {
 		t.Fatalf("calls = %d, want 1 rate-limit try + %d generic attempts", calls, MaxRetries+1)
+	}
+}
+
+func TestSendWithRetryDoesNotSleepPastRateLimitBudget(t *testing.T) {
+	oldWait, oldSleep := maxRateLimitWait, retrySleep
+	maxRateLimitWait = 100 * time.Second
+	var slept time.Duration
+	retrySleep = func(d time.Duration) <-chan time.Time {
+		slept += d
+		return time.After(0)
+	}
+	defer func() { maxRateLimitWait, retrySleep = oldWait, oldSleep }()
+
+	calls := 0
+	cl := &http.Client{Transport: rtFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return statusResp(http.StatusTooManyRequests, map[string]string{"Retry-After": "90"}), nil
+	})}
+	_, err := SendWithRetry(context.Background(), cl, SendOptions{Provider: "p"}, newDummyReq)
+	if apiErr, ok := err.(*APIError); !ok || apiErr.Status != http.StatusTooManyRequests {
+		t.Fatalf("err = %v, want *APIError 429", err)
+	}
+	if slept != maxRateLimitWait || calls != 3 {
+		t.Fatalf("slept=%v calls=%d, want 100s and 3 requests", slept, calls)
 	}
 }

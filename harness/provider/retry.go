@@ -259,7 +259,10 @@ func rateLimitDelay(attempt int, retryAfter time.Duration) time.Duration {
 	if retryAfter > 0 {
 		return min(retryAfter, maxRateLimitRetryAfter)
 	}
-	d := min(time.Duration(1<<(attempt-1))*500*time.Millisecond, maxRateLimitBackoff)
+	d := maxRateLimitBackoff
+	if attempt < 8 {
+		d = time.Duration(1<<(attempt-1)) * 500 * time.Millisecond
+	}
 	return d + time.Duration(rand.Intn(2000))*time.Millisecond
 }
 
@@ -329,15 +332,26 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 
 	for iter := 0; ; iter++ {
 		if iter > 0 {
+			// Check before sleeping, and clamp the final 429 wait to the
+			// remaining budget. A rejected retry must not spend another wait.
+			if lastRateLimited {
+				if rateWait >= maxRateLimitWait || rateAttempts >= maxRateLimitAttempts {
+					return nil, lastErr
+				}
+			} else if attempts > MaxRetries {
+				return nil, lastErr
+			}
 			delay := backoffDelay(max(attempts, 1), retryAfter)
+			retryAttempt, retryMax := attempts, MaxRetries
 			if lastRateLimited {
 				// First rate-limit wait uses attempt 1 (500ms ramp start).
-				delay = rateLimitDelay(rateAttempts+1, retryAfter)
+				delay = min(rateLimitDelay(rateAttempts+1, retryAfter), maxRateLimitWait-rateWait)
 				rateAttempts++
 				rateWait += delay
+				retryAttempt, retryMax = rateAttempts, maxRateLimitAttempts
 			}
 			if notify != nil {
-				notify(RetryInfo{Attempt: max(attempts, rateAttempts), Max: MaxRetries, Delay: delay, Err: lastErr})
+				notify(RetryInfo{Attempt: retryAttempt, Max: retryMax, Delay: delay, Err: lastErr})
 			}
 			select {
 			case <-ctx.Done():
@@ -346,14 +360,6 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 			}
 		}
 		retryAfter = 0
-
-		if lastRateLimited {
-			if rateWait > maxRateLimitWait || rateAttempts > maxRateLimitAttempts {
-				return nil, lastErr
-			}
-		} else if attempts > MaxRetries {
-			return nil, lastErr
-		}
 
 		req, err := newReq(ctx)
 		if err != nil {
